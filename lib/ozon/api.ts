@@ -496,6 +496,76 @@ export async function ozonRealization(
   }
 }
 
+export interface OzonAccrualType {
+  id: number;
+  name: string;
+  description: string;
+}
+
+/** Справочник категорий начислений — ~124 строки, меняется редко. */
+export async function ozonAccrualTypes(
+  c: OzonCreds,
+): Promise<{ ok: true; types: OzonAccrualType[] } | { ok: false; error: string }> {
+  try {
+    const res = await tfetch(c, `${BASE}/v1/finance/accrual/types`, {
+      method: "POST",
+      headers: headers(c),
+      body: JSON.stringify({}),
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
+    const json = (await res.json()) as { accrual_types?: OzonAccrualType[] };
+    return { ok: true, types: json.accrual_types ?? [] };
+  } catch (error) {
+    return { ok: false, error: String(error).slice(0, 120) };
+  }
+}
+
+export type OzonAccrualByDayResult =
+  | { ok: true; accruals: unknown[] }
+  | { ok: false; error: string; rateLimited: boolean };
+
+/**
+ * Построчные начисления за один календарный день.
+ *
+ * Пагинация не документирована официально: ответ несёт `last_id`, и мы
+ * пробуем продолжить, подставляя его в следующий запрос тем же именем поля.
+ * Если Ozon имя не примет и вернёт тот же `last_id` второй раз — не зависаем
+ * до потолка страниц, а останавливаемся: лучше неполный день, чем зависший
+ * крон-вызов.
+ */
+export async function ozonAccrualByDay(c: OzonCreds, date: string): Promise<OzonAccrualByDayResult> {
+  const accruals: unknown[] = [];
+  let lastId: string | undefined;
+  let previousLastId: string | undefined;
+
+  for (let page = 0; page < 20; page += 1) {
+    const body: Record<string, unknown> = lastId ? { date, last_id: lastId } : { date };
+    let res: Response;
+    try {
+      res = await tfetch(c, `${BASE}/v1/finance/accrual/by-day`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify(body),
+        cache: "no-store",
+      });
+    } catch (error) {
+      return { ok: false, error: String(error).slice(0, 120), rateLimited: false };
+    }
+    if (res.status === 429) return { ok: false, error: "rate limited", rateLimited: true };
+    if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}`, rateLimited: false };
+
+    const json = (await res.json()) as { accruals?: unknown[]; last_id?: string };
+    const batch = json.accruals ?? [];
+    accruals.push(...batch);
+    if (!batch.length || !json.last_id || json.last_id === previousLastId) break;
+    previousLastId = lastId;
+    lastId = json.last_id;
+  }
+
+  return { ok: true, accruals };
+}
+
 export interface OzonPosting {
   scheme: "FBO" | "FBS";
   postingNumber: string;
