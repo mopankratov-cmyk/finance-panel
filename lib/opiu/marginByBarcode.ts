@@ -101,6 +101,7 @@ export function buildMarginByBarcode(
   costs: ProductCostRow[],
   adSpendByNmId: Map<number, number>,
   ordersByNmId: Map<number, OrdersSummary> = new Map(),
+  paidStorageByArticle: Map<string, number> = new Map(),
   taxPct = 6,
 ): MarginByBarcodeResult {
   const lookup = buildCostLookup(costs);
@@ -132,6 +133,11 @@ export function buildMarginByBarcode(
   // Отказы, в отличие от Заказов, считаются из строк финотчёта — они уже
   // на уровне баркода, дедуп им не нужен.
   const ordersUsedForNmId = new Set<number>();
+  // «Хранение» — по артикулу (wb_paid_storage_rows.vendor_code = sa_name), не
+  // по баркоду: если у артикула несколько размеров/баркодов, сумма
+  // приписывается только первой встреченной группе — тот же приём, что и
+  // выше для Заказов/Рекламы (иначе задвоилась бы по числу баркодов).
+  const storageUsedForArticle = new Set<string>();
 
   for (const [key, group] of byBarcode) {
     const first = group[0]!;
@@ -152,7 +158,7 @@ export function buildMarginByBarcode(
     let logistics = 0;
     let penalties = 0;
     let additionalPayments = 0;
-    let storage = 0;
+    let storageFallback = 0;
     let acceptance = 0;
     let transit = 0;
     let cost = 0;
@@ -188,10 +194,26 @@ export function buildMarginByBarcode(
       logistics += expenseRub(row.delivery_rub);
       penalties += expenseRub(row.penalty);
       additionalPayments += expenseRub(row.additional_payment);
-      storage += storageFeeRub(row);
+      storageFallback += storageFeeRub(row);
       acceptance += acceptanceRub(row);
       transit += transitDeliveryRub(row);
     }
+
+    // «Хранение» — приоритет wb_paid_storage_rows (отчёт WB «Платное
+    // хранение», по артикулу): storage_fee из финотчёта обезличен на весь
+    // кабинет (nm_id: 0) и по артикулу всегда ~0 — сверено на реальных
+    // данных (TT04102, 07-13.09: storage_fee давал 0, «Платное хранение» —
+    // 730,05 ₽, ровно как в официальной выгрузке WB и в гугл-таблице).
+    // Откат на storageFallback только если по артикулу вообще нет записей
+    // в wb_paid_storage_rows — отличаем «не синкано» от «синкано и правда 0».
+    const articleKey = article.toUpperCase();
+    const hasPaidStorage = paidStorageByArticle.has(articleKey);
+    const storage = storageUsedForArticle.has(articleKey)
+      ? 0
+      : hasPaidStorage
+        ? paidStorageByArticle.get(articleKey)!
+        : storageFallback;
+    storageUsedForArticle.add(articleKey);
 
     const netQty = salesQty - returnsQty;
     const totalPayout = forPay - logistics - penalties - additionalPayments - storage - acceptance - transit;

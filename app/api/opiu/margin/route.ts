@@ -4,6 +4,7 @@ import { fetchReportRows } from "@/lib/opiu/reportRows";
 import { fetchProductCosts, matchesArticlePrefix } from "@/lib/opiu/loadMonth";
 import { buildMarginByBarcode, type OrdersSummary } from "@/lib/opiu/marginByBarcode";
 import { loadReadyFunnelFacts } from "@/lib/opiu/loadFunnelOrders";
+import { fetchPaidStorageByArticle } from "@/lib/opiu/paidStorage";
 import { OPIU_BRANDS, resolveOpiuBrand } from "@/lib/opiu/constants";
 import { isValidDateParam } from "@/lib/opiu/weeks";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -132,18 +133,25 @@ export async function GET(request: NextRequest) {
   const brand = resolveOpiuBrand(resolveBrandId(request));
 
   try {
-    const [reportRows, costs, adSpendByNmId, ordersByNmId] = await Promise.all([
+    const [reportRows, costs, adSpendByNmId, ordersByNmId, paidStorageByArticle] = await Promise.all([
       fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
       fetchProductCosts(brand),
       fetchAdSpendByNmId(brand.cabinetId, dateFrom, dateTo),
       fetchOrdersByNmId(brand.cabinetId, dateFrom, dateTo, brand.articlePrefixes),
+      fetchPaidStorageByArticle(brand.cabinetId, dateFrom, dateTo, brand.articlePrefixes),
     ]);
 
     const scopedRows = brand.articlePrefixes?.length
       ? reportRows.filter((row) => matchesArticlePrefix(row.sa_name, brand.articlePrefixes))
       : reportRows;
 
-    const { rows, unattributedRows } = buildMarginByBarcode(scopedRows, costs, adSpendByNmId, ordersByNmId);
+    const { rows, unattributedRows } = buildMarginByBarcode(
+      scopedRows,
+      costs,
+      adSpendByNmId,
+      ordersByNmId,
+      paidStorageByArticle,
+    );
 
     return NextResponse.json({
       rows,
