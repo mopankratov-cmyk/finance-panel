@@ -17,7 +17,26 @@ function resolveBrandId(request: NextRequest): string | undefined {
   return brand && OPIU_BRANDS.some((b) => b.id === brand) ? brand : undefined;
 }
 
-/** Расход на рекламу за период по nm_id — для колонки «Реклама» (справочно, не вычитается из маржи). */
+/**
+ * Расход на рекламу за период по nm_id — для колонки «Реклама» (справочно,
+ * не вычитается из маржи). Источник — wb_advert_spend_history («История
+ * затрат» WB, adv/v1/upd, реальные списания с баланса), та же методология,
+ * что и «ВБ продвижение» в гугл-таблице (СУММЕСЛИМН по вкладке
+ * «Продвижение», которая сама заполняется этим же отчётом WB).
+ *
+ * Строка этого отчёта не несёт nm_id — только campaign_name ("Кампания" в
+ * личном кабинете WB), в котором WB/продавец кладёт nm_id последним числом
+ * в названии (сверено на всех 25 кампаниях кабинета — без исключений).
+ * Тот же приём, что уже используется в adsSpendBySource.ts для суб-брендов
+ * (там — по вхождению префикса артикула; тут нужен точный nm_id, поэтому
+ * регэксп по последнему числу, не префикс).
+ *
+ * wb_advert_nm_daily (прежний источник, fullstats) смешивает баланс и
+ * бонусы и был случайно занижен из-за неполного покрытия по некоторым
+ * SKU — проверено построчно: для TT04101 новый источник (988 ₽) и старый
+ * (1001,7 ₽) почти совпали, а для TT04102 оба независимо дали ~0 — не
+ * баг, кампании этого товара реально не крутились с начала августа.
+ */
 async function fetchAdSpendByNmId(
   cabinetId: string,
   dateFrom: string,
@@ -27,8 +46,8 @@ async function fetchAdSpendByNmId(
   const map = new Map<number, number>();
   if (!db) return map;
   const { data, error } = await db
-    .from("wb_advert_nm_daily")
-    .select("nm_id, spent")
+    .from("wb_advert_spend_history")
+    .select("campaign_name, payment_type, amount")
     .eq("cabinet_id", cabinetId)
     .gte("date", dateFrom)
     .lte("date", dateTo);
@@ -37,9 +56,14 @@ async function fetchAdSpendByNmId(
     return map;
   }
   for (const row of data ?? []) {
-    const nmId = Number(row.nm_id);
+    const paymentType = String(row.payment_type ?? "").toLowerCase();
+    const isBonus = paymentType.includes("бонус") || paymentType.includes("кэшбэк") || paymentType.includes("кешбэк");
+    if (isBonus) continue;
+    const match = String(row.campaign_name ?? "").match(/(\d{6,})\s*$/);
+    if (!match) continue;
+    const nmId = Number(match[1]);
     if (!Number.isFinite(nmId)) continue;
-    map.set(nmId, (map.get(nmId) ?? 0) + Number(row.spent ?? 0));
+    map.set(nmId, (map.get(nmId) ?? 0) + Number(row.amount ?? 0));
   }
   return map;
 }
