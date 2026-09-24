@@ -14,6 +14,7 @@ test("login redirect to launcher does not wait for legacy finance hydration", ()
   assert.equal(needsFinanceHydration("/payments"), true);
   assert.equal(needsFinanceHydration("/accounts"), true);
   assert.equal(needsFinanceHydration("/loans"), true);
+  assert.equal(needsFinanceHydration("/pnl/balance"), true);
 });
 
 test("AppLayout gates the loader and load error only on finance-backed pages", () => {
