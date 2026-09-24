@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
+import { CalendarRange, ChevronDown, ChevronRight, Pencil, Trash2 } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import { groupPaymentOperations } from "@/lib/finance/paymentOperationGroups";
 import { chainIdForPayment, chainMetadata, type PaymentChainSummary } from "@/lib/finance/paymentChains";
@@ -9,10 +9,11 @@ import type { Account, Payment } from "@/lib/types";
 import type { DdsCompany } from "./ddsCompanies";
 import type { PaymentChainSeed } from "./PaymentChainModal";
 
-export function PaymentOperationsTable({ visible, all, accounts, companies, highlightedPaymentId, onEdit, onDelete, onOpen }: {
+export function PaymentOperationsTable({ visible, all, accounts, companies, highlightedPaymentId, onEdit, onDelete, onOpen, onAllocateOpiu }: {
   visible: Payment[]; all: Payment[]; accounts: Account[]; companies: DdsCompany[];
   highlightedPaymentId?: string | null;
   onEdit: (payment: Payment) => void; onDelete: (id: string) => void; onOpen: (seed: PaymentChainSeed) => void;
+  onAllocateOpiu: (payment: Payment) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [summaries, setSummaries] = useState<PaymentChainSummary[]>([]);
@@ -67,12 +68,12 @@ export function PaymentOperationsTable({ visible, all, accounts, companies, high
               <td data-label="Контрагент" className="break-anywhere px-3 py-3 text-slate-600" title={p.counterparty || undefined}><span className="lg:line-clamp-2">{p.counterparty || "—"}</span></td>
               <td data-label="Назначение" className="break-anywhere px-3 py-3 text-slate-500 lg:truncate" title={p.name}>{p.name}</td>
               <td data-label="Статья" className="px-3 py-3 font-medium" title={group.chainId ? undefined : p.category}>{group.chainId ? <button type="button" aria-expanded={open} aria-controls={`parts-${group.key}`} onClick={() => toggle(group.key)} className="flex min-h-11 items-center gap-1 rounded-lg px-1 text-left text-violet-700 hover:bg-violet-50">{open ? <ChevronDown className="h-4 w-4 shrink-0"/> : <ChevronRight className="h-4 w-4 shrink-0"/>}<span>Частей: {group.parts.length}</span></button> : <span className="lg:line-clamp-2">{p.category}</span>}</td>
-              <td data-cell="actions" className="px-2 py-3"><div className="flex items-center justify-end gap-1">{!group.chainId && p.amount < 0 && <button type="button" onClick={() => onOpen({ paymentId: p.id })} className="min-h-11 rounded-lg border border-violet-200 px-2 text-xs text-violet-700">Разбить</button>}<button type="button" aria-label="Редактировать операцию" title="Редактировать" onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onEdit(p)} className="tap rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Pencil className="h-4 w-4"/></button><button type="button" aria-label={group.chainId ? "Отменить операцию" : "Удалить платёж"} title={group.chainId ? "Отменить операцию" : "Удалить платёж"} onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onDelete(p.id)} className="tap rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4"/></button></div></td>
+              <td data-cell="actions" className="px-2 py-3"><div className="flex items-center justify-end gap-1">{!group.chainId && p.amount < 0 && <button type="button" onClick={() => onOpen({ paymentId: p.id })} className="min-h-11 rounded-lg border border-violet-200 px-2 text-xs text-violet-700">Разбить</button>}{!group.chainId && p.amount < 0 && <button type="button" aria-label="Распределить расход по месяцам ОПиУ" title="По месяцам ОПиУ" onClick={() => onAllocateOpiu(p)} className="tap rounded-lg text-slate-500 hover:bg-violet-50 hover:text-violet-700"><CalendarRange className="h-4 w-4" /></button>}<button type="button" aria-label="Редактировать операцию" title="Редактировать" onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onEdit(p)} className="tap rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600"><Pencil className="h-4 w-4"/></button><button type="button" aria-label={group.chainId ? "Отменить операцию" : "Удалить платёж"} title={group.chainId ? "Отменить операцию" : "Удалить платёж"} onClick={() => group.chainId ? onOpen({ paymentId: p.id }) : onDelete(p.id)} className="tap rounded-lg text-slate-500 hover:bg-red-50 hover:text-red-600"><Trash2 className="h-4 w-4"/></button></div></td>
             </tr>
             {group.chainId && open && <tr id={`parts-${group.key}`}><td colSpan={8} className="px-5 py-3"><div className="w-full space-y-2 rounded-lg border border-violet-100 bg-slate-50 p-3 text-left">
               <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-medium">Части операции на {formatMoney(-p.amount)}</p><button type="button" onClick={() => onOpen({ paymentId: p.id })} className="min-h-11 rounded-lg px-3 text-sm text-violet-700 hover:bg-white">Изменить разбивку</button></div>
               <p className="text-xs text-slate-500">Все части по своим датам. Фильтры выбрали исходную операцию; здесь показана вся разбивка.</p>
-              {group.parts.map(part => <div key={part.id} className="grid gap-1 rounded-lg bg-white p-3 text-sm sm:grid-cols-[100px_1fr_1fr_110px]"><span className="text-slate-500">{formatDate(part.date)}</span><div><p>{part.category}</p><p className="text-xs text-slate-500">{part.counterparty || part.name}</p></div><div><p>{companyName(part.companyId)}</p><p className="text-xs text-slate-500">{accountName(part.accountId)}</p></div><b className="text-red-600 sm:text-right">{formatMoney(part.amount)}</b></div>)}
+              {group.parts.map(part => <div key={part.id} className="grid gap-1 rounded-lg bg-white p-3 text-sm sm:grid-cols-[100px_1fr_1fr_110px_44px] sm:items-center"><span className="text-slate-500">{formatDate(part.date)}</span><div><p>{part.category}</p><p className="text-xs text-slate-500">{part.counterparty || part.name}</p></div><div><p>{companyName(part.companyId)}</p><p className="text-xs text-slate-500">{accountName(part.accountId)}</p></div><b className="text-red-600 sm:text-right">{formatMoney(part.amount)}</b>{part.amount < 0 && <button type="button" aria-label="Распределить эту часть по месяцам ОПиУ" title="По месяцам ОПиУ" onClick={() => onAllocateOpiu(part)} className="tap rounded-lg text-slate-500 hover:bg-violet-50 hover:text-violet-700"><CalendarRange className="h-4 w-4" /></button>}</div>)}
               {Boolean(group.remainder && group.remainder > 0) && <div className="flex flex-wrap justify-between gap-2 rounded-lg bg-amber-50 px-3 py-2 text-sm"><span>Остаток исходной суммы, включая исключённые части</span><b>{formatMoney(group.remainder!)}</b></div>}
               {!group.parts.length && <p className="text-sm text-slate-500">Расходов из этой суммы пока нет.</p>}
               <button type="button" onClick={() => onOpen({ paymentId: p.id })} className="min-h-11 rounded-lg px-3 text-sm text-slate-600 hover:bg-white">Связанные займы, переводы и история</button>

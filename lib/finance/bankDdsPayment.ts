@@ -3,7 +3,7 @@ import type { Account, Payment } from "@/lib/types";
 /** Факт ДДС: банковская выписка, её разбивка или ручная операция наличными. */
 export function isDdsActualPayment(payment: Pick<Payment, "status" | "importSource">) {
   if (payment.status !== "done") return false;
-  return /^(?:bank-review|dds-chain|manual-dds):/i.test(payment.importSource ?? "");
+  return /^(?:bank-review|dds-chain|manual-dds|dds-file):/i.test(payment.importSource ?? "");
 }
 
 export function isManualDdsPayment(payment: Pick<Payment, "importSource">) {

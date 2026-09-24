@@ -6,6 +6,7 @@ test("ДДС показывает подтверждённые строки ба
   assert.equal(isDdsActualPayment({ status: "done", importSource: "bank-review:row-id" }), true);
   assert.equal(isDdsActualPayment({ status: "done", importSource: "dds-chain:chain-id:1:part-id" }), true);
   assert.equal(isDdsActualPayment({ status: "done", importSource: "manual-dds:payment-id" }), true);
+  assert.equal(isDdsActualPayment({ status: "done", importSource: "dds-file:sha256:42" }), true);
   assert.equal(isManualDdsPayment({ importSource: "manual-dds:payment-id" }), true);
 });
 

@@ -3,6 +3,7 @@
 import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Plus, RefreshCw, Save, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
 import { ImportDdsModal } from "./ImportDdsModal";
+import { OpiuPeriodAllocationModal } from "./OpiuPeriodAllocationModal";
 import { PaymentChainModal, type PaymentChainSeed } from "./PaymentChainModal";
 import { TransferBalancePanel } from "./TransferBalancePanel";
 import { BankTransfersPanel } from "./BankTransfersPanel";
@@ -68,6 +69,7 @@ export function PaymentsPage() {
   const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">(mode);
   const [bankImportOpen, setBankImportOpen] = useState(false);
   const [historyImportOpen, setHistoryImportOpen] = useState(false);
+  const [opiuAllocationPayment, setOpiuAllocationPayment] = useState<Payment | null>(null);
   const [companiesOpen, setCompaniesOpen] = useState(false);
   const [syncingGoogle, setSyncingGoogle] = useState(false);
 
@@ -584,12 +586,13 @@ export function PaymentsPage() {
       <TransferBalancePanel payments={ddsPayments} accounts={ddsAccounts} onEdit={openEdit}/>
       <BankTransfersPanel/>
       <Card>
-        <PaymentOperationsTable visible={filtered} all={ddsPayments} accounts={ddsAccounts} companies={companies} highlightedPaymentId={highlightedPaymentId} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed}/>
+        <PaymentOperationsTable visible={filtered} all={ddsPayments} accounts={ddsAccounts} companies={companies} highlightedPaymentId={highlightedPaymentId} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed} onAllocateOpiu={setOpiuAllocationPayment}/>
       </Card>
         </>
       )}
 
       {chainSeed&&<PaymentChainModal seed={chainSeed} accounts={state.accounts} companies={companies} onClose={closeChain} onSaved={async()=>{dispatch({type:"LOAD",payload:await loadFinanceState()});const links=await loadPaymentCompanyLinks();setCompanyByPayment(new Map(links.map(l=>[l.paymentId,l.companyId])));setChainVersion(v=>v+1);}}/>}
+      <OpiuPeriodAllocationModal payment={opiuAllocationPayment} onClose={() => setOpiuAllocationPayment(null)} />
       <Modal
         open={modalOpen}
         onClose={() => {

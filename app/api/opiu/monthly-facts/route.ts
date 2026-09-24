@@ -18,6 +18,7 @@ import { buildOpiuCompanyScopes, type OpiuCompanyOption } from "@/lib/opiu/compa
 import { loadDdsExpenseCategories } from "@/lib/finance/expenseCategoriesServer";
 import { readCompaniesCompat } from "@/lib/finance/companySchema";
 import { parseCompanyTaxRate, parseCompanyTaxSystem, parseCompanyVatMode } from "@/lib/finance/companyTax";
+import { loadMonthlyDdsRows } from "@/lib/opiu/ddsFactsServer";
 
 export const dynamic = "force-dynamic";
 
@@ -81,23 +82,17 @@ export async function GET(request: NextRequest) {
   let loanRows: LoanScheduleMonthlyFact[] = [];
 
   try {
-    const paymentRows = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => {
-      let query = db
-        .from("payments")
-        .select("amount,category,comment,date,id,company_id,status,import_source")
-        .eq("status", "done")
-        .or("import_source.like.bank-review:%,import_source.like.dds-chain:%,import_source.like.manual-dds:%")
-        .gte("date", from)
-        .lte("date", to);
-      return query
-        .order("date", { ascending: true })
-        .order("id", { ascending: true })
-        .range(pageFrom, pageTo);
-    }, { label: "ОПиУ: подтверждённые расходы ДДС", maxPages: 100 });
+    const loadedDds = await loadMonthlyDdsRows(db, from, to, "ОПиУ: подтверждённые расходы ДДС");
+    const paymentRows = loadedDds.rows;
+    if (!loadedDds.periodAllocationAvailable) warnings.push("ОПиУ: распределение платежей по месяцам станет доступно после миграции 202609240004");
     payments = paymentRows.map((row) => ({
+      id: row.id == null ? undefined : String(row.id),
+      date: row.date == null ? undefined : String(row.date).slice(0, 10),
       amount: num(row.amount),
       category: row.category == null ? null : String(row.category),
       comment: row.comment == null ? null : String(row.comment),
+      counterparty: row.counterparty == null ? null : String(row.counterparty),
+      name: row.name == null ? null : String(row.name),
       companyId: row.company_id == null ? null : String(row.company_id),
       status: String(row.status) as DdsFactRow["status"],
       importSource: row.import_source == null ? null : String(row.import_source),
