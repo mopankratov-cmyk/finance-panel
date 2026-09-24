@@ -78,3 +78,11 @@ test("доступные суммы незавершённого отчёта WB
   assert.equal(statement.revenue.status, "partial");
   assert.equal(statement.revenue.known, 1_000);
 });
+
+test("рентабельность недоступного направления остаётся прочерком, а не ложным нулём", () => {
+  const statement = buildMonthlyOpiuStatement({ wb: actual.wb });
+  const margin = statement.rows.find((row) => row.id === "ebitda_margin")!;
+
+  assert.equal(margin.amounts.ozon.status, "na");
+  assert.equal(margin.amounts.ozon.value, null);
+});
