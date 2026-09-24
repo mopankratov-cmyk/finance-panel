@@ -277,8 +277,8 @@ async function loadBrandMonthData(
     loanTransferRowsSale,
     loanTransferRowsReport,
   ] = await Promise.all([
-    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId, brand.articlePrefixes),
-    fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId, brand.articlePrefixes),
+    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId, brand.articlePrefixes, "pnl"),
+    fetchReportRows(dateFrom, dateTo, "report", brand.cabinetId, brand.articlePrefixes, "pnl"),
     fetchOrders(dateFrom, dateTo, refresh, brand),
     fetchProductCosts(brand),
     fetchWarehouseCosts(weeks, brand),
@@ -463,7 +463,7 @@ async function loadBrandSalePeriodData(
 ): Promise<BrandSalePeriodData> {
   const needsLoanTransferSplit = Boolean(brand.articlePrefixes?.length);
   const [saleDateRows, orders, costs, loanTransferRowsSale] = await Promise.all([
-    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId, brand.articlePrefixes),
+    fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId, brand.articlePrefixes, "pnl"),
     fetchOrders(dateFrom, dateTo, false, brand),
     fetchProductCosts(brand),
     needsLoanTransferSplit ? fetchLoanTransferRows(dateFrom, dateTo, "sale", brand.cabinetId) : Promise.resolve([]),
