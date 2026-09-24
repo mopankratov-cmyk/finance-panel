@@ -69,6 +69,16 @@ export async function createPaidStorageTask(
 
 export type PaidStorageTaskStatus = "processing" | "done" | "purged" | "canceled" | "unknown";
 
+/**
+ * WB удаляет асинхронные отчёты через некоторое время. Для уже удалённой
+ * задачи status/download отвечает HTTP 404, а не статусом `purged`.
+ * Такой taskId нужно забыть и создать отчёт заново, иначе синк будет вечно
+ * опрашивать один и тот же отсутствующий id.
+ */
+export function isMissingPaidStorageTask(status: number, body: string): boolean {
+  return status === 404 && /not[ -]?found|не найден/i.test(body);
+}
+
 export async function checkPaidStorageTaskStatus(
   token: string,
   taskId: string,

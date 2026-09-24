@@ -42,6 +42,33 @@ const REPORT_COLUMNS_WITHOUT_DELIVERY_AMOUNT = REPORT_COLUMN_NAMES
   .filter((column) => column !== "delivery_amount")
   .join(",");
 
+// Для сводного ОПиУ не нужны поля детальной маржинальности/прогноза. На
+// Riobox за один месяц больше 120 тыс. строк, поэтому даже несколько лишних
+// numeric-колонок заметно увеличивают JSON и время передачи из PostgREST.
+// Полный набор остаётся значением по умолчанию для margin/forecast экранов.
+const PNL_REPORT_COLUMNS = [
+  "rr_dt",
+  "sale_dt",
+  "nm_id",
+  "sa_name",
+  "barcode",
+  "doc_type_name",
+  "supplier_oper_name",
+  "quantity",
+  "retail_price_withdisc_rub",
+  "retail_amount",
+  "ppvz_for_pay",
+  "delivery_rub",
+  "penalty",
+  "deduction",
+  "additional_payment",
+  "storage_fee",
+  "acceptance",
+  "cashback_discount",
+  "bonus_type_name",
+  "rrd_id",
+].join(",");
+
 export function isMissingDeliveryAmountColumnError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /delivery_amount/i.test(message)
@@ -144,6 +171,7 @@ export async function fetchReportRows(
   mode: OpiuReportDateMode,
   cabinetId: string = OPIU_WB_CABINET_ID,
   articlePrefixes?: string[],
+  columnProfile: "full" | "pnl" = "full",
 ): Promise<WbReportRow[]> {
   const client = getSupabaseAdmin();
   if (!client) throw new Error("Supabase service role is not configured");
@@ -181,7 +209,7 @@ export async function fetchReportRows(
           : "ОПиУ: финансовый отчёт WB по дате отчёта",
       });
 
-  return withDeliveryAmountColumnFallback(async (columns) => {
+  const loadSelectedColumns = async (columns: string) => {
     if (!prefixFilter) return loadRows(columns);
     // У агентского кабинета Оптима один бренд даёт более 100 тыс. строк за
     // месяц. Глубокий OFFSET по всему месяцу падает по statement timeout даже
@@ -194,7 +222,10 @@ export async function fetchReportRows(
       (date) => loadRows(columns, date),
     );
     return byDate.flat();
-  });
+  };
+
+  if (columnProfile === "pnl") return loadSelectedColumns(PNL_REPORT_COLUMNS);
+  return withDeliveryAmountColumnFallback(loadSelectedColumns);
 }
 
 /**

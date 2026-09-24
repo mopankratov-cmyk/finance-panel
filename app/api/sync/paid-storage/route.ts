@@ -9,6 +9,7 @@ import {
   checkPaidStorageTaskStatus,
   createPaidStorageTask,
   downloadPaidStorageTask,
+  isMissingPaidStorageTask,
   type PaidStorageApiRow,
 } from "@/lib/wb/paidStorageRequest";
 
@@ -184,6 +185,16 @@ async function processCabinet(
   if (!statusRes.ok) {
     const rateLimited = isWbGlobalRateLimit(statusRes.status, statusRes.body);
     if (rateLimited) return { cabinet: target.name, status: "deferred", taskId };
+    if (isMissingPaidStorageTask(statusRes.status, statusRes.body)) {
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: state.frontier ?? null,
+        status: "backfill",
+        attempts: attempts + 1,
+        lastError: `задача WB ${taskId} больше не существует; будет создана заново`,
+        state: { ...state, taskId: undefined, lastRunAt: new Date().toISOString() },
+      });
+      return { cabinet: target.name, status: "expired", taskId };
+    }
     await writeWbSyncState(db, cabinetId, JOB, {
       cursor: state.frontier ?? null,
       status: "error",
@@ -229,6 +240,16 @@ async function processCabinet(
   if (!download.ok) {
     const rateLimited = isWbGlobalRateLimit(download.status, download.body);
     if (rateLimited) return { cabinet: target.name, status: "deferred", taskId };
+    if (isMissingPaidStorageTask(download.status, download.body)) {
+      await writeWbSyncState(db, cabinetId, JOB, {
+        cursor: state.frontier ?? null,
+        status: "backfill",
+        attempts: attempts + 1,
+        lastError: `готовый отчёт WB ${taskId} удалён до скачивания; будет создан заново`,
+        state: { ...state, taskId: undefined, lastRunAt: new Date().toISOString() },
+      });
+      return { cabinet: target.name, status: "expired", taskId };
+    }
     await writeWbSyncState(db, cabinetId, JOB, {
       cursor: state.frontier ?? null,
       status: "error",
