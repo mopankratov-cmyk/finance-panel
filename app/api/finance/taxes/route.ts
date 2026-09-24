@@ -71,6 +71,7 @@ type TaxYearSettingsRow = {
   prior_year_loss: number | string;
   recognized_cogs: number | string;
   output_vat_confirmed: number | string | null;
+  has_employees: boolean;
   note: string;
 };
 
@@ -130,7 +131,7 @@ async function loadLiveTaxSettings(companyId: string, year: number, from: string
   const db = getSupabaseAdmin()!;
   const [settings, documents] = await Promise.all([
     db.from("company_tax_year_settings")
-      .select("fixed_insurance_contributions,insurance_reduction_limit_percent,prior_year_loss,recognized_cogs,output_vat_confirmed,note")
+      .select("fixed_insurance_contributions,insurance_reduction_limit_percent,prior_year_loss,recognized_cogs,output_vat_confirmed,has_employees,note")
       .eq("company_id", companyId).eq("tax_year", year).maybeSingle(),
     db.from("marketplace_tax_documents")
       .select("id,marketplace,document_date,document_number,gross_expense_amount,vat_rate,vat_amount,vat_document_status,vat_deduction_status,usn_expense_status,note")
@@ -290,6 +291,7 @@ export async function GET(request: NextRequest) {
         priorYearLoss: Number(liveSettings.yearSettings?.prior_year_loss) || 0,
         recognizedCogs: Number(liveSettings.yearSettings?.recognized_cogs) || 0,
         outputVatConfirmed: liveSettings.yearSettings?.output_vat_confirmed == null ? null : Number(liveSettings.yearSettings.output_vat_confirmed),
+        hasEmployees: Boolean(liveSettings.yearSettings?.has_employees),
         note: liveSettings.yearSettings?.note ?? "",
       },
       marketplaceTaxDocuments: liveSettings.documents.map((document) => ({
@@ -337,6 +339,7 @@ export async function PATCH(request: NextRequest) {
     priorYearLoss?: number;
     recognizedCogs?: number;
     outputVatConfirmed?: number | null;
+    hasEmployees?: boolean;
     taxPaymentKind?: TaxPaymentKind;
     documentId?: string;
     marketplace?: "wb" | "ozon" | "other";
@@ -391,6 +394,7 @@ export async function PATCH(request: NextRequest) {
       prior_year_loss: Math.round(loss * 100) / 100,
       recognized_cogs: Math.round(recognizedCogs * 100) / 100,
       output_vat_confirmed: outputVatConfirmed == null ? null : Math.round(outputVatConfirmed * 100) / 100,
+      has_employees: Boolean(body.hasEmployees),
       note: String(body.note ?? "").slice(0, 2_000), updated_at: new Date().toISOString(),
     };
     const saved = await db.from("company_tax_year_settings").upsert(row, { onConflict: "company_id,tax_year" });
