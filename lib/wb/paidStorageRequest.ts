@@ -23,7 +23,7 @@ export interface PaidStorageApiRow {
   barcodesCount?: number;
 }
 
-export interface CompactPaidStorageRow {
+export interface CompactPaidStorageRow extends Record<string, unknown> {
   id: string;
   cabinet_id: string;
   date: string;
