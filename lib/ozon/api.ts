@@ -109,7 +109,12 @@ const DELIVERY_SERVICES = new Set([
 
 interface OzonBalanceMoney { value?: number | string; currency_code?: string }
 interface OzonBalanceResponse {
-  total?: { accrued?: OzonBalanceMoney; payments?: OzonBalanceMoney[] };
+  total?: {
+    opening_balance?: OzonBalanceMoney;
+    closing_balance?: OzonBalanceMoney;
+    accrued?: OzonBalanceMoney;
+    payments?: OzonBalanceMoney[];
+  };
   cashflows?: {
     sales?: { amount?: OzonBalanceMoney; fee?: OzonBalanceMoney };
     returns?: { amount?: OzonBalanceMoney; fee?: OzonBalanceMoney };
@@ -118,6 +123,42 @@ interface OzonBalanceResponse {
 }
 
 const money = (value: OzonBalanceMoney | undefined) => Number(value?.value ?? 0) || 0;
+
+export interface OzonMarketplaceBalance {
+  opening: number;
+  closing: number;
+  currency: string;
+}
+
+/** Остаток денег продавца у Ozon за выбранный день. */
+export async function ozonMarketplaceBalance(
+  c: OzonCreds,
+  day: string,
+): Promise<{ ok: true; balance: OzonMarketplaceBalance } | { ok: false; error: string }> {
+  try {
+    const response = await tfetch(c, `${BASE}/v1/finance/balance`, {
+      method: "POST",
+      headers: headers(c),
+      body: JSON.stringify({ date_from: day, date_to: day }),
+      cache: "no-store",
+    });
+    if (!response.ok) return { ok: false, error: `Ozon ${response.status}: ${(await response.text()).slice(0, 160)}` };
+    const body = await response.json() as OzonBalanceResponse;
+    const closing = Number(body.total?.closing_balance?.value);
+    const opening = Number(body.total?.opening_balance?.value);
+    if (!Number.isFinite(closing)) return { ok: false, error: "Ozon не вернул closing_balance" };
+    return {
+      ok: true,
+      balance: {
+        opening: Number.isFinite(opening) ? opening : closing,
+        closing,
+        currency: String(body.total?.closing_balance?.currency_code || body.total?.opening_balance?.currency_code || "RUB"),
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: String(error).slice(0, 160) };
+  }
+}
 
 /** Нулевые итоги — база для сложения кусков периода. */
 export function emptyOzonTotals(): OzonTotals {

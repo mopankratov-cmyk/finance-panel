@@ -18,7 +18,6 @@ import {
 import { FinanceTabs } from "@/components/FinanceTabs";
 import { useFinance } from "@/components/providers/FinanceProvider";
 import { Card, CardContent, CardHeader } from "@/components/ui/Card";
-import { accountBalance, rubAccounts } from "@/lib/finance/balance";
 import { connectedBalanceTotals, loanLiabilitySnapshot } from "@/lib/finance/statementBalance";
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
@@ -27,6 +26,11 @@ type InventoryKind = "fulfillment" | "wb" | "ozon" | "supplier_transit";
 type InventoryCategory = { kind: InventoryKind; complete: boolean; amount: number | null; quantity: number; rowsCount: number; provisional: boolean; reconciledAt: string | null; errors: string[] };
 type InventoryLine = { id: string; article: string; name: string; location: string; reference: string | null; quantity: number; costRub: number | null; packagingRub: number | null; unitValue: number | null; totalValue: number | null };
 type InventorySnapshot = { amount: number | null; complete: boolean; categories: InventoryCategory[]; computedAt: string | null };
+type BankCashAccount = { id: string; name: string; bank: string | null; accountNumber: string | null; statementAmount: number | null; ddsAmount: number; difference: number | null; matchesDds: boolean; error: string | null };
+type MarketplaceCashRow = { sourceKey: string; label: string; amount: number | null; availableAmount: number | null; currency: string; status: string; error: string | null; capturedAt: string };
+type MarketplaceCashCategory = { complete: boolean; amount: number | null; rows: MarketplaceCashRow[]; errors: string[] };
+type CashSnapshot = { amount: number | null; complete: boolean; bank: { amount: number | null; complete: boolean; accounts: BankCashAccount[] }; marketplaces: { wb: MarketplaceCashCategory; ozon: MarketplaceCashCategory } };
+type CashDetailKind = "bank" | "wb" | "ozon";
 
 const INVENTORY_LABELS: Record<InventoryKind, string> = {
   fulfillment: "На фулфилменте",
@@ -58,6 +62,11 @@ async function loadInventory(month: string): Promise<InventorySnapshot> {
     computedAt: body.capturedAt,
     categories: body.categories,
   };
+}
+
+async function loadCash(month: string): Promise<CashSnapshot> {
+  return fetch(`/api/finance/balance-cash?month=${encodeURIComponent(month)}`, { cache: "no-store" })
+    .then((response) => responseJson<CashSnapshot>(response));
 }
 
 function Metric({ label, value, note, tone = "slate" }: { label: string; value: string; note: string; tone?: "slate" | "emerald" | "violet" | "amber" }) {
@@ -125,6 +134,33 @@ function InventoryDetails({ kind, month, onClose }: { kind: InventoryKind; month
   );
 }
 
+function CashDetails({ kind, month, snapshot, onClose }: { kind: CashDetailKind; month: string; snapshot: CashSnapshot; onClose: () => void }) {
+  const title = kind === "bank" ? "Расчётные счета" : `Денежные средства на ${kind === "wb" ? "WB" : "Ozon"}`;
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-5">
+          <div><h2 className="font-bold text-slate-950">{title}</h2><p className="text-xs text-slate-500">Остаток на начало {formatDate(`${month}-01`)}</p></div>
+          <button type="button" onClick={onClose} aria-label="Закрыть" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="overflow-auto">
+          {kind === "bank" ? (
+            <table className="min-w-[800px] w-full text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="px-4 py-3 text-left">Счёт</th><th className="px-3 py-3 text-right">По выписке</th><th className="px-3 py-3 text-right">По ДДС</th><th className="px-4 py-3 text-right">Разница</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{snapshot.bank.accounts.map((row) => <tr key={row.id} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="font-semibold text-slate-900">{row.name}</div><div className="text-slate-500">{[row.bank, row.accountNumber].filter(Boolean).join(" · ") || "Нет сопоставления"}</div>{row.error ? <div className="mt-1 text-rose-700">{row.error}</div> : null}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{money(row.statementAmount)}</td><td className="px-3 py-3 text-right tabular-nums">{money(row.ddsAmount)}</td><td className={`px-4 py-3 text-right font-semibold tabular-nums ${row.matchesDds ? "text-emerald-700" : "text-rose-700"}`}>{money(row.difference)}</td></tr>)}</tbody>
+            </table>
+          ) : (
+            <table className="min-w-[700px] w-full text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="px-4 py-3 text-left">Кабинет</th><th className="px-3 py-3 text-right">Всего у маркетплейса</th><th className="px-4 py-3 text-right">Доступно к выводу</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{snapshot.marketplaces[kind].rows.map((row) => <tr key={row.sourceKey} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="font-semibold text-slate-900">{row.label}</div><div className="text-slate-500">Снимок {new Date(row.capturedAt).toLocaleString("ru-RU")}</div>{row.error ? <div className="mt-1 text-rose-700">{row.error}</div> : null}</td><td className="px-3 py-3 text-right font-semibold tabular-nums">{money(row.amount)}</td><td className="px-4 py-3 text-right tabular-nums">{row.availableAmount === null ? "—" : money(row.availableAmount)}</td></tr>)}</tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function BalancePage() {
   const { state, hydrated, loadError } = useFinance();
   const [month, setMonth] = useState(todayISO().slice(0, 7));
@@ -133,15 +169,19 @@ export function BalancePage() {
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [inventory, setInventory] = useState<InventorySnapshot | null>(null);
   const [inventoryError, setInventoryError] = useState<string | null>(null);
+  const [cashSnapshot, setCashSnapshot] = useState<CashSnapshot | null>(null);
+  const [cashError, setCashError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [detailKind, setDetailKind] = useState<InventoryKind | null>(null);
+  const [cashDetailKind, setCashDetailKind] = useState<CashDetailKind | null>(null);
 
   const refreshExternal = useCallback(async () => {
     setRefreshing(true);
-    const [schedules, stocks] = await Promise.allSettled([
+    const [schedules, stocks, cashResult] = await Promise.allSettled([
       fetch("/api/finance/loans/schedule", { cache: "no-store" })
         .then((response) => responseJson<{ rows?: ScheduleRowRecord[]; error?: string }>(response)),
       loadInventory(month),
+      loadCash(month),
     ]);
     if (schedules.status === "fulfilled") {
       setScheduleRows(schedules.value.rows ?? []);
@@ -157,15 +197,19 @@ export function BalancePage() {
       setInventory(null);
       setInventoryError(stocks.reason instanceof Error ? stocks.reason.message : "Не удалось загрузить месячный остаток маркетплейсов");
     }
+    if (cashResult.status === "fulfilled") {
+      setCashSnapshot(cashResult.value);
+      setCashError(null);
+    } else {
+      setCashSnapshot(null);
+      setCashError(cashResult.reason instanceof Error ? cashResult.reason.message : "Не удалось загрузить денежные остатки");
+    }
     setRefreshing(false);
   }, [month]);
 
   useEffect(() => { void refreshExternal(); }, [refreshExternal]);
 
-  const accountDetails = useMemo(() => rubAccounts(state.accounts)
-    .map((account) => ({ id: account.id, name: account.name, amount: accountBalance(account, state.payments, asOf) }))
-    .sort((a, b) => b.amount - a.amount), [asOf, state.accounts, state.payments]);
-  const cash = accountDetails.reduce((sum, account) => sum + account.amount, 0);
+  const cash = cashSnapshot?.amount ?? null;
   const loanSnapshot = useMemo(() => loanLiabilitySnapshot(state.loans, scheduleRows, asOf), [asOf, scheduleRows, state.loans]);
   const inventoryReady = inventory?.complete === true && inventory.amount !== null;
   const provisionalFulfillment = inventory?.categories.find((item) => item.kind === "fulfillment" && item.provisional);
@@ -174,9 +218,14 @@ export function BalancePage() {
     : provisionalFulfillment
       ? `Фулфилмент предварительный: поздние документы с датой до начала месяца автоматически попадут в ежедневный пересчёт. Итог станет финальным после закрытия складского периода.${provisionalFulfillment.reconciledAt ? ` Последняя сверка: ${new Date(provisionalFulfillment.reconciledAt).toLocaleString("ru-RU")}.` : ""}`
       : null;
-  const complete = hydrated && !loadError && state.accounts.length > 0 && inventoryReady && !scheduleError;
+  const complete = hydrated && !loadError && cash !== null && inventoryReady && !scheduleError;
   const totals = complete ? connectedBalanceTotals({ cash, inventory: inventory.amount!, loans: loanSnapshot.amount }) : null;
-  const sourcesReady = [hydrated && !loadError && state.accounts.length > 0, inventoryReady, !scheduleError && hydrated].filter(Boolean).length;
+  const sourcesReady = [cash !== null, inventoryReady, !scheduleError && hydrated].filter(Boolean).length;
+  const cashWarnings = cashSnapshot ? [
+    ...cashSnapshot.bank.accounts.map((row) => row.error).filter(Boolean),
+    ...cashSnapshot.marketplaces.wb.errors,
+    ...cashSnapshot.marketplaces.ozon.errors,
+  ] : [];
 
   return (
     <div className="mx-auto w-full max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
@@ -207,10 +256,12 @@ export function BalancePage() {
         <Metric label="Покрытие источников" value={`${sourcesReady} из 3`} note={complete ? "Все источники обновлены" : "Часть данных недоступна"} />
       </div>
 
-      {(loadError || inventoryError || inventoryWarning || scheduleError || loanSnapshot.estimatedCount > 0) ? (
+      {(loadError || cashError || cashWarnings.length || inventoryError || inventoryWarning || scheduleError || loanSnapshot.estimatedCount > 0) ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div className="space-y-1">
             {loadError ? <p>Счета ДДС: {loadError}</p> : null}
+            {cashError ? <p>Денежные средства: {cashError}</p> : null}
+            {cashWarnings.map((warning, index) => <p key={`${warning}-${index}`}>Сверка денег: {warning}</p>)}
             {inventoryError ? <p>Маркетплейсы: {inventoryError}</p> : null}
             {inventoryWarning ? <p>Товарные остатки: {inventoryWarning}</p> : null}
             {scheduleError ? <p>Кредиты: {scheduleError}</p> : null}
@@ -226,8 +277,10 @@ export function BalancePage() {
             <span className="font-bold tabular-nums text-emerald-800">{money(totals?.assets ?? null)}</span>
           </CardHeader>
           <div className="divide-y divide-slate-100">
-            <StatementRow label="Денежные средства" amount={hydrated && !loadError && state.accounts.length ? cash : null} detail={`${accountDetails.length} рублёвых счетов`} href="/accounts" />
-            {accountDetails.slice(0, 5).map((account) => <StatementRow key={account.id} label={`↳ ${account.name}`} amount={account.amount} muted />)}
+            <StatementRow label="Денежные средства" amount={cash} detail="Выписки банков + деньги у маркетплейсов на 00:01" />
+            <StatementRow label="↳ Расчётные счета" amount={cashSnapshot?.bank.amount ?? null} detail={`${cashSnapshot?.bank.accounts.length ?? 0} счетов · входящий остаток выписки · сверка с ДДС`} muted onClick={() => setCashDetailKind("bank")} />
+            <StatementRow label="↳ Денежные средства на WB" amount={cashSnapshot?.marketplaces.wb.amount ?? null} detail="Полный баланс кабинета; доступное к выводу — в детализации" muted onClick={() => setCashDetailKind("wb")} />
+            <StatementRow label="↳ Денежные средства на Ozon" amount={cashSnapshot?.marketplaces.ozon.amount ?? null} detail="Баланс кабинета Ozon на момент снимка" muted onClick={() => setCashDetailKind("ozon")} />
             <StatementRow label="Товарные остатки" amount={inventoryReady ? inventory.amount : null} detail={inventory?.computedAt ? `Снимок запущен ${new Date(inventory.computedAt).toLocaleString("ru-RU")} · на первое число месяца` : inventoryError ?? "Ожидается снимок 1-го числа в 00:01 МСК"} />
             {inventory?.categories.map((category) => <StatementRow key={category.kind} label={`↳ ${INVENTORY_LABELS[category.kind]}`} amount={category.amount} detail={`${category.quantity.toLocaleString("ru-RU")} шт · ${category.rowsCount} позиций${category.complete ? "" : " · данные неполные"}${category.provisional ? " · предварительно" : ""}`} muted onClick={() => setDetailKind(category.kind)} />)}
             <StatementRow label="Дебиторская задолженность" amount={null} detail="В панели пока нет реестра задолженности покупателей" muted />
@@ -263,7 +316,7 @@ export function BalancePage() {
           <CardHeader><h2 className="font-bold text-slate-950">Готовность данных</h2></CardHeader>
           <CardContent className="space-y-3">
             {[
-              { icon: Wallet, label: "Счета и факты ДДС", ready: hydrated && !loadError && state.accounts.length > 0 },
+              { icon: Wallet, label: "Выписки, ДДС и деньги маркетплейсов", ready: cashSnapshot?.complete === true },
               { icon: Boxes, label: "4 группы товарных остатков на 1-е число", ready: inventoryReady },
               { icon: Building2, label: "Кредитные договоры и графики", ready: hydrated && !scheduleError },
             ].map(({ icon: Icon, label, ready }) => (
@@ -278,6 +331,7 @@ export function BalancePage() {
         </Card>
       </div>
       {detailKind ? <InventoryDetails kind={detailKind} month={month} onClose={() => setDetailKind(null)} /> : null}
+      {cashDetailKind && cashSnapshot ? <CashDetails kind={cashDetailKind} month={month} snapshot={cashSnapshot} onClose={() => setCashDetailKind(null)} /> : null}
     </div>
   );
 }
