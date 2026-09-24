@@ -2,6 +2,9 @@ export interface MarketplaceStockInput {
   article: string;
   name?: string | null;
   quantity: number;
+  lineKey?: string;
+  locationName?: string | null;
+  reference?: string | null;
 }
 
 export interface MarketplaceUnitCost {
@@ -11,8 +14,11 @@ export interface MarketplaceUnitCost {
 }
 
 export interface ValuedMarketplaceStock {
+  lineKey: string;
   article: string;
   name: string;
+  locationName: string | null;
+  reference: string | null;
   quantity: number;
   costRub: number | null;
   packagingRub: number | null;
@@ -51,18 +57,26 @@ export function valueMarketplaceStocks(
   costs: readonly MarketplaceUnitCost[],
 ): ValuedMarketplaceStock[] {
   const costByArticle = new Map(costs.map((item) => [key(item.article), item]));
-  const grouped = new Map<string, { article: string; name: string; quantity: number }>();
+  const grouped = new Map<string, { lineKey: string; article: string; name: string; locationName: string | null; reference: string | null; quantity: number }>();
   for (const stock of stocks) {
     const article = String(stock.article ?? "").normalize("NFKC").trim();
-    const normalized = key(article);
+    const lineKey = String(stock.lineKey ?? article).normalize("NFKC").trim();
+    const normalized = key(lineKey);
     const quantity = Number(stock.quantity);
     if (!normalized || !Number.isFinite(quantity) || quantity <= 0) continue;
-    const current = grouped.get(normalized) ?? { article, name: String(stock.name ?? "").trim() || article, quantity: 0 };
+    const current = grouped.get(normalized) ?? {
+      lineKey,
+      article,
+      name: String(stock.name ?? "").trim() || article,
+      locationName: String(stock.locationName ?? "").trim() || null,
+      reference: String(stock.reference ?? "").trim() || null,
+      quantity: 0,
+    };
     current.quantity += quantity;
     grouped.set(normalized, current);
   }
   return [...grouped.entries()].map(([normalized, stock]) => {
-    const cost = costByArticle.get(normalized);
+    const cost = costByArticle.get(key(stock.article));
     const costRub = cost && cost.costRub > 0 ? cost.costRub : null;
     const packagingRub = costRub === null ? null : Math.max(0, Number(cost?.packagingRub ?? 0));
     const unitValue = costRub === null ? null : round2(costRub + (packagingRub ?? 0));

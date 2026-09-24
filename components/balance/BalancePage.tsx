@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Scale,
   Wallet,
+  X,
 } from "lucide-react";
 import { FinanceTabs } from "@/components/FinanceTabs";
 import { useFinance } from "@/components/providers/FinanceProvider";
@@ -22,8 +23,17 @@ import { connectedBalanceTotals, loanLiabilitySnapshot } from "@/lib/finance/sta
 import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
-type InventoryDetail = { id: string; name: string; marketplace: "wb" | "ozon"; amount: number | null; missingCostCount: number; error: string | null };
-type InventorySnapshot = { amount: number | null; complete: boolean; details: InventoryDetail[]; computedAt: string | null; missingCabinets: string[] };
+type InventoryKind = "fulfillment" | "wb" | "ozon" | "supplier_transit";
+type InventoryCategory = { kind: InventoryKind; complete: boolean; amount: number | null; quantity: number; rowsCount: number; errors: string[] };
+type InventoryLine = { id: string; article: string; name: string; location: string; reference: string | null; quantity: number; costRub: number | null; packagingRub: number | null; unitValue: number | null; totalValue: number | null };
+type InventorySnapshot = { amount: number | null; complete: boolean; categories: InventoryCategory[]; computedAt: string | null };
+
+const INVENTORY_LABELS: Record<InventoryKind, string> = {
+  fulfillment: "На фулфилменте",
+  wb: "На складе WB",
+  ozon: "На складе Ozon",
+  supplier_transit: "В пути от поставщика",
+};
 
 const money = (value: number | null) => value === null ? "—" : formatMoney(value);
 const percent = (value: number | null) => value === null
@@ -40,15 +50,13 @@ async function loadInventory(month: string): Promise<InventorySnapshot> {
   const body = await fetch(`/api/finance/balance-stock?month=${encodeURIComponent(month)}`, { cache: "no-store" })
     .then((response) => responseJson<{
       amount: number | null; complete: boolean; capturedAt: string | null;
-      runs: Array<{ sourceKey: string; marketplace: "wb" | "ozon"; cabinetName: string; value: number | null; missingCostCount: number; error: string | null }>;
-      missingCabinets: Array<{ name: string }>;
+      categories: InventoryCategory[];
     }>(response));
   return {
     amount: body.amount,
     complete: body.complete,
     computedAt: body.capturedAt,
-    details: body.runs.map((run) => ({ id: run.sourceKey, name: run.cabinetName, marketplace: run.marketplace, amount: run.value, missingCostCount: run.missingCostCount, error: run.error })),
-    missingCabinets: body.missingCabinets.map((cabinet) => cabinet.name),
+    categories: body.categories,
   };
 }
 
@@ -68,20 +76,53 @@ function Metric({ label, value, note, tone = "slate" }: { label: string; value: 
   );
 }
 
-function StatementRow({ label, amount, detail, muted = false, href }: { label: string; amount: number | null; detail?: string; muted?: boolean; href?: string }) {
+function StatementRow({ label, amount, detail, muted = false, href, onClick }: { label: string; amount: number | null; detail?: string; muted?: boolean; href?: string; onClick?: () => void }) {
   const content = (
-    <div className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 sm:px-5 ${href ? "transition-colors hover:bg-slate-50" : ""}`}>
+    <div className={`grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-4 py-3 text-left sm:px-5 ${href || onClick ? "transition-colors hover:bg-slate-50" : ""}`}>
       <div className="min-w-0">
         <p className={`text-sm font-medium ${muted ? "text-slate-500" : "text-slate-800"}`}>{label}</p>
         {detail ? <p className="mt-0.5 text-xs leading-5 text-slate-500">{detail}</p> : null}
       </div>
       <div className="flex items-center gap-2">
         <span className={`text-sm font-semibold tabular-nums ${amount === null ? "text-slate-400" : "text-slate-950"}`}>{money(amount)}</span>
-        {href ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}
+        {href || onClick ? <ChevronRight className="h-4 w-4 text-slate-400" /> : null}
       </div>
     </div>
   );
-  return href ? <Link href={href}>{content}</Link> : content;
+  if (href) return <Link href={href}>{content}</Link>;
+  return onClick ? <button type="button" onClick={onClick} className="block w-full">{content}</button> : content;
+}
+
+function InventoryDetails({ kind, month, onClose }: { kind: InventoryKind; month: string; onClose: () => void }) {
+  const [lines, setLines] = useState<InventoryLine[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setLoading(true);
+    fetch(`/api/finance/balance-stock?month=${encodeURIComponent(month)}&kind=${kind}`, { cache: "no-store" })
+      .then((response) => responseJson<{ lines: InventoryLine[] }>(response))
+      .then((body) => { setLines(body.lines); setError(null); })
+      .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить детализацию"))
+      .finally(() => setLoading(false));
+  }, [kind, month]);
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-label={`Детализация: ${INVENTORY_LABELS[kind]}`}>
+      <div className="flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-5">
+          <div><h2 className="font-bold text-slate-950">{INVENTORY_LABELS[kind]}</h2><p className="text-xs text-slate-500">Снимок на {formatDate(`${month}-01`)} · {lines.length} позиций</p></div>
+          <button type="button" onClick={onClose} aria-label="Закрыть" className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"><X className="h-5 w-5" /></button>
+        </div>
+        <div className="overflow-auto">
+          {loading ? <p className="p-5 text-sm text-slate-500">Загружаем детализацию…</p> : error ? <p className="p-5 text-sm text-rose-700">{error}</p> : lines.length === 0 ? <p className="p-5 text-sm text-slate-500">На дату снимка остатков нет.</p> : (
+            <table className="min-w-[900px] w-full text-xs">
+              <thead className="sticky top-0 bg-slate-50 text-slate-500"><tr><th className="px-4 py-3 text-left">Артикул / товар</th><th className="px-3 py-3 text-left">Место / документ</th><th className="px-3 py-3 text-right">Количество</th><th className="px-3 py-3 text-right">Себестоимость</th><th className="px-3 py-3 text-right">Упаковка</th><th className="px-3 py-3 text-right">За единицу</th><th className="px-4 py-3 text-right">Сумма</th></tr></thead>
+              <tbody className="divide-y divide-slate-100">{lines.map((line) => <tr key={line.id} className="hover:bg-slate-50"><td className="px-4 py-3"><div className="font-semibold text-slate-900">{line.article}</div><div className="text-slate-500">{line.name}</div></td><td className="px-3 py-3"><div>{line.location || "—"}</div>{line.reference ? <div className="text-slate-500">{line.reference}</div> : null}</td><td className="px-3 py-3 text-right tabular-nums">{line.quantity.toLocaleString("ru-RU")}</td><td className="px-3 py-3 text-right tabular-nums">{money(line.costRub)}</td><td className="px-3 py-3 text-right tabular-nums">{money(line.packagingRub)}</td><td className="px-3 py-3 text-right tabular-nums">{money(line.unitValue)}</td><td className="px-4 py-3 text-right font-semibold tabular-nums">{money(line.totalValue)}</td></tr>)}</tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function BalancePage() {
@@ -93,6 +134,7 @@ export function BalancePage() {
   const [inventory, setInventory] = useState<InventorySnapshot | null>(null);
   const [inventoryError, setInventoryError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [detailKind, setDetailKind] = useState<InventoryKind | null>(null);
 
   const refreshExternal = useCallback(async () => {
     setRefreshing(true);
@@ -127,7 +169,7 @@ export function BalancePage() {
   const loanSnapshot = useMemo(() => loanLiabilitySnapshot(state.loans, scheduleRows, asOf), [asOf, scheduleRows, state.loans]);
   const inventoryReady = inventory?.complete === true && inventory.amount !== null;
   const inventoryWarning = inventory && !inventory.complete
-    ? [inventory.missingCabinets.length ? `нет снимка: ${inventory.missingCabinets.join(", ")}` : null, ...inventory.details.map((item) => item.error).filter(Boolean)].filter(Boolean).join("; ") || "месячный снимок неполный"
+    ? inventory.categories.flatMap((item) => item.errors).join("; ") || "месячный снимок неполный"
     : null;
   const complete = hydrated && !loadError && state.accounts.length > 0 && inventoryReady && !scheduleError;
   const totals = complete ? connectedBalanceTotals({ cash, inventory: inventory.amount!, loans: loanSnapshot.amount }) : null;
@@ -156,7 +198,7 @@ export function BalancePage() {
       </div>
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Подключённые активы" value={money(totals?.assets ?? null)} note="Деньги + товар на маркетплейсах" tone="emerald" />
+        <Metric label="Подключённые активы" value={money(totals?.assets ?? null)} note="Деньги + все товарные остатки" tone="emerald" />
         <Metric label="Обязательства" value={money(totals?.liabilities ?? null)} note="Остаток тела кредитов" tone="amber" />
         <Metric label="Расчётный капитал" value={money(totals?.calculatedEquity ?? null)} note="Активы минус обязательства" tone="violet" />
         <Metric label="Покрытие источников" value={`${sourcesReady} из 3`} note={complete ? "Все источники обновлены" : "Часть данных недоступна"} />
@@ -183,8 +225,8 @@ export function BalancePage() {
           <div className="divide-y divide-slate-100">
             <StatementRow label="Денежные средства" amount={hydrated && !loadError && state.accounts.length ? cash : null} detail={`${accountDetails.length} рублёвых счетов`} href="/accounts" />
             {accountDetails.slice(0, 5).map((account) => <StatementRow key={account.id} label={`↳ ${account.name}`} amount={account.amount} muted />)}
-            <StatementRow label="Остатки на маркетплейсах" amount={inventoryReady ? inventory.amount : null} detail={inventory?.computedAt ? `Снимок запущен ${new Date(inventory.computedAt).toLocaleString("ru-RU")} · себестоимость + упаковка` : inventoryError ?? "Ожидается снимок 1-го числа в 00:01 МСК"} />
-            {inventory?.details.map((entity) => <StatementRow key={entity.id} label={`↳ ${entity.marketplace.toUpperCase()} · ${entity.name}`} amount={entity.amount} detail={entity.missingCostCount ? `${entity.missingCostCount} SKU без себестоимости` : undefined} muted />)}
+            <StatementRow label="Товарные остатки" amount={inventoryReady ? inventory.amount : null} detail={inventory?.computedAt ? `Снимок запущен ${new Date(inventory.computedAt).toLocaleString("ru-RU")} · на первое число месяца` : inventoryError ?? "Ожидается снимок 1-го числа в 00:01 МСК"} />
+            {inventory?.categories.map((category) => <StatementRow key={category.kind} label={`↳ ${INVENTORY_LABELS[category.kind]}`} amount={category.amount} detail={`${category.quantity.toLocaleString("ru-RU")} шт · ${category.rowsCount} позиций${category.complete ? "" : " · данные неполные"}`} muted onClick={() => setDetailKind(category.kind)} />)}
             <StatementRow label="Дебиторская задолженность" amount={null} detail="В панели пока нет реестра задолженности покупателей" muted />
             <StatementRow label="Основные средства" amount={null} detail="Источник данных ещё не подключён" muted />
           </div>
@@ -219,7 +261,7 @@ export function BalancePage() {
           <CardContent className="space-y-3">
             {[
               { icon: Wallet, label: "Счета и факты ДДС", ready: hydrated && !loadError && state.accounts.length > 0 },
-              { icon: Boxes, label: "Остатки МП на 1-е число: себес + упаковка", ready: inventoryReady },
+              { icon: Boxes, label: "4 группы товарных остатков на 1-е число", ready: inventoryReady },
               { icon: Building2, label: "Кредитные договоры и графики", ready: hydrated && !scheduleError },
             ].map(({ icon: Icon, label, ready }) => (
               <div key={label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3">
@@ -232,6 +274,7 @@ export function BalancePage() {
           </CardContent>
         </Card>
       </div>
+      {detailKind ? <InventoryDetails kind={detailKind} month={month} onClose={() => setDetailKind(null)} /> : null}
     </div>
   );
 }

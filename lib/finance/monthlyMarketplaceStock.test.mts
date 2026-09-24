@@ -20,13 +20,38 @@ test("остаток оценивается как количество × (се
   );
   assert.equal(rows.length, 1);
   assert.deepEqual(rows[0], {
-    article: "A-1", name: "A-1", quantity: 5,
+    lineKey: "A-1", article: "A-1", name: "A-1", locationName: null, reference: null, quantity: 5,
     costRub: 100, packagingRub: 15, unitValue: 115, totalValue: 575,
   });
+});
+
+test("одинаковый артикул можно показать отдельно по местам хранения", () => {
+  const rows = valueMarketplaceStocks(
+    [
+      { article: "A-1", lineKey: "warehouse-1:A-1", locationName: "Коледино", quantity: 2 },
+      { article: "A-1", lineKey: "warehouse-2:A-1", locationName: "Казань", quantity: 3 },
+    ],
+    [{ article: "A-1", costRub: 100, packagingRub: 15 }],
+  );
+  assert.equal(rows.length, 2);
+  assert.deepEqual(rows.map((row) => [row.locationName, row.quantity, row.totalValue]), [
+    ["Коледино", 2, 230],
+    ["Казань", 3, 345],
+  ]);
 });
 
 test("SKU без себестоимости не превращается в нулевую стоимость", () => {
   const [row] = valueMarketplaceStocks([{ article: "NEW", quantity: 7 }], []);
   assert.equal(row.quantity, 7);
   assert.equal(row.totalValue, null);
+});
+
+test("остаток без упаковки оценивается только по себестоимости", () => {
+  const [row] = valueMarketplaceStocks(
+    [{ article: "FF-1", quantity: 4 }],
+    [{ article: "FF-1", costRub: 125, packagingRub: 0 }],
+  );
+  assert.equal(row.packagingRub, 0);
+  assert.equal(row.unitValue, 125);
+  assert.equal(row.totalValue, 500);
 });
