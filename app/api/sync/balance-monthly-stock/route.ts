@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { valueMarketplaceStocks, moscowMonthSnapshot, type MarketplaceStockInput, type MarketplaceUnitCost, type ValuedMarketplaceStock } from "@/lib/finance/monthlyMarketplaceStock";
+import { fulfillmentReconciliation, valueMarketplaceStocks, moscowMonthSnapshot, type MarketplaceStockInput, type MarketplaceUnitCost, type ValuedMarketplaceStock } from "@/lib/finance/monthlyMarketplaceStock";
 import { ozonStocks } from "@/lib/ozon/api";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { allowsProduct } from "@/lib/wb/productScope";
@@ -16,10 +16,21 @@ export const maxDuration = 300;
 type SourceKind = "fulfillment" | "wb" | "ozon" | "supplier_transit";
 type CostRow = { article: string; cost_rub: number | null; warehouse_expenses: number | null; organization_id?: string | null };
 type CabinetMeta = { id: string; name: string; organization_id: string | null };
-type FulfillmentRow = { legal_entity_id: string; warehouse_id: string; variant_id: string; article: string; name: string; size_label: string; qty: number; amount: number; unit_cost: number };
+type FulfillmentRow = { legal_entity_id: string; warehouse_id: string; warehouse_name: string; variant_id: string; article: string; product_name: string; size_label: string; qty: number; amount: number; unit_cost: number };
 
 const sourceKey = (kind: SourceKind, id = "all") => `${kind}:${id}`;
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+async function fulfillmentFinality(closeThrough: string) {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase не настроен");
+  const result = await db.from("legal_entities").select("id,name,period_closed_through").eq("is_active", true);
+  if (result.error) throw new Error(result.error.message);
+  const unclosed = (result.data ?? [])
+    .filter((row) => !row.period_closed_through || String(row.period_closed_through) < closeThrough)
+    .map((row) => String(row.name));
+  return { final: unclosed.length === 0, unclosed };
+}
 
 async function loadCosts(): Promise<CostRow[]> {
   const db = getSupabaseAdmin();
@@ -52,6 +63,9 @@ async function saveSource(input: {
   marketplace?: "wb" | "ozon";
   cabinet?: CabinetMeta | null;
   warning?: string | null;
+  persist?: boolean;
+  provisional?: boolean;
+  snapshotCutoff?: string | null;
 }) {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
@@ -59,6 +73,19 @@ async function saveSource(input: {
   const missingCostCount = input.lines.filter((row) => row.totalValue === null).length;
   const status = missingCostCount > 0 || input.warning ? "partial" : "ok";
   const totalValue = missingCostCount > 0 ? null : round2(input.lines.reduce((sum, row) => sum + (row.totalValue ?? 0), 0));
+  const summary = {
+    sourceKey: key,
+    sourceKind: input.sourceKind,
+    sourceLabel: input.sourceLabel,
+    status,
+    rows: input.lines.length,
+    quantity: round2(input.lines.reduce((sum, row) => sum + row.quantity, 0)),
+    totalValue,
+    missingCostCount,
+    provisional: input.provisional ?? false,
+    sample: input.lines.slice(0, 5).map((row) => ({ article: row.article, location: row.locationName, quantity: row.quantity, unitValue: row.unitValue, totalValue: row.totalValue })),
+  };
+  if (input.persist === false) return summary;
   const run = {
     snapshot_month: input.month,
     source_key: key,
@@ -74,6 +101,9 @@ async function saveSource(input: {
     total_quantity: input.lines.reduce((sum, row) => sum + row.quantity, 0),
     total_value: totalValue,
     captured_at: input.capturedAt,
+    is_provisional: input.provisional ?? false,
+    snapshot_cutoff: input.snapshotCutoff ?? null,
+    reconciled_at: input.sourceKind === "fulfillment" ? input.capturedAt : null,
     error: [input.warning, missingCostCount ? `${missingCostCount} позиций без себестоимости` : null].filter(Boolean).join("; ") || null,
   };
   const prepared = await db.from("balance_marketplace_stock_runs").upsert(run, { onConflict: "snapshot_month,source_key" });
@@ -101,37 +131,29 @@ async function saveSource(input: {
   }));
   const error = await chunkedUpsert("balance_marketplace_stock_lines", lines, "snapshot_month,source_key,line_key");
   if (error) throw new Error(error);
-  return { rows: input.lines.length };
+  return summary;
 }
 
-async function fulfillmentLines(): Promise<ValuedMarketplaceStock[]> {
+async function fulfillmentLines(cutoff: string): Promise<ValuedMarketplaceStock[]> {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
-  const [stocks, warehouses] = await Promise.all([
-    loadAllSupabasePages<FulfillmentRow>((from, to) => db.from("stock_balances")
-      .select("legal_entity_id,warehouse_id,variant_id,article,name,size_label,qty,amount,unit_cost")
-      .gt("qty", 0).order("article").range(from, to), { label: "Остатки фулфилмента", maxPages: 100 }),
-    db.from("warehouses").select("id,name,kind"),
-  ]);
-  if (warehouses.error) throw new Error(warehouses.error.message);
-  const warehouseById = new Map((warehouses.data ?? []).map((row) => [String(row.id), { name: String(row.name), kind: String(row.kind ?? "own") }]));
-  return stocks.flatMap((row) => {
-    const warehouse = warehouseById.get(String(row.warehouse_id));
-    if (!warehouse || warehouse.kind === "transit") return [];
+  const result = await db.rpc("balance_fulfillment_as_of", { p_cutoff: cutoff });
+  if (result.error) throw new Error(result.error.message);
+  return ((result.data ?? []) as FulfillmentRow[]).map((row) => {
     const quantity = Number(row.qty);
     const costRub = Number(row.unit_cost) > 0 ? Number(row.unit_cost) : null;
-    return [{
+    return {
       lineKey: `${row.warehouse_id}:${row.variant_id}`,
       article: String(row.article),
-      name: [String(row.name ?? ""), String(row.size_label ?? "")].filter(Boolean).join(" · ") || String(row.article),
-      locationName: warehouse.name,
+      name: [String(row.product_name ?? ""), String(row.size_label ?? "")].filter(Boolean).join(" · ") || String(row.article),
+      locationName: String(row.warehouse_name),
       reference: null,
       quantity,
       costRub,
       packagingRub: costRub === null ? null : 0,
       unitValue: costRub === null ? null : round2(costRub),
       totalValue: costRub === null ? null : round2(Number(row.amount) || costRub * quantity),
-    }];
+    };
   });
 }
 
@@ -179,15 +201,35 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
   const startedAt = new Date();
   const window = moscowMonthSnapshot(startedAt);
-  if (!window.allowed) {
+  const dryRun = request.nextUrl.searchParams.get("dryRun") === "1";
+  const reconcileFulfillment = request.nextUrl.searchParams.get("reconcile") === "fulfillment";
+  const reconciliation = fulfillmentReconciliation(startedAt);
+  if (!dryRun && !reconcileFulfillment && !window.allowed) {
     return NextResponse.json({ ok: true, skipped: true, reason: `Снимок только 1-го числа в 00:01 МСК; сейчас ${window.date} ${window.time}` });
   }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
   const capturedAt = startedAt.toISOString();
+  const monthCutoff = reconciliation.cutoff;
   let affected = 0;
   const errors: string[] = [];
+  const summaries: Awaited<ReturnType<typeof saveSource>>[] = [];
   try {
+    if (reconcileFulfillment) {
+      const [lines, finality] = await Promise.all([fulfillmentLines(monthCutoff), fulfillmentFinality(reconciliation.closeThrough)]);
+      const summary = await saveSource({
+        month: window.month,
+        capturedAt,
+        sourceKind: "fulfillment",
+        sourceLabel: "Фулфилмент",
+        lines,
+        provisional: !finality.final,
+        snapshotCutoff: monthCutoff,
+      });
+      const note = finality.final ? "период закрыт, финальная сверка" : `предварительно; период не закрыт: ${finality.unclosed.join(", ")}`;
+      await writeSyncLog("balance-fulfillment-reconcile", "ok", summary.rows, note, startedAt);
+      return NextResponse.json({ ok: true, mode: "fulfillment-reconcile", month: window.month, capturedAt, closeThrough: reconciliation.closeThrough, unclosedEntities: finality.unclosed, summary });
+    }
     const [costRows, cabinetRows, wbTargets, ozonScope] = await Promise.all([
       loadCosts(),
       db.from("wb_cabinets").select("id,name,organization_id").eq("is_active", true),
@@ -198,14 +240,21 @@ export async function GET(request: NextRequest) {
     const metaById = new Map(((cabinetRows.data ?? []) as CabinetMeta[]).map((row) => [String(row.id), row]));
 
     try {
-      const lines = await fulfillmentLines();
-      affected += (await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: "Фулфилмент", lines })).rows;
+      const [lines, finality] = await Promise.all([
+        fulfillmentLines(dryRun ? capturedAt : monthCutoff),
+        dryRun ? Promise.resolve({ final: false, unclosed: [] as string[] }) : fulfillmentFinality(reconciliation.closeThrough),
+      ]);
+      const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: "Фулфилмент", lines, persist: !dryRun, provisional: !dryRun && !finality.final, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
+      summaries.push(summary);
+      affected += summary.rows;
     } catch (error) {
       errors.push(`Фулфилмент: ${error instanceof Error ? error.message : String(error)}`);
     }
     try {
       const lines = await supplierTransitLines();
-      affected += (await saveSource({ month: window.month, capturedAt, sourceKind: "supplier_transit", sourceLabel: "В пути от поставщика", lines })).rows;
+      const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "supplier_transit", sourceLabel: "В пути от поставщика", lines, persist: !dryRun });
+      summaries.push(summary);
+      affected += summary.rows;
     } catch (error) {
       errors.push(`В пути от поставщика: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -232,10 +281,12 @@ export async function GET(request: NextRequest) {
           const cabinet = target.cabinetId ? metaById.get(target.cabinetId) : null;
           const stocks: MarketplaceStockInput[] = [...byNm].map(([nmId, quantity]) => ({ article: articleByNm.get(nmId) ?? `WB:${nmId}`, quantity, lineKey: String(nmId), locationName: `Склад WB · ${cabinet?.name ?? target.name}` }));
           const lines = valueMarketplaceStocks(stocks, costsForOrganization(costRows, cabinet?.organization_id ?? null));
-          affected += (await saveSource({
+          const summary = await saveSource({
             month: window.month, capturedAt, sourceKind: "wb", sourceLabel: `Склад WB · ${cabinet?.name ?? target.name}`,
-            marketplace: "wb", cabinet: cabinet ?? { id: target.cabinetId ?? "", name: target.name, organization_id: null }, lines,
-          })).rows;
+            marketplace: "wb", cabinet: cabinet ?? { id: target.cabinetId ?? "", name: target.name, organization_id: null }, lines, persist: !dryRun,
+          });
+          summaries.push(summary);
+          affected += summary.rows;
         }
       } catch (error) {
         errors.push(`WB ${group.map((item) => item.name).join(", ")}: ${error instanceof Error ? error.message : String(error)}`);
@@ -250,10 +301,12 @@ export async function GET(request: NextRequest) {
           const meta = metaById.get(cabinet.id) ?? { id: cabinet.id, name: cabinet.name, organization_id: null };
           const stocks = warehouses.rows.map((row) => ({ article: row.article, name: row.name, quantity: row.free + row.reserved, lineKey: `${row.article}:${row.warehouse}`, locationName: `Склад Ozon · ${cabinet.name}${row.warehouse ? ` · ${row.warehouse}` : ""}` }));
           const lines = valueMarketplaceStocks(stocks, costsForOrganization(costRows, meta.organization_id));
-          affected += (await saveSource({
+          const summary = await saveSource({
             month: window.month, capturedAt, sourceKind: "ozon", sourceLabel: `Склад Ozon · ${cabinet.name}`,
-            marketplace: "ozon", cabinet: meta, lines,
-          })).rows;
+            marketplace: "ozon", cabinet: meta, lines, persist: !dryRun,
+          });
+          summaries.push(summary);
+          affected += summary.rows;
         } catch (error) {
           errors.push(`Ozon ${cabinet.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
@@ -263,8 +316,8 @@ export async function GET(request: NextRequest) {
     }
 
     const status = errors.length ? "partial" : "ok";
-    await writeSyncLog("balance-monthly-stock", status, affected, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok: errors.length === 0, month: window.month, capturedAt, rows: affected, errors }, { status: errors.length ? 207 : 200 });
+    if (!dryRun) await writeSyncLog("balance-monthly-stock", status, affected, errors.join("; ") || null, startedAt);
+    return NextResponse.json({ ok: errors.length === 0, mode: dryRun ? "dry-run" : "snapshot", persisted: !dryRun, month: window.month, capturedAt, rows: affected, summaries, errors }, { status: errors.length ? 207 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось собрать месячный остаток";
     await writeSyncLog("balance-monthly-stock", "error", affected, message, startedAt);

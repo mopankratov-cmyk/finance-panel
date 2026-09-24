@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
   const [runsResult, activeResult] = await Promise.all([
     db.from("balance_marketplace_stock_runs")
-      .select("source_key,source_kind,source_label,marketplace,cabinet_id,cabinet_name,status,rows_count,missing_cost_count,total_quantity,total_value,captured_at,error")
+      .select("source_key,source_kind,source_label,marketplace,cabinet_id,cabinet_name,status,rows_count,missing_cost_count,total_quantity,total_value,captured_at,error,is_provisional,snapshot_cutoff,reconciled_at")
       .eq("snapshot_month", month).order("source_kind").order("source_label"),
     db.from("wb_cabinets").select("id,name,marketplace").eq("is_active", true).in("marketplace", ["wb", "ozon"]),
   ]);
@@ -68,6 +68,9 @@ export async function GET(request: NextRequest) {
     value: row.total_value == null ? null : Number(row.total_value),
     capturedAt: String(row.captured_at),
     error: row.error ? String(row.error) : null,
+    provisional: Boolean(row.is_provisional),
+    snapshotCutoff: row.snapshot_cutoff ? String(row.snapshot_cutoff) : null,
+    reconciledAt: row.reconciled_at ? String(row.reconciled_at) : null,
   }));
   const expected = new Map<string, { kind: SourceKind; label: string }>([
     ["fulfillment:all", { kind: "fulfillment", label: "Фулфилмент" }],
@@ -90,6 +93,8 @@ export async function GET(request: NextRequest) {
       amount: complete ? round2(categoryRuns.reduce((sum, run) => sum + (run.value ?? 0), 0)) : null,
       quantity: categoryRuns.reduce((sum, run) => sum + run.quantity, 0),
       rowsCount: categoryRuns.reduce((sum, run) => sum + run.rowsCount, 0),
+      provisional: categoryRuns.some((run) => run.provisional),
+      reconciledAt: categoryRuns.map((run) => run.reconciledAt).filter(Boolean).sort().at(-1) ?? null,
       errors: [...categoryRuns.map((run) => run.error).filter(Boolean), ...missing.map((source) => `нет снимка: ${source.label}`)],
     };
   });

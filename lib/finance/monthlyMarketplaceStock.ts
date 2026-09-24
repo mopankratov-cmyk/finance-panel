@@ -51,6 +51,19 @@ export function moscowMonthSnapshot(now: Date): { allowed: boolean; month: strin
   };
 }
 
+/** Граница дозакрытия фулфилмента. Поздняя проводка сохраняет фактический
+ * occurred_at, поэтому один и тот же срез можно безопасно пересобирать до
+ * явного закрытия складского периода. */
+export function fulfillmentReconciliation(now: Date): { month: string; cutoff: string; closeThrough: string } {
+  const snapshot = moscowMonthSnapshot(now);
+  const cutoff = `${snapshot.month}T00:00:00+03:00`;
+  return {
+    month: snapshot.month,
+    cutoff,
+    closeThrough: new Date(cutoff).toISOString().slice(0, 10),
+  };
+}
+
 /** Количество агрегируется по артикулу, стоимость фиксируется именно на дату снимка. */
 export function valueMarketplaceStocks(
   stocks: readonly MarketplaceStockInput[],

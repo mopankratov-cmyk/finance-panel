@@ -24,7 +24,7 @@ import { formatDate, formatMoney, todayISO } from "@/lib/format";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
 type InventoryKind = "fulfillment" | "wb" | "ozon" | "supplier_transit";
-type InventoryCategory = { kind: InventoryKind; complete: boolean; amount: number | null; quantity: number; rowsCount: number; errors: string[] };
+type InventoryCategory = { kind: InventoryKind; complete: boolean; amount: number | null; quantity: number; rowsCount: number; provisional: boolean; reconciledAt: string | null; errors: string[] };
 type InventoryLine = { id: string; article: string; name: string; location: string; reference: string | null; quantity: number; costRub: number | null; packagingRub: number | null; unitValue: number | null; totalValue: number | null };
 type InventorySnapshot = { amount: number | null; complete: boolean; categories: InventoryCategory[]; computedAt: string | null };
 
@@ -168,9 +168,12 @@ export function BalancePage() {
   const cash = accountDetails.reduce((sum, account) => sum + account.amount, 0);
   const loanSnapshot = useMemo(() => loanLiabilitySnapshot(state.loans, scheduleRows, asOf), [asOf, scheduleRows, state.loans]);
   const inventoryReady = inventory?.complete === true && inventory.amount !== null;
+  const provisionalFulfillment = inventory?.categories.find((item) => item.kind === "fulfillment" && item.provisional);
   const inventoryWarning = inventory && !inventory.complete
     ? inventory.categories.flatMap((item) => item.errors).join("; ") || "месячный снимок неполный"
-    : null;
+    : provisionalFulfillment
+      ? `Фулфилмент предварительный: поздние документы с датой до начала месяца автоматически попадут в ежедневный пересчёт. Итог станет финальным после закрытия складского периода.${provisionalFulfillment.reconciledAt ? ` Последняя сверка: ${new Date(provisionalFulfillment.reconciledAt).toLocaleString("ru-RU")}.` : ""}`
+      : null;
   const complete = hydrated && !loadError && state.accounts.length > 0 && inventoryReady && !scheduleError;
   const totals = complete ? connectedBalanceTotals({ cash, inventory: inventory.amount!, loans: loanSnapshot.amount }) : null;
   const sourcesReady = [hydrated && !loadError && state.accounts.length > 0, inventoryReady, !scheduleError && hydrated].filter(Boolean).length;
@@ -209,7 +212,7 @@ export function BalancePage() {
           <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div className="space-y-1">
             {loadError ? <p>Счета ДДС: {loadError}</p> : null}
             {inventoryError ? <p>Маркетплейсы: {inventoryError}</p> : null}
-            {inventoryWarning ? <p>Маркетплейсы: {inventoryWarning}</p> : null}
+            {inventoryWarning ? <p>Товарные остатки: {inventoryWarning}</p> : null}
             {scheduleError ? <p>Кредиты: {scheduleError}</p> : null}
             {loanSnapshot.estimatedCount > 0 ? <p>У {loanSnapshot.estimatedCount} активных кредитов нет графика: показана исходная сумма договора.</p> : null}
           </div></div>
@@ -226,7 +229,7 @@ export function BalancePage() {
             <StatementRow label="Денежные средства" amount={hydrated && !loadError && state.accounts.length ? cash : null} detail={`${accountDetails.length} рублёвых счетов`} href="/accounts" />
             {accountDetails.slice(0, 5).map((account) => <StatementRow key={account.id} label={`↳ ${account.name}`} amount={account.amount} muted />)}
             <StatementRow label="Товарные остатки" amount={inventoryReady ? inventory.amount : null} detail={inventory?.computedAt ? `Снимок запущен ${new Date(inventory.computedAt).toLocaleString("ru-RU")} · на первое число месяца` : inventoryError ?? "Ожидается снимок 1-го числа в 00:01 МСК"} />
-            {inventory?.categories.map((category) => <StatementRow key={category.kind} label={`↳ ${INVENTORY_LABELS[category.kind]}`} amount={category.amount} detail={`${category.quantity.toLocaleString("ru-RU")} шт · ${category.rowsCount} позиций${category.complete ? "" : " · данные неполные"}`} muted onClick={() => setDetailKind(category.kind)} />)}
+            {inventory?.categories.map((category) => <StatementRow key={category.kind} label={`↳ ${INVENTORY_LABELS[category.kind]}`} amount={category.amount} detail={`${category.quantity.toLocaleString("ru-RU")} шт · ${category.rowsCount} позиций${category.complete ? "" : " · данные неполные"}${category.provisional ? " · предварительно" : ""}`} muted onClick={() => setDetailKind(category.kind)} />)}
             <StatementRow label="Дебиторская задолженность" amount={null} detail="В панели пока нет реестра задолженности покупателей" muted />
             <StatementRow label="Основные средства" amount={null} detail="Источник данных ещё не подключён" muted />
           </div>
