@@ -7,10 +7,10 @@ import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/sync
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import {
   checkPaidStorageTaskStatus,
+  compactPaidStorageRows,
   createPaidStorageTask,
   downloadPaidStorageTask,
   isMissingPaidStorageTask,
-  type PaidStorageApiRow,
 } from "@/lib/wb/paidStorageRequest";
 
 export const maxDuration = 60;
@@ -70,16 +70,6 @@ function addDays(dateStr: string, days: number): string {
   const d = new Date(`${dateStr}T00:00:00Z`);
   d.setUTCDate(d.getUTCDate() + days);
   return isoDate(d);
-}
-
-function rowId(cabinetId: string, row: PaidStorageApiRow): string {
-  const date = String(row.date ?? "").slice(0, 10);
-  // officeId (склад) обязателен в ключе: WB хранит один и тот же товар/
-  // поставку одновременно на нескольких складах — без officeId такие строки
-  // (тот же date/barcode/giId/chrtId/calcType, разный склад) схлопывались в
-  // один id, и upsert падал с "ON CONFLICT DO UPDATE command cannot affect
-  // row a second time" (два разных склада внутри одного чанка).
-  return [cabinetId, date, row.barcode ?? "", row.giId ?? "", row.chrtId ?? "", row.calcType ?? "", row.officeId ?? ""].join("|");
 }
 
 interface CabinetResult {
@@ -260,62 +250,18 @@ async function processCabinet(
     throw new Error(`скачивание WB ${download.status}: ${download.body}`);
   }
 
-  // nm_id обязателен: lib/opiu/paidStorage.ts сопоставляет "Хранение" с
-  // товаром именно по nm_id (как и эталонная таблица владельца — формула
-  // там матчит SUMIFS по nmId, а не по артикулу поставщика). Раньше это
-  // поле считали неиспользуемым и не писали — из-за этого суб-бренды на
-  // общем кабинете (Norvia/Heaton) сопоставлялись по префиксу vendor_code
-  // на весь каталог, что дало сильно другие (и неверные) суммы.
-  // subject/brand/warehouse(текст)/size/volume/barcodes_count по-прежнему
-  // нигде не читаются — их не отправляем: WB всё равно качает отчёт целиком,
-  // но upsert в базу так легче на тысячах строк.
-  //
-  // ВАЖНО: WB реально присылает НЕСКОЛЬКО строк с одинаковым набором
-  // date/barcode/giId/chrtId/calcType/officeId за один день (видимо,
-  // отдельные проводки в течение суток) — сверено с официальным отчётом
-  // "Платное хранение" с портала WB (Аналитика → Отчёты → Отчёт по
-  // номенклатурам), там те же дубли по этим полям с разными суммами.
-  // Раньше это было такое же rowId для каждой из них, и "защита от
-  // повторного ON CONFLICT" (Map по id) молча схлопывала их в одну строку,
-  // ТЕРЯЯ реальные деньги (проверено: до трети строк недели пропадало).
-  // Добавляем порядковый номер повтора в id — так каждая настоящая
-  // проводка WB получает свой уникальный id и ничего не теряется.
-  const occurrence = new Map<string, number>();
-  const rows = download.rows
-    .map((row) => {
-      const baseId = rowId(cabinetId, row);
-      const n = occurrence.get(baseId) ?? 0;
-      occurrence.set(baseId, n + 1);
-      return {
-        id: n === 0 ? baseId : `${baseId}|${n}`,
-        cabinet_id: cabinetId,
-        date: String(row.date ?? "").slice(0, 10),
-        nm_id: row.nmId ?? null,
-        vendor_code: row.vendorCode ?? null,
-        barcode: row.barcode ?? null,
-        office_id: row.officeId ?? null,
-        gi_id: row.giId ?? null,
-        chrt_id: row.chrtId ?? null,
-        calc_type: row.calcType ?? null,
-        warehouse_price: row.warehousePrice ?? 0,
-        synced_at: new Date().toISOString(),
-      };
-    })
-    .filter((r) => r.date);
+  // WB не умеет отдавать этот отчёт только по нужным брендам/полям, поэтому
+  // сетевой ответ всё равно скачивается целиком. Зато перед записью в БД
+  // сворачиваем тысячи проводок по складам и поставкам до дневной суммы по
+  // товару/артикулу. Все потребители ОПиУ используют именно эту детализацию.
+  const rows = compactPaidStorageRows(cabinetId, download.rows);
 
-  // Удаляем прежние строки этого окна ПЕРЕД записью свежих — id строки
-  // включает порядковый номер повтора (occurrence), а WB не гарантирует ни
-  // порядок, ни состав строк одинаковыми между двумя выгрузками одной и той
-  // же даты (провизорная выгрузка недавнего дня и финальная после его
-  // расчёта — разные наборы проводок). Апсёрт по такому id только
-  // ДОБАВЛЯЕТ/перезаписывает совпавшие индексы и никогда не убирает то, что
-  // пропало из нового набора — старые проводки (в т.ч. уже отменённые/
-  // реверснутые) навсегда оставались в базе рядом с новыми, задваивая сумму
-  // (сверено на реальных данных: TT04102 за 07-13.09 — пары +X/-X на одну и
-  // ту же сумму и 4 из 7 дней недели отсутствовали вовсе, при этом СУММА по
-  // прожитым дням не совпадала с официальным отчётом WB). Полная замена
-  // окна снимает это: каждая выгрузка — единственный источник правды для
-  // своего периода.
+  // Удаляем прежние строки окна ПЕРЕД записью свежего дневного агрегата.
+  // WB может пересчитать уже опубликованный день: исчезнувшая из нового
+  // ответа проводка должна исчезнуть и из нашей суммы, а обычный upsert
+  // удалять устаревшие строки не умеет. Полная замена окна сохраняет ответ
+  // WB единственным источником правды и одновременно заменяет старые сырые
+  // строки на компактные при повторной синхронизации даты.
   const deleteError = await db
     .from("wb_paid_storage_rows")
     .delete()
