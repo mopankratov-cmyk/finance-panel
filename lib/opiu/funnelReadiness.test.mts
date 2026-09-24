@@ -5,7 +5,7 @@ import {
   isFunnelSyncReady,
   type FunnelSyncStateRow,
 } from "./funnelReadiness";
-import { loadReadyFunnelFacts } from "./loadFunnelOrders";
+import { loadReadyFunnelFacts, loadReadyFunnelFactsWithCoverage } from "./loadFunnelOrders";
 import { overlayFunnelOrders } from "./metrics";
 
 const NOW = new Date("2026-07-29T12:00:00.000Z");
@@ -407,4 +407,42 @@ test("loadReadyFunnelFacts returns facts for a settled week while the job is mid
   );
 
   assert.equal(facts.length, 1);
+});
+
+test("coverage metadata distinguishes a fully settled period from a partial one", async () => {
+  const row = {
+    cabinet_id: CABINET,
+    nm_id: 101,
+    date: "2026-07-14",
+    orders: 3,
+    orders_sum: 900,
+  };
+  const complete = await loadReadyFunnelFactsWithCoverage(
+    mockClient({ state: readyState(), funnelRows: [row] }),
+    CABINET,
+    "2026-07-01",
+    "2026-07-31",
+    NOW,
+  );
+  assert.equal(complete.fullyCovered, true);
+  assert.equal(complete.facts.length, 1);
+
+  const partialState = readyState({
+    status: "pending",
+    state: {
+      coveragePct: 69,
+      nextBatch: 2,
+      lastSyncedAt: "2026-07-28T12:00:00.000Z",
+      lastPeriod: { begin: "2026-07-22", end: "2026-07-28", mode: "7d-recovery" },
+    },
+  });
+  const partial = await loadReadyFunnelFactsWithCoverage(
+    mockClient({ state: partialState, funnelRows: [row] }),
+    CABINET,
+    "2026-07-01",
+    "2026-07-31",
+    NOW,
+  );
+  assert.equal(partial.fullyCovered, false);
+  assert.equal(partial.facts.length, 1);
 });

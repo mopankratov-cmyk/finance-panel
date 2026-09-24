@@ -3,7 +3,7 @@ import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveOpiuBrand, resolveOpiuBrands, siblingBrandCount, type OpiuBrand } from "./constants";
 import { buildOpiuReportFromWeekMetrics, mergeMissingCostArticles, type OpiuReport } from "./buildReport";
-import { loadReadyFunnelFacts } from "./loadFunnelOrders";
+import { loadReadyFunnelFactsWithCoverage } from "./loadFunnelOrders";
 import { periodFromRange, weeksEndingAt, type MonthWeek } from "./weeks";
 import {
   aggregateWeek,
@@ -64,7 +64,7 @@ export async function fetchOrders(
   const prefixFilter = brand.articlePrefixes?.length
     ? brand.articlePrefixes.map((prefix) => `supplier_article.ilike.${prefix.replace(/[%,]/g, "")}%`).join(",")
     : null;
-  const rowsPromise = loadAllSupabasePages<{
+  const loadRawRows = () => loadAllSupabasePages<{
       id: number; cabinet_id: string; nm_id: number; supplier_article: string | null; date: string; total_price: number | null;
       discount_percent: number | null; finished_price: number | null; price_with_disc: number | null; spp: number | null; is_cancel: boolean | null; warehouse: string | null; region: string | null;
     }>((from, to) => {
@@ -85,13 +85,40 @@ export async function fetchOrders(
         .order("id", { ascending: true })
         .range(from, to);
     }, { maxPages: 300, label: "ОПиУ: заказы WB" });
-  const funnelFacts = await loadReadyFunnelFacts(
+  const rawRowsPromise = brand.articlePrefixes?.length ? null : loadRawRows();
+  const funnel = await loadReadyFunnelFactsWithCoverage(
     client,
     brand.cabinetId,
     dateFrom,
     dateTo,
   );
-  const rows = await rowsPromise;
+
+  // Для полностью закрытого исторического периода Воронка уже содержит
+  // точный агрегат «день × nm_id». У агентского кабинета Оптимы повторное
+  // скачивание 45 тыс. сырых wb_orders только ради 248 итоговых строк
+  // занимало около 20 секунд и создавало конкуренцию финансовому отчёту.
+  // Товарный контур даёт надёжную связь nm_id с выбранным суб-брендом.
+  if (brand.articlePrefixes?.length && funnel.fullyCovered) {
+    try {
+      const scopeRows = await loadAllSupabasePages<{ nm_id: number; article: string | null }>((from, to) => {
+        let query = client
+          .from("wb_cabinet_product_scope")
+          .select("nm_id, article")
+          .eq("cabinet_id", brand.cabinetId);
+        if (prefixFilter) query = query.or(prefixFilter.replaceAll("supplier_article", "article"));
+        return query.order("nm_id", { ascending: true }).range(from, to);
+      }, { maxPages: 20, label: "ОПиУ: товарный контур бренда" });
+      if (scopeRows.length) {
+        const brandNmIds = new Set(scopeRows.map((row) => Number(row.nm_id)).filter(Number.isSafeInteger));
+        return overlayFunnelOrders([], funnel.facts, brand.cabinetId)
+          .filter((order) => order.nmId != null && brandNmIds.has(order.nmId));
+      }
+    } catch (error) {
+      console.warn("[opiu] product scope fallback:", error instanceof Error ? error.message : error);
+    }
+  }
+
+  const rows = await (rawRowsPromise ?? loadRawRows());
   const cachedOrders: OpiuOrder[] = rows.map((row) => ({
     date: row.date,
     nmId: row.nm_id,
@@ -105,7 +132,7 @@ export async function fetchOrders(
     warehouseName: row.warehouse ?? undefined,
     regionName: row.region ?? undefined,
   }));
-  const overlaid = overlayFunnelOrders(cachedOrders, funnelFacts, brand.cabinetId);
+  const overlaid = overlayFunnelOrders(cachedOrders, funnel.facts, brand.cabinetId);
   if (!brand.articlePrefixes?.length) return overlaid;
   // Суб-бренд внутри общего кабинета: Воронка не хранит артикул (только
   // nm_id), поэтому whitelist nm_id считаем по сырым wb_orders (у них
