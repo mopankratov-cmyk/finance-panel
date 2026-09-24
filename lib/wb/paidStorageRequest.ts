@@ -23,6 +23,65 @@ export interface PaidStorageApiRow {
   barcodesCount?: number;
 }
 
+export interface CompactPaidStorageRow {
+  id: string;
+  cabinet_id: string;
+  date: string;
+  nm_id: number | null;
+  vendor_code: string | null;
+  warehouse_price: number;
+  synced_at: string;
+}
+
+/**
+ * ОПиУ использует из отчёта хранения только дату, товар/артикул и итоговую
+ * сумму. WB при этом отдаёт отдельные проводки по складам, поставкам и видам
+ * начисления — тысячи строк на один день. Сворачиваем их до «день × nmId ×
+ * артикул» ещё до записи в Supabase: сумма для ОПиУ и маржи по артикулам не
+ * меняется, а число upsert-строк и объём таблицы уменьшаются на порядок.
+ *
+ * Нулевая агрегированная строка намеренно сохраняется: её наличие отличает
+ * «источник синхронизирован, хранение = 0» от «данные ещё не загружены».
+ */
+export function compactPaidStorageRows(
+  cabinetId: string,
+  rows: readonly PaidStorageApiRow[],
+  syncedAt = new Date().toISOString(),
+): CompactPaidStorageRow[] {
+  const grouped = new Map<string, CompactPaidStorageRow>();
+
+  for (const row of rows) {
+    const date = String(row.date ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+
+    const parsedNmId = Number(row.nmId);
+    const nmId = Number.isFinite(parsedNmId) && parsedNmId > 0 ? parsedNmId : null;
+    const vendorCode = String(row.vendorCode ?? "").trim() || null;
+    const vendorKey = vendorCode?.toUpperCase() ?? "";
+    const key = [date, nmId ?? "", vendorKey].join("|");
+    const warehousePrice = Number(row.warehousePrice ?? 0);
+    const amount = Number.isFinite(warehousePrice) ? warehousePrice : 0;
+    const existing = grouped.get(key);
+
+    if (existing) {
+      existing.warehouse_price += amount;
+      continue;
+    }
+
+    grouped.set(key, {
+      id: [cabinetId, "daily", key].join("|"),
+      cabinet_id: cabinetId,
+      date,
+      nm_id: nmId,
+      vendor_code: vendorCode,
+      warehouse_price: amount,
+      synced_at: syncedAt,
+    });
+  }
+
+  return [...grouped.values()];
+}
+
 // Без таймаута зависший fetch к WB съедал весь бюджет функции молча — не
 // давая коду вообще дойти до проверки SOFT_BUDGET_MS (та смотрит на часы
 // ТОЛЬКО между запросами, не может прервать уже идущий запрос). Реальный
@@ -69,6 +128,18 @@ export async function createPaidStorageTask(
 
 export type PaidStorageTaskStatus = "processing" | "done" | "purged" | "canceled" | "unknown";
 
+export function normalizePaidStorageTaskStatus(rawStatus: string): PaidStorageTaskStatus {
+  const raw = rawStatus.toLowerCase().trim();
+  // Сразу после создания WB реально отвечает `new`; это ожидающая обработки
+  // задача, а не неизвестная ошибка. На следующих проверках она переходит в
+  // `processing`, затем в `done`.
+  if (raw === "new" || raw === "processing") return "processing";
+  if (raw === "done") return "done";
+  if (raw === "purged") return "purged";
+  if (raw === "canceled") return "canceled";
+  return "unknown";
+}
+
 /**
  * WB удаляет асинхронные отчёты через некоторое время. Для уже удалённой
  * задачи status/download отвечает HTTP 404, а не статусом `purged`.
@@ -93,12 +164,7 @@ export async function checkPaidStorageTaskStatus(
     // Тело не JSON — ниже это тоже уйдёт в rawStatus для диагностики.
   }
   const raw = String(json.data?.status ?? bodyText).toLowerCase().trim();
-  const status: PaidStorageTaskStatus =
-    raw === "done" ? "done"
-    : raw === "processing" ? "processing"
-    : raw === "purged" ? "purged"
-    : raw === "canceled" ? "canceled"
-    : "unknown";
+  const status = normalizePaidStorageTaskStatus(raw);
   return { ok: true, status, rawStatus: raw.slice(0, 200) };
 }
 
