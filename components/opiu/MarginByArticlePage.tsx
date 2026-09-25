@@ -192,13 +192,13 @@ export function MarginByArticlePage() {
                 <> · <span className="text-amber-600">не привязано ни к товару, ни к nm_id: {data.meta.unattributedRows} строк отчёта</span></>
               )}
             </p>
-            <div className="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+            <div className="max-h-[75vh] overflow-auto rounded-2xl border border-gray-200 bg-white">
               <table className="min-w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs text-gray-500">
-                    <th className="sticky left-0 z-10 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
+                    <th className="sticky left-0 top-0 z-30 bg-white px-3 py-2 font-semibold shadow-[2px_0_4px_-2px_rgba(0,0,0,0.08)]">Артикул</th>
                     {COLUMNS.map((col) => (
-                      <th key={col.key} className="px-3 py-2 text-right font-semibold whitespace-nowrap">{col.label}</th>
+                      <th key={col.key} className="sticky top-0 z-20 bg-white px-3 py-2 text-right font-semibold whitespace-nowrap shadow-[0_2px_4px_-2px_rgba(0,0,0,0.08)]">{col.label}</th>
                     ))}
                   </tr>
                 </thead>
