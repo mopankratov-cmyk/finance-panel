@@ -13,6 +13,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalogItem, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
 import { fetchWbAccountBalance } from "@/lib/wb/financeApi";
+import { loadBalanceCompanyScopes } from "@/lib/finance/balanceScopes";
 
 export const maxDuration = 300;
 
@@ -20,6 +21,7 @@ type SourceKind = "fulfillment" | "wb" | "ozon" | "supplier_transit";
 type CostRow = { article: string; cost_rub: number | null; warehouse_expenses: number | null; organization_id?: string | null };
 type CabinetMeta = { id: string; name: string; organization_id: string | null };
 type FulfillmentRow = { legal_entity_id: string; warehouse_id: string; warehouse_name: string; variant_id: string; article: string; product_name: string; size_label: string; qty: number; amount: number; unit_cost: number };
+type LegalEntityMeta = { id: string; name: string };
 
 const sourceKey = (kind: SourceKind, id = "all") => `${kind}:${id}`;
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
@@ -131,6 +133,8 @@ async function saveSource(input: {
   lines: ValuedMarketplaceStock[];
   marketplace?: "wb" | "ozon";
   cabinet?: CabinetMeta | null;
+  scopeId?: string;
+  legalEntity?: LegalEntityMeta | null;
   warning?: string | null;
   persist?: boolean;
   provisional?: boolean;
@@ -138,7 +142,7 @@ async function saveSource(input: {
 }) {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
-  const key = sourceKey(input.sourceKind, input.cabinet?.id || "all");
+  const key = sourceKey(input.sourceKind, input.scopeId || input.cabinet?.id || input.legalEntity?.id || "all");
   const missingCostCount = input.lines.filter((row) => row.totalValue === null).length;
   const status = missingCostCount > 0 || input.warning ? "partial" : "ok";
   const totalValue = missingCostCount > 0 ? null : round2(input.lines.reduce((sum, row) => sum + (row.totalValue ?? 0), 0));
@@ -164,6 +168,7 @@ async function saveSource(input: {
     cabinet_id: input.cabinet?.id || null,
     cabinet_name: input.cabinet?.name ?? null,
     organization_id: input.cabinet?.organization_id ?? null,
+    legal_entity_id: input.legalEntity?.id ?? null,
     status,
     rows_count: input.lines.length,
     missing_cost_count: missingCostCount,
@@ -187,6 +192,7 @@ async function saveSource(input: {
     marketplace: input.marketplace ?? null,
     cabinet_id: input.cabinet?.id || null,
     organization_id: input.cabinet?.organization_id ?? null,
+    legal_entity_id: input.legalEntity?.id ?? null,
     article: row.article,
     product_name: row.name,
     location_name: row.locationName,
@@ -286,24 +292,32 @@ export async function GET(request: NextRequest) {
   const summaries: Awaited<ReturnType<typeof saveSource>>[] = [];
   const cashSummaries: Awaited<ReturnType<typeof saveCashSnapshot>>[] = [];
   try {
-    const reportingScope = await loadGroupReportingScope();
+    const [reportingScope, companyScopes] = await Promise.all([loadGroupReportingScope(), loadBalanceCompanyScopes()]);
+    const reportingEntities = [...new Map(companyScopes.flatMap((scope) => scope.legalEntities).map((entity) => [entity.id, entity])).values()];
     if (reconcileFulfillment) {
-      const [lines, finality] = await Promise.all([
-        fulfillmentLines(monthCutoff, reportingScope.legalEntityIds),
-        fulfillmentFinality(reconciliation.closeThrough, reportingScope.legalEntityIds),
-      ]);
-      const summary = await saveSource({
-        month: window.month,
-        capturedAt,
-        sourceKind: "fulfillment",
-        sourceLabel: "Фулфилмент",
-        lines,
-        provisional: !finality.final,
-        snapshotCutoff: monthCutoff,
-      });
-      const note = finality.final ? "период закрыт, финальная сверка" : `предварительно; период не закрыт: ${finality.unclosed.join(", ")}`;
-      await writeSyncLog("balance-fulfillment-reconcile", "ok", summary.rows, note, startedAt);
-      return NextResponse.json({ ok: true, mode: "fulfillment-reconcile", month: window.month, capturedAt, closeThrough: reconciliation.closeThrough, unclosedEntities: finality.unclosed, summary });
+      const reconciled = [];
+      for (const entity of reportingEntities) {
+        const entityIds = new Set([entity.id]);
+        const [lines, finality] = await Promise.all([
+          fulfillmentLines(monthCutoff, entityIds),
+          fulfillmentFinality(reconciliation.closeThrough, entityIds),
+        ]);
+        reconciled.push(await saveSource({
+          month: window.month,
+          capturedAt,
+          sourceKind: "fulfillment",
+          sourceLabel: `Фулфилмент · ${entity.name}`,
+          legalEntity: entity,
+          lines,
+          provisional: !finality.final,
+          snapshotCutoff: monthCutoff,
+        }));
+      }
+      const unclosedEntities = reconciled.filter((summary) => summary.provisional).map((summary) => summary.sourceLabel);
+      const rows = reconciled.reduce((sum, summary) => sum + summary.rows, 0);
+      const note = unclosedEntities.length ? `предварительно; период не закрыт: ${unclosedEntities.join(", ")}` : "период закрыт, финальная сверка";
+      await writeSyncLog("balance-fulfillment-reconcile", "ok", rows, note, startedAt);
+      return NextResponse.json({ ok: true, mode: "fulfillment-reconcile", month: window.month, capturedAt, closeThrough: reconciliation.closeThrough, unclosedEntities, summaries: reconciled });
     }
     const [costRows, cabinetRows, wbTargets, ozonScope] = await Promise.all([
       loadCosts(),
@@ -314,24 +328,31 @@ export async function GET(request: NextRequest) {
     if (cabinetRows.error) throw new Error(cabinetRows.error.message);
     const metaById = new Map(((cabinetRows.data ?? []) as CabinetMeta[]).map((row) => [String(row.id), row]));
 
-    try {
-      const [lines, finality] = await Promise.all([
-        fulfillmentLines(dryRun ? capturedAt : monthCutoff, reportingScope.legalEntityIds),
-        dryRun ? Promise.resolve({ final: false, unclosed: [] as string[] }) : fulfillmentFinality(reconciliation.closeThrough, reportingScope.legalEntityIds),
-      ]);
-      const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: "Фулфилмент", lines, persist: !dryRun, provisional: !dryRun && !finality.final, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
-      summaries.push(summary);
-      affected += summary.rows;
-    } catch (error) {
-      errors.push(`Фулфилмент: ${error instanceof Error ? error.message : String(error)}`);
+    for (const entity of reportingEntities) {
+      try {
+        const entityIds = new Set([entity.id]);
+        const [lines, finality] = await Promise.all([
+          fulfillmentLines(dryRun ? capturedAt : monthCutoff, entityIds),
+          dryRun ? Promise.resolve({ final: false, unclosed: [] as string[] }) : fulfillmentFinality(reconciliation.closeThrough, entityIds),
+        ]);
+        const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: `Фулфилмент · ${entity.name}`, legalEntity: entity, lines, persist: !dryRun, provisional: !dryRun && !finality.final, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
+        summaries.push(summary);
+        affected += summary.rows;
+      } catch (error) {
+        errors.push(`Фулфилмент ${entity.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
-    try {
-      const lines = await supplierTransitLines(reportingScope.cabinetIds);
-      const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "supplier_transit", sourceLabel: "В пути от поставщика", lines, persist: !dryRun });
-      summaries.push(summary);
-      affected += summary.rows;
-    } catch (error) {
-      errors.push(`В пути от поставщика: ${error instanceof Error ? error.message : String(error)}`);
+    for (const cabinetId of reportingScope.cabinetIds) {
+      const cabinet = metaById.get(cabinetId);
+      if (!cabinet) continue;
+      try {
+        const lines = await supplierTransitLines(new Set([cabinetId]));
+        const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "supplier_transit", sourceLabel: `В пути · ${cabinet.name}`, cabinet, lines, persist: !dryRun });
+        summaries.push(summary);
+        affected += summary.rows;
+      } catch (error) {
+        errors.push(`В пути ${cabinet.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
     }
 
     const reportingWbTargets = wbTargets.filter((target) => target.cabinetId && reportingScope.cabinetIds.has(target.cabinetId));

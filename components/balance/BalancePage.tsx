@@ -31,6 +31,7 @@ type MarketplaceCashRow = { sourceKey: string; label: string; amount: number | n
 type MarketplaceCashCategory = { complete: boolean; amount: number | null; rows: MarketplaceCashRow[]; errors: string[] };
 type CashSnapshot = { amount: number | null; complete: boolean; bank: { amount: number | null; complete: boolean; accounts: BankCashAccount[] }; marketplaces: { wb: MarketplaceCashCategory; ozon: MarketplaceCashCategory } };
 type CashDetailKind = "bank" | "wb" | "ozon";
+type BalanceCompany = { id: string; name: string; companyIds: string[] };
 type CashSourceTest = {
   capturedAt: string;
   cashSummaries: Array<{ sourceKey: string; marketplace: "wb" | "ozon"; cabinetName: string; amount: number | null; availableAmount: number | null; currency: string; status: string; error: string | null }>;
@@ -55,8 +56,8 @@ async function responseJson<T>(response: Response): Promise<T> {
   return body;
 }
 
-async function loadInventory(month: string): Promise<InventorySnapshot> {
-  const body = await fetch(`/api/finance/balance-stock?month=${encodeURIComponent(month)}`, { cache: "no-store" })
+async function loadInventory(month: string, companyId: string): Promise<InventorySnapshot> {
+  const body = await fetch(`/api/finance/balance-stock?month=${encodeURIComponent(month)}&company=${encodeURIComponent(companyId)}`, { cache: "no-store" })
     .then((response) => responseJson<{
       amount: number | null; complete: boolean; capturedAt: string | null;
       categories: InventoryCategory[];
@@ -69,8 +70,8 @@ async function loadInventory(month: string): Promise<InventorySnapshot> {
   };
 }
 
-async function loadCash(month: string): Promise<CashSnapshot> {
-  return fetch(`/api/finance/balance-cash?month=${encodeURIComponent(month)}`, { cache: "no-store" })
+async function loadCash(month: string, companyId: string): Promise<CashSnapshot> {
+  return fetch(`/api/finance/balance-cash?month=${encodeURIComponent(month)}&company=${encodeURIComponent(companyId)}`, { cache: "no-store" })
     .then((response) => responseJson<CashSnapshot>(response));
 }
 
@@ -107,18 +108,18 @@ function StatementRow({ label, amount, detail, muted = false, href, onClick }: {
   return onClick ? <button type="button" onClick={onClick} className="block w-full">{content}</button> : content;
 }
 
-function InventoryDetails({ kind, month, onClose }: { kind: InventoryKind; month: string; onClose: () => void }) {
+function InventoryDetails({ kind, month, companyId, onClose }: { kind: InventoryKind; month: string; companyId: string; onClose: () => void }) {
   const [lines, setLines] = useState<InventoryLine[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/finance/balance-stock?month=${encodeURIComponent(month)}&kind=${kind}`, { cache: "no-store" })
+    fetch(`/api/finance/balance-stock?month=${encodeURIComponent(month)}&kind=${kind}&company=${encodeURIComponent(companyId)}`, { cache: "no-store" })
       .then((response) => responseJson<{ lines: InventoryLine[] }>(response))
       .then((body) => { setLines(body.lines); setError(null); })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Не удалось загрузить детализацию"))
       .finally(() => setLoading(false));
-  }, [kind, month]);
+  }, [companyId, kind, month]);
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/40 p-0 sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-label={`Детализация: ${INVENTORY_LABELS[kind]}`}>
       <div className="flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl">
@@ -169,6 +170,9 @@ function CashDetails({ kind, month, snapshot, onClose }: { kind: CashDetailKind;
 export function BalancePage() {
   const { state, hydrated, loadError } = useFinance();
   const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const [companies, setCompanies] = useState<BalanceCompany[]>([]);
+  const [companyId, setCompanyId] = useState("");
+  const [companiesError, setCompaniesError] = useState<string | null>(null);
   const asOf = `${month}-01`;
   const [scheduleRows, setScheduleRows] = useState<ScheduleRowRecord[]>([]);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
@@ -183,13 +187,25 @@ export function BalancePage() {
   const [sourceTest, setSourceTest] = useState<CashSourceTest | null>(null);
   const [sourceTestError, setSourceTestError] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetch("/api/finance/balance-scopes", { cache: "no-store" })
+      .then((response) => responseJson<{ companies: BalanceCompany[] }>(response))
+      .then((body) => {
+        setCompanies(body.companies);
+        setCompanyId((current) => current && body.companies.some((company) => company.id === current) ? current : body.companies[0]?.id ?? "");
+        setCompaniesError(null);
+      })
+      .catch((error) => setCompaniesError(error instanceof Error ? error.message : "Не удалось загрузить юрлица"));
+  }, []);
+
   const refreshExternal = useCallback(async () => {
+    if (!companyId) return;
     setRefreshing(true);
     const [schedules, stocks, cashResult] = await Promise.allSettled([
       fetch("/api/finance/loans/schedule", { cache: "no-store" })
         .then((response) => responseJson<{ rows?: ScheduleRowRecord[]; error?: string }>(response)),
-      loadInventory(month),
-      loadCash(month),
+      loadInventory(month, companyId),
+      loadCash(month, companyId),
     ]);
     if (schedules.status === "fulfilled") {
       setScheduleRows(schedules.value.rows ?? []);
@@ -213,7 +229,7 @@ export function BalancePage() {
       setCashError(cashResult.reason instanceof Error ? cashResult.reason.message : "Не удалось загрузить денежные остатки");
     }
     setRefreshing(false);
-  }, [month]);
+  }, [companyId, month]);
 
   useEffect(() => { void refreshExternal(); }, [refreshExternal]);
 
@@ -235,8 +251,20 @@ export function BalancePage() {
     }
   }, []);
 
+  const selectedCompany = companies.find((company) => company.id === companyId) ?? null;
   const cash = cashSnapshot?.amount ?? null;
-  const loanSnapshot = useMemo(() => loanLiabilitySnapshot(state.loans, scheduleRows, asOf), [asOf, scheduleRows, state.loans]);
+  const assignedLoanIds = useMemo(() => new Set(state.payments.flatMap((payment) => {
+    const match = payment.companyId ? payment.comment?.match(/\[loan:([^:\]]+):/) : null;
+    return match ? [match[1]] : [];
+  })), [state.payments]);
+  const scopedLoanIds = useMemo(() => new Set(state.payments.filter((payment) => payment.companyId && selectedCompany?.companyIds.includes(payment.companyId)).flatMap((payment) => {
+    const match = payment.comment?.match(/\[loan:([^:\]]+):/);
+    return match ? [match[1]] : [];
+  })), [selectedCompany, state.payments]);
+  const scopedLoans = useMemo(() => state.loans.filter((loan) => scopedLoanIds.has(loan.id)), [scopedLoanIds, state.loans]);
+  const scopedScheduleRows = useMemo(() => scheduleRows.filter((row) => scopedLoanIds.has(row.loanId)), [scheduleRows, scopedLoanIds]);
+  const loanSnapshot = useMemo(() => loanLiabilitySnapshot(scopedLoans, scopedScheduleRows, asOf), [asOf, scopedLoans, scopedScheduleRows]);
+  const unassignedLoanCount = state.loans.filter((loan) => loan.status === "active" && !assignedLoanIds.has(loan.id)).length;
   const inventoryReady = inventory?.complete === true && inventory.amount !== null;
   const provisionalFulfillment = inventory?.categories.find((item) => item.kind === "fulfillment" && item.provisional);
   const inventoryWarning = inventory && !inventory.complete
@@ -244,9 +272,9 @@ export function BalancePage() {
     : provisionalFulfillment
       ? `Фулфилмент предварительный: поздние документы с датой до начала месяца автоматически попадут в ежедневный пересчёт. Итог станет финальным после закрытия складского периода.${provisionalFulfillment.reconciledAt ? ` Последняя сверка: ${new Date(provisionalFulfillment.reconciledAt).toLocaleString("ru-RU")}.` : ""}`
       : null;
-  const complete = hydrated && !loadError && cash !== null && inventoryReady && !scheduleError;
+  const complete = hydrated && !loadError && cash !== null && inventoryReady && !scheduleError && unassignedLoanCount === 0;
   const totals = complete ? connectedBalanceTotals({ cash, inventory: inventory.amount!, loans: loanSnapshot.amount }) : null;
-  const sourcesReady = [cash !== null, inventoryReady, !scheduleError && hydrated].filter(Boolean).length;
+  const sourcesReady = [cash !== null, inventoryReady, !scheduleError && hydrated && unassignedLoanCount === 0].filter(Boolean).length;
   const cashWarnings = cashSnapshot ? [
     ...cashSnapshot.bank.accounts.map((row) => row.error).filter(Boolean),
     ...cashSnapshot.marketplaces.wb.errors,
@@ -262,10 +290,15 @@ export function BalancePage() {
           <div className="flex items-center gap-2 text-sm font-medium text-violet-700"><Scale className="h-4 w-4" /> Финрезультат</div>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Баланс</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Управленческий снимок на {formatDate(asOf)}. Все статьи приводятся к состоянию на первое число месяца.
+            Управленческий снимок «{selectedCompany?.name ?? "юрлицо не выбрано"}» на {formatDate(asOf)}. Данные разных юрлиц не суммируются.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
+          <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} aria-label="Юрлицо баланса"
+            className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm">
+            {companies.length === 0 ? <option value="">Юрлица не загружены</option> : null}
+            {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
           <input type="month" value={month} max={todayISO().slice(0, 7)} onChange={(event) => setMonth(event.target.value || todayISO().slice(0, 7))}
             aria-label="Месяц баланса" className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm" />
           <button type="button" onClick={() => void refreshExternal()} disabled={refreshing}
@@ -278,6 +311,8 @@ export function BalancePage() {
           </button>
         </div>
       </div>
+
+      {companiesError ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">Юрлица: {companiesError}</div> : null}
 
       {(sourceTest || sourceTestError) ? (
         <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${sourceTestError || sourceTest?.errors.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
@@ -295,7 +330,7 @@ export function BalancePage() {
         <Metric label="Покрытие источников" value={`${sourcesReady} из 3`} note={complete ? "Все источники обновлены" : "Часть данных недоступна"} />
       </div>
 
-      {(loadError || cashError || cashWarnings.length || inventoryError || inventoryWarning || scheduleError || loanSnapshot.estimatedCount > 0) ? (
+      {(loadError || cashError || cashWarnings.length || inventoryError || inventoryWarning || scheduleError || loanSnapshot.estimatedCount > 0 || unassignedLoanCount > 0) ? (
         <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <div className="flex gap-2"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" /><div className="space-y-1">
             {loadError ? <p>Счета ДДС: {loadError}</p> : null}
@@ -304,6 +339,7 @@ export function BalancePage() {
             {inventoryError ? <p>Маркетплейсы: {inventoryError}</p> : null}
             {inventoryWarning ? <p>Товарные остатки: {inventoryWarning}</p> : null}
             {scheduleError ? <p>Кредиты: {scheduleError}</p> : null}
+            {unassignedLoanCount > 0 ? <p>У {unassignedLoanCount} активных кредитов не определено юрлицо: они не включены ни в один баланс до заполнения графика и компании.</p> : null}
             {loanSnapshot.estimatedCount > 0 ? <p>У {loanSnapshot.estimatedCount} активных кредитов нет графика: показана исходная сумма договора.</p> : null}
           </div></div>
         </div>
@@ -357,7 +393,7 @@ export function BalancePage() {
             {[
               { icon: Wallet, label: "Выписки, ДДС и деньги маркетплейсов", ready: cashSnapshot?.complete === true },
               { icon: Boxes, label: "4 группы товарных остатков на 1-е число", ready: inventoryReady },
-              { icon: Building2, label: "Кредитные договоры и графики", ready: hydrated && !scheduleError },
+              { icon: Building2, label: "Кредитные договоры и графики", ready: hydrated && !scheduleError && unassignedLoanCount === 0 },
             ].map(({ icon: Icon, label, ready }) => (
               <div key={label} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3">
                 <div className="flex min-w-0 items-center gap-3"><Icon className="h-4 w-4 shrink-0 text-slate-500" /><span className="text-sm font-medium text-slate-700">{label}</span></div>
@@ -369,7 +405,7 @@ export function BalancePage() {
           </CardContent>
         </Card>
       </div>
-      {detailKind ? <InventoryDetails kind={detailKind} month={month} onClose={() => setDetailKind(null)} /> : null}
+      {detailKind && companyId ? <InventoryDetails kind={detailKind} month={month} companyId={companyId} onClose={() => setDetailKind(null)} /> : null}
       {cashDetailKind && cashSnapshot ? <CashDetails kind={cashDetailKind} month={month} snapshot={cashSnapshot} onClose={() => setCashDetailKind(null)} /> : null}
     </div>
   );

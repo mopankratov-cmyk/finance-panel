@@ -14,7 +14,7 @@ export interface GroupReportingScope {
 const EXTERNAL_ENTITY_NOTE = /внешн(?:ий|его)\s+селлер|в\s+отч[её]тность\s+группы\s+не\s+входит/i;
 
 export function isExternalReportingEntity(entity: EntityRow): boolean {
-  return EXTERNAL_ENTITY_NOTE.test(String(entity.note ?? ""));
+  return /сло[её]но/i.test(entity.name) || EXTERNAL_ENTITY_NOTE.test(String(entity.note ?? ""));
 }
 
 /**

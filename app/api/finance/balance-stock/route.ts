@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
-import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
+import { loadBalanceCompanyScopes, selectBalanceCompanyScope } from "@/lib/finance/balanceScopes";
 
 export const dynamic = "force-dynamic";
 
@@ -19,23 +19,28 @@ export async function GET(request: NextRequest) {
   if (kindParam && !kind) return NextResponse.json({ error: "Неизвестная группа остатков" }, { status: 400 });
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
-  let reportingScope: Awaited<ReturnType<typeof loadGroupReportingScope>>;
+  let reportingScope: NonNullable<ReturnType<typeof selectBalanceCompanyScope>>;
   try {
-    reportingScope = await loadGroupReportingScope();
+    const scopes = await loadBalanceCompanyScopes();
+    const selected = selectBalanceCompanyScope(scopes, request.nextUrl.searchParams.get("company"));
+    if (!selected) return NextResponse.json({ error: "Выберите юрлицо для Баланса" }, { status: 400 });
+    reportingScope = selected;
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось определить состав группы" }, { status: 500 });
   }
 
   if (kind) {
     const result = await db.from("balance_marketplace_stock_lines")
-      .select("source_key,line_key,source_kind,cabinet_id,article,product_name,location_name,reference,quantity,cost_rub,packaging_rub,unit_value,total_value,captured_at")
+      .select("source_key,line_key,source_kind,cabinet_id,legal_entity_id,article,product_name,location_name,reference,quantity,cost_rub,packaging_rub,unit_value,total_value,captured_at")
       .eq("snapshot_month", month).eq("source_kind", kind).order("article");
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     return NextResponse.json({
       month,
       kind,
       lines: (result.data ?? [])
-        .filter((row) => !["wb", "ozon"].includes(kind) || reportingScope.cabinetIds.has(String(row.cabinet_id ?? "")))
+        .filter((row) => kind === "fulfillment"
+          ? reportingScope.legalEntityIds.includes(String(row.legal_entity_id ?? ""))
+          : reportingScope.cabinetIds.includes(String(row.cabinet_id ?? "")))
         .map((row) => ({
         id: `${row.source_key}:${row.line_key}`,
         sourceKey: String(row.source_key),
@@ -54,7 +59,7 @@ export async function GET(request: NextRequest) {
 
   const [runsResult, activeResult] = await Promise.all([
     db.from("balance_marketplace_stock_runs")
-      .select("source_key,source_kind,source_label,marketplace,cabinet_id,cabinet_name,status,rows_count,missing_cost_count,total_quantity,total_value,captured_at,error,is_provisional,snapshot_cutoff,reconciled_at")
+      .select("source_key,source_kind,source_label,marketplace,cabinet_id,cabinet_name,legal_entity_id,status,rows_count,missing_cost_count,total_quantity,total_value,captured_at,error,is_provisional,snapshot_cutoff,reconciled_at")
       .eq("snapshot_month", month).order("source_kind").order("source_label"),
     db.from("wb_cabinets").select("id,name,marketplace").eq("is_active", true).in("marketplace", ["wb", "ozon"]),
   ]);
@@ -65,7 +70,9 @@ export async function GET(request: NextRequest) {
   if (activeResult.error) return NextResponse.json({ error: activeResult.error.message }, { status: 500 });
 
   const runs = (runsResult.data ?? [])
-    .filter((row) => !["wb", "ozon"].includes(String(row.source_kind)) || reportingScope.cabinetIds.has(String(row.cabinet_id ?? "")))
+    .filter((row) => String(row.source_kind) === "fulfillment"
+      ? reportingScope.legalEntityIds.includes(String(row.legal_entity_id ?? ""))
+      : reportingScope.cabinetIds.includes(String(row.cabinet_id ?? "")))
     .map((row) => ({
     sourceKey: String(row.source_key),
     kind: String(row.source_kind) as SourceKind,
@@ -84,13 +91,15 @@ export async function GET(request: NextRequest) {
     reconciledAt: row.reconciled_at ? String(row.reconciled_at) : null,
   }));
   const expected = new Map<string, { kind: SourceKind; label: string }>([
-    ["fulfillment:all", { kind: "fulfillment", label: "Фулфилмент" }],
-    ["supplier_transit:all", { kind: "supplier_transit", label: "В пути от поставщика" }],
   ]);
+  for (const entity of reportingScope.legalEntities) {
+    expected.set(`fulfillment:${entity.id}`, { kind: "fulfillment", label: `Фулфилмент · ${entity.name}` });
+  }
   for (const cabinet of activeResult.data ?? []) {
-    if (!reportingScope.cabinetIds.has(String(cabinet.id))) continue;
+    if (!reportingScope.cabinetIds.includes(String(cabinet.id))) continue;
     const marketplace = cabinet.marketplace === "ozon" ? "ozon" : "wb";
     expected.set(`${marketplace}:${cabinet.id}`, { kind: marketplace, label: `${marketplace.toUpperCase()} · ${cabinet.name}` });
+    expected.set(`supplier_transit:${cabinet.id}`, { kind: "supplier_transit", label: `В пути · ${cabinet.name}` });
   }
   const runKeys = new Set(runs.map((run) => run.sourceKey));
   const missingSources = [...expected].filter(([key]) => !runKeys.has(key)).map(([key, value]) => ({ sourceKey: key, ...value }));
@@ -113,6 +122,7 @@ export async function GET(request: NextRequest) {
   const complete = categories.every((category) => category.complete);
   return NextResponse.json({
     month,
+    company: { id: reportingScope.id, name: reportingScope.name },
     complete,
     amount: complete ? round2(categories.reduce((sum, category) => sum + (category.amount ?? 0), 0)) : null,
     quantity: categories.reduce((sum, category) => sum + category.quantity, 0),
