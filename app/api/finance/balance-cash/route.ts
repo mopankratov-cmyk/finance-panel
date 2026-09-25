@@ -5,7 +5,7 @@ import { accountBalance } from "@/lib/finance/balance";
 import { bankOpeningAtDate, cashDifference, dayBefore, type BankTransactionForOpening } from "@/lib/finance/cashSnapshot";
 import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
 import { loadFinanceStateServer } from "@/lib/finance/dbServer";
-import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
+import { loadBalanceCompanyScopes, selectBalanceCompanyScope } from "@/lib/finance/balanceScopes";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { getWbSyncTargets, groupWbStatisticsTargets } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -36,10 +36,12 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
 
   try {
-    const [scope, finance, mappingsResult, statementsResult, snapshotsResult, wbTargets, ozonScope] = await Promise.all([
-      loadGroupReportingScope(),
+    const scopes = await loadBalanceCompanyScopes();
+    const scope = selectBalanceCompanyScope(scopes, request.nextUrl.searchParams.get("company"));
+    if (!scope) return NextResponse.json({ error: "Выберите юрлицо для Баланса" }, { status: 400 });
+    const [finance, mappingsResult, statementsResult, snapshotsResult, wbTargets, ozonScope] = await Promise.all([
       loadFinanceStateServer(),
-      db.from("bank_account_mappings").select("bank_account_number,account_id"),
+      db.from("bank_account_mappings").select("bank_account_number,account_id,company_id"),
       db.from("finance_bank_statements")
         .select("id,bank_name,bank_account_number,date_from,date_to,opening_balance,registered_at")
         .not("registered_at", "is", null).lte("date_from", month).gte("date_to", month)
@@ -74,9 +76,11 @@ export async function GET(request: NextRequest) {
       const key = normalizeAccount(statement.bank_account_number);
       if (key && !statementByAccount.has(key)) statementByAccount.set(key, statement);
     }
-    const bankAccountNumberById = new Map((mappingsResult.data ?? []).map((row) => [String(row.account_id), normalizeAccount(row.bank_account_number)]));
+    const companyMappings = (mappingsResult.data ?? []).filter((row) => scope.companyIds.includes(String(row.company_id ?? "")));
+    const bankAccountNumberById = new Map(companyMappings.map((row) => [String(row.account_id), normalizeAccount(row.bank_account_number)]));
+    const mappedAccountIds = new Set(companyMappings.map((row) => String(row.account_id)));
     const actualPayments = finance.payments.filter(isDdsActualPayment);
-    const bankAccounts = finance.accounts.filter((account) => account.type === "bank" && account.currency === "RUB").map((account) => {
+    const bankAccounts = finance.accounts.filter((account) => account.type === "bank" && account.currency === "RUB" && mappedAccountIds.has(account.id)).map((account) => {
       const accountNumber = bankAccountNumberById.get(account.id) ?? "";
       const statement = statementByAccount.get(accountNumber);
       const statementAmount = statement ? bankOpeningAtDate({
@@ -106,9 +110,9 @@ export async function GET(request: NextRequest) {
 
     const expected = new Map<string, { marketplace: "wb" | "ozon"; label: string; blockedReason?: string }>();
     for (const sellerGroup of groupWbStatisticsTargets(wbTargets)) {
-      const included = sellerGroup.filter((target) => target.cabinetId && scope.cabinetIds.has(target.cabinetId));
+      const included = sellerGroup.filter((target) => target.cabinetId && scope.cabinetIds.includes(target.cabinetId));
       if (!included.length) continue;
-      const excluded = sellerGroup.filter((target) => target.cabinetId && !scope.cabinetIds.has(target.cabinetId));
+      const excluded = sellerGroup.filter((target) => target.cabinetId && !scope.cabinetIds.includes(target.cabinetId));
       expected.set(sourceKey("wb", sellerGroup[0].statisticsSourceKey || sellerGroup[0].statsToken), {
         marketplace: "wb",
         label: included.map((item) => item.name).join(" / "),
@@ -118,7 +122,7 @@ export async function GET(request: NextRequest) {
       });
     }
     if (ozonScope.ok) {
-      for (const cabinet of ozonScope.scope.cabinets.filter((item) => scope.cabinetIds.has(item.id))) {
+      for (const cabinet of ozonScope.scope.cabinets.filter((item) => scope.cabinetIds.includes(item.id))) {
         expected.set(sourceKey("ozon", cabinet.id), { marketplace: "ozon", label: cabinet.name });
       }
     }
@@ -128,10 +132,10 @@ export async function GET(request: NextRequest) {
     }).map((row) => ({
       sourceKey: String(row.source_key), marketplace: row.marketplace as "wb" | "ozon",
       label: String(row.cabinet_name ?? expected.get(String(row.source_key))?.label ?? row.marketplace),
-      amount: row.amount == null ? null : Number(row.amount),
+      amount: expected.get(String(row.source_key))?.blockedReason ? null : row.amount == null ? null : Number(row.amount),
       availableAmount: row.available_amount == null ? null : Number(row.available_amount),
-      currency: String(row.currency ?? "RUB"), status: String(row.status),
-      error: row.error ? String(row.error) : null, capturedAt: String(row.captured_at),
+      currency: String(row.currency ?? "RUB"), status: expected.get(String(row.source_key))?.blockedReason ? "error" : String(row.status),
+      error: expected.get(String(row.source_key))?.blockedReason ?? (row.error ? String(row.error) : null), capturedAt: String(row.captured_at),
     }));
     const byMarketplace = (["wb", "ozon"] as const).map((marketplace) => {
       const rows = snapshotRows.filter((row) => row.marketplace === marketplace);
@@ -150,6 +154,7 @@ export async function GET(request: NextRequest) {
     const amountReady = bankAmount !== null && wb.amount !== null && ozon.amount !== null;
     return NextResponse.json({
       month,
+      company: { id: scope.id, name: scope.name },
       amount: amountReady ? round2(bankAmount! + wb.amount! + ozon.amount!) : null,
       complete: bankComplete && wb.complete && ozon.complete,
       bank: { amount: bankAmount, complete: bankComplete, accounts: bankAccounts },
