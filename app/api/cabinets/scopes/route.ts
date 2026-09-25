@@ -22,7 +22,7 @@ export async function GET() {
       const missing = (Object.keys(scopes) as WbScope[])
         .filter((s) => scopes[s] === false)
         .map((s) => WB_SCOPE_LABEL[s]);
-      return { name: c.name, seller_id: c.seller_id, scopes, missing, daysLeft: info.daysLeft, isExpired: info.isExpired };
+      return { id: c.id, name: c.name, seller_id: c.seller_id, scopes, missing, daysLeft: info.daysLeft, isExpired: info.isExpired, tokenSource: "main" as const };
     }),
   );
   return NextResponse.json({ labels: WB_SCOPE_LABEL, cabinets });

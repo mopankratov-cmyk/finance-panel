@@ -8,7 +8,7 @@ export const maxDuration = 60;
 
 // marketplace — для честного сплита ФБО/ФБС: warehouseType в статистике схему
 // не отражает, прямой факт — FBS-заказы Marketplace API.
-const SCOPES: WbScope[] = ["statistics", "marketplace", "analytics", "advert", "content", "prices", "feedbacks"];
+const SCOPES: WbScope[] = ["statistics", "marketplace", "analytics", "advert", "content", "prices", "feedbacks", "documents"];
 
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
