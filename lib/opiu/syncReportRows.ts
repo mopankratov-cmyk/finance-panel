@@ -324,9 +324,15 @@ export async function syncReportRows(
     await persist("running", null);
 
     if (Date.now() - startedAt > SOFT_TIME_BUDGET_MS) {
+      // This invocation stopped normally, so release the cooperative lock.
+      // Leaving the row as `running` makes the next cron/backfill invocation
+      // wait for the full stale-lock timeout before it can resume the cursor.
+      await persist("pending", null);
       return { synced, pages: pages + 1, lastRrdId: cursor, complete: false };
     }
   }
 
+  // MAX_PAGES_PER_CALL is also a normal resumable boundary, not an active job.
+  await persist("pending", null);
   return { synced, pages, lastRrdId: cursor, complete: false };
 }
