@@ -5,25 +5,25 @@ import { fetchWbReportPage, fetchWbReportPages, WbReportDeadlineError } from "..
 
 test("WB financial report uses the current Finance API until 204 and deduplicates rows", async () => {
   const requested: number[] = [];
-  const pages = new Map<number, Array<{ rrdId: number; nmId: number; vendorCode: string; retailPriceWithDisc: string }>>([
+  const pages = new Map<number, Array<{ rrdId: number; nmId: number; vendorCode: string; retailPriceWithDisc: string; vw: string; vwNds: string }>>([
     [0, [
-      { rrdId: 1, nmId: 101, vendorCode: "SKU-1", retailPriceWithDisc: "10.50" },
-      { rrdId: 2, nmId: 102, vendorCode: "SKU-2", retailPriceWithDisc: "20.50" },
+      { rrdId: 1, nmId: 101, vendorCode: "SKU-1", retailPriceWithDisc: "10.50", vw: "22.25", vwNds: "4.45" },
+      { rrdId: 2, nmId: 102, vendorCode: "SKU-2", retailPriceWithDisc: "20.50", vw: "10", vwNds: "2" },
     ]],
     [2, [
-      { rrdId: 2, nmId: 102, vendorCode: "SKU-2", retailPriceWithDisc: "20.50" },
-      { rrdId: 3, nmId: 103, vendorCode: "SKU-3", retailPriceWithDisc: "30.50" },
+      { rrdId: 2, nmId: 102, vendorCode: "SKU-2", retailPriceWithDisc: "20.50", vw: "10", vwNds: "2" },
+      { rrdId: 3, nmId: 103, vendorCode: "SKU-3", retailPriceWithDisc: "30.50", vw: "5", vwNds: "1" },
     ]],
   ]);
 
   const result = await fetchWbReportPages<{
-    rrdId?: number; rrd_id?: number; nm_id?: number; sa_name?: string; retail_price_withdisc_rub?: string;
+    rrdId?: number; rrd_id?: number; nm_id?: number; sa_name?: string; retail_price_withdisc_rub?: string; ppvz_vw?: string; ppvz_vw_nds?: string;
   }>({
     token: "test-token",
     dateFrom: "2026-07-01",
     dateTo: "2026-07-14",
     limit: 2,
-    fields: ["rrdId", "nmId", "vendorCode", "retailPriceWithDisc"],
+    fields: ["rrdId", "nmId", "vendorCode", "retailPriceWithDisc", "vw", "vwNds"],
     retryBaseMs: 0,
     fetchImpl: async (input, init) => {
       assert.equal(String(input), "https://finance-api.wildberries.ru/api/finance/v1/sales-reports/detailed");
@@ -35,7 +35,7 @@ test("WB financial report uses the current Finance API until 204 and deduplicate
       assert.equal(body.dateTo, "2026-07-14");
       assert.equal(body.limit, 2);
       assert.equal(body.period, "weekly");
-      assert.deepEqual(body.fields, ["rrdId", "nmId", "vendorCode", "retailPriceWithDisc"]);
+      assert.deepEqual(body.fields, ["rrdId", "nmId", "vendorCode", "retailPriceWithDisc", "vw", "vwNds"]);
       const page = pages.get(body.rrdId);
       return page ? Response.json(page) : new Response(null, { status: 204 });
     },
@@ -46,6 +46,8 @@ test("WB financial report uses the current Finance API until 204 and deduplicate
   assert.deepEqual(result.rows.map((row) => row.nm_id), [101, 102, 103]);
   assert.equal(result.rows[0]?.sa_name, "SKU-1");
   assert.equal(result.rows[0]?.retail_price_withdisc_rub, "10.50");
+  assert.equal(result.rows[0]?.ppvz_vw, "22.25");
+  assert.equal(result.rows[0]?.ppvz_vw_nds, "4.45");
   assert.equal(result.lastRrdId, 3);
   assert.equal(result.complete, true);
 });
@@ -132,4 +134,11 @@ test("commission sync can outlive the documented one-minute page interval", () =
   assert.match(commissionsRoute, /writeWbSyncState/);
   assert.match(feedbacksRoute, /status: completed \? "caught_up" : "pending"/);
   assert.match(triggerRoute, /export const maxDuration = 300/);
+});
+
+test("OPiU sync requests current WB VAT fields", () => {
+  const source = readFileSync(new URL("../lib/opiu/syncReportRows.ts", import.meta.url), "utf8");
+  assert.match(source, /"vw",/);
+  assert.match(source, /"vwNds",/);
+  assert.doesNotMatch(source, /^\s*"ppvzVwNds",/m);
 });

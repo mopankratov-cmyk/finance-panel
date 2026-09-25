@@ -23,8 +23,11 @@ const REPORT_FIELDS = [
   "retailAmount",
   "forPay",
   "ppvzSalesCommission",
-  "ppvzVw",
-  "ppvzVwNds",
+  // Актуальный Finance API называет эти поля vw/vwNds. ppvzVw* были
+  // именами старого API и в новом ответе отсутствуют, из-за чего НДС
+  // комиссии сохранялся NULL даже при фактически начисленной комиссии.
+  "vw",
+  "vwNds",
   "deliveryService",
   "rebillLogisticCost",
   "penalty",

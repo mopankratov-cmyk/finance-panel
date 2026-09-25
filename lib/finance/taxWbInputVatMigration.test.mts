@@ -12,8 +12,19 @@ test("агрегат НДС WB использует uuid-индекс без т�
 });
 
 test("годовой агрегат НДС WB использует частичный covering-индекс", () => {
-  assert.match(coveringIndexSql, /create index concurrently if not exists wb_report_rows_cabinet_rr_dt_input_vat_idx/i);
+  assert.match(coveringIndexSql, /create index if not exists wb_report_rows_cabinet_rr_dt_input_vat_idx/i);
+  assert.doesNotMatch(coveringIndexSql, /create index concurrently/i);
   assert.match(coveringIndexSql, /\(cabinet_id, rr_dt\) include \(ppvz_vw_nds\)/i);
   assert.match(coveringIndexSql, /where ppvz_vw_nds is not null\s+and ppvz_vw_nds <> 0/i);
   assert.match(coveringIndexSql, /cabinet_id = any\(p_cabinet_ids\)/i);
+});
+
+test("реклама для налогов берётся по всему кабинету без промо-бонусов", () => {
+  assert.match(coveringIndexSql, /create or replace function public\.tax_wb_advert_expense/i);
+  assert.match(coveringIndexSql, /from public\.wb_advert_spend_history/i);
+  assert.match(coveringIndexSql, /cabinet_id = any\(p_cabinet_ids\)/i);
+  assert.match(coveringIndexSql, /not like '%бонус%'/i);
+  assert.match(coveringIndexSql, /not like '%кэшбэк%'/i);
+  assert.match(coveringIndexSql, /create or replace function public\.tax_wb_advert_coverage_start/i);
+  assert.match(coveringIndexSql, /max\(first_date\)/i);
 });

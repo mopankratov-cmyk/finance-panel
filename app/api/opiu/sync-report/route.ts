@@ -13,8 +13,11 @@ export async function POST(request: Request) {
   if (gate) return gate;
 
   try {
-    const body = await request.json() as { month?: unknown };
+    const body = await request.json() as { month?: unknown; cabinetId?: unknown };
     const month = typeof body.month === "string" ? body.month : "";
+    const cabinetId = typeof body.cabinetId === "string" && /^[0-9a-f-]{36}$/i.test(body.cabinetId)
+      ? body.cabinetId
+      : undefined;
     if (!opiuReportMonthPeriod(month)) {
       return NextResponse.json(
         { error: "month must be in YYYY-MM format" },
@@ -22,7 +25,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await syncOpiuReportMonth(month);
+    const result = await syncOpiuReportMonth(month, cabinetId);
 
     return NextResponse.json(result);
   } catch (error) {
