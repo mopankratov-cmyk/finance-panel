@@ -1,0 +1,22 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+
+test("OzonOpiuPage fetches the report route and renders date inputs, a cabinet filter and the total row", async () => {
+  const source = await readFile(new URL("../components/opiu/OzonOpiuPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /\/api\/opiu\/ozon/, "must call the report API route");
+  assert.match(source, /marketplace\s*===\s*["']ozon["']/, "must filter cabinets to Ozon on the client");
+  assert.match(source, /type="date"/, "must render a date range picker");
+  assert.match(source, /К выплате/, "must render the total row label");
+  assert.match(source, /не подключено/, "must render the Себестоимость stub label");
+});
+
+test("OzonOpiuPage renders the new-category banner conditionally, not unconditionally", async () => {
+  const source = await readFile(new URL("../components/opiu/OzonOpiuPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /newCategories/, "must reference the report's newCategories field");
+  assert.match(
+    source,
+    /newCategories\.length\s*>\s*0|newCategories\.length\s*\?/,
+    "the banner must be gated on newCategories being non-empty, not always shown",
+  );
+});
