@@ -69,6 +69,25 @@ const COLUMNS: { key: keyof MarginRow; label: string; fmt: (row: MarginRow) => s
   { key: "marginPctExStorage", label: "Маржа без учёта хранения, %", fmt: (r) => pct(r.marginPctExStorage) },
 ];
 
+/**
+ * Итоговая строка для % столбцов — агрегат (сумма числителя / сумма
+ * знаменателя), а не среднее по строкам: наивное среднее процентов по SKU
+ * искажает картину, когда объёмы артикулов сильно разные (классическая
+ * ошибка усреднения отношений). Формулы — те же, что и в marginByBarcode.ts,
+ * только на уже просуммированных totals вместо одной строки.
+ */
+const PCT_TOTALS: Partial<Record<keyof MarginRow, (t: Record<string, number>) => number | null>> = {
+  buyoutPct: (t) => (t.ordersQty > 0 ? (t.netQty / t.ordersQty) * 100 : null),
+  commissionPct: (t) => (t.revenueWithoutSpp > 0 ? (t.commission / t.revenueWithoutSpp) * 100 : null),
+  storagePct: (t) => (t.revenueWithoutSpp > 0 ? (t.storage / t.revenueWithoutSpp) * 100 : null),
+  marginPctBeforeTax: (t) => (t.revenueWithoutSpp > 0 ? (t.marginalProfit / t.revenueWithoutSpp) * 100 : null),
+  netMarginPct: (t) => (t.revenueWithoutSpp > 0 ? (t.netProfit / t.revenueWithoutSpp) * 100 : null),
+  marginPctExStorage: (t) =>
+    t.revenueWithoutSpp > 0
+      ? ((t.revenueWithoutSpp - t.commission - t.logistics - t.cost - t.packaging) / t.revenueWithoutSpp) * 100
+      : null,
+};
+
 export function MarginByArticlePage() {
   const [brand, setBrand] = useState(DEFAULT_OPIU_BRAND_ID);
   const [from, setFrom] = useState(defaultFrom);
@@ -188,15 +207,15 @@ export function MarginByArticlePage() {
                     <td className="sticky left-0 z-10 bg-violet-50 px-3 py-2">Итого</td>
                     {COLUMNS.map((col) => {
                       const key = col.key.toString().toLowerCase();
+                      const isPct = key.includes("pct");
                       const value = totals?.[col.key];
-                      const display =
-                        typeof value !== "number"
+                      const display = isPct
+                        ? pct(totals ? (PCT_TOTALS[col.key]?.(totals) ?? null) : null)
+                        : typeof value !== "number"
                           ? "—"
-                          : key.includes("pct")
-                            ? "—"
-                            : key.includes("qty") || key.includes("count")
-                              ? formatNumber(value)
-                              : money(value);
+                          : key.includes("qty") || key.includes("count")
+                            ? formatNumber(value)
+                            : money(value);
                       return (
                         <td key={col.key} className="px-3 py-2 text-right tabular-nums whitespace-nowrap">
                           {display}
