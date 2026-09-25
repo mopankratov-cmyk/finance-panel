@@ -21,12 +21,13 @@ const JOB = "paid_storage";
 // WB отдаёт «Платное хранение» с задержкой в 1-2 суток — вчерашний день ещё
 // может быть не досчитан, поэтому не запрашиваем его сразу.
 const REPORT_LAG_DAYS = 2;
-// До агрегации даже 3 дня Retail Family давали около 10 000 отдельных
-// upsert-строк и функция обрывалась 504 уже после записи. Теперь полный
-// ответ WB сразу сворачивается до «день × товар × артикул», поэтому окно в
-// 3 дня снова безопасно и ускоряет бэкфилл примерно втрое. Больше пока не
-// берём: размер скачиваемого ответа WB от нашей агрегации не уменьшается.
-const WINDOW_DAYS = 3;
+// Для обычных кабинетов три дня безопасны. Агентские кабинеты с фильтром
+// префиксов всё равно приходится СНАЧАЛА скачать целиком: у Оптимы три дня
+// не укладываются в бюджет функции до того, как код успевает отфильтровать
+// чужие товары. Для них ниже выбирается окно в один день; частый cron всё
+// равно быстро двигает историю назад.
+const DEFAULT_WINDOW_DAYS = 3;
+const FILTERED_CABINET_WINDOW_DAYS = 1;
 const HISTORY_DEPTH_DAYS = 180;
 
 interface PaidStorageJobState extends Record<string, unknown> {
@@ -69,6 +70,15 @@ function addDays(dateStr: string, days: number): string {
   return isoDate(d);
 }
 
+function paidStoragePrefixesForCabinet(cabinetId: string): string[] | null {
+  const cabinetBrands = OPIU_BRANDS.filter((brand) => brand.cabinetId === cabinetId);
+  const canFilterByPrefix = cabinetBrands.length > 0
+    && cabinetBrands.every((brand) => Boolean(brand.articlePrefixes?.length));
+  return canFilterByPrefix
+    ? [...new Set(cabinetBrands.flatMap((brand) => brand.articlePrefixes ?? []))]
+    : null;
+}
+
 interface CabinetResult {
   cabinet: string;
   status: string;
@@ -96,6 +106,8 @@ async function processCabinet(
   const saved = await readWbSyncState<PaidStorageJobState>(db, cabinetId, JOB);
   let state: PaidStorageJobState = saved?.state ?? {};
   let attempts = saved?.attempts ?? 0;
+  const prefixes = paidStoragePrefixesForCabinet(cabinetId);
+  const windowDays = prefixes ? FILTERED_CABINET_WINDOW_DAYS : DEFAULT_WINDOW_DAYS;
 
   if (!state.taskId) {
     const historyStart = state.historyStart ?? addDays(today, -HISTORY_DEPTH_DAYS);
@@ -110,7 +122,7 @@ async function processCabinet(
       // прежде чем продолжать бэкфилл вглубь истории. Не трогает frontier.
       mode = "recent";
       periodEnd = maxAllowedDate;
-      const windowStart = addDays(periodEnd, -(WINDOW_DAYS - 1));
+      const windowStart = addDays(periodEnd, -(windowDays - 1));
       periodStart = state.newestSynced && state.newestSynced >= windowStart
         ? addDays(state.newestSynced, 1)
         : windowStart;
@@ -127,7 +139,7 @@ async function processCabinet(
         });
         return { cabinet: target.name, status: "caught_up" };
       }
-      const windowStart = addDays(periodEnd, -(WINDOW_DAYS - 1));
+      const windowStart = addDays(periodEnd, -(windowDays - 1));
       periodStart = windowStart < historyStart ? historyStart : windowStart;
     }
 
@@ -252,12 +264,6 @@ async function processCabinet(
   // только префиксы брендов, реально используемых ОПиУ; если хотя бы один
   // бренд кабинета не имеет префикса, оставляем весь кабинет. Затем
   // сворачиваем проводки до дневной суммы по товару/артикулу.
-  const cabinetBrands = OPIU_BRANDS.filter((brand) => brand.cabinetId === cabinetId);
-  const canFilterByPrefix = cabinetBrands.length > 0
-    && cabinetBrands.every((brand) => Boolean(brand.articlePrefixes?.length));
-  const prefixes = canFilterByPrefix
-    ? [...new Set(cabinetBrands.flatMap((brand) => brand.articlePrefixes ?? []))]
-    : null;
   const filteredRows = filterPaidStorageRowsByPrefixes(download.rows, prefixes);
   const rowsWithCoverage = addPaidStorageCoverageRows(filteredRows, state.periodStart!, state.periodEnd!);
   const rows = compactPaidStorageRows(cabinetId, rowsWithCoverage);
