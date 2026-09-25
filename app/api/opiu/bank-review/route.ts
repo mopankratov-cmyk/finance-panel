@@ -170,7 +170,14 @@ export async function POST(request: Request) {
     const rows = found.data ?? [];
     const pair = findCertainTransferPairs(rows.map(row => ({id:row.id,date:row.date,amount:Number(row.amount),bankAccountNumber:row.bank_account_number ?? "",ownerInn:row.owner_inn ?? "",counterpartyInn:row.counterparty_inn ?? "",counterpartyAccount:(Array.isArray(row.reasons)?row.reasons:[]).find((r:string)=>r.startsWith(COUNTERPARTY_ACCOUNT_MARKER))?.slice(COUNTERPARTY_ACCOUNT_MARKER.length) ?? ""})))[0];
     if(!pair || pair.outgoingId!==body.outgoingId || pair.incomingId!==body.incomingId) return jsonError("Сумма, даты и реквизиты не подтверждают этот перевод",400);
-    const categories=transferCategories(rows.find(r=>r.id===pair.outgoingId)?.company_id ?? null,rows.find(r=>r.id===pair.incomingId)?.company_id ?? null);
+    const companyIds=[...new Set(rows.flatMap(row=>row.company_id?[String(row.company_id)]:[]))];
+    const companies=companyIds.length?await db.from("companies").select("id,name,group_name").in("id",companyIds):{data:[],error:null};
+    if(companies.error)return jsonError(companies.error.message,500);
+    const companyById=new Map((companies.data??[]).map(company=>[String(company.id),{id:String(company.id),name:String(company.name??""),groupName:String(company.group_name??"")}]));
+    const outgoingCompany=companyById.get(String(rows.find(r=>r.id===pair.outgoingId)?.company_id??""));
+    const incomingCompany=companyById.get(String(rows.find(r=>r.id===pair.incomingId)?.company_id??""));
+    if(!outgoingCompany||!incomingCompany)return jsonError("Сначала определите компании обеих сторон перевода",400);
+    const categories=transferCategories(outgoingCompany,incomingCompany);
     const linked=await db.rpc("link_bank_review_transfer",{p_outgoing:pair.outgoingId,p_incoming:pair.incomingId,p_outgoing_category:categories.outgoing,p_incoming_category:categories.incoming});
     if(linked.error)return jsonError(linked.error.message,400);
     return NextResponse.json({ok:true});
@@ -370,7 +377,7 @@ export async function POST(request: Request) {
       .map(s => text(s.row?.id,500)));
     const names = await loadAllSupabasePages<{id:string;name:string}>((from,to)=>db.from("companies").select("id,name").order("id").range(from,to),{label:"Компании выписок"});
     const dateRange = rows.map((row) => row.date).sort();
-    const candidates = await loadAllSupabasePages<{id:string;document_hash:string;external_id:string;date:string;amount:number;counterparty:string;counterparty_inn:string;purpose:string;reasons:unknown;company_id:string|null;account_id:string|null;category:string|null;status:ReviewStatus;manager_answer:string|null}>((from,to)=>db.from("bank_review_items").select("id,document_hash,external_id,date,amount,counterparty,counterparty_inn,purpose,reasons,company_id,account_id,category,status,manager_answer").eq("bank_account_number",bankAccountNumber).gte("date",dateRange[0]).lte("date",dateRange.at(-1)!).order("id").range(from,to),{label:"Сохранённые строки выписки"});
+    const candidates = await loadAllSupabasePages<{id:string;document_hash:string;external_id:string;date:string;amount:number;counterparty:string;counterparty_inn:string;purpose:string;reasons:unknown;company_id:string|null;account_id:string|null;category:string|null;status:ReviewStatus;manager_answer:string|null;matched_transfer_id:string|null}>((from,to)=>db.from("bank_review_items").select("id,document_hash,external_id,date,amount,counterparty,counterparty_inn,purpose,reasons,company_id,account_id,category,status,manager_answer,matched_transfer_id").eq("bank_account_number",bankAccountNumber).gte("date",dateRange[0]).lte("date",dateRange.at(-1)!).order("id").range(from,to),{label:"Сохранённые строки выписки"});
     const candidatesByIdentity = new Map(candidates.flatMap((candidate) => {
       const identity = operationIdentityFromReasons(candidate.reasons);
       return identity ? [[identity, candidate] as const] : [];
@@ -449,7 +456,8 @@ export async function POST(request: Request) {
       const recipientAliases = companyAliasKeys(row.counterparty + " " + row.purpose);
       const sourceName = companyNames.get(row.company_id ?? "") ?? "";
       const needsCashChain = row.amount < 0 && /основн|рио|митриченко|панкратов|кучеренко/i.test(sourceName) && recipientAliases.length > 0;
-      return selectedExternalIds.has(row.external_id) && ["ready","needs_info"].includes(row.status) && !row.manager_answer && explicitIds.has(row.external_id) && !needsCashChain
+      const categoryConfirmed = explicitIds.has(row.external_id) || Boolean(row.matched_transfer_id);
+      return selectedExternalIds.has(row.external_id) && ["ready","needs_info"].includes(row.status) && !row.manager_answer && categoryConfirmed && !needsCashChain
         && row.company_id && row.account_id && row.category && categoryMatchesDirection(row.category,row.amount)
         && (!requiresCounterparty(row.category) || row.counterparty.trim());
     }).map(row => row.id);
