@@ -14,7 +14,8 @@
 
 - No live network access to `api-seller.ozon.ru` from this environment (confirmed unreachable in an earlier session on this same task) — the accrual-types cache refresh (Task 2) cannot be exercised end-to-end here; verify it by reading the code against `ozonAccrualTypes()`'s already-tested contract, not by a live call.
 - Never call the Ozon API directly from a report/screen route — always read from already-synced Supabase tables (`docs/PROJECT-KNOWLEDGE.md` §1). `/api/opiu/ozon` only ever reads `ozon_accrual_rows`, `ozon_postings`, `ozon_ad_daily`, `ozon_accrual_types`, `wb_cabinets`.
-- Section boundaries are structural, not name-based (spec §3): `accrued_category = "POSTING" && type_id === OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID` → commission; `accrued_category = "POSTING"` otherwise → logistics; `accrued_category` is `"ITEM"` or `"NON_ITEM"` → other. Never introduce a name-based or hardcoded-category-list mapping — that was the rejected first design (spec §2).
+- Section boundaries for this plan are structural (spec §3): `accrued_category = "POSTING" && type_id === OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID` → commission; `accrued_category = "POSTING"` otherwise → logistics; `accrued_category` is `"ITEM"` or `"NON_ITEM"` → other. This is a safe, always-correct-total default — not a claim that the reference spreadsheet's category names are unreliable in general (they're from the same current API, spec §2). Refining specific categories out of these default buckets by real name (once this environment or Vercel prod can reach Ozon to confirm `ozon_accrual_types` entries) is a follow-up, not part of this plan.
+- «Продажи → Заказы» uses `extra.sale_amount` from the commission row (`accrued_category = "POSTING" && type_id = 69`) as a verified-but-interim stand-in for the sheet's "Доставка покупателю" category (spec §7) — not `ozon_postings.amount`. This is an approximation flagged in spec §13, not a settled design decision to defend going forward.
 - Ad spend comes from `ozon_ad_daily` with `sku = OZON_AD_CABINET_TOTAL_SKU` (`'*'`) only — never sum per-SKU rows for a total (`lib/ozon/adDailyMarkers.ts`'s own documented rule: doing so double-counts).
 - `Себестоимость` stays a stub (`kind: "stub"`, no amount, not in the total) — out of scope this round (spec §12).
 - Single date-range period only (`dateFrom`/`dateTo`) — no rolling-weeks mode, unlike the WB report (spec §9).
@@ -281,7 +282,7 @@ git commit -m "feat(ozon): schedule daily accrual-types cache refresh"
 
 ### Task 3: Pure report builder (`buildOzonOpiuReport`)
 
-This is the core business logic — the structural rules from spec §3/§4, fully unit-tested, no I/O.
+This is the core business logic — the structural rules from spec §3/§4 (Комиссия/Логистика/Прочие удержания) plus the interim `extra.sale_amount`-based Продажи figure from spec §7 — fully unit-tested, no I/O.
 
 **Files:**
 - Create: `lib/ozon/opiuOzonReport.ts`
@@ -372,7 +373,7 @@ test("ad spend is a positive input but shows as a negative amount and subtracts 
   assert.equal(report.total, -281524);
 });
 
-test("orders section buckets posting amounts by stage; Продажи nets out cancelled", () => {
+test("orders section buckets posting amounts by stage", () => {
   const report = buildOzonOpiuReport(
     baseInput({
       postings: [
@@ -384,18 +385,40 @@ test("orders section buckets posting amounts by stage; Продажи nets out c
   );
   const orders = report.sections.find((s) => s.key === "orders")!;
   assert.equal(orders.amount, 1250);
+});
+
+test("Продажи → Заказы comes from commission rows' extra.sale_amount, not from posting amounts (spec §7)", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({
+      postings: [{ status: "cancelled", amount: 200 }],
+      accrualRows: [
+        { accrued_category: "POSTING", type_id: 69, amount: -100, extra: { sale_amount: 1300 } },
+        { accrued_category: "POSTING", type_id: 69, amount: -50, extra: { sale_amount: 700 } },
+      ],
+    }),
+  );
   const sales = report.sections.find((s) => s.key === "sales")!;
-  assert.equal(sales.amount, 1050);
+  const ordersChild = sales.children.find((c) => c.label === "Заказы")!;
+  assert.equal(ordersChild.amount, 2000);
   const cancelledChild = sales.children.find((c) => c.label === "Возвраты и отмены")!;
   assert.equal(cancelledChild.amount, -200);
+  assert.equal(sales.amount, 2000 - 200);
+});
+
+test("a commission row with no extra field contributes zero to Заказы without throwing", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({ accrualRows: [{ accrued_category: "POSTING", type_id: 69, amount: -50 }] }),
+  );
+  const sales = report.sections.find((s) => s.key === "sales")!;
+  const ordersChild = sales.children.find((c) => c.label === "Заказы")!;
+  assert.equal(ordersChild.amount, 0);
 });
 
 test("total sums Продажи + Комиссия + Логистика + Реклама + Прочие удержания, excluding Себестоимость", () => {
   const report = buildOzonOpiuReport(
     baseInput({
-      postings: [{ status: "delivered", amount: 1000 }],
       accrualRows: [
-        { accrued_category: "POSTING", type_id: 69, amount: -100 },
+        { accrued_category: "POSTING", type_id: 69, amount: -100, extra: { sale_amount: 1000 } },
         { accrued_category: "POSTING", type_id: 32, amount: -50 },
         { accrued_category: "NON_ITEM", type_id: 12, amount: -20 },
       ],
@@ -465,6 +488,8 @@ export interface OzonOpiuAccrualInput {
   accrued_category: string;
   type_id: number;
   amount: number;
+  /** Только у строк-комиссий (type_id = OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID) — сумма продажи на момент начисления, используется для «Продажи → Заказы» (спека §7). */
+  extra?: { sale_amount?: number } | null;
 }
 
 export interface OzonOpiuPostingInput {
@@ -541,13 +566,16 @@ function toChildren(byType: Map<number, number>, typeNames: Map<number, string>)
 }
 
 /**
- * Разбивка по разделам — структурная, проверена по коду синка
- * (docs/superpowers/specs/2026-09-25-ozon-opiu-report-design.md §3), не по
- * названиям категорий: POSTING+69 — всегда синтетическая комиссия
- * (OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID, см. lib/ozon/accrualRows.ts), любая
- * другая POSTING-строка — всегда услуга доставки (по построению
- * flattenOzonAccrual), ITEM/NON_ITEM — «Прочие удержания». Ни одна строка не
- * может остаться без раздела.
+ * Разбивка по разделам (Комиссия/Логистика/Прочие удержания) — структурная,
+ * проверена по коду синка, не по названиям категорий: POSTING+69 — всегда
+ * синтетическая комиссия (OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID, см.
+ * lib/ozon/accrualRows.ts), любая другая POSTING-строка — всегда услуга
+ * доставки (по построению flattenOzonAccrual), ITEM/NON_ITEM — «Прочие
+ * удержания». Ни одна строка не может остаться без раздела — сумма «К
+ * выплате» верна независимо от того, насколько точно расставлены отдельные
+ * строки. «Продажи → Заказы» — исключение: она не структурная, а
+ * приближение через extra.sale_amount (спека §7), пока нет живого доступа к
+ * Ozon для точной сверки с эталонной таблицей.
  */
 export function buildOzonOpiuReport(input: OzonOpiuReportInput): OzonOpiuReport {
   const byStage = new Map<OzonPostingStage, number>();
@@ -562,29 +590,35 @@ export function buildOzonOpiuReport(input: OzonOpiuReportInput): OzonOpiuReport 
   }));
   const ordersTotal = ordersChildren.reduce((sum, c) => sum + c.amount, 0);
 
-  // Продажи = заказы за вычетом отменённых — не копия оригинальной таблицы
-  // (там сломана формула, см. спека §7), а честное определение "нетто" из
-  // уже надёжных данных по отправлениям.
-  const cancelledAmount = byStage.get("cancelled") ?? 0;
-  const salesOrdersAmount = ordersTotal - cancelledAmount;
-  const salesTotal = salesOrdersAmount - cancelledAmount;
-  const salesChildren: OzonOpiuChildRow[] = [
-    { key: "orders", label: "Заказы", amount: salesOrdersAmount },
-    { key: "cancelled", label: "Возвраты и отмены", amount: -cancelledAmount },
-  ];
-
   let commissionTotal = 0;
+  let salesOrdersAmount = 0;
   const logisticsByType = new Map<number, number>();
   const otherRows: OzonOpiuAccrualInput[] = [];
   for (const row of input.accrualRows) {
     if (row.accrued_category === "POSTING" && row.type_id === OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID) {
       commissionTotal += row.amount;
+      // Приближение к категории «Доставка покупателю» из эталонной таблицы —
+      // точный type_id для неё неизвестен без живого доступа к Ozon (спека
+      // §7). sale_amount — сумма продажи, зафиксированная на тот же момент
+      // начисления, что и комиссия; проверено на реальном примере.
+      salesOrdersAmount += row.extra?.sale_amount ?? 0;
     } else if (row.accrued_category === "POSTING") {
       logisticsByType.set(row.type_id, (logisticsByType.get(row.type_id) ?? 0) + row.amount);
     } else {
       otherRows.push(row);
     }
   }
+
+  // «Возвраты и отмены» — из отменённых отправлений (надёжный источник,
+  // отдельный от «Заказы» выше; спека §4/§7 не требует, чтобы оба числа шли
+  // из одного и того же места).
+  const cancelledAmount = byStage.get("cancelled") ?? 0;
+  const salesTotal = salesOrdersAmount - cancelledAmount;
+  const salesChildren: OzonOpiuChildRow[] = [
+    { key: "orders", label: "Заказы", amount: salesOrdersAmount },
+    { key: "cancelled", label: "Возвраты и отмены", amount: -cancelledAmount },
+  ];
+
   const otherByType = sumByType(otherRows);
   const logisticsChildren = toChildren(logisticsByType, input.typeNames);
   const otherChildren = toChildren(otherByType, input.typeNames);
@@ -617,7 +651,7 @@ export function buildOzonOpiuReport(input: OzonOpiuReportInput): OzonOpiuReport 
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `node --import tsx --test lib/ozon/opiuOzonReport.test.mts`
-Expected: PASS, 11/11
+Expected: PASS, 12/12
 
 - [ ] **Step 5: Typecheck**
 
@@ -687,7 +721,7 @@ export async function GET(request: NextRequest) {
   const [accrualRes, postingsRes, adRes, typeNames, knownTypeIds] = await Promise.all([
     db
       .from("ozon_accrual_rows")
-      .select("accrued_category, type_id, amount")
+      .select("accrued_category, type_id, amount, extra")
       .in("cabinet_id", cabinetIds)
       .gte("date", dateFrom)
       .lte("date", dateTo),
@@ -717,6 +751,7 @@ export async function GET(request: NextRequest) {
       accrued_category: String(r.accrued_category),
       type_id: Number(r.type_id),
       amount: Number(r.amount),
+      extra: (r.extra ?? null) as { sale_amount?: number } | null,
     })),
     postings: (postingsRes.data ?? []).map((r) => ({ status: String(r.status), amount: Number(r.amount) })),
     adSpend: (adRes.data ?? []).reduce((sum, r) => sum + Number(r.spent), 0),
