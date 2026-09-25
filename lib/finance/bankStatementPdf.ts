@@ -41,7 +41,8 @@ const system = `Ты распознаёшь российские банковс�
 
 Правила:
 - Перенеси ВСЕ операции со всех страниц в исходном порядке.
-- Списание всегда отрицательное, поступление всегда положительное.
+- Списание всегда отрицательное, поступление всегда положительное. В таблицах ВБ Банка колонка «По дебету» означает списание (минус), а «По кредиту» — поступление (плюс).
+- bank — банк из шапки выписки, обслуживающий счёт владельца. Банк контрагента внутри строки не является банком выписки.
 - Не дублируй одну операцию из-за повторяющихся заголовков или итоговых строк.
 - Для карточных операций контрагент — название магазина/получателя из описания, purpose — полное описание банка.
 - Для переводов без имени контрагента оставь counterparty пустым, но сохрани полное назначение.
@@ -73,8 +74,7 @@ function normalizeDate(value: unknown): string {
 }
 
 export function normalizeStatement(raw: RawStatement, documentHash: string): BankStatement {
-  const fingerprintOccurrences = new Map<string, number>();
-  const rows = (raw.rows ?? []).flatMap((row) => {
+  const parsedRows = (raw.rows ?? []).flatMap((row) => {
     const date = normalizeDate(row.date);
     const amount = Number(row.amount);
     if (!date || !Number.isFinite(amount) || amount === 0) return [];
@@ -83,17 +83,8 @@ export function normalizeStatement(raw: RawStatement, documentHash: string): Ban
     const documentNumber = String(row.documentNumber ?? "").trim();
     const counterpartyInn = String(row.counterpartyInn ?? "").replace(/\D/g, "");
     const counterpartyAccount = String(row.counterpartyAccount ?? "").replace(/\s+/g, "").trim();
-    const fingerprint = createHash("sha256")
-      .update(JSON.stringify([date, amount.toFixed(2), documentNumber.toLowerCase(), counterpartyAccount, counterpartyInn, counterparty.toLowerCase(), purpose.toLowerCase()]))
-      .digest("hex")
-      .slice(0, 32);
-    const occurrence = (fingerprintOccurrences.get(fingerprint) ?? 0) + 1;
-    fingerprintOccurrences.set(fingerprint, occurrence);
-    return [{ id: `${documentHash}:${fingerprint}:${occurrence}`, date, amount, counterparty, counterpartyInn, counterpartyAccount, purpose, documentNumber }];
+    return [{ date, amount, counterparty, counterpartyInn, counterpartyAccount, purpose, documentNumber }];
   });
-  const debit = rows.reduce((sum, row) => sum + Math.max(0, -row.amount), 0);
-  const credit = rows.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
-  const dates = rows.map((row) => row.date).sort();
   const openingBalance = Number(raw.openingBalance) || 0;
   const closingBalance = Number(raw.closingBalance) || 0;
   const rawDebit = Number(raw.declaredDebit);
@@ -103,15 +94,36 @@ export function normalizeStatement(raw: RawStatement, documentHash: string): Ban
     && Number.isFinite(Number(raw.openingBalance)) && Number.isFinite(Number(raw.closingBalance));
   const declaredBalancesReconcile = hasDeclaredTotals && hasBothBalances
     && Math.abs(openingBalance + rawCredit - rawDebit - closingBalance) <= 0.02;
-  // PDF сначала попадает в отдельную очередь проверки. В карточках показываем
-  // точную сумму извлечённых строк, а не потенциально ошибочно распознанную шапку.
   const warnings = Array.isArray(raw.warnings)
     ? raw.warnings.map(String).filter((warning) => !/сумм.*не совп|контрольн.*сумм|начальн.*конечн.*остат/i.test(warning))
     : [];
-  const headerTotalsUnavailable = (hasDeclaredTotals && (Math.abs(rawDebit - debit) > 0.01 || Math.abs(rawCredit - credit) > 0.01))
-    || (hasBothBalances && !declaredBalancesReconcile);
-  const notes = headerTotalsUnavailable
-    ? [`Итоги рассчитаны по распознанным операциям (${rows.length}). Контрольные значения шапки PDF будут подтверждены на этапе проверки.`]
+  const extractedDebit = parsedRows.reduce((sum, row) => sum + Math.max(0, -row.amount), 0);
+  const extractedCredit = parsedRows.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
+  const totalsMatch = (debit: number, credit: number) => hasDeclaredTotals
+    && Math.abs(rawDebit - debit) <= 0.02 && Math.abs(rawCredit - credit) <= 0.02;
+  const globallyReversed = !totalsMatch(extractedDebit, extractedCredit)
+    && totalsMatch(extractedCredit, extractedDebit);
+  if (globallyReversed) {
+    for (const row of parsedRows) row.amount = -row.amount;
+    warnings.push("Направления операций исправлены по контрольным итогам банка: дебет — списание, кредит — поступление");
+  }
+  const debit = parsedRows.reduce((sum, row) => sum + Math.max(0, -row.amount), 0);
+  const credit = parsedRows.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
+  const controlMismatch = hasDeclaredTotals && !totalsMatch(debit, credit);
+  if (controlMismatch) warnings.push("Суммы распознанных операций не совпали с контрольными итогами банка");
+  if (hasBothBalances && hasDeclaredTotals && !declaredBalancesReconcile) warnings.push("Начальный остаток, обороты и конечный остаток в распознанной шапке не сходятся");
+  const fingerprintOccurrences = new Map<string, number>();
+  const rows = parsedRows.map((row) => {
+    const fingerprint = createHash("sha256")
+      .update(JSON.stringify([row.date, row.amount.toFixed(2), row.documentNumber.toLowerCase(), row.counterpartyAccount, row.counterpartyInn, row.counterparty.toLowerCase(), row.purpose.toLowerCase()]))
+      .digest("hex").slice(0, 32);
+    const occurrence = (fingerprintOccurrences.get(fingerprint) ?? 0) + 1;
+    fingerprintOccurrences.set(fingerprint, occurrence);
+    return { ...row, id: `${documentHash}:${fingerprint}:${occurrence}` };
+  });
+  const dates = rows.map((row) => row.date).sort();
+  const notes = controlMismatch
+    ? [`Проверьте направления и полноту ${rows.length} распознанных операций перед добавлением.`]
     : [];
   return {
     documentHash,
@@ -123,8 +135,8 @@ export function normalizeStatement(raw: RawStatement, documentHash: string): Ban
     dateTo: normalizeDate(raw.dateTo) || dates.at(-1) || "",
     openingBalance,
     closingBalance,
-    declaredDebit: debit,
-    declaredCredit: credit,
+    declaredDebit: hasDeclaredTotals && !controlMismatch ? rawDebit : debit,
+    declaredCredit: hasDeclaredTotals && !controlMismatch ? rawCredit : credit,
     rows,
     warnings,
     notes,

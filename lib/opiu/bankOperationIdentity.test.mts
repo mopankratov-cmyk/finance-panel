@@ -77,3 +77,10 @@ test("legacy fallback refuses a different counterparty or an ambiguous match", (
   assert.equal(uniqueLegacyBankOperationMatch({ ...legacy, counterparty: "Другой контрагент" }, [legacy]), null);
   assert.equal(uniqueLegacyBankOperationMatch({ ...legacy, id: "incoming" }, [legacy, { ...legacy, id: "second" }]), null);
 });
+
+test("legacy fallback uses account and INN when a parser changed the displayed bank name", () => {
+  const stored = { ...legacy, bankAccountNumber: "40802810000000001234", counterpartyInn: "7704217370", counterpartyAccount: "40702810000000004321" };
+  const incoming = { ...stored, id: "incoming", counterparty: "Сбербанк" };
+  assert.equal(uniqueLegacyBankOperationMatch(incoming, [stored])?.id, "legacy");
+  assert.equal(uniqueLegacyBankOperationMatch({ ...incoming, bankAccountNumber: "40802810000000009999" }, [stored]), null);
+});

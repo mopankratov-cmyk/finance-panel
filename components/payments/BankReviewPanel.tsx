@@ -37,35 +37,33 @@ import { categoryMatchesDirection, requiresCounterparty } from "./bankAutoClassi
 import { suggestLoanSplits } from "./loanReviewSuggestion";
 import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
 import { loadFinanceState } from "@/lib/db";
-import { companyAliasKeys } from "@/lib/finance/companyAliases";
+import { preferredAliasCompany } from "@/lib/finance/companyAliases";
 import { bankStatementSourceAccounts } from "./ddsReconciliationAccounts";
+import { cashLoanScheduleOptions, isLoanRepaymentCategory, loanPaymentNeedsConfirmation } from "./cashLoanScheduleLink";
+import { closeLoanScheduleRows, loadLoanScheduleRows } from "@/components/loans/scheduleStore";
+import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
 // Статьи — из единого справочника (раньше свой список дублировал «Получение кредитов и займов»).
 
 const normalizeCompanyText = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]+/g, " ").trim();
 
 function mentionedCompanyId(item: BankReviewItem, companies: DdsCompany[]) {
-  const answer = normalizeCompanyText(item.managerAnswer ?? "");
-  if (!answer) return null;
+  const answer = normalizeCompanyText(`${item.managerAnswer ?? ""} ${item.counterparty} ${item.purpose}`);
   const direct = companies.find((company) => {
     const name = normalizeCompanyText(company.name).replace(/^(ип|ооо) /, "");
     return company.id !== item.companyId && Boolean(name) && answer.includes(name);
   });
   if (direct) return direct.id;
-  const aliasKeys = companyAliasKeys(answer);
-  if (aliasKeys.length) {
-    return companies.find((company) => company.id !== item.companyId
-      && aliasKeys.some((key) => normalizeCompanyText(company.name).includes(key)))?.id ?? null;
-  }
-  return null;
+  const aliased = preferredAliasCompany(answer,companies.filter((company)=>company.id!==item.companyId));
+  return aliased?.id ?? null;
 }
 
 function isRioCompany(company: DdsCompany | undefined) {
   const value = normalizeCompanyText(`${company?.groupName ?? ""} ${company?.name ?? ""}`);
-  return /рио|митриченко|панкратов|кучеренко/.test(value);
+  return /основн|рио|митриченко|панкратов|кучеренко/.test(value);
 }
 
-export function BankReviewPanel({ accounts, companies: providedCompanies }: { accounts: Account[]; companies: DdsCompany[] }) {
+export function BankReviewPanel({ accounts, companies: providedCompanies, paymentCompanies = new Map() }: { accounts: Account[]; companies: DdsCompany[]; paymentCompanies?: ReadonlyMap<string,string|null> }) {
   const [loadedCompanies, setLoadedCompanies] = useState<DdsCompany[]>([]);
   const companies = providedCompanies.length ? providedCompanies : loadedCompanies;
   const reloadCompanies = async () => {
@@ -93,6 +91,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
   const [queueFilter, setQueueFilter] = useState<"review" | "waiting" | "answered">("review");
   const [askItem, setAskItem] = useState<BankReviewItem | null>(null);
   const [askText, setAskText] = useState("");
+  const [scheduleRows,setScheduleRows]=useState<ScheduleRowRecord[]>([]);
+  const [loanLinks,setLoanLinks]=useState<Map<string,string>>(new Map());
   // Стабильная: общее окно держит на ней Escape и ловушку фокуса, а
   // пересоздание на каждую букву в поле вопроса возвращало бы фокус в шапку.
   const closeAsk = useCallback(() => setAskItem(null), []);
@@ -133,6 +133,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
     };
   }, []);
 
+  useEffect(()=>{let cancelled=false;loadLoanScheduleRows().then(result=>{if(!cancelled)setScheduleRows(result.rows);}).catch(()=>{});return()=>{cancelled=true;};},[]);
+
   useEffect(() => {
     if (!items.some((item) => item.status === "waiting_manager")) return;
     const timer = window.setInterval(() => void refresh(), 15_000);
@@ -164,7 +166,10 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
     const mustBeIntercompanyLoan = item.amount < 0
       && isRioCompany(sourceCompany)
       && Boolean(mentionedCompanyId(item, companies));
-    return !mustBeIntercompanyLoan && Boolean(item.companyId && hasBankAccount(item.accountId) && item.category
+    const loanReady = !item.category || !isLoanRepaymentCategory(item.category)
+      || cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category})
+        .some(option=>option.rowIds.length>0&&option.key===loanLinks.get(item.id));
+    return !mustBeIntercompanyLoan && loanReady && Boolean(item.companyId && hasBankAccount(item.accountId) && item.category
       && categoryMatchesDirection(item.category, item.amount)
       && (!requiresCounterparty(item.category) || item.counterparty.trim()));
   };
@@ -186,7 +191,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
         if (!splits) return [{
           date: item.date, amount: item.amount, name: item.purpose, category: item.category!,
           wallet: accountById.get(item.accountId!) ?? "", counterparty: item.counterparty, activity: "",
-          company: companyById.get(item.companyId!) ?? "", companyId: item.companyId, comment: `Банковская выписка · ${item.sourceFileName}${item.matchedTransferId ? ` [dds-bank-transfer:${[item.id,item.matchedTransferId].sort()[0]}]` : ""}`,
+          company: companyById.get(item.companyId!) ?? "", companyId: item.companyId, comment: `${item.paymentComment ? `${item.paymentComment} · ` : ""}Банковская выписка · ${item.sourceFileName}${item.matchedTransferId ? ` [dds-bank-transfer:${[item.id,item.matchedTransferId].sort()[0]}]` : ""}`,
           importSource: `bank-review:${item.id}`,
         }];
         return splits.filter((split) => !split.excluded).map((split, index) => ({
@@ -199,7 +204,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
           activity: "",
           company: companyById.get(split.companyId!) ?? "",
           companyId: split.companyId,
-          comment: `Часть банковской операции ${formatMoney(Math.abs(item.amount))} · ${item.sourceFileName}`,
+          comment: `${item.paymentComment ? `${item.paymentComment} · ` : ""}Часть банковской операции ${formatMoney(Math.abs(item.amount))} · ${item.sourceFileName}`,
           importSource: index === 0 ? `bank-review:${item.id}` : `bank-review:${item.id}:split:${index}`,
         }));
       });
@@ -219,10 +224,24 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
         confirm(
           `${plan.suspectedRows.length} платеж(а) совпали по дате, сумме и кошельку с уже сохранёнными. Всё равно добавить их как новые?`,
         );
+      const acceptedSuspectedIds = acceptSuspected ? new Set(plan.suspectedRows.map((row) => row.row.id)) : new Set<string>();
       await commitImport(
         plan,
-        acceptSuspected ? new Set(plan.suspectedRows.map((row) => row.row.id)) : new Set(),
+        acceptedSuspectedIds,
       );
+      for(const item of targetItems){
+        const selectedKey=loanLinks.get(item.id);
+        if(!selectedKey)continue;
+        const options=cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category??""});
+        const option=options.find(candidate=>candidate.key===selectedKey);
+        const paymentRow=[...plan.newPaymentRows,...plan.suspectedRows.filter(row=>acceptedSuspectedIds.has(row.row.id)).map(row=>row.row)].find(row=>row.import_source===`bank-review:${item.id}`);
+        if(option?.rowIds.length&&paymentRow){
+          const mismatch=loanPaymentNeedsConfirmation(item.amount,option.amount);
+          if(mismatch&&!confirm(`Сумма платежа ${formatMoney(Math.abs(item.amount))} отличается от графика ${formatMoney(option.amount)}. Всё равно связать?`))continue;
+          try { await closeLoanScheduleRows(option.rowIds,paymentRow.id,mismatch); }
+          catch(error){ alert(`Платёж сохранён, но график кредита не обновлён: ${error instanceof Error?error.message:"неизвестная ошибка"}. Его можно привязать на экране кредита.`); }
+        }
+      }
       await markReviewItems(targetItems.map((item) => item.id), "approved");
       dispatch({ type: "LOAD", payload: await loadFinanceState() });
       setSelected((current) => {
@@ -421,6 +440,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies }: { ac
                     void updateLocal(item.id, {counterparty, status: valid ? "ready" : "needs_info"});
                   }}/>
                 </div>
+                <label className="block text-xs text-slate-500">Комментарий к платежу<textarea aria-label={`Комментарий к платежу от ${item.date} на ${formatMoney(item.amount)}`} value={item.paymentComment} disabled={saving} rows={2} onChange={(event) => setItems((current) => current.map((row) => row.id===item.id ? {...row,paymentComment:event.target.value}:row))} onBlur={(event) => void updateLocal(item.id,{paymentComment:event.target.value})} placeholder="Пояснение, которое сохранится в ДДС" className="mt-1 min-h-11 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900" /></label>
+                {item.category&&isLoanRepaymentCategory(item.category)&&(()=>{const options=cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category!});return <label className="block text-xs text-slate-500">Связать с графиком кредита<select value={loanLinks.get(item.id)??""} onChange={event=>setLoanLinks(current=>new Map(current).set(item.id,event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900"><option value="">Выберите кредит и дату платежа</option>{options.filter(option=>option.rowIds.length>0).map(option=><option key={option.key} value={option.key}>{option.loanName} · {option.label}</option>)}</select>{!options.some(option=>option.rowIds.length>0)&&<span className="mt-1 block text-amber-700">В графиках нет открытой строки для этой статьи. Добавьте или проверьте график в разделе кредитов.</span>}</label>;})()}
                 {!companies.length && <p role="status" className="text-xs text-amber-800">Список компаний пуст или не загрузился. <button type="button" onClick={() => void reloadCompanies()} className="min-h-11 underline">Загрузить компании повторно</button></p>}
                 {decodeBankSplits(item.managerAnswer)?.some(split=>!split.excluded&&requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">В разбиении есть расход основной группы на Коровкина. Откройте «Разбивка внутри операции»: выдача и получение займа будут оформлены через наличные вместе с расходом.</p>}
                 {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}

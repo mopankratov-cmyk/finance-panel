@@ -15,6 +15,8 @@ import { bankOperationIdentity, operationIdentityFromReasons, uniqueLegacyBankOp
 import { bankLedgerProjectionPayload } from "@/lib/finance/bankLedgerProjection";
 import type { BankStatement } from "@/lib/finance/bankStatementGrid";
 import { isEmailStatementImportRequest } from "@/lib/opiu/emailStatementImportAuth";
+import { withPaymentComment } from "@/lib/opiu/bankReviewMetadata";
+import { isLoanRepaymentCategory } from "@/components/payments/cashLoanScheduleLink";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -36,6 +38,7 @@ type SuggestionInput = {
   needsReview?: boolean;
   categoryConfirmed?: boolean;
   transferCandidateId?: string | null;
+  paymentComment?: string;
 };
 
 const ACTIVE_STATUSES: ReviewStatus[] = ["ready", "needs_info", "waiting_manager"];
@@ -255,11 +258,11 @@ export async function POST(request: Request) {
         purpose: row?.purpose,
       }) ?? (text(suggestion.category, 255) || null),
       confidence: Math.min(1, Math.max(0, Number(suggestion.confidence) || 0)),
-      reasons: [
+      reasons: withPaymentComment([
         ...(Array.isArray(suggestion.reasons) ? suggestion.reasons.slice(0, 18).map((reason) => text(reason, 500)) : []),
         `${COUNTERPARTY_ACCOUNT_MARKER}${text(row?.counterpartyAccount, 40).replace(/\D/g, "")}`,
         operationIdentity,
-      ].filter((reason): reason is string => Boolean(reason)),
+      ].filter((reason): reason is string => Boolean(reason)), text(suggestion.paymentComment)),
       status: suggestion.needsReview ? "needs_info" : "ready",
       matched_transfer_id: null,
     }];
@@ -303,30 +306,53 @@ export async function POST(request: Request) {
       if (identity) existingIdentities.add(identity);
     }
   }
-  if (bankAccountNumber && ownerInn && incomingIdentities.size) {
-    type LegacyRow = { id:string; external_id:string; date:string; amount:number; counterparty:string; purpose:string; company_id:string|null; account_id:string|null; counterparty_inn:string; reasons:unknown };
-    const legacyRows = await loadAllSupabasePages<LegacyRow>((from, to) => db
+  if (bankAccountNumber && incomingIdentities.size) {
+    type LegacyRow = { id:string; external_id:string; date:string; amount:number; bank_account_number:string; counterparty:string; purpose:string; company_id:string|null; account_id:string|null; counterparty_inn:string; reasons:unknown; status:ReviewStatus };
+    const sameAccountLegacy = await loadAllSupabasePages<LegacyRow>((from, to) => db
       .from("bank_review_items")
-      .select("id,external_id,date,amount,counterparty,purpose,company_id,account_id,counterparty_inn,reasons")
+      .select("id,external_id,date,amount,bank_account_number,counterparty,purpose,company_id,account_id,counterparty_inn,reasons,status")
+      .eq("bank_account_number", bankAccountNumber)
+      .gte("date", dates[0])
+      .lte("date", dates.at(-1)!)
+      .order("id")
+      .range(from, to), { label: "Проверка старых строк перекрывающейся выписки" });
+    const missingAccountLegacy = ownerInn ? await loadAllSupabasePages<LegacyRow>((from, to) => db
+      .from("bank_review_items")
+      .select("id,external_id,date,amount,bank_account_number,counterparty,purpose,company_id,account_id,counterparty_inn,reasons,status")
       .eq("bank_account_number", "")
       .eq("owner_inn", ownerInn)
       .gte("date", dates[0])
       .lte("date", dates.at(-1)!)
       .order("id")
-      .range(from, to), { label: "Проверка старых строк перекрывающейся выписки" });
+      .range(from, to), { label: "Проверка старых строк без номера счёта" }) : [];
+    const legacyRows = [...sameAccountLegacy, ...missingAccountLegacy]
+      .filter((row, index, all) => !operationIdentityFromReasons(row.reasons) && all.findIndex((item) => item.id === row.id) === index);
     const claimedLegacyIds = new Set<string>();
     for (const row of rows) {
       const identity = operationIdentityFromReasons(row.reasons);
-      if (!identity || existingIdentities.has(identity)) continue;
+      if (!identity) continue;
+      const counterpartyAccount = row.reasons.find((reason) => reason.startsWith(COUNTERPARTY_ACCOUNT_MARKER))?.slice(COUNTERPARTY_ACCOUNT_MARKER.length) ?? "";
       const match = uniqueLegacyBankOperationMatch({
         id: row.id, externalId: row.external_id, date: row.date, amount: row.amount,
-        counterparty: row.counterparty, purpose: row.purpose,
+        bankAccountNumber, counterparty: row.counterparty, counterpartyInn: row.counterparty_inn,
+        counterpartyAccount, purpose: row.purpose,
       }, legacyRows.filter((candidate) => !claimedLegacyIds.has(candidate.id)).map((candidate) => ({
         id: candidate.id, externalId: candidate.external_id, date: candidate.date, amount: Number(candidate.amount),
-        counterparty: candidate.counterparty, purpose: candidate.purpose,
+        bankAccountNumber: candidate.bank_account_number, counterparty: candidate.counterparty,
+        counterpartyInn: candidate.counterparty_inn,
+        counterpartyAccount: (Array.isArray(candidate.reasons) ? candidate.reasons.map(String) : []).find((reason) => reason.startsWith(COUNTERPARTY_ACCOUNT_MARKER))?.slice(COUNTERPARTY_ACCOUNT_MARKER.length) ?? "",
+        purpose: candidate.purpose,
       })));
       if (!match) continue;
       const legacy = legacyRows.find((candidate) => candidate.id === match.id)!;
+      if (existingIdentities.has(identity)) {
+        if (ACTIVE_STATUSES.includes(legacy.status)) {
+          const rejected = await db.from("bank_review_items").update({ status: "rejected", updated_at: new Date().toISOString() }).eq("id", legacy.id);
+          if (rejected.error) return jsonError(rejected.error.message, 500);
+        }
+        claimedLegacyIds.add(legacy.id);
+        continue;
+      }
       const technicalReasons = row.reasons.filter((reason) => reason.startsWith("__"));
       const humanReasons = (Array.isArray(legacy.reasons) ? legacy.reasons.map(String) : [])
         .filter((reason) => !reason.startsWith("__") && !/^Кошелёк определён по /i.test(reason));
@@ -335,6 +361,9 @@ export async function POST(request: Request) {
         owner_inn: ownerInn,
         company_id: row.company_id ?? legacy.company_id,
         account_id: row.account_id ?? legacy.account_id,
+        category: row.category,
+        purpose: row.purpose,
+        counterparty: row.counterparty,
         counterparty_inn: row.counterparty_inn || legacy.counterparty_inn,
         reasons: Array.from(new Set([...humanReasons, "Расчётный счёт подтверждён повторной выпиской", ...technicalReasons])),
         updated_at: new Date().toISOString(),
@@ -389,6 +418,7 @@ export async function POST(request: Request) {
     const candidatesByExternalId = new Map(candidates.map((candidate) =>
       [`${candidate.document_hash}:${candidate.external_id}`, candidate] as const));
     const legacyIdentityBackfill: { id: string; reasons: string[] }[] = [];
+    const candidateRefreshes: Array<{id:string; values:Record<string,unknown>}> = [];
     const stored = rows.flatMap((sourceRow) => {
       const identity = operationIdentityFromReasons(sourceRow.reasons);
       const candidate = (identity ? candidatesByIdentity.get(identity) : undefined)
@@ -401,13 +431,33 @@ export async function POST(request: Request) {
           reasons: [...(Array.isArray(candidate.reasons) ? candidate.reasons.map(String) : []), identity],
         });
       }
-      return candidate ? [{ ...candidate, external_id: sourceRow.external_id }] : [];
+      if (!candidate) return [];
+      if (ACTIVE_STATUSES.includes(candidate.status)) {
+        const merged = {
+          ...candidate,
+          external_id: sourceRow.external_id,
+          company_id: sourceRow.company_id ?? candidate.company_id,
+          account_id: sourceRow.account_id ?? candidate.account_id,
+          category: sourceRow.category ?? candidate.category,
+          purpose: sourceRow.purpose || candidate.purpose,
+          counterparty: sourceRow.counterparty || candidate.counterparty,
+          counterparty_inn: sourceRow.counterparty_inn || candidate.counterparty_inn,
+          reasons: Array.from(new Set([...(Array.isArray(candidate.reasons) ? candidate.reasons.map(String) : []), ...sourceRow.reasons])),
+        };
+        candidateRefreshes.push({id:candidate.id,values:{company_id:merged.company_id,account_id:merged.account_id,category:merged.category,purpose:merged.purpose,counterparty:merged.counterparty,counterparty_inn:merged.counterparty_inn,reasons:merged.reasons,updated_at:new Date().toISOString()}});
+        return [merged];
+      }
+      return [{ ...candidate, external_id: sourceRow.external_id }];
     });
     if (stored.length !== rows.length) {
       return jsonError("Не все строки выписки удалось связать с банковскими операциями. Импорт остановлен до проведения платежей.", 500);
     }
     for (const legacyRow of legacyIdentityBackfill) {
       await db.from("bank_review_items").update({ reasons: legacyRow.reasons }).eq("id", legacyRow.id);
+    }
+    for (const refresh of candidateRefreshes) {
+      const updated = await db.from("bank_review_items").update(refresh.values).eq("id",refresh.id);
+      if(updated.error)return jsonError(updated.error.message,500);
     }
     const selectedExternalIds=new Set(rows.map(row=>row.external_id));
     const ledgerStatement: BankStatement = {
@@ -458,6 +508,7 @@ export async function POST(request: Request) {
       const needsCashChain = row.amount < 0 && /основн|рио|митриченко|панкратов|кучеренко/i.test(sourceName) && recipientAliases.length > 0;
       const categoryConfirmed = explicitIds.has(row.external_id) || Boolean(row.matched_transfer_id);
       return selectedExternalIds.has(row.external_id) && ["ready","needs_info"].includes(row.status) && !row.manager_answer && categoryConfirmed && !needsCashChain
+        && !isLoanRepaymentCategory(row.category ?? "")
         && row.company_id && row.account_id && row.category && categoryMatchesDirection(row.category,row.amount)
         && (!requiresCounterparty(row.category) || row.counterparty.trim());
     }).map(row => row.id);
@@ -560,6 +611,11 @@ export async function PATCH(request: Request) {
   if ("counterparty" in body.patch) patch.counterparty = text(body.patch.counterparty);
   if ("managerQuestion" in body.patch) patch.manager_question = text(body.patch.managerQuestion);
   if ("managerAnswer" in body.patch) patch.manager_answer = text(body.patch.managerAnswer);
+  if ("paymentComment" in body.patch) {
+    const current = await db.from("bank_review_items").select("reasons").eq("id",body.id).maybeSingle();
+    if(current.error)return jsonError(current.error.message,500);
+    patch.reasons = withPaymentComment(current.data?.reasons,text(body.patch.paymentComment));
+  }
   if ("status" in body.patch) {
     const status = text(body.patch.status, 30) as ReviewStatus;
     if (!ALL_STATUSES.includes(status)) return jsonError("Некорректный статус", 400);

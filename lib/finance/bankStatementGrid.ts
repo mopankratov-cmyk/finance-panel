@@ -90,10 +90,15 @@ const aliases = {
  * `documentHash` — SHA-256 файла; id строки = хеш + номер строки листа.
  */
 export function statementFromGrid(grid: string[][], metadata: string, documentHash: string): BankStatement {
-  const headerIndex = grid.findIndex((row) => {
-    const headers = row.map(normalize);
-    const hasDate = headers.some((cell) => aliases.date.includes(cell as never));
-    const hasMoney = headers.some((cell) => [...aliases.debit, ...aliases.credit, ...aliases.amount].includes(cell as never));
+  const headerIndex = grid.findIndex((row, rowIndex) => {
+    const next = grid[rowIndex + 1] ?? [];
+    const currentHeaders = row.map(normalize);
+    const headers = row.map((cell, index) => normalize(`${cell ?? ""} ${next[index] ?? ""}`));
+    const matches = (cell: string, names: readonly string[]) => names.some((name) => cell === name || cell.includes(name));
+    // Дата начинается в первой строке шапки. Это отсекает строку контрольных
+    // итогов непосредственно над таблицей, которая иначе склеивалась с шапкой.
+    const hasDate = currentHeaders.some((cell) => matches(cell, aliases.date));
+    const hasMoney = headers.some((cell) => matches(cell, [...aliases.debit, ...aliases.credit, ...aliases.amount]));
     return hasDate && hasMoney;
   });
   if (headerIndex < 0) {
@@ -142,11 +147,19 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
   const creditColumn = column(aliases.credit);
   const amountColumn = column(aliases.amount);
   const directionColumn = column(aliases.direction);
-  const documentColumn = column(aliases.document);
+  const documentColumn = (() => {
+    const continuationNumber = headerContinuation.findIndex((cell) => normalize(cell ?? "") === "номер");
+    return continuationNumber >= 0 ? continuationNumber : column(aliases.document, ["тип", "счет", "счёт"]);
+  })();
   const accountColumn = column(aliases.account, ["контрагент", "получател", "плательщик", "корр", "банк"]);
-  const counterpartyColumn = column(aliases.counterparty);
-  const innColumn = column(aliases.inn, ["контрагент", "наименование"]);
-  const counterpartyAccountColumn = column([...aliases.counterpartyAccount, "счет бик банка"]);
+  const counterpartyNameColumn = headerContinuation.findIndex((cell) => /^(?:наименование\s*ф\s*и\s*о|наименование фио)$/.test(normalize(cell ?? "")));
+  const counterpartyColumn = counterpartyNameColumn >= 0 ? counterpartyNameColumn : column(aliases.counterparty, ["банк"]);
+  const explicitInnColumn = headerContinuation.findIndex((cell) => /^инн(?:\s+кио)?$/.test(normalize(cell ?? "")));
+  const innColumn = explicitInnColumn >= 0 ? explicitInnColumn : column(aliases.inn, ["контрагент", "наименование"]);
+  const explicitCounterpartyAccountColumn = headerContinuation.findIndex((cell) => /^номер счета(?:\s+специального банковского счета)?$/.test(normalize(cell ?? "")));
+  const counterpartyAccountColumn = explicitCounterpartyAccountColumn >= 0
+    ? explicitCounterpartyAccountColumn
+    : column([...aliases.counterpartyAccount, "счет бик банка"]);
   const purposeColumn = column(aliases.purpose);
   const operations: BankStatementRow[] = [];
   const accountCounts = new Map<string, number>();
@@ -218,16 +231,23 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
   if (controlDebit && Math.abs(actualDebit - controlDebit) > 0.01) warnings.push("Сумма расходов не совпала с контрольной суммой банка");
   if (controlCredit && Math.abs(actualCredit - controlCredit) > 0.01) warnings.push("Сумма поступлений не совпала с контрольной суммой банка");
   const dates = operations.map((row) => row.date).sort();
-  const ownerAccountNumber = metadata.match(/(?:Счет|Счёт)\s*:?\s*(\d{15,25})/i)?.[1] ?? "";
+  const ownerAccountNumber = valueAfterLabel(grid, /^выписка операций по счету$/).replace(/\D/g, "")
+    || metadata.match(/(?:Счет|Счёт)\s*:?\s*(\d{15,25})/i)?.[1]
+    || "";
   const accountNumber = ownerAccountNumber
     || [...accountCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
     || "";
 
-  const owner = metadata.match(/(?:Клиент|Владелец|Наименование\s+клиента|Наименование\s+организации)\s*:?\s*([^<]{3,160}?)(?=\s+ИНН\s*:|\s+Счет\s*:|\s+Счёт\s*:)/i)?.[1]?.trim() ?? "";
-  const ownerInn = metadata.match(/ИНН\s*:?\s*(\d{10,12})/i)?.[1] ?? "";
+  const owner = metadata.match(/(?:Клиент|Владелец|Наименование\s+клиента|Наименование\s+организации)\s*:?\s*([^<]{3,160}?)(?=\s+ИНН\s*:|\s+Счет\s*:|\s+Счёт\s*:)/i)?.[1]?.trim()
+    || grid.flat().find((cell) => /^(?:индивидуальный предприниматель|ип)\s+/i.test(cell?.trim() ?? ""))?.trim()
+    || "";
+  const ownerInn = valueAfterLabel(grid, /^инн кио$/).replace(/\D/g, "")
+    || metadata.match(/ИНН\s*:?\s*(\d{10,12})/i)?.[1]
+    || "";
   const operationHeaderIndex = metadata.search(/\bДата\s+(?:Номер документа\s+)?(?:Дебет|Списание|Сумма)/i);
   const statementHeader = operationHeaderIndex >= 0 ? metadata.slice(0, operationHeaderIndex) : metadata.slice(0, 1_000);
   const bank = /озон банк|ozon bank/i.test(statementHeader) ? "Ozon Банк"
+    : /(?:ооо?|оо)\s*[«\"]?вб банк|\bвб банк\b/i.test(statementHeader) ? "ВБ Банк"
     : /банк точка|точка банк/i.test(statementHeader) ? "Банк Точка"
       : /т[- ]?банк|тинькофф/i.test(statementHeader) ? "Т-Банк"
         : "Банковская выписка";

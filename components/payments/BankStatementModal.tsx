@@ -42,6 +42,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   const [categories, setCategories] = useState<Map<string, string>>(new Map());
   const [counterpartyOverrides, setCounterpartyOverrides] = useState<Map<string,string>>(new Map());
   const [purposeOverrides, setPurposeOverrides] = useState<Map<string,string>>(new Map());
+  const [commentOverrides, setCommentOverrides] = useState<Map<string,string>>(new Map());
   const [included, setIncluded] = useState<Set<string>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [loading, setLoading] = useState(false);
@@ -67,6 +68,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setConfirmedCategories(new Set());
     setCounterpartyOverrides(new Map());
     setPurposeOverrides(new Map());
+    setCommentOverrides(new Map());
     setIncluded(new Set());
     setBulkCategory("");
     setSuggestions([]);
@@ -107,6 +109,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       ));
       setCounterpartyOverrides(new Map());
       setPurposeOverrides(new Map());
+      setCommentOverrides(new Map());
       setFileName(file.name);
       setControlMismatchAccepted(false);
       setIncluded(new Set(parsed.rows.map((row) => row.id)));
@@ -226,6 +229,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
             companyId: rowCompanyId,
             accountId: resolvedAccountId,
             category,
+            paymentComment: commentOverrides.get(suggestion.row.id) ?? "",
             confidence,
             categoryConfirmed: confirmedCategories.has(suggestion.row.id),
             needsReview: !category || !rowCompanyId || confidence < 0.85 || (requiresCounterparty(category) && !suggestion.row.counterparty.trim()),
@@ -248,7 +252,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   };
 
   if (!open) return null;
-  const hasControlMismatch = statement?.warnings.some((warning) => warning.includes("не совпала с контрольной суммой")) ?? false;
+  const hasControlMismatch = statement?.warnings.some((warning) => /не совпал|не сход/i.test(warning)) ?? false;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-5">
       <button type="button" aria-label="Закрыть" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
@@ -348,7 +352,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
               <div className="max-h-[45dvh] overflow-auto overscroll-contain rounded-lg border border-slate-200">
                 <table className="w-full table-fixed text-xs">
                   <thead className="sticky top-0 bg-slate-50 text-left text-slate-500">
-                    <tr><th className="w-16 p-2">Добавить</th><th className="w-24 p-2">Дата</th><th className="w-32 p-2 text-right">Сумма</th><th className="w-[18%] p-2">Контрагент</th><th className="p-2">Назначение</th><th className="w-72 p-2">Статья</th></tr>
+                    <tr><th className="w-16 p-2">Добавить</th><th className="w-24 p-2">Дата</th><th className="w-32 p-2 text-right">Сумма</th><th className="w-[18%] p-2">Контрагент</th><th className="p-2">Назначение</th><th className="w-52 p-2">Комментарий</th><th className="w-72 p-2">Статья</th></tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {statement.rows.map((row) => (
@@ -367,6 +371,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                             className="min-h-11 w-full resize-y rounded border border-slate-300 px-2 py-1.5"
                           />
                         </td>
+                        <td className="p-2"><textarea aria-label={`Комментарий к операции от ${row.date} на ${formatMoney(row.amount)}`} value={commentOverrides.get(row.id) ?? ""} disabled={loading} rows={2} onChange={(event) => setCommentOverrides((current) => new Map(current).set(row.id,event.target.value))} placeholder="Ваше пояснение" className="min-h-11 w-full resize-y rounded border border-slate-300 px-2 py-1.5" /></td>
                         <td className="p-2">
                           <select value={categories.get(row.id) ?? ""} onChange={(e) => setCategory(row.id, e.target.value)} className="min-h-10 w-full rounded border border-slate-300 px-2">
                             <option value="">Выберите статью</option>

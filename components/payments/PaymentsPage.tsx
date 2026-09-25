@@ -482,7 +482,7 @@ export function PaymentsPage() {
         <DdsReport payments={ddsPayments} companies={companies} onOpenPayments={openDdsPayments} />
       </TabPanel>
       <TabPanel {...panel("review")}>
-        <BankReviewPanel accounts={state.accounts} companies={companies} />
+        <BankReviewPanel accounts={state.accounts} companies={companies} paymentCompanies={companyByPayment} />
       </TabPanel>
       <TabPanel {...panel("reconciliation")}>
         <BankReconciliationPanel accounts={state.accounts} payments={ddsPayments} onImportStatement={() => setBankImportOpen(true)} onOpenReview={() => setMode("review")} />
