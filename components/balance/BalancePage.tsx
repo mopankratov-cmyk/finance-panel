@@ -31,6 +31,11 @@ type MarketplaceCashRow = { sourceKey: string; label: string; amount: number | n
 type MarketplaceCashCategory = { complete: boolean; amount: number | null; rows: MarketplaceCashRow[]; errors: string[] };
 type CashSnapshot = { amount: number | null; complete: boolean; bank: { amount: number | null; complete: boolean; accounts: BankCashAccount[] }; marketplaces: { wb: MarketplaceCashCategory; ozon: MarketplaceCashCategory } };
 type CashDetailKind = "bank" | "wb" | "ozon";
+type CashSourceTest = {
+  capturedAt: string;
+  cashSummaries: Array<{ sourceKey: string; marketplace: "wb" | "ozon"; cabinetName: string; amount: number | null; availableAmount: number | null; currency: string; status: string; error: string | null }>;
+  errors: string[];
+};
 
 const INVENTORY_LABELS: Record<InventoryKind, string> = {
   fulfillment: "На фулфилменте",
@@ -174,6 +179,9 @@ export function BalancePage() {
   const [refreshing, setRefreshing] = useState(false);
   const [detailKind, setDetailKind] = useState<InventoryKind | null>(null);
   const [cashDetailKind, setCashDetailKind] = useState<CashDetailKind | null>(null);
+  const [testingSources, setTestingSources] = useState(false);
+  const [sourceTest, setSourceTest] = useState<CashSourceTest | null>(null);
+  const [sourceTestError, setSourceTestError] = useState<string | null>(null);
 
   const refreshExternal = useCallback(async () => {
     setRefreshing(true);
@@ -208,6 +216,24 @@ export function BalancePage() {
   }, [month]);
 
   useEffect(() => { void refreshExternal(); }, [refreshExternal]);
+
+  const testSources = useCallback(async () => {
+    setTestingSources(true);
+    setSourceTestError(null);
+    try {
+      const response = await fetch("/api/sync/trigger?job=balance-monthly-stock&dryRun=1", { method: "POST" });
+      const body = await response.json().catch(() => ({})) as { error?: string; result?: CashSourceTest } & Partial<CashSourceTest>;
+      const result = body.result ?? (body.cashSummaries ? body as CashSourceTest : null);
+      if (!result) throw new Error(body.error || `Проверка вернула ошибку ${response.status}`);
+      setSourceTest(result);
+      if (!response.ok && !result.cashSummaries?.length) throw new Error(body.error || `Проверка вернула ошибку ${response.status}`);
+    } catch (error) {
+      setSourceTest(null);
+      setSourceTestError(error instanceof Error ? error.message : "Не удалось проверить источники");
+    } finally {
+      setTestingSources(false);
+    }
+  }, []);
 
   const cash = cashSnapshot?.amount ?? null;
   const loanSnapshot = useMemo(() => loanLiabilitySnapshot(state.loans, scheduleRows, asOf), [asOf, scheduleRows, state.loans]);
@@ -246,8 +272,21 @@ export function BalancePage() {
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:opacity-60">
             <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> Обновить
           </button>
+          <button type="button" onClick={() => void testSources()} disabled={testingSources}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60">
+            <RefreshCw className={`h-4 w-4 ${testingSources ? "animate-spin" : ""}`} /> {testingSources ? "Проверяем…" : "Проверить источники"}
+          </button>
         </div>
       </div>
+
+      {(sourceTest || sourceTestError) ? (
+        <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${sourceTestError || sourceTest?.errors.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
+          <p className="font-semibold">Тест без записи{sourceTest?.capturedAt ? ` · ${new Date(sourceTest.capturedAt).toLocaleString("ru-RU")}` : ""}</p>
+          {sourceTestError ? <p className="mt-1">{sourceTestError}</p> : null}
+          {sourceTest?.cashSummaries.map((item) => <p key={item.sourceKey} className="mt-1">{item.marketplace.toUpperCase()} · {item.cabinetName}: {money(item.amount)}{item.availableAmount !== null ? ` · доступно к выводу ${money(item.availableAmount)}` : ""}{item.error ? ` · ${item.error}` : ""}</p>)}
+          {sourceTest?.errors.map((error, index) => <p key={`${error}-${index}`} className="mt-1">Ошибка: {error}</p>)}
+        </div>
+      ) : null}
 
       <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Metric label="Подключённые активы" value={money(totals?.assets ?? null)} note="Деньги + все товарные остатки" tone="emerald" />
