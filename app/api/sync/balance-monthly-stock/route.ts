@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
 import { fulfillmentReconciliation, valueMarketplaceStocks, moscowMonthSnapshot, type MarketplaceStockInput, type MarketplaceUnitCost, type ValuedMarketplaceStock } from "@/lib/finance/monthlyMarketplaceStock";
-import { ozonStocks } from "@/lib/ozon/api";
+import { ozonMarketplaceBalance, ozonStocks } from "@/lib/ozon/api";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { allowsProduct } from "@/lib/wb/productScope";
 import { fetchWarehouseRemains, remainsToStockRows } from "@/lib/wb/remainsApi";
@@ -11,6 +12,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalogItem, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
+import { fetchWbAccountBalance } from "@/lib/wb/financeApi";
 
 export const maxDuration = 300;
 
@@ -21,6 +23,53 @@ type FulfillmentRow = { legal_entity_id: string; warehouse_id: string; warehouse
 
 const sourceKey = (kind: SourceKind, id = "all") => `${kind}:${id}`;
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+const privateSourceKey = (marketplace: "wb" | "ozon", identity: string) =>
+  `${marketplace}:${createHash("sha256").update(identity).digest("hex").slice(0, 24)}`;
+
+async function saveCashSnapshot(input: {
+  month: string;
+  sourceKey: string;
+  marketplace: "wb" | "ozon";
+  cabinet: CabinetMeta;
+  cabinetName?: string;
+  amount: number | null;
+  availableAmount?: number | null;
+  currency?: string;
+  capturedAt: string;
+  error?: string | null;
+  persist?: boolean;
+}) {
+  const summary = {
+    sourceKey: input.sourceKey,
+    marketplace: input.marketplace,
+    cabinetName: input.cabinetName ?? input.cabinet.name,
+    amount: input.amount,
+    availableAmount: input.availableAmount ?? null,
+    currency: input.currency ?? "RUB",
+    status: input.error || input.amount === null ? "error" : "ok",
+    error: input.error ?? null,
+  };
+  if (input.persist === false) return summary;
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase не настроен");
+  const result = await db.from("balance_marketplace_cash_snapshots").upsert({
+    snapshot_month: input.month,
+    source_key: input.sourceKey,
+    marketplace: input.marketplace,
+    cabinet_id: input.cabinet.id || null,
+    cabinet_name: summary.cabinetName,
+    organization_id: input.cabinet.organization_id,
+    amount: input.amount,
+    available_amount: input.availableAmount ?? null,
+    currency: summary.currency,
+    status: summary.status,
+    error: summary.error,
+    captured_at: input.capturedAt,
+    updated_at: input.capturedAt,
+  }, { onConflict: "snapshot_month,source_key" });
+  if (result.error) throw new Error(result.error.message);
+  return summary;
+}
 
 async function fulfillmentFinality(closeThrough: string, legalEntityIds: ReadonlySet<string>) {
   const db = getSupabaseAdmin();
@@ -235,6 +284,7 @@ export async function GET(request: NextRequest) {
   let affected = 0;
   const errors: string[] = [];
   const summaries: Awaited<ReturnType<typeof saveSource>>[] = [];
+  const cashSummaries: Awaited<ReturnType<typeof saveCashSnapshot>>[] = [];
   try {
     const reportingScope = await loadGroupReportingScope();
     if (reconcileFulfillment) {
@@ -313,6 +363,33 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Денежный баланс WB относится ко всему seller, а не к бренду внутри
+    // виртуального кабинета. Поэтому один общий API-вызов и одна строка на
+    // группу токенов: NORVIA/Heaton не удваивают одну и ту же сумму.
+    for (const group of groupWbStatisticsTargets(reportingWbTargets)) {
+      const representative = group.find((item) => item.cabinetId && metaById.has(item.cabinetId));
+      if (!representative?.cabinetId) continue;
+      const cabinet = metaById.get(representative.cabinetId)!;
+      const label = group.map((item) => metaById.get(item.cabinetId ?? "")?.name ?? item.name).join(" / ");
+      const key = privateSourceKey("wb", group[0].statisticsSourceKey || group[0].statsToken);
+      try {
+        const balance = await fetchWbAccountBalance(group[0].statsToken);
+        const summary = await saveCashSnapshot({
+          month: window.month, sourceKey: key, marketplace: "wb", cabinet,
+          cabinetName: label, amount: balance.current, availableAmount: balance.forWithdraw,
+          currency: balance.currency, capturedAt, persist: !dryRun,
+        });
+        cashSummaries.push(summary);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        cashSummaries.push(await saveCashSnapshot({
+          month: window.month, sourceKey: key, marketplace: "wb", cabinet,
+          cabinetName: label, amount: null, capturedAt, error: message, persist: !dryRun,
+        }));
+        errors.push(`Деньги WB ${label}: ${message}`);
+      }
+    }
+
     if (ozonScope.ok) {
       for (const cabinet of ozonScope.scope.cabinets.filter((item) => reportingScope.cabinetIds.has(item.id))) {
         try {
@@ -330,6 +407,22 @@ export async function GET(request: NextRequest) {
         } catch (error) {
           errors.push(`Ozon ${cabinet.name}: ${error instanceof Error ? error.message : String(error)}`);
         }
+        const meta = metaById.get(cabinet.id) ?? { id: cabinet.id, name: cabinet.name, organization_id: null };
+        const key = privateSourceKey("ozon", cabinet.id);
+        const balance = await ozonMarketplaceBalance(cabinet.creds, window.month);
+        if (balance.ok) {
+          cashSummaries.push(await saveCashSnapshot({
+            month: window.month, sourceKey: key, marketplace: "ozon", cabinet: meta,
+            amount: balance.balance.closing, availableAmount: null, currency: balance.balance.currency,
+            capturedAt, persist: !dryRun,
+          }));
+        } else {
+          cashSummaries.push(await saveCashSnapshot({
+            month: window.month, sourceKey: key, marketplace: "ozon", cabinet: meta,
+            amount: null, capturedAt, error: balance.error, persist: !dryRun,
+          }));
+          errors.push(`Деньги Ozon ${cabinet.name}: ${balance.error}`);
+        }
       }
     } else {
       errors.push(`Ozon: ${ozonScope.error}`);
@@ -337,7 +430,7 @@ export async function GET(request: NextRequest) {
 
     const status = errors.length ? "partial" : "ok";
     if (!dryRun) await writeSyncLog("balance-monthly-stock", status, affected, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok: errors.length === 0, mode: dryRun ? "dry-run" : "snapshot", persisted: !dryRun, month: window.month, capturedAt, rows: affected, summaries, errors }, { status: errors.length ? 207 : 200 });
+    return NextResponse.json({ ok: errors.length === 0, mode: dryRun ? "dry-run" : "snapshot", persisted: !dryRun, month: window.month, capturedAt, rows: affected, summaries, cashSummaries, errors }, { status: errors.length ? 207 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось собрать месячный остаток";
     await writeSyncLog("balance-monthly-stock", "error", affected, message, startedAt);
