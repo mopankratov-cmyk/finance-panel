@@ -16,7 +16,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useWbCabinet } from "./WbCabinetContext";
 
-type ScopeKey = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks";
+type ScopeKey = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks" | "documents";
 type ScopeStatus = Record<ScopeKey, boolean | null>;
 
 interface ConnectedCabinet {
@@ -46,6 +46,7 @@ const SCOPE_LABELS: Record<ScopeKey, { label: string; required: boolean }> = {
   content: { label: "Карточки товаров", required: true },
   prices: { label: "Цены и скидки", required: true },
   feedbacks: { label: "Отзывы и вопросы", required: true },
+  documents: { label: "Документы и УПД", required: false },
 };
 
 async function responseJson<T>(response: Response): Promise<T> {
@@ -128,7 +129,7 @@ export function WbConnectPage() {
         <div className="grid gap-4 lg:grid-cols-[1.05fr_.95fr]">
           <form onSubmit={connect} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-base font-bold text-slate-900">Добавить кабинет</h2>
-            <p className="mt-1 text-xs leading-5 text-slate-500">В кабинете WB создайте токен с доступом на чтение: статистика, аналитика, продвижение, контент, цены и скидки, вопросы и отзывы.</p>
+            <p className="mt-1 text-xs leading-5 text-slate-500">В кабинете WB создайте токен с доступом на чтение: статистика, аналитика, продвижение, контент, цены и скидки, вопросы и отзывы. Для автоматической загрузки УПД также отметьте «Документы».</p>
             <label className="mt-5 block text-xs font-semibold text-slate-600">Название кабинета <span className="font-normal text-slate-400">(необязательно)</span>
               <input value={name} onChange={(event) => setName(event.target.value)} maxLength={80} placeholder="Например, Магазин одежды" className="mt-2 h-11 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none transition focus:border-violet-400 focus:ring-2 focus:ring-violet-100" />
             </label>

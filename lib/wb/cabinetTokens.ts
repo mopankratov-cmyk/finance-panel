@@ -144,6 +144,9 @@ export function resolveWbToken(cabinet: WbCabinet, scope: WbScope): string {
     // Marketplace живёт на основном токене: отдельного поля под него нет,
     // а зонд token-health подтвердил доступ этим токеном у всех кабинетов.
     case "marketplace":
+    // Документы живут на основном токене: отдельный секрет не нужен, если при
+    // выпуске основного токена отмечена категория «Документы».
+    case "documents":
     default:
       return cabinet.token;
   }

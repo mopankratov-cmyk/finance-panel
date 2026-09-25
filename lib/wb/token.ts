@@ -6,7 +6,7 @@
 // официально не раскрывает стабильно, поэтому наличие категории определяем НАДЁЖНО —
 // живой read-only пробой каждого хоста этим же токеном (401/403 = нет доступа).
 
-export type WbScope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks" | "marketplace";
+export type WbScope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks" | "marketplace" | "documents";
 
 export const WB_SCOPE_LABEL: Record<WbScope, string> = {
   statistics: "Статистика",
@@ -16,6 +16,7 @@ export const WB_SCOPE_LABEL: Record<WbScope, string> = {
   content: "Контент",
   prices: "Цены и скидки",
   feedbacks: "Вопросы и отзывы",
+  documents: "Документы",
 };
 
 export interface WbTokenInfo {
@@ -92,6 +93,11 @@ const PROBES: Record<WbScope, Probe> = {
     url: "https://feedbacks-api.wildberries.ru/api/v1/feedbacks/count-unanswered",
     method: "GET",
   },
+  documents: {
+    // Read-only справочник категорий. Не скачивает УПД и не меняет документы.
+    url: "https://documents-api.wildberries.ru/api/v1/documents/categories?locale=ru",
+    method: "GET",
+  },
 };
 
 // null = не удалось проверить (сеть), true/false = категория доступна/нет.
@@ -135,7 +141,7 @@ export async function probeWbScope(token: string, scope: WbScope): Promise<boole
 
 // Проверить все категории параллельно.
 export async function probeWbScopes(token: string): Promise<ScopeStatus> {
-  const scopes: WbScope[] = ["statistics", "marketplace", "analytics", "advert", "content", "prices", "feedbacks"];
+  const scopes: WbScope[] = ["statistics", "marketplace", "analytics", "advert", "content", "prices", "feedbacks", "documents"];
   const results = await Promise.all(scopes.map((s) => probeWbScope(token, s)));
   return Object.fromEntries(scopes.map((s, i) => [s, results[i]])) as ScopeStatus;
 }

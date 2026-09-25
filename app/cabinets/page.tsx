@@ -20,7 +20,7 @@ interface Cabinet {
   has_feedbacks: boolean;
 }
 
-type Scope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks";
+type Scope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks" | "documents";
 const SCOPE_LABEL: Record<Scope, string> = {
   statistics: "Статистика",
   analytics: "Аналитика",
@@ -28,12 +28,20 @@ const SCOPE_LABEL: Record<Scope, string> = {
   content: "Контент",
   prices: "Цены и скидки",
   feedbacks: "Вопросы и отзывы",
+  documents: "Документы и УПД",
 };
 interface ScopeReport {
   scopes: Record<Scope, boolean | null>;
   expiresAt: string | null;
   daysLeft: number | null;
   isTest: boolean;
+}
+interface ExistingScopeReport {
+  id: string;
+  scopes: Record<Scope, boolean | null>;
+  daysLeft: number | null;
+  isExpired: boolean;
+  tokenSource: "main";
 }
 
 export default function CabinetsPage() {
@@ -52,6 +60,9 @@ export default function CabinetsPage() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [showAdv, setShowAdv] = useState(false);
   const [scopeRep, setScopeRep] = useState<ScopeReport | null>(null);
+  const [existingScopes, setExistingScopes] = useState<Record<string, ExistingScopeReport>>({});
+  const [checkingScopes, setCheckingScopes] = useState(false);
+  const [scopeError, setScopeError] = useState("");
 
   const [groups, setGroups] = useState<CabinetGroup[]>([]);
   const [groupMp, setGroupMp] = useState<"wb" | "ozon">("wb");
@@ -148,6 +159,20 @@ export default function CabinetsPage() {
     await load();
   };
 
+  const checkExistingScopes = async () => {
+    setCheckingScopes(true); setScopeError("");
+    try {
+      const response = await fetch("/api/cabinets/scopes", { cache: "no-store" });
+      const body = await response.json() as { cabinets?: ExistingScopeReport[]; error?: string };
+      if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);
+      setExistingScopes(Object.fromEntries((body.cabinets ?? []).map((report) => [report.id, report])));
+    } catch (cause) {
+      setScopeError(cause instanceof Error ? cause.message : "Не удалось проверить токены");
+    } finally {
+      setCheckingScopes(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-4xl px-3 py-8 sm:px-6">
       <div className="mb-6 flex items-center gap-3">
@@ -172,7 +197,7 @@ export default function CabinetsPage() {
         {mp === "wb" ? (
           <>
             <label className="mb-1 block text-xs text-gray-500">
-              API-токен WB <span className="text-gray-400">(Настройки → Доступ к API → токен с категориями Статистика, Аналитика, Контент, Продвижение, Цены и скидки)</span>
+              API-токен WB <span className="text-gray-400">(Настройки → Доступ к API → добавьте категории Статистика, Аналитика, Контент, Продвижение, Цены и скидки, Документы)</span>
             </label>
             <textarea
               value={token}
@@ -248,7 +273,7 @@ export default function CabinetsPage() {
           <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
             <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="font-semibold text-gray-600">Доступ токена:</span>
-              {(["statistics", "analytics", "advert", "content", "prices", "feedbacks"] as Scope[]).map((s) => {
+              {(["statistics", "analytics", "advert", "content", "prices", "feedbacks", "documents"] as Scope[]).map((s) => {
                 const ok = scopeRep.scopes[s];
                 return (
                   <span
@@ -267,9 +292,9 @@ export default function CabinetsPage() {
                 </span>
               )}
             </div>
-            {(["statistics", "analytics", "advert", "content", "prices", "feedbacks"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
+            {(["statistics", "analytics", "advert", "content", "prices", "feedbacks", "documents"] as Scope[]).some((s) => scopeRep.scopes[s] === false) && (
               <p className="text-[11px] text-red-600">
-                Не хватает категорий: {(["statistics", "analytics", "advert", "content", "prices", "feedbacks"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
+                Не хватает категорий: {(["statistics", "analytics", "advert", "content", "prices", "feedbacks", "documents"] as Scope[]).filter((s) => scopeRep.scopes[s] === false).map((s) => SCOPE_LABEL[s]).join(", ")}.
                 Перевыпустите токен в WB, отметив эти категории. Продвижение и Контент можно дать отдельным токеном в «расширенном».
               </p>
             )}
@@ -280,9 +305,13 @@ export default function CabinetsPage() {
 
       {/* Список */}
       <div className="rounded-xl border border-gray-200 bg-white">
-        <div className="border-b border-gray-100 px-5 py-3 text-sm font-semibold text-gray-700">
-          Подключённые кабинеты {!loading && <span className="text-gray-400">({cabinets.length})</span>}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 px-5 py-3 text-sm font-semibold text-gray-700">
+          <span>Подключённые кабинеты {!loading && <span className="text-gray-400">({cabinets.length})</span>}</span>
+          <button type="button" onClick={() => void checkExistingScopes()} disabled={checkingScopes} className="inline-flex min-h-10 items-center gap-1 rounded-lg border border-violet-200 px-3 text-xs font-semibold text-violet-700 disabled:opacity-50">
+            {checkingScopes ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}{checkingScopes ? "Проверяем…" : "Проверить доступы WB"}
+          </button>
         </div>
+        {scopeError ? <div className="border-b border-red-100 bg-red-50 px-5 py-2 text-xs text-red-700">{scopeError}</div> : null}
         {loading ? (
           <div className="px-5 py-10 text-center text-gray-400"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></div>
         ) : cabinets.length === 0 ? (
@@ -304,6 +333,9 @@ export default function CabinetsPage() {
                     {c.marketplace === "ozon" ? `Client-Id ${c.client_id} · Api-Key ${c.token_mask}` : `sid ${c.seller_id?.slice(0, 8)}… · ${c.inn ? `ИНН ${c.inn} · ` : ""}токен ${c.token_mask}`}
                     {c.has_advert && " · +Продвижение"}{c.has_content && " · +Контент"}{c.has_feedbacks && " · +Отзывы"}
                   </div>
+                  {c.marketplace === "wb" && existingScopes[c.id] ? <div className={`mt-1 text-xs font-semibold ${existingScopes[c.id].scopes.documents === true ? "text-emerald-700" : existingScopes[c.id].scopes.documents === false ? "text-red-700" : "text-amber-700"}`}>
+                    Основной токен · Документы: {existingScopes[c.id].scopes.documents === true ? "доступ есть" : existingScopes[c.id].scopes.documents === false ? "доступа нет — перевыпустите токен" : "WB не дал проверить"}
+                  </div> : null}
                 </div>
                 <button onClick={() => toggle(c)} className="rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100">
                   {c.is_active ? "Выключить" : "Включить"}
