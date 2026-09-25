@@ -51,6 +51,7 @@ const RULES: readonly ApiRule[] = [
 
   // ── Синхронизации: расписание Vercel и внутренний фан-аут ──
   ["/api/sync/", { open: "cron" }],
+  ["/api/sync/wb-tax-documents", { permission: "finance.edit" }],
   ["/api/sync/watchdog", { open: "self-guarded" }],
   ["/api/sync/screen-latency", { open: "any-session" }],
   ["/api/sync/trigger", { permission: "mp_reports.sync" }],

@@ -120,6 +120,10 @@
       "schedule": "15 6 * * *"
     },
     {
+      "path": "/api/sync/wb-tax-documents",
+      "schedule": "25 4 * * *"
+    },
+    {
       "path": "/api/sync/opiu-report",
       "schedule": "12 * * * *"
     },
