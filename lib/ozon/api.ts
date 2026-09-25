@@ -1,4 +1,4 @@
-import { ozonSellerFetch } from "@/lib/ozon/sellerGate";
+import { ozonSellerFetch, OzonRateLimitError } from "@/lib/ozon/sellerGate";
 
 // Ozon Seller API. Авторизация — заголовки Client-Id + Api-Key. База api-seller.ozon.ru.
 const BASE = "https://api-seller.ozon.ru";
@@ -493,6 +493,105 @@ export async function ozonRealization(
     return { ok: true, rows, rawSample: rawRows.slice(0, 2) };
   } catch (error) {
     return { ok: false, error: String(error).slice(0, 150) };
+  }
+}
+
+export interface OzonAccrualType {
+  id: number;
+  name: string;
+  description: string;
+}
+
+/** Справочник категорий начислений — ~124 строки, меняется редко. */
+export async function ozonAccrualTypes(
+  c: OzonCreds,
+): Promise<{ ok: true; types: OzonAccrualType[] } | { ok: false; error: string }> {
+  try {
+    const res = await tfetch(c, `${BASE}/v1/finance/accrual/types`, {
+      method: "POST",
+      headers: headers(c),
+      body: JSON.stringify({}),
+      next: { revalidate: 86400 },
+    });
+    if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 120)}` };
+    const json = (await res.json()) as { accrual_types?: OzonAccrualType[] };
+    return { ok: true, types: json.accrual_types ?? [] };
+  } catch (error) {
+    return { ok: false, error: String(error).slice(0, 120) };
+  }
+}
+
+export type OzonAccrualByDayResult =
+  | { ok: true; accruals: unknown[]; truncated: boolean }
+  | { ok: false; error: string; rateLimited: boolean };
+
+interface OzonAccrualPage {
+  accruals: unknown[];
+  lastId?: string;
+}
+
+interface OzonAccrualPagesResult {
+  accruals: unknown[];
+  /** true — упёрлись в потолок страниц, а `last_id` ещё менялся: день неполный. */
+  truncated: boolean;
+}
+
+/**
+ * Пагинация не документирована официально: ответ несёт `last_id`, и мы
+ * пробуем продолжить, подставляя его в следующий запрос тем же именем поля.
+ * Если Ozon его не примет и в ответ на `last_id: X` снова пришлёт `last_id: X`
+ * — это штатный сигнал конца данных, останавливаемся сразу на этом ответе, не
+ * добавляя его в результат второй раз. А вот упереться в потолок страниц,
+ * когда `last_id` всё ещё меняется — это не конец данных, а обрыв: помечаем
+ * `truncated`, чтобы вызывающий код не считал день полностью прочитанным.
+ *
+ * Чистая функция (никакого fetch внутри) — источник страниц передаётся
+ * снаружи, поэтому тестируется без сети.
+ */
+export async function collectOzonAccrualPages(
+  fetchPage: (lastId: string | undefined) => Promise<OzonAccrualPage>,
+  maxPages = 20,
+): Promise<OzonAccrualPagesResult> {
+  const accruals: unknown[] = [];
+  let lastId: string | undefined;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const requestedLastId = lastId;
+    const result = await fetchPage(requestedLastId);
+    if (requestedLastId !== undefined && result.lastId === requestedLastId) {
+      return { accruals, truncated: false };
+    }
+    accruals.push(...result.accruals);
+    if (!result.accruals.length || !result.lastId) {
+      return { accruals, truncated: false };
+    }
+    lastId = result.lastId;
+  }
+
+  return { accruals, truncated: true };
+}
+
+/** Построчные начисления за один календарный день. */
+export async function ozonAccrualByDay(c: OzonCreds, date: string): Promise<OzonAccrualByDayResult> {
+  try {
+    const { accruals, truncated } = await collectOzonAccrualPages(async (lastId) => {
+      const body: Record<string, unknown> = lastId ? { date, last_id: lastId } : { date };
+      const res = await tfetch(c, `${BASE}/v1/finance/accrual/by-day`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify(body),
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error(`Ozon ${res.status}: ${(await res.text()).slice(0, 120)}`);
+      const json = (await res.json()) as { accruals?: unknown[]; last_id?: string };
+      return { accruals: json.accruals ?? [], lastId: json.last_id };
+    });
+    return { ok: true, accruals, truncated };
+  } catch (error) {
+    if (error instanceof OzonRateLimitError) {
+      return { ok: false, error: error.message, rateLimited: true };
+    }
+    return { ok: false, error: String(error).slice(0, 120), rateLimited: false };
   }
 }
 

@@ -60,6 +60,10 @@
       "schedule": "25 * * * *"
     },
     {
+      "path": "/api/sync/ozon-accruals",
+      "schedule": "18 * * * *"
+    },
+    {
       "path": "/api/sync/dashboard-cache?view=overview",
       "schedule": "0,15,30,45 * * * *"
     },
