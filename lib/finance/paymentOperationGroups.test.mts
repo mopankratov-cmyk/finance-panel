@@ -71,6 +71,15 @@ test("an ordinary bank payment is not shown as a one-part split", () => {
   assert.equal(row.source, plain);
   assert.deepEqual(row.parts, []);
 });
+test("две стороны банковского перевода видны как связанная пара", () => {
+  const pairId = "40000000-0000-4000-8000-000000000001";
+  const outgoing: Payment = { ...entries[0], id: "bank-out", amount: -451000, category: "Выбытие — Перевод между счетами", comment: `[dds-bank-transfer:${pairId}]`, importSource: "bank-review:out" };
+  const incoming: Payment = { ...entries[0], id: "bank-in", amount: 451000, category: "Поступление — Перевод между счетами", comment: `[dds-bank-transfer:${pairId}]`, importSource: "bank-review:in" };
+  const rows = groupPaymentOperations([outgoing], [outgoing,incoming]);
+  assert.equal(rows[0].bankTransferId, pairId);
+  assert.deepEqual(rows[0].linkedTransfers?.map(payment=>payment.id), ["bank-out","bank-in"]);
+  assert.equal(rows[0].chainId, undefined);
+});
 test("equal split keeps every kopeck and automatic last part surfaces overdraft instead of silently clamping it", () => {
   assert.deepEqual(splitEvenly(100, 3), [33.34, 33.33, 33.33]);
   assert.deepEqual(balanceLast([{ amount: 5000 }, { amount: 10000 }, { amount: 30000 }], 55000).map(p => p.amount), [5000, 10000, 40000]);

@@ -8,6 +8,12 @@ export interface PaymentOperationGroup {
   chainId?: string;
   parts: Payment[];
   remainder?: number;
+  bankTransferId?: string;
+  linkedTransfers?: Payment[];
+}
+
+export function bankTransferId(comment: string | undefined | null) {
+  return comment?.match(/\[dds-bank-transfer:([a-f0-9-]{36})\]/i)?.[1] ?? null;
 }
 
 /** Filters select an operation; opening it shows every active part, across dates. */
@@ -16,8 +22,11 @@ export function groupPaymentOperations(visible: Payment[], all: Payment[], summa
   const seen = new Set<string>();
   const activeByChain = new Map<string, Payment[]>();
   const summariesById = new Map(summaries.map(summary => [summary.id, summary]));
+  const bankTransfers = new Map<string, Payment[]>();
   for (const payment of all) {
     if (payment.status !== "done") continue;
+    const transferId = bankTransferId(payment.comment);
+    if (transferId) bankTransfers.set(transferId, [...(bankTransfers.get(transferId) ?? []), payment]);
     const id = chainIdForPayment(payment);
     if (!id) continue;
     const entries = activeByChain.get(id) ?? [];
@@ -28,6 +37,7 @@ export function groupPaymentOperations(visible: Payment[], all: Payment[], summa
     const chainId = chainIdForPayment(p);
     const meta = chainMetadata(p.comment);
     const summary = chainId ? summariesById.get(chainId) : undefined;
+    const transferId = bankTransferId(p.comment);
     const amount = meta?.amount ?? summary?.amount;
     // Обычный подтверждённый платёж тоже имеет importSource bank-review:<id>.
     // Это ссылка на банковский оригинал, а не признак разбиения. Старую
@@ -35,7 +45,15 @@ export function groupPaymentOperations(visible: Payment[], all: Payment[], summa
     // несколько строк; новые цепочки имеют явную служебную метку в comment.
     const isSplit = Boolean(meta) || (summary?.count ?? 0) > 1;
     if (!chainId || !isSplit || amount === null || amount === undefined) {
-      result.push({ key: p.id, source: p, parts: [] });
+      result.push({
+        key: p.id,
+        source: p,
+        parts: [],
+        bankTransferId: transferId ?? undefined,
+        linkedTransfers: transferId
+          ? (bankTransfers.get(transferId) ?? []).sort((a,b)=>a.amount-b.amount||a.id.localeCompare(b.id))
+          : undefined,
+      });
       continue;
     }
     if (seen.has(chainId)) continue;
