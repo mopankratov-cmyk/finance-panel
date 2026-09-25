@@ -25,6 +25,7 @@ export interface BankReviewItem {
   matchedTransferId: string | null;
   managerQuestion: string | null;
   managerAnswer: string | null;
+  paymentComment?: string;
 }
 
 type ReviewRow = {
@@ -63,6 +64,7 @@ async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function mapRow(row: ReviewRow): BankReviewItem {
+  const reasons = Array.isArray(row.reasons) ? row.reasons.map(String) : [];
   return {
     id: row.id,
     batchId: row.batch_id,
@@ -80,11 +82,12 @@ function mapRow(row: ReviewRow): BankReviewItem {
     purpose: row.purpose,
     category: row.category,
     confidence: Number(row.confidence),
-    reasons: Array.isArray(row.reasons) ? row.reasons.map(String) : [],
+    reasons,
     status: row.status,
     matchedTransferId: row.matched_transfer_id,
     managerQuestion: row.manager_question,
     managerAnswer: row.manager_answer,
+    paymentComment: reasons.find((reason) => reason.startsWith("__payment_comment:"))?.slice("__payment_comment:".length) ?? "",
   };
 }
 
@@ -171,7 +174,7 @@ export async function loadBankGoogleSyncData(): Promise<{
 
 export async function updateBankReviewItem(
   id: string,
-  patch: Partial<Pick<BankReviewItem, "companyId" | "accountId" | "category" | "counterparty" | "status" | "managerQuestion" | "managerAnswer">>,
+  patch: Partial<Pick<BankReviewItem, "companyId" | "accountId" | "category" | "counterparty" | "status" | "managerQuestion" | "managerAnswer" | "paymentComment">>,
 ) {
   await api<{ ok: true }>("/api/opiu/bank-review", {
     method: "PATCH",

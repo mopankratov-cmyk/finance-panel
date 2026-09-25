@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { COMPANY_ALIAS_PROMPT_NOTE, companyAliasKeys, sameCompanyAlias } from "./companyAliases.ts";
+import { COMPANY_ALIAS_PROMPT_NOTE, companyAliasKeys, preferredAliasCompany, sameCompanyAlias } from "./companyAliases.ts";
 
 test("Филиппов и Коровкин — одна группа, чужие — нет", () => {
   assert.equal(sameCompanyAlias("ИП Филиппов Иван", "ИП Коровкин"), true);
@@ -8,6 +8,11 @@ test("Филиппов и Коровкин — одна группа, чужие
   assert.equal(sameCompanyAlias("ООО Ромашка", "ООО Ромашка"), false, "без группы — не алиас (сравнивайте имена напрямую)");
   assert.deepEqual([...companyAliasKeys("Индивидуальный предприниматель Филиппов")], ["филиппов", "коровкин"]);
   assert.deepEqual([...companyAliasKeys("ООО Ромашка")], []);
+});
+
+test("Филиппов выбирает каноническую компанию Коровкин", () => {
+  const companies = [{ name: "ИП Филиппов", id: "f" }, { name: "ИП Коровкин", id: "k" }];
+  assert.equal(preferredAliasCompany("ИП ФИЛИППОВ АРТЕМ СЕРГЕЕВИЧ", companies)?.id, "k");
 });
 
 test("промпт получает формулировку из справочника", () => {

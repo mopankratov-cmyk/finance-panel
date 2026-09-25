@@ -2,7 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadDdsExpenseCategories } from "./expenseCategoriesServer";
-import { companyAliasKeys } from "./companyAliases";
+import { preferredAliasCompany } from "./companyAliases";
 import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
 import { buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresKorovkinLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
@@ -25,6 +25,21 @@ async function registry() {
  if(a.error) throw fail(a.error.message,500);
  return {companies:((c.result.data??[]) as unknown as Array<Record<string,unknown>>).map(r=>({id:String(r.id),name:String(r.name),groupName:String(r.group_name)} as ChainCompany)),accounts:(a.data??[]).map(r=>({...r,balance:0} as Account)),categories:categoryOptions(undefined,x.categories.map(r=>r.name))};
 }
+function applyAliasRecipients(draft: PaymentChainDraft, companies: ChainCompany[], accounts: Account[]) {
+ const source=companies.find(c=>c.id===draft.sourceCompanyId);
+ for(const allocation of draft.allocations) {
+  const recipient=preferredAliasCompany(`${allocation.name} ${allocation.counterparty}`,companies);
+  if(recipient && requiresKorovkinLoan(source,recipient)) allocation.companyId=recipient.id;
+ }
+ const needsCash=draft.allocations.some(a=>requiresKorovkinLoan(source,companies.find(c=>c.id===a.companyId)));
+ if(needsCash) {
+  const cash=accounts.filter(a=>a.type==='cash'&&a.currency==='RUB');
+  draft.throughCash=true;
+  if(!draft.cashAccountId&&cash.length===1)draft.cashAccountId=cash[0].id;
+  for(const allocation of draft.allocations) if(requiresKorovkinLoan(source,companies.find(c=>c.id===allocation.companyId))) allocation.accountId=draft.cashAccountId;
+ }
+ return draft;
+}
 export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string;chainId?:string}): Promise<PaymentChainDetail> {
  const db=dbRequired();
  for(const value of Object.values(seed)) if(value && !UUID.test(value)) throw fail("Некорректный идентификатор операции");
@@ -35,6 +50,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  const head=await db.from("finance_payment_chains").select("*").eq("id",id).maybeSingle();
  if(head.error && !missing(head.error)) throw fail(head.error.message,500);
  if(head.data) {
+  const reg=await registry();
   const [links,revisions]=await Promise.all([
    loadAllSupabasePages<{payment_id:string;revision:number;role:string;allocation_id:string|null}>((from,to)=>db.from("finance_payment_chain_entries").select("payment_id,revision,role,allocation_id").eq("chain_id",id).order("payment_id").range(from,to),{label:"Части цепочки"}),
    loadAllSupabasePages<{revision:number;reason:string;created_at:string}>((from,to)=>db.from("finance_payment_chain_revisions").select("revision,reason,created_at").eq("chain_id",id).order("revision").range(from,to),{label:"История цепочки"})
@@ -42,7 +58,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
   const payments: Payment[]=[];
   for(let i=0;i<links.length;i+=300) {const rows=await db.from("payments").select("*").in("id",links.slice(i,i+300).map(l=>l.payment_id));if(rows.error)throw fail(rows.error.message,500);payments.push(...(rows.data??[]).map(paymentFromRow));}
   const byId=new Map(payments.map(p=>[p.id,p]));
-  return {draft:{...head.data.draft,revision:head.data.revision},status:head.data.status,migrationAvailable:true,history:revisions.map(r=>({revision:r.revision,reason:r.reason,createdAt:r.created_at,entries:links.filter(l=>l.revision===r.revision).flatMap(l=>byId.has(l.payment_id)?[{payment:byId.get(l.payment_id)!,role:l.role==='legacy'?'source':l.role as ChainEntry['role'],allocationId:l.allocation_id}]:[])}))};
+  return {draft:applyAliasRecipients({...head.data.draft,revision:head.data.revision},reg.companies,reg.accounts),status:head.data.status,migrationAvailable:true,history:revisions.map(r=>({revision:r.revision,reason:r.reason,createdAt:r.created_at,entries:links.filter(l=>l.revision===r.revision).flatMap(l=>byId.has(l.payment_id)?[{payment:byId.get(l.payment_id)!,role:l.role==='legacy'?'source':l.role as ChainEntry['role'],allocationId:l.allocation_id}]:[])}))};
  }
  const canonicalId=seed.reviewId??(selected?chainIdForPayment(selected)??selected.id:null);
  if(!canonicalId || id!==canonicalId)throw fail("Укажите исходную операцию этой цепочки",404);
@@ -67,14 +83,13 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  const allocations=costs.length?costs.map(p=>({id:crypto.randomUUID(),amount:Math.abs(p.amount),date:p.date,name:p.name,category:p.category,companyId:p.companyId??sourceCompanyId,accountId:p.accountId,counterparty:p.counterparty,excluded:false})):
   raw.filter(a=>a.countsTowardBank!==false&&!a.isRemainder).map(a=>({id:crypto.randomUUID(),amount:a.amount,date:sourceDate,name:a.description,category:a.category??"",companyId:a.companyId??sourceCompanyId,accountId:a.accountId??sourceAccountId,counterparty:/зарплат/i.test(a.category??"")?a.description.replace(/(?:^|[^а-я])зп(?:$|[^а-я])|зарплата/gi," ").trim():"",excluded:Boolean(a.excluded)}));
  if(!allocations.length && !raw.length && (origins.length || review?.category) && sectionForCategory(selected?.category??String(review?.category??""))!==TECHNICAL_SECTION) allocations.push({id:crypto.randomUUID(),amount:sourceAmount,date:sourceDate,name:selected?.name??String(review?.purpose??""),category:selected?.category??String(review?.category??""),companyId:selected?.companyId??sourceCompanyId,accountId:sourceAccountId,counterparty:selected?.counterparty??"",excluded:false});
- if(!raw.length && review) {
-  const mentioned=companyAliasKeys(String(review.manager_answer??"")+" "+String(review.purpose??""));
-  const recipients=reg.companies.filter(c=>mentioned.some(key=>c.name.toLowerCase().includes(key)));
-  if(recipients.length===1) for(const a of allocations) if(requiresKorovkinLoan(reg.companies.find(c=>c.id===sourceCompanyId),recipients[0])) a.companyId=recipients[0].id;
+ for(const a of allocations) {
+  const recipient=preferredAliasCompany(`${a.name} ${a.counterparty}`,reg.companies);
+  if(recipient && requiresKorovkinLoan(reg.companies.find(c=>c.id===sourceCompanyId),recipient)) a.companyId=recipient.id;
  }
  const throughCash=allocations.some(a=>requiresKorovkinLoan(reg.companies.find(c=>c.id===sourceCompanyId),reg.companies.find(c=>c.id===a.companyId))) || origins.some(p=>sectionForCategory(p.category)===TECHNICAL_SECTION) || sectionForCategory(String(review?.category??""))===TECHNICAL_SECTION;
  if(throughCash) for(const a of allocations) a.accountId=cash.length===1?cash[0].id:"";
- return {draft:{id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},status:"active",migrationAvailable:!head.error,history:[]};
+ return {draft:applyAliasRecipients({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},reg.companies,reg.accounts),status:"active",migrationAvailable:!head.error,history:[]};
 }
 function parseDraft(value: unknown): PaymentChainDraft {
  if(!value || typeof value!=="object")throw fail("Некорректная цепочка");

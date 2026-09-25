@@ -49,6 +49,9 @@ export type LegacyBankOperation = {
   amount: number;
   counterparty: string;
   purpose: string;
+  bankAccountNumber?: string;
+  counterpartyInn?: string;
+  counterpartyAccount?: string;
 };
 
 const externalRowNumber = (value: string) => value.match(/:(\d+)$/)?.[1] ?? "";
@@ -65,11 +68,22 @@ export function uniqueLegacyBankOperationMatch(
   const incomingCounterparty = normalize(incoming.counterparty);
   const incomingPurpose = normalize(incoming.purpose);
   const incomingRow = externalRowNumber(incoming.externalId);
-  if (!incomingCounterparty || !incomingPurpose) return null;
+  const incomingBankAccount = (incoming.bankAccountNumber ?? "").replace(/\D/g, "");
+  const incomingInn = (incoming.counterpartyInn ?? "").replace(/\D/g, "");
+  const incomingAccount = (incoming.counterpartyAccount ?? "").replace(/\D/g, "");
+  if (!incomingPurpose) return null;
 
   const matches = candidates.filter((candidate) => {
     if (candidate.date !== incoming.date || Number(candidate.amount).toFixed(2) !== Number(incoming.amount).toFixed(2)) return false;
-    if (normalize(candidate.counterparty) !== incomingCounterparty) return false;
+    const candidateBankAccount = (candidate.bankAccountNumber ?? "").replace(/\D/g, "");
+    if (incomingBankAccount && candidateBankAccount && incomingBankAccount !== candidateBankAccount) return false;
+    const candidateInn = (candidate.counterpartyInn ?? "").replace(/\D/g, "");
+    const candidateAccount = (candidate.counterpartyAccount ?? "").replace(/\D/g, "");
+    const stableCounterpartyMatch = Boolean(
+      (incomingAccount && candidateAccount && incomingAccount === candidateAccount)
+      || (incomingInn && candidateInn && incomingInn === candidateInn),
+    );
+    if (!stableCounterpartyMatch && (!incomingCounterparty || normalize(candidate.counterparty) !== incomingCounterparty)) return false;
     const candidatePurpose = normalize(candidate.purpose);
     if (candidatePurpose === incomingPurpose) return true;
     const candidateRow = externalRowNumber(candidate.externalId);

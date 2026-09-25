@@ -1,7 +1,7 @@
 import type { BankStatement, BankStatementRow } from "./bankStatement";
 import type { DdsCompany } from "./ddsCompanies";
 import type { Account, Payment } from "@/lib/types";
-import { companyAliasKeys, sameCompanyAlias } from "@/lib/finance/companyAliases";
+import { preferredAliasCompany, sameCompanyAlias } from "@/lib/finance/companyAliases";
 import { mandatoryBankCategory } from "@/lib/opiu/bankPaymentRules";
 
 export interface BankAccountMapping {
@@ -20,6 +20,7 @@ export interface BankSuggestion {
   reasons: string[];
   needsReview: boolean;
   transferCandidateId: string | null;
+  paymentComment?: string;
 }
 
 type PaymentWithCompany = Payment & { companyId?: string | null };
@@ -125,12 +126,9 @@ function ownerCompany(statement: BankStatement, companies: DdsCompany[], mapping
   // `name.includes("")` было бы true для первой же компании, и вся выписка
   // уходила ей с уверенностью 0.94. Лучше «не знаю» и ручная проверка.
   if (!owner) return null;
-  const aliasKeys = companyAliasKeys(owner);
-  if (aliasKeys.length) {
-    const aliased = companies.filter((item) => aliasKeys.some((key) => normalize(item.name).includes(key)));
-    if (aliased.length === 1) {
-      return { companyId: aliased[0].id, confidence: 1, reason: `Владелец «${statement.owner}» учтён как ${aliased[0].name} (справочник алиасов)` };
-    }
+  const aliased = preferredAliasCompany(owner, companies);
+  if (aliased) {
+    return { companyId: aliased.id, confidence: 1, reason: `Владелец «${statement.owner}» учтён как ${aliased.name} (справочник алиасов)` };
   }
   const matched = companies.filter((item) => {
     const name = normalize(item.name).replace(/^ип\s+/, "");
