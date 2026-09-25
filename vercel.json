@@ -64,6 +64,10 @@
       "schedule": "18 * * * *"
     },
     {
+      "path": "/api/sync/ozon-accrual-types",
+      "schedule": "30 5 * * *"
+    },
+    {
       "path": "/api/sync/dashboard-cache?view=overview",
       "schedule": "0,15,30,45 * * * *"
     },
