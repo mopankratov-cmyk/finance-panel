@@ -23,8 +23,18 @@ type FulfillmentRow = { legal_entity_id: string; warehouse_id: string; warehouse
 
 const sourceKey = (kind: SourceKind, id = "all") => `${kind}:${id}`;
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+const transientOzonStockError = (message: string) => /timeout|aborted|fetch failed|ozon 5\d\d/i.test(message);
 const privateSourceKey = (marketplace: "wb" | "ozon", identity: string) =>
   `${marketplace}:${createHash("sha256").update(identity).digest("hex").slice(0, 24)}`;
+
+async function loadOzonStocksForSnapshot(creds: Parameters<typeof ozonStocks>[0]) {
+  let last = await ozonStocks(creds, { fresh: true });
+  for (let attempt = 1; !last.ok && attempt < 3 && transientOzonStockError(last.error); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000 * attempt));
+    last = await ozonStocks(creds, { fresh: true });
+  }
+  return last;
+}
 
 async function saveCashSnapshot(input: {
   month: string;
@@ -405,7 +415,7 @@ export async function GET(request: NextRequest) {
     if (ozonScope.ok) {
       for (const cabinet of ozonScope.scope.cabinets.filter((item) => reportingScope.cabinetIds.has(item.id))) {
         try {
-          const warehouses = await ozonStocks(cabinet.creds, { fresh: true });
+          const warehouses = await loadOzonStocksForSnapshot(cabinet.creds);
           if (!warehouses.ok) throw new Error(warehouses.error);
           const meta = metaById.get(cabinet.id) ?? { id: cabinet.id, name: cabinet.name, organization_id: null };
           const stocks = warehouses.rows.map((row) => ({ article: row.article, name: row.name, quantity: row.free + row.reserved, lineKey: `${row.article}:${row.warehouse}`, locationName: `Склад Ozon · ${cabinet.name}${row.warehouse ? ` · ${row.warehouse}` : ""}` }));
