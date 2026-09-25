@@ -104,10 +104,18 @@ export async function GET(request: NextRequest) {
     const bankAmount = bankAmountReady ? round2(bankAccounts.reduce((sum, row) => sum + (row.statementAmount ?? 0), 0)) : null;
     const bankComplete = bankAmountReady && bankAccounts.every((row) => row.matchesDds);
 
-    const reportingWb = wbTargets.filter((target) => target.cabinetId && scope.cabinetIds.has(target.cabinetId));
-    const expected = new Map<string, { marketplace: "wb" | "ozon"; label: string }>();
-    for (const group of groupWbStatisticsTargets(reportingWb)) {
-      expected.set(sourceKey("wb", group[0].statisticsSourceKey || group[0].statsToken), { marketplace: "wb", label: group.map((item) => item.name).join(" / ") });
+    const expected = new Map<string, { marketplace: "wb" | "ozon"; label: string; blockedReason?: string }>();
+    for (const sellerGroup of groupWbStatisticsTargets(wbTargets)) {
+      const included = sellerGroup.filter((target) => target.cabinetId && scope.cabinetIds.has(target.cabinetId));
+      if (!included.length) continue;
+      const excluded = sellerGroup.filter((target) => target.cabinetId && !scope.cabinetIds.has(target.cabinetId));
+      expected.set(sourceKey("wb", sellerGroup[0].statisticsSourceKey || sellerGroup[0].statsToken), {
+        marketplace: "wb",
+        label: included.map((item) => item.name).join(" / "),
+        blockedReason: excluded.length
+          ? `Общий seller содержит исключённые кабинеты: ${excluded.map((item) => item.name).join(", ")}; деньги по брендам не разделяются`
+          : undefined,
+      });
     }
     if (ozonScope.ok) {
       for (const cabinet of ozonScope.scope.cabinets.filter((item) => scope.cabinetIds.has(item.id))) {
@@ -127,14 +135,14 @@ export async function GET(request: NextRequest) {
     }));
     const byMarketplace = (["wb", "ozon"] as const).map((marketplace) => {
       const rows = snapshotRows.filter((row) => row.marketplace === marketplace);
-      const missing = [...expected].filter(([, item]) => item.marketplace === marketplace).filter(([key]) => !rows.some((row) => row.sourceKey === key)).map(([, item]) => item.label);
+      const missing = [...expected].filter(([, item]) => item.marketplace === marketplace).filter(([key]) => !rows.some((row) => row.sourceKey === key)).map(([, item]) => item);
       const complete = missing.length === 0 && rows.length > 0 && rows.every((row) => row.status === "ok" && row.amount !== null && row.currency === "RUB");
       return {
         marketplace,
         complete,
         amount: complete ? round2(rows.reduce((sum, row) => sum + (row.amount ?? 0), 0)) : null,
         rows,
-        errors: [...rows.map((row) => row.error).filter(Boolean), ...missing.map((label) => `Нет снимка: ${label}`)],
+        errors: [...rows.map((row) => row.error).filter(Boolean), ...missing.map((item) => item.blockedReason ?? `Нет снимка: ${item.label}`)],
       };
     });
     const wb = byMarketplace[0];

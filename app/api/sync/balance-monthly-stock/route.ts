@@ -366,12 +366,24 @@ export async function GET(request: NextRequest) {
     // Денежный баланс WB относится ко всему seller, а не к бренду внутри
     // виртуального кабинета. Поэтому один общий API-вызов и одна строка на
     // группу токенов: NORVIA/Heaton не удваивают одну и ту же сумму.
-    for (const group of groupWbStatisticsTargets(reportingWbTargets)) {
+    for (const sellerGroup of groupWbStatisticsTargets(wbTargets)) {
+      const group = sellerGroup.filter((item) => item.cabinetId && reportingScope.cabinetIds.has(item.cabinetId));
+      if (!group.length) continue;
+      const excluded = sellerGroup.filter((item) => item.cabinetId && !reportingScope.cabinetIds.has(item.cabinetId));
       const representative = group.find((item) => item.cabinetId && metaById.has(item.cabinetId));
       if (!representative?.cabinetId) continue;
       const cabinet = metaById.get(representative.cabinetId)!;
       const label = group.map((item) => metaById.get(item.cabinetId ?? "")?.name ?? item.name).join(" / ");
       const key = privateSourceKey("wb", group[0].statisticsSourceKey || group[0].statsToken);
+      if (excluded.length) {
+        const message = `Общий seller также содержит исключённые кабинеты: ${excluded.map((item) => item.name).join(", ")}. WB не разбивает денежный баланс по брендам`;
+        cashSummaries.push(await saveCashSnapshot({
+          month: window.month, sourceKey: key, marketplace: "wb", cabinet,
+          cabinetName: label, amount: null, capturedAt, error: message, persist: !dryRun,
+        }));
+        errors.push(`Деньги WB ${label}: ${message}`);
+        continue;
+      }
       try {
         const balance = await fetchWbAccountBalance(group[0].statsToken);
         const summary = await saveCashSnapshot({
