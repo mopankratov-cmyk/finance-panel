@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  addPaidStorageCoverageRows,
   compactPaidStorageRows,
+  filterPaidStorageRowsByPrefixes,
   isMissingPaidStorageTask,
   normalizePaidStorageTaskStatus,
 } from "./paidStorageRequest.ts";
@@ -55,4 +57,28 @@ test("compactPaidStorageRows keeps a zero coverage row and skips invalid dates",
   assert.equal(rows[0]?.nm_id, null);
   assert.equal(rows[0]?.vendor_code, null);
   assert.equal(rows[0]?.warehouse_price, 0);
+});
+
+test("filterPaidStorageRowsByPrefixes keeps only OPIU brands in an agent cabinet", () => {
+  const rows = filterPaidStorageRowsByPrefixes([
+    { date: "2026-08-12", vendorCode: "ESC001", warehousePrice: 10 },
+    { date: "2026-08-12", vendorCode: "nv-01", warehousePrice: 20 },
+    { date: "2026-08-12", vendorCode: "HT-80", warehousePrice: 30 },
+    { date: "2026-08-12", vendorCode: "FOREIGN", warehousePrice: 40 },
+  ], ["ESC", "NV-", "HT-"]);
+
+  assert.deepEqual(rows.map((row) => row.vendorCode), ["ESC001", "nv-01", "HT-80"]);
+  assert.equal(filterPaidStorageRowsByPrefixes(rows, null).length, 3);
+});
+
+test("addPaidStorageCoverageRows preserves an explicit zero for empty synced days", () => {
+  const rows = addPaidStorageCoverageRows([
+    { date: "2026-08-11", vendorCode: "ESC001", warehousePrice: 10 },
+  ], "2026-08-10", "2026-08-12");
+
+  assert.deepEqual(rows.map((row) => [row.date, row.warehousePrice]), [
+    ["2026-08-11", 10],
+    ["2026-08-10", 0],
+    ["2026-08-12", 0],
+  ]);
 });

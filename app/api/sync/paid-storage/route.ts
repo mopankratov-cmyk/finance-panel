@@ -2,14 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { getWbSyncTargets, type SyncTarget } from "@/lib/sync/cabinets";
-import { OPIU_CABINET_IDS } from "@/lib/opiu/constants";
+import { OPIU_BRANDS, OPIU_CABINET_IDS } from "@/lib/opiu/constants";
 import { claimWbSyncJob, readWbSyncState, writeWbSyncState } from "@/lib/wb/syncState";
 import { isWbGlobalRateLimit } from "@/lib/wb/rateLimit";
 import {
+  addPaidStorageCoverageRows,
   checkPaidStorageTaskStatus,
   compactPaidStorageRows,
   createPaidStorageTask,
   downloadPaidStorageTask,
+  filterPaidStorageRowsByPrefixes,
   isMissingPaidStorageTask,
 } from "@/lib/wb/paidStorageRequest";
 
@@ -245,11 +247,20 @@ async function processCabinet(
     throw new Error(`скачивание WB ${download.status}: ${download.body}`);
   }
 
-  // WB не умеет отдавать этот отчёт только по нужным брендам/полям, поэтому
-  // сетевой ответ всё равно скачивается целиком. Зато перед записью в БД
-  // сворачиваем тысячи проводок по складам и поставкам до дневной суммы по
-  // товару/артикулу. Все потребители ОПиУ используют именно эту детализацию.
-  const rows = compactPaidStorageRows(cabinetId, download.rows);
+  // WB не умеет фильтровать этот отчёт по брендам на своей стороне, поэтому
+  // сетевой ответ скачивается целиком. Для агентских кабинетов сохраняем
+  // только префиксы брендов, реально используемых ОПиУ; если хотя бы один
+  // бренд кабинета не имеет префикса, оставляем весь кабинет. Затем
+  // сворачиваем проводки до дневной суммы по товару/артикулу.
+  const cabinetBrands = OPIU_BRANDS.filter((brand) => brand.cabinetId === cabinetId);
+  const canFilterByPrefix = cabinetBrands.length > 0
+    && cabinetBrands.every((brand) => Boolean(brand.articlePrefixes?.length));
+  const prefixes = canFilterByPrefix
+    ? [...new Set(cabinetBrands.flatMap((brand) => brand.articlePrefixes ?? []))]
+    : null;
+  const filteredRows = filterPaidStorageRowsByPrefixes(download.rows, prefixes);
+  const rowsWithCoverage = addPaidStorageCoverageRows(filteredRows, state.periodStart!, state.periodEnd!);
+  const rows = compactPaidStorageRows(cabinetId, rowsWithCoverage);
 
   // Удаляем прежние строки окна ПЕРЕД записью свежего дневного агрегата.
   // WB может пересчитать уже опубликованный день: исчезнувшая из нового
@@ -327,9 +338,9 @@ export async function GET(request: NextRequest) {
   if (authError) return authError;
 
   const startedAt = new Date();
-  // «Платное хранение» нужно только ОПиУ — только 3 кабинета из OPIU_BRANDS,
-  // не весь аккаунт (Оптима/Слоёно и другие сюда не относятся, тянуть их
-  // здесь — впустую жечь лимиты WB API и время крона без всякой пользы).
+  // «Платное хранение» нужно только ОПиУ — уникальные кабинеты из
+  // OPIU_BRANDS, не весь аккаунт. Остальные кабинеты тянуть сюда — впустую
+  // жечь лимиты WB API и время крона без пользы для отчёта.
   const allTargets = (await getWbSyncTargets()).filter((t) => t.cabinetId && OPIU_CABINET_IDS.has(t.cabinetId));
   const onlyCabinet = request.nextUrl.searchParams.get("cabinet");
   const targets = onlyCabinet ? allTargets.filter((t) => t.cabinetId === onlyCabinet) : allTargets;

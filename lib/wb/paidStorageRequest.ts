@@ -33,6 +33,38 @@ export interface CompactPaidStorageRow extends Record<string, unknown> {
   synced_at: string;
 }
 
+export function filterPaidStorageRowsByPrefixes(
+  rows: readonly PaidStorageApiRow[],
+  prefixes: readonly string[] | null,
+): PaidStorageApiRow[] {
+  if (!prefixes?.length) return [...rows];
+  const normalized = prefixes.map((prefix) => prefix.trim().toUpperCase()).filter(Boolean);
+  if (!normalized.length) return [...rows];
+  return rows.filter((row) => {
+    const vendorCode = String(row.vendorCode ?? "").trim().toUpperCase();
+    return normalized.some((prefix) => vendorCode.startsWith(prefix));
+  });
+}
+
+/** Добавляет по одной нулевой строке для дней, где нужных товаров не было. */
+export function addPaidStorageCoverageRows(
+  rows: readonly PaidStorageApiRow[],
+  dateFrom: string,
+  dateTo: string,
+): PaidStorageApiRow[] {
+  const result = [...rows];
+  const coveredDates = new Set(rows.map((row) => String(row.date ?? "").slice(0, 10)).filter(Boolean));
+  const cursor = new Date(`${dateFrom}T00:00:00Z`);
+  const end = new Date(`${dateTo}T00:00:00Z`);
+
+  while (Number.isFinite(cursor.getTime()) && cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10);
+    if (!coveredDates.has(date)) result.push({ date, warehousePrice: 0 });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return result;
+}
+
 /**
  * ОПиУ использует из отчёта хранения только дату, товар/артикул и итоговую
  * сумму. WB при этом отдаёт отдельные проводки по складам, поставкам и видам
