@@ -3455,6 +3455,36 @@ export async function buildRnpTable(
       return any ? sum : null;
     });
     const costedBuyoutsSumTotal = knownSum(costedBuyoutsSumDaily);
+    // Тот же приём для profit_per_unit/romi: их числитель (grossDaily) уже
+    // ограничен costedSkus и summaryEconomyAsOf, а знаменатель до сих пор брался
+    // из summary.buyouts_count/ad_spent — суммы по ВСЕМ SKU (включая без
+    // себестоимости) без отсечки по свежести. Прибыль полного набора SKU за
+    // урезанный период делилась на выкупы/расход ПОЛНОГО периода по ВСЕМ SKU —
+    // profit_per_unit и romi занижались всякий раз, когда себестоимость известна
+    // не для всех товаров (обычный случай) или кабинеты рекламы/продаж отстают
+    // друг от друга на разные сроки.
+    const costedBuyoutsCountDaily = days.map((day, index) => {
+      if (day > summaryEconomyAsOf) return null;
+      let sum = 0, any = false;
+      for (const sku of costedSkus) {
+        const gross = sku.metrics.find((metric) => metric.field === "gross")?.daily[index];
+        const buyouts = sku.metrics.find((metric) => metric.field === "buyouts_count")?.daily[index];
+        if (gross != null && buyouts != null) { sum += Number(buyouts); any = true; }
+      }
+      return any ? sum : null;
+    });
+    const costedBuyoutsCountTotal = knownSum(costedBuyoutsCountDaily);
+    const costedAdSpendDaily = days.map((day, index) => {
+      if (day > summaryEconomyAsOf) return null;
+      let sum = 0, any = false;
+      for (const sku of costedSkus) {
+        const gross = sku.metrics.find((metric) => metric.field === "gross")?.daily[index];
+        const ads = sku.metrics.find((metric) => metric.field === "ad_spent")?.daily[index];
+        if (gross != null && ads != null) { sum += Number(ads); any = true; }
+      }
+      return any ? sum : null;
+    });
+    const costedAdSpendTotal = knownSum(costedAdSpendDaily);
     const grossMetric = summary.find((metric) => metric.field === "gross");
     if (grossMetric) Object.assign(grossMetric, {
       daily: grossDaily,
@@ -3487,18 +3517,15 @@ export async function buildRnpTable(
       const total = knownSum(daily);
       Object.assign(metric, { daily, total: total == null ? null : Math.round(total), forecast: null });
     }
-    const summaryTotal = (field: string) => summary.find((item) => item.field === field)?.total ?? null;
-    const summaryBuyoutsCount = summaryTotal("buyouts_count");
-    const summaryAdSpend = summaryTotal("ad_spent");
     const profitPerUnitMetric = summary.find((item) => item.field === "profit_per_unit");
     if (profitPerUnitMetric) Object.assign(profitPerUnitMetric, {
       daily: days.map((_, index) => {
         const gross = grossDaily[index];
-        const buyouts = summary.find((item) => item.field === "buyouts_count")?.daily[index];
+        const buyouts = costedBuyoutsCountDaily[index];
         return gross != null && buyouts != null && buyouts > 0 ? Math.round(gross / buyouts) : null;
       }),
-      total: grossTotal != null && summaryBuyoutsCount != null && summaryBuyoutsCount > 0
-        ? Math.round(grossTotal / summaryBuyoutsCount)
+      total: grossTotal != null && costedBuyoutsCountTotal != null && costedBuyoutsCountTotal > 0
+        ? Math.round(grossTotal / costedBuyoutsCountTotal)
         : null,
       forecast: null,
     });
@@ -3506,11 +3533,11 @@ export async function buildRnpTable(
     if (romiMetric) Object.assign(romiMetric, {
       daily: days.map((_, index) => {
         const gross = grossDaily[index];
-        const ads = summary.find((item) => item.field === "ad_spent")?.daily[index];
+        const ads = costedAdSpendDaily[index];
         return gross != null && ads != null && ads > 0 ? Math.round((gross / ads) * 1000) / 10 : null;
       }),
-      total: grossTotal != null && summaryAdSpend != null && summaryAdSpend > 0
-        ? Math.round((grossTotal / summaryAdSpend) * 1000) / 10
+      total: grossTotal != null && costedAdSpendTotal != null && costedAdSpendTotal > 0
+        ? Math.round((grossTotal / costedAdSpendTotal) * 1000) / 10
         : null,
       forecast: null,
     });
