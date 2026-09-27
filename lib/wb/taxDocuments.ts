@@ -176,5 +176,12 @@ export async function listWbDocuments(token: string, from: string, to: string, o
 export async function downloadWbDocument(token: string, serviceName: string, extension: string): Promise<Buffer> {
   const url = new URL(`${BASE}/download`);
   url.search = new URLSearchParams({ serviceName, extension }).toString();
-  return Buffer.from(await (await wbFetch(token, url)).arrayBuffer());
+  const body = await (await wbFetch(token, url)).json() as { data?: { document?: unknown } };
+  const encoded = typeof body.data?.document === "string" ? body.data.document.replace(/\s/g, "") : "";
+  if (!encoded || encoded.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)) {
+    throw new Error("WB вернул документ в некорректном Base64-формате");
+  }
+  const file = Buffer.from(encoded, "base64");
+  if (!file.length) throw new Error("WB вернул пустой документ");
+  return file;
 }

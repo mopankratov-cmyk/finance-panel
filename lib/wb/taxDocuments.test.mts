@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isTaxDocumentCategory, parseWbUpdXml, stableTaxDocumentId } from "./taxDocuments.ts";
+import { downloadWbDocument, isTaxDocumentCategory, parseWbUpdXml, stableTaxDocumentId } from "./taxDocuments.ts";
 
 const XML = `<?xml version="1.0" encoding="windows-1251"?>
 <Файл><Документ><СвСчФакт НомерСчФ="УПД-42" ДатаСчФ="25.09.2026" />
@@ -26,4 +26,21 @@ test("stable IDs are deterministic UUIDs", () => {
   const id = stableTaxDocumentId("cab", "document");
   assert.equal(id, stableTaxDocumentId("cab", "document"));
   assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-8[0-9a-f]{3}-[0-9a-f]{12}$/);
+});
+
+test("decodes the WB document from JSON Base64", async () => {
+  const originalFetch = globalThis.fetch;
+  const expected = Buffer.from("PK\u0003\u0004test zip bytes", "binary");
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(String(input));
+    assert.equal(url.searchParams.get("serviceName"), "upd-42");
+    assert.equal(url.searchParams.get("extension"), "zip");
+    assert.equal(new Headers(init?.headers).get("Authorization"), "token");
+    return Response.json({ data: { fileName: "upd.zip", extension: "zip", document: expected.toString("base64") } });
+  };
+  try {
+    assert.deepEqual(await downloadWbDocument("token", "upd-42", "zip"), expected);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
