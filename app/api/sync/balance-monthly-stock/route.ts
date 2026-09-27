@@ -98,7 +98,7 @@ async function loadScopedWbReportRows(cabinetId: string, reportIds: readonly str
   if (!db) throw new Error("Supabase не настроен");
   if (!reportIds.length) return [] as ScopedWbReportRow[];
   return loadAllSupabasePages<ScopedWbReportRow>((from, to) => db.from("wb_report_rows")
-    .select("realizationreport_id,doc_type_name,supplier_oper_name,ppvz_for_pay")
+    .select("realizationreport_id,doc_type_name,supplier_oper_name,ppvz_for_pay,delivery_rub,storage_fee,acceptance,penalty,deduction,additional_payment,cashback_discount")
     .eq("cabinet_id", cabinetId)
     .in("realizationreport_id", reportIds)
     .order("realizationreport_id")
@@ -456,8 +456,8 @@ export async function GET(request: NextRequest) {
               capturedAt,
               calculationMethod: "brand_report_allocation",
               calculationDetails: {
-                modelVersion: 1,
-                allocationBasis: "brand_for_pay_share_of_seller_bank_payment_sum",
+                modelVersion: 2,
+                allocationBasis: "scoped_detailed_report_net",
                 excludedCabinets: excluded.map((item) => item.name),
                 warnings: calculation.warnings,
                 lines: calculation.lines,
