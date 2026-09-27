@@ -5,6 +5,13 @@ export interface ScopedWbReportRow {
   doc_type_name: string | null;
   supplier_oper_name: string | null;
   ppvz_for_pay: number | null;
+  delivery_rub: number | null;
+  storage_fee: number | null;
+  acceptance: number | null;
+  penalty: number | null;
+  deduction: number | null;
+  additional_payment: number | null;
+  cashback_discount: number | null;
 }
 
 export interface BalanceWbCashLine {
@@ -67,10 +74,12 @@ function reportRowForPay(row: ScopedWbReportRow) {
 }
 
 /**
- * Для общего seller точное «Итого» относится ко всем брендам. Распределяем
- * его по доле scoped-строк в «К перечислению», сохраняя итог и коэффициент
- * для аудита. Так общекабинетные удержания не теряются и не приписываются
- * нашим брендам целиком.
+ * Общий seller-level «Итого» нельзя пропорционально делить: общекабинетные
+ * удержания способны сделать базу распределения близкой к нулю и многократно
+ * раздуть долю бренда. Поэтому считаем собственное «Итого» прямо по
+ * детальным строкам наших SKU: к перечислению минус привязанные расходы
+ * плюс выплаты/компенсации. Обезличенные удержания чужих брендов сюда не
+ * попадают.
  */
 export function calculateScopedWbCash(input: {
   snapshotDate: string;
@@ -78,10 +87,19 @@ export function calculateScopedWbCash(input: {
   rows: readonly ScopedWbReportRow[];
 }): BalanceWbCashCalculation {
   const forPayByReport = new Map<string, number>();
+  const netByReport = new Map<string, number>();
   for (const row of input.rows) {
     const reportId = String(row.realizationreport_id ?? "").trim();
     if (!reportId) continue;
-    forPayByReport.set(reportId, (forPayByReport.get(reportId) ?? 0) + reportRowForPay(row));
+    const forPay = reportRowForPay(row);
+    const expenses = Number(row.delivery_rub ?? 0)
+      + Number(row.storage_fee ?? 0)
+      + Number(row.acceptance ?? 0)
+      + Number(row.penalty ?? 0)
+      + Number(row.deduction ?? 0);
+    const compensations = Number(row.additional_payment ?? 0) + Number(row.cashback_discount ?? 0);
+    forPayByReport.set(reportId, (forPayByReport.get(reportId) ?? 0) + forPay);
+    netByReport.set(reportId, (netByReport.get(reportId) ?? 0) + forPay - expenses + compensations);
   }
 
   const lines: BalanceWbCashLine[] = [];
@@ -94,9 +112,7 @@ export function calculateScopedWbCash(input: {
     const sellerTotal = report.bankPaymentSum;
     const rawShare = sellerForPay !== null && sellerForPay > 0 ? brandForPay / sellerForPay : null;
     const usableShare = rawShare !== null && rawShare >= 0 && rawShare <= 1.05 ? rawShare : null;
-    if (rawShare !== null && usableShare === null) warnings.push(`Отчёт ${report.reportId}: доля бренда ${round2(rawShare * 100)}% некорректна, использована сумма строк`);
-    if (sellerTotal === null || usableShare === null) warnings.push(`Отчёт ${report.reportId}: нет пригодного кабинетного итога, использована сумма строк`);
-    const amount = round2(sellerTotal !== null && usableShare !== null ? sellerTotal * usableShare : brandForPay);
+    const amount = round2(netByReport.get(report.reportId) ?? brandForPay);
     const { availableDate, expectedReceiptDate } = wbReportSettlementDates(report);
     const state = expectedReceiptDate < input.snapshotDate
       ? "expected_in_bank"
