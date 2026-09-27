@@ -53,6 +53,64 @@ function loanOptionLabel(loan: Loan) {
   return `${loan.creditorName} · с ${date} · ${loan.principalAmount.toLocaleString("ru-RU")} ₽`;
 }
 
+const normalizeLoanName = (value: string) => value
+  .toLowerCase()
+  .replace(/ё/g, "е")
+  .replace(/[«»"'()]/g, " ")
+  .replace(/\b(?:ооо|оао|пао|ао|ип|мкк)\b/g, " ")
+  .replace(/[^a-zа-я0-9№-]+/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
+
+function optionCreditor(option: CashLoanScheduleOption) {
+  return option.loanName.split(" · с ", 1)[0] ?? option.loanName;
+}
+
+/**
+ * Сужает длинный список графиков по контрагенту банка. Точное имя кредитора
+ * сильнее общего бренда: «Сбербанк» не должно смешиваться с договорами
+ * «Сбербанк № ...». Если доказательства нет, оставляем полный список.
+ */
+export function relevantCashLoanScheduleOptions(
+  options: readonly CashLoanScheduleOption[],
+  counterparty: string,
+  purpose: string,
+) {
+  const normalizedCounterparty = normalizeLoanName(counterparty);
+  const exactLoanIds = new Set(options
+    .filter((option) => normalizeLoanName(optionCreditor(option)) === normalizedCounterparty)
+    .map((option) => option.loanId));
+  if (exactLoanIds.size === 1) return options.filter((option) => exactLoanIds.has(option.loanId));
+
+  const haystack = normalizeLoanName(`${counterparty} ${purpose}`);
+  const familyAliases = [
+    ["jetlend", "джетленд"],
+    ["сбербанк"],
+    ["вб финанс"],
+    ["точка"],
+  ];
+  const family = familyAliases.find((aliases) => aliases.some((alias) => haystack.includes(alias)));
+  if (!family) return [...options];
+  const matching = options.filter((option) => {
+    const creditor = normalizeLoanName(optionCreditor(option));
+    return family.some((alias) => creditor.includes(alias));
+  });
+  return matching.length ? matching : [...options];
+}
+
+/** Автоподстановка допустима только когда реквизиты оставили один договор. */
+export function suggestedCashLoanScheduleOption(
+  options: readonly CashLoanScheduleOption[],
+  date: string,
+  amount: number,
+  counterparty: string,
+  purpose: string,
+) {
+  const relevant = relevantCashLoanScheduleOptions(options, counterparty, purpose);
+  if (new Set(relevant.map((option) => option.loanId)).size !== 1) return undefined;
+  return closestCashLoanScheduleOption(relevant, date, amount);
+}
+
 export function cashLoanScheduleOptions(input: {
   loans: readonly Loan[];
   payments: readonly Payment[];

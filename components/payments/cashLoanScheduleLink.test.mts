@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ScheduleRowRecord } from "../../lib/loans/scheduleRows";
 import type { Loan, Payment } from "../../lib/types";
-import { cashLoanScheduleOptions, closestCashLoanScheduleOption, isLoanRepaymentCategory, loanPaymentNeedsConfirmation } from "./cashLoanScheduleLink";
+import {
+  cashLoanScheduleOptions,
+  closestCashLoanScheduleOption,
+  isLoanRepaymentCategory,
+  loanPaymentNeedsConfirmation,
+  relevantCashLoanScheduleOptions,
+  suggestedCashLoanScheduleOption,
+} from "./cashLoanScheduleLink";
 
 const loan: Loan = { id: "loan-1", creditorName: "Банк", principalAmount: 100_000, interestRatePerDay: 0, startDate: "2026-01-01", dueDate: "2026-12-31", status: "active" };
 const plan = (overrides: Partial<Payment>): Payment => ({ id: "p", date: "2026-10-10", name: "План", amount: -1_000, category: "Погашение тела кредита", accountId: "a", status: "planned", counterparty: "Банк", comment: "[loan:loan-1:schedule:old:principal]", ...overrides });
@@ -64,4 +71,18 @@ test("одноимённые кредиты различаются датой н
   assert.equal(new Set(options.map((item) => item.loanName)).size, 2);
   assert.match(options.find((item) => item.loanId === "loan-1")?.loanName ?? "", /01\.01\.2026.*100\s000 ₽/);
   assert.match(options.find((item) => item.loanId === "loan-2")?.loanName ?? "", /03\.02\.2026.*250\s000 ₽/);
+});
+
+test("точный контрагент выбирает один договор, а общий бренд оставляет выбор номера", () => {
+  const base = { key: "sber", loanId: "sber", loanName: "Сбербанк · с 01.01.2026 · 100 000 ₽", companyId: "c1", dueDate: "2026-09-18", amount: 6_166.35, rowIds: ["s"], legacyPaymentIds: [], label: "" };
+  const options = [
+    base,
+    { ...base, key: "sber-number", loanId: "sber-number", loanName: "Сбербанк № 123 · с 01.02.2026 · 200 000 ₽", rowIds: ["sn"] },
+    { ...base, key: "jet-1", loanId: "jet-1", loanName: "JetLend № 1 · с 01.03.2026 · 300 000 ₽", rowIds: ["j1"] },
+    { ...base, key: "jet-2", loanId: "jet-2", loanName: "JetLend № 2 · с 01.04.2026 · 400 000 ₽", rowIds: ["j2"] },
+  ];
+  assert.deepEqual(relevantCashLoanScheduleOptions(options, "Сбербанк", "Перевод процентов").map((item) => item.loanId), ["sber"]);
+  assert.equal(suggestedCashLoanScheduleOption(options, "2026-09-11", 6_800, "Сбербанк", "Перевод процентов")?.loanId, "sber");
+  assert.deepEqual(relevantCashLoanScheduleOptions(options, "ООО ДЖЕТЛЕНД", "Пополнение счёта заёмщика").map((item) => item.loanId), ["jet-1", "jet-2"]);
+  assert.equal(suggestedCashLoanScheduleOption(options, "2026-09-18", 50_000, "ООО ДЖЕТЛЕНД", "Пополнение счёта заёмщика"), undefined);
 });
