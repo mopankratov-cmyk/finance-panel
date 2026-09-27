@@ -16,6 +16,8 @@ const monthValue = (value: string | null) => /^\d{4}-\d{2}$/.test(value ?? "") ?
 const normalizeAccount = (value: unknown) => String(value ?? "").replace(/\D/g, "");
 const sourceKey = (marketplace: "wb" | "ozon", identity: string) =>
   `${marketplace}:${createHash("sha256").update(identity).digest("hex").slice(0, 24)}`;
+const scopedWbCashSourceKey = (sellerIdentity: string, cabinetId: string) =>
+  sourceKey("wb", `${sellerIdentity}:brand-report-allocation:${cabinetId}`);
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
 type StatementRow = {
@@ -47,14 +49,14 @@ export async function GET(request: NextRequest) {
         .not("registered_at", "is", null).lte("date_from", month).gte("date_to", month)
         .order("date_from", { ascending: false }).order("registered_at", { ascending: false }),
       db.from("balance_marketplace_cash_snapshots")
-        .select("source_key,marketplace,cabinet_id,cabinet_name,amount,available_amount,currency,status,error,captured_at")
+        .select("source_key,marketplace,cabinet_id,cabinet_name,amount,available_amount,currency,status,error,captured_at,calculation_method,calculation_details")
         .eq("snapshot_month", month),
       getWbSyncTargets(),
       getOzonCabinetScope("all"),
     ]);
     const baseError = mappingsResult.error ?? statementsResult.error ?? snapshotsResult.error;
     if (baseError) {
-      const missing = /balance_marketplace_cash_snapshots.*(?:does not exist|schema cache)|could not find.*balance_marketplace_cash_snapshots/i.test(baseError.message);
+      const missing = /balance_marketplace_cash_snapshots.*(?:does not exist|schema cache)|could not find.*balance_marketplace_cash_snapshots|calculation_(?:method|details).*(?:does not exist|schema cache|could not find)/i.test(baseError.message);
       return NextResponse.json({ error: missing ? "Примените миграцию денежных снимков Баланса" : baseError.message }, { status: missing ? 503 : 500 });
     }
 
@@ -108,18 +110,23 @@ export async function GET(request: NextRequest) {
     const bankAmount = bankAmountReady ? round2(bankAccounts.reduce((sum, row) => sum + (row.statementAmount ?? 0), 0)) : null;
     const bankComplete = bankAmountReady && bankAccounts.every((row) => row.matchesDds);
 
-    const expected = new Map<string, { marketplace: "wb" | "ozon"; label: string; blockedReason?: string }>();
+    const expected = new Map<string, { marketplace: "wb" | "ozon"; label: string }>();
     for (const sellerGroup of groupWbStatisticsTargets(wbTargets)) {
       const included = sellerGroup.filter((target) => target.cabinetId && scope.cabinetIds.includes(target.cabinetId));
       if (!included.length) continue;
       const excluded = sellerGroup.filter((target) => target.cabinetId && !scope.cabinetIds.includes(target.cabinetId));
-      expected.set(sourceKey("wb", sellerGroup[0].statisticsSourceKey || sellerGroup[0].statsToken), {
-        marketplace: "wb",
-        label: included.map((item) => item.name).join(" / "),
-        blockedReason: excluded.length
-          ? `Общий seller содержит исключённые кабинеты: ${excluded.map((item) => item.name).join(", ")}; деньги по брендам не разделяются`
-          : undefined,
-      });
+      const sellerIdentity = sellerGroup[0].statisticsSourceKey || sellerGroup[0].statsToken;
+      if (excluded.length) {
+        for (const target of included) {
+          if (!target.cabinetId) continue;
+          expected.set(scopedWbCashSourceKey(sellerIdentity, target.cabinetId), { marketplace: "wb", label: target.name });
+        }
+      } else {
+        expected.set(sourceKey("wb", sellerIdentity), {
+          marketplace: "wb",
+          label: included.map((item) => item.name).join(" / "),
+        });
+      }
     }
     if (ozonScope.ok) {
       for (const cabinet of ozonScope.scope.cabinets.filter((item) => scope.cabinetIds.includes(item.id))) {
@@ -132,10 +139,12 @@ export async function GET(request: NextRequest) {
     }).map((row) => ({
       sourceKey: String(row.source_key), marketplace: row.marketplace as "wb" | "ozon",
       label: String(row.cabinet_name ?? expected.get(String(row.source_key))?.label ?? row.marketplace),
-      amount: expected.get(String(row.source_key))?.blockedReason ? null : row.amount == null ? null : Number(row.amount),
+      amount: row.amount == null ? null : Number(row.amount),
       availableAmount: row.available_amount == null ? null : Number(row.available_amount),
-      currency: String(row.currency ?? "RUB"), status: expected.get(String(row.source_key))?.blockedReason ? "error" : String(row.status),
-      error: expected.get(String(row.source_key))?.blockedReason ?? (row.error ? String(row.error) : null), capturedAt: String(row.captured_at),
+      currency: String(row.currency ?? "RUB"), status: String(row.status),
+      error: row.error ? String(row.error) : null, capturedAt: String(row.captured_at),
+      calculationMethod: String(row.calculation_method ?? "provider_balance"),
+      calculationDetails: row.calculation_details && typeof row.calculation_details === "object" ? row.calculation_details : null,
     }));
     const byMarketplace = (["wb", "ozon"] as const).map((marketplace) => {
       const rows = snapshotRows.filter((row) => row.marketplace === marketplace);
@@ -146,7 +155,7 @@ export async function GET(request: NextRequest) {
         complete,
         amount: complete ? round2(rows.reduce((sum, row) => sum + (row.amount ?? 0), 0)) : null,
         rows,
-        errors: [...rows.map((row) => row.error).filter(Boolean), ...missing.map((item) => item.blockedReason ?? `Нет снимка: ${item.label}`)],
+        errors: [...rows.map((row) => row.error).filter(Boolean), ...missing.map((item) => `Нет снимка: ${item.label}`)],
       };
     });
     const wb = byMarketplace[0];

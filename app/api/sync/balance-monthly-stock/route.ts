@@ -12,7 +12,8 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalogItem, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
-import { fetchWbAccountBalance } from "@/lib/wb/financeApi";
+import { calculateScopedWbCash, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
+import { fetchWbAccountBalance, fetchWbFinanceReportSummaries } from "@/lib/wb/financeApi";
 import { loadBalanceCompanyScopes } from "@/lib/finance/balanceScopes";
 
 export const maxDuration = 300;
@@ -28,6 +29,9 @@ const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 1
 const transientOzonStockError = (message: string) => /timeout|aborted|fetch failed|ozon 5\d\d/i.test(message);
 const privateSourceKey = (marketplace: "wb" | "ozon", identity: string) =>
   `${marketplace}:${createHash("sha256").update(identity).digest("hex").slice(0, 24)}`;
+const scopedWbCashSourceKey = (sellerIdentity: string, cabinetId: string) =>
+  privateSourceKey("wb", `${sellerIdentity}:brand-report-allocation:${cabinetId}`);
+const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
 async function loadOzonStocksForSnapshot(creds: Parameters<typeof ozonStocks>[0]) {
   let last = await ozonStocks(creds, { fresh: true });
@@ -49,6 +53,8 @@ async function saveCashSnapshot(input: {
   currency?: string;
   capturedAt: string;
   error?: string | null;
+  calculationMethod?: "provider_balance" | "brand_report_allocation";
+  calculationDetails?: Record<string, unknown> | null;
   persist?: boolean;
 }) {
   const summary = {
@@ -60,6 +66,8 @@ async function saveCashSnapshot(input: {
     currency: input.currency ?? "RUB",
     status: input.error || input.amount === null ? "error" : "ok",
     error: input.error ?? null,
+    calculationMethod: input.calculationMethod ?? "provider_balance",
+    calculationDetails: input.calculationDetails ?? null,
   };
   if (input.persist === false) return summary;
   const db = getSupabaseAdmin();
@@ -76,11 +84,25 @@ async function saveCashSnapshot(input: {
     currency: summary.currency,
     status: summary.status,
     error: summary.error,
+    calculation_method: summary.calculationMethod,
+    calculation_details: summary.calculationDetails,
     captured_at: input.capturedAt,
     updated_at: input.capturedAt,
   }, { onConflict: "snapshot_month,source_key" });
   if (result.error) throw new Error(result.error.message);
   return summary;
+}
+
+async function loadScopedWbReportRows(cabinetId: string, reportIds: readonly string[]) {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase не настроен");
+  if (!reportIds.length) return [] as ScopedWbReportRow[];
+  return loadAllSupabasePages<ScopedWbReportRow>((from, to) => db.from("wb_report_rows")
+    .select("realizationreport_id,doc_type_name,supplier_oper_name,ppvz_for_pay")
+    .eq("cabinet_id", cabinetId)
+    .in("realizationreport_id", reportIds)
+    .order("realizationreport_id")
+    .range(from, to), { label: `Баланс WB: строки отчётов ${cabinetId}`, maxPages: 300, concurrency: 4 });
 }
 
 async function fulfillmentFinality(closeThrough: string, legalEntityIds: ReadonlySet<string>) {
@@ -394,9 +416,10 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Денежный баланс WB относится ко всему seller, а не к бренду внутри
-    // виртуального кабинета. Поэтому один общий API-вызов и одна строка на
-    // группу токенов: NORVIA/Heaton не удваивают одну и ту же сумму.
+    // Денежный баланс WB относится ко всему seller. Для полностью нашего
+    // seller сохраняем прямой API-баланс. Если seller общий, общий current /
+    // for_withdraw использовать нельзя: считаем отдельную сумму каждого
+    // нашего виртуального кабинета по недельным финансовым отчётам.
     for (const sellerGroup of groupWbStatisticsTargets(wbTargets)) {
       const group = sellerGroup.filter((item) => item.cabinetId && reportingScope.cabinetIds.has(item.cabinetId));
       if (!group.length) continue;
@@ -405,14 +428,63 @@ export async function GET(request: NextRequest) {
       if (!representative?.cabinetId) continue;
       const cabinet = metaById.get(representative.cabinetId)!;
       const label = group.map((item) => metaById.get(item.cabinetId ?? "")?.name ?? item.name).join(" / ");
-      const key = privateSourceKey("wb", group[0].statisticsSourceKey || group[0].statsToken);
+      const sellerIdentity = group[0].statisticsSourceKey || group[0].statsToken;
+      const key = privateSourceKey("wb", sellerIdentity);
       if (excluded.length) {
-        const message = `Общий seller также содержит исключённые кабинеты: ${excluded.map((item) => item.name).join(", ")}. WB не разбивает денежный баланс по брендам`;
-        cashSummaries.push(await saveCashSnapshot({
-          month: window.month, sourceKey: key, marketplace: "wb", cabinet,
-          cabinetName: label, amount: null, capturedAt, error: message, persist: !dryRun,
-        }));
-        errors.push(`Деньги WB ${label}: ${message}`);
+        try {
+          const reports = await fetchWbFinanceReportSummaries(
+            group[0].statsToken,
+            shiftDate(window.month, -120),
+            shiftDate(window.month, -1),
+          );
+          if (!reports.length) throw new Error("WB не вернул недельные финансовые отчёты за последние 120 дней");
+          for (const target of group) {
+            if (!target.cabinetId) continue;
+            const targetCabinet = metaById.get(target.cabinetId) ?? { id: target.cabinetId, name: target.name, organization_id: null };
+            const rows = await loadScopedWbReportRows(target.cabinetId, reports.map((report) => report.reportId));
+            const calculation = calculateScopedWbCash({ snapshotDate: window.month, reports, rows });
+            const targetLabel = targetCabinet.name || target.name;
+            cashSummaries.push(await saveCashSnapshot({
+              month: window.month,
+              sourceKey: scopedWbCashSourceKey(sellerIdentity, target.cabinetId),
+              marketplace: "wb",
+              cabinet: targetCabinet,
+              cabinetName: targetLabel,
+              amount: calculation.amount,
+              availableAmount: calculation.availableAmount,
+              currency: "RUB",
+              capturedAt,
+              calculationMethod: "brand_report_allocation",
+              calculationDetails: {
+                modelVersion: 1,
+                allocationBasis: "brand_for_pay_share_of_seller_bank_payment_sum",
+                excludedCabinets: excluded.map((item) => item.name),
+                warnings: calculation.warnings,
+                lines: calculation.lines,
+              },
+              persist: !dryRun,
+            }));
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          for (const target of group) {
+            if (!target.cabinetId) continue;
+            const targetCabinet = metaById.get(target.cabinetId) ?? { id: target.cabinetId, name: target.name, organization_id: null };
+            cashSummaries.push(await saveCashSnapshot({
+              month: window.month,
+              sourceKey: scopedWbCashSourceKey(sellerIdentity, target.cabinetId),
+              marketplace: "wb",
+              cabinet: targetCabinet,
+              cabinetName: targetCabinet.name || target.name,
+              amount: null,
+              capturedAt,
+              error: `Не удалось рассчитать деньги наших брендов: ${message}`,
+              calculationMethod: "brand_report_allocation",
+              persist: !dryRun,
+            }));
+          }
+          errors.push(`Деньги WB ${label}: ${message}`);
+        }
         continue;
       }
       try {
