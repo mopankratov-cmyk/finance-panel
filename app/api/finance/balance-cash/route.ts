@@ -6,6 +6,7 @@ import { bankOpeningAtDate, cashDifference, dayBefore, type BankTransactionForOp
 import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
 import { loadFinanceStateServer } from "@/lib/finance/dbServer";
 import { loadBalanceCompanyScopes, selectBalanceCompanyScope } from "@/lib/finance/balanceScopes";
+import { requiresScopedWbCash } from "@/lib/finance/balanceWbCash";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { getWbSyncTargets, groupWbStatisticsTargets } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -116,7 +117,8 @@ export async function GET(request: NextRequest) {
       if (!included.length) continue;
       const excluded = sellerGroup.filter((target) => target.cabinetId && !scope.cabinetIds.includes(target.cabinetId));
       const sellerIdentity = sellerGroup[0].statisticsSourceKey || sellerGroup[0].statsToken;
-      if (excluded.length) {
+      const sharedSeller = excluded.length > 0 || sellerGroup.some((item) => requiresScopedWbCash(item.name));
+      if (sharedSeller) {
         for (const target of included) {
           if (!target.cabinetId) continue;
           expected.set(scopedWbCashSourceKey(sellerIdentity, target.cabinetId), { marketplace: "wb", label: target.name });

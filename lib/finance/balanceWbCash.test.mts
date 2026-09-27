@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateScopedWbCash, wbReportSettlementDates } from "./balanceWbCash.ts";
+import { calculateScopedWbCash, requiresScopedWbCash, wbReportSettlementDates } from "./balanceWbCash.ts";
+
+test("Optima and Retail Family always use scoped cash calculation", () => {
+  assert.equal(requiresScopedWbCash("Оптима — NORVIA / RIOBOX"), true);
+  assert.equal(requiresScopedWbCash("Retail Family"), true);
+  assert.equal(requiresScopedWbCash("CLERIN"), false);
+});
 
 test("week 7-13 September is expected in the bank on 7 October", () => {
   assert.deepEqual(wbReportSettlementDates({ periodTo: "2026-09-13", createDate: "2026-09-14" }), {

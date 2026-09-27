@@ -38,6 +38,12 @@ export interface BalanceWbCashCalculation {
 const DAY_MS = 86_400_000;
 const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
 
+/** Эти seller-кабинеты содержат чужие бренды, даже если они не заведены в панели отдельными targets. */
+export function requiresScopedWbCash(cabinetName: unknown) {
+  const name = String(cabinetName ?? "").normalize("NFKC").toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]+/gi, "");
+  return name.includes("optima") || name.includes("оптима") || name.includes("retailfamily") || name.includes("ритейлфэмили") || name.includes("ритейлфемили");
+}
+
 function addDays(date: string, days: number) {
   return new Date(Date.parse(`${date}T00:00:00.000Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }

@@ -12,7 +12,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalogItem, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
-import { calculateScopedWbCash, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
+import { calculateScopedWbCash, requiresScopedWbCash, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
 import { fetchWbAccountBalance, fetchWbFinanceReportSummaries } from "@/lib/wb/financeApi";
 import { loadBalanceCompanyScopes } from "@/lib/finance/balanceScopes";
 
@@ -430,7 +430,8 @@ export async function GET(request: NextRequest) {
       const label = group.map((item) => metaById.get(item.cabinetId ?? "")?.name ?? item.name).join(" / ");
       const sellerIdentity = group[0].statisticsSourceKey || group[0].statsToken;
       const key = privateSourceKey("wb", sellerIdentity);
-      if (excluded.length) {
+      const sharedSeller = excluded.length > 0 || sellerGroup.some((item) => requiresScopedWbCash(item.name));
+      if (sharedSeller) {
         try {
           const reports = await fetchWbFinanceReportSummaries(
             group[0].statsToken,
