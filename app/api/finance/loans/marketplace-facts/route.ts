@@ -14,6 +14,7 @@ const normalizedContractNumber = (value: string | null | undefined) => String(va
 type LoanRow = { id: string; creditor: string; start_date: string };
 type PaymentRow = { comment: string | null };
 type ContractLinkRow = { marketplace: string; contract_number: string; loan_id: string };
+type CabinetRow = { id: string; name: string | null };
 
 export async function GET() {
   const denied = await requireApiSession(["director", "fin_director", "financier"]);
@@ -21,7 +22,7 @@ export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   try {
-    const [loansResult, paymentRows, reportRows, linksResult] = await Promise.all([
+    const [loansResult, paymentRows, reportRows, linksResult, cabinetsResult] = await Promise.all([
       db.from("loans").select("id,creditor,start_date").eq("status", "active"),
       loadAllSupabasePages<PaymentRow>((from, to) => db.from("payments").select("comment").not("comment", "is", null).like("comment", "%[loan:%").order("id").range(from, to), { label: "Метки договоров", maxPages: 50 }),
       loadAllSupabasePages<Record<string, unknown>>((from, to) => db.from("wb_report_rows")
@@ -30,10 +31,15 @@ export async function GET() {
         .ilike("bonus_type_name", "Перевод на баланс заёмщика%")
         .order("rrd_id", { ascending: true }).range(from, to), { label: "Удержания WB по кредитам", maxPages: 50 }),
       db.from("loan_marketplace_contract_links").select("marketplace,contract_number,loan_id").eq("marketplace", "wb"),
+      // В удержании хранится технический cabinet_id. Превращаем его в имя
+      // кабинета на сервере, чтобы в очереди сверки было ясно, откуда деньги.
+      db.from("wb_cabinets").select("id,name").eq("marketplace", "wb"),
     ]);
     if (loansResult.error) throw loansResult.error;
     if (linksResult.error && !/does not exist|schema cache/i.test(linksResult.error.message)) throw linksResult.error;
+    if (cabinetsResult.error) throw cabinetsResult.error;
     const loans = (loansResult.data ?? []) as LoanRow[];
+    const cabinetNames = new Map(((cabinetsResult.data ?? []) as CabinetRow[]).map((cabinet) => [cabinet.id, cabinet.name?.trim() || null]));
     const byContract = new Map<string, LoanRow>();
     for (const link of (linksResult.data ?? []) as ContractLinkRow[]) {
       const loan = loans.find((item) => item.id === link.loan_id);
@@ -69,7 +75,7 @@ export async function GET() {
           && Math.abs(row.amountRub - fact.amountRub) <= 0.01 && daysBetween(row.dueDate, fact.date) <= 31)
         : [];
       const recorded = scheduleRows.some((row) => row.paidByMarketplaceSource === fact.source);
-      return [{ ...fact, loanId: loan?.id ?? null, loanName: loan?.creditor ?? null, scheduleRowId: candidates.length === 1 ? candidates[0].id : null,
+      return [{ ...fact, cabinetName: cabinetNames.get(fact.cabinetId) ?? null, loanId: loan?.id ?? null, loanName: loan?.creditor ?? null, scheduleRowId: candidates.length === 1 ? candidates[0].id : null,
         state: recorded ? "recorded" : candidates.length === 1 ? "ready" : loan ? "review" : "unassigned" }];
     });
     return NextResponse.json({ facts });
