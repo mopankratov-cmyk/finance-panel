@@ -319,6 +319,7 @@ export function CalendarPage() {
   const [factLinkError, setFactLinkError] = useState<string | null>(null);
   const [manualFactLinkError, setManualFactLinkError] = useState<{ key: string; message: string } | null>(null);
   const [confirmingFactLinkKey, setConfirmingFactLinkKey] = useState<string | null>(null);
+  const [aligningCompanyKey, setAligningCompanyKey] = useState<string | null>(null);
   const [factLinkNotice, setFactLinkNotice] = useState<string | null>(null);
   useEffect(() => {
     for (const match of allPlanFactMatching.matched) {
@@ -572,6 +573,26 @@ export function CalendarPage() {
     }
   };
 
+  const alignPaymentCompanyForMatch = async (payment: Payment, companyId: string, requestKey: string, paymentLabel: "плана" | "факта") => {
+    if (aligningCompanyKey === requestKey) return;
+    const companyName = companyById.get(companyId)?.name ?? "выбранную компанию";
+    if (!window.confirm(`Назначить для ${paymentLabel} компанию «${companyName}»?\n\nПосле этого совпадение можно будет подтвердить.`)) return;
+    setAligningCompanyKey(requestKey);
+    setManualFactLinkError(null);
+    try {
+      await updatePaymentCompany(payment.id, companyId);
+      setCompanyByPayment((current) => new Map(current).set(payment.id, companyId));
+      setFactLinkNotice(`Компания ${paymentLabel} изменена на «${companyName}». Теперь проверьте и подтвердите совпадение.`);
+    } catch (error) {
+      setManualFactLinkError({
+        key: requestKey,
+        message: error instanceof Error ? error.message : "Не удалось изменить компанию платежа",
+      });
+    } finally {
+      setAligningCompanyKey(null);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -668,7 +689,13 @@ export function CalendarPage() {
                   {(() => {
                     const requestKey = `${match.planned.id}:${match.fact.id}`;
                     const confirming = confirmingFactLinkKey === requestKey;
+                    const aligningCompany = aligningCompanyKey === requestKey;
                     const error = manualFactLinkError?.key === requestKey ? manualFactLinkError.message : null;
+                    const plannedCompanyId = companyByPayment.get(match.planned.id) ?? match.planned.companyId ?? null;
+                    const factCompanyId = companyByPayment.get(match.fact.id) ?? match.fact.companyId ?? null;
+                    const plannedCompanyName = plannedCompanyId ? companyById.get(plannedCompanyId)?.name ?? "неизвестная компания" : "не назначена";
+                    const factCompanyName = factCompanyId ? companyById.get(factCompanyId)?.name ?? "неизвестная компания" : "не назначена";
+                    const companiesDiffer = !plannedCompanyId || !factCompanyId || plannedCompanyId !== factCompanyId;
                     return <>
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                         <div className="grid min-w-0 flex-1 gap-2 text-sm sm:grid-cols-4">
@@ -676,7 +703,7 @@ export function CalendarPage() {
                           <div><span className="block text-xs text-slate-500">Факт</span><b>{formatDate(match.fact.date)} · {formatMoney(match.fact.amount)}</b></div>
                           <div className="sm:col-span-2"><span className="block text-xs text-slate-500">Платёж</span><span className="break-words">{match.fact.name || match.fact.counterparty}</span></div>
                         </div>
-                        <button
+                        {!companiesDiffer && <button
                           type="button"
                           onClick={() => void confirmPlanFactMatch(match.planned, match.fact)}
                           disabled={confirming}
@@ -685,8 +712,17 @@ export function CalendarPage() {
                         >
                           {confirming && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
                           {confirming ? "Подтверждаем…" : "Подтвердить совпадение"}
-                        </button>
+                        </button>}
                       </div>
+                      {companiesDiffer && <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900">
+                        <p><b>Совпадение пока нельзя подтвердить:</b> у плана — «{plannedCompanyName}», у факта — «{factCompanyName}».</p>
+                        <p className="mt-1 text-rose-800">Выберите, у какой операции компания определена неверно. Данные платежа и сумма не изменятся.</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {factCompanyId && <button type="button" onClick={() => void alignPaymentCompanyForMatch(match.planned, factCompanyId, requestKey, "плана")} disabled={aligningCompany} className="min-h-11 rounded-lg border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100 disabled:cursor-wait disabled:opacity-70">У плана должна быть «{factCompanyName}»</button>}
+                          {plannedCompanyId && <button type="button" onClick={() => void alignPaymentCompanyForMatch(match.fact, plannedCompanyId, requestKey, "факта")} disabled={aligningCompany} className="min-h-11 rounded-lg border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100 disabled:cursor-wait disabled:opacity-70">У факта должна быть «{plannedCompanyName}»</button>}
+                          {(!plannedCompanyId || !factCompanyId) && <button type="button" onClick={() => { setSelectedDate(plannedCompanyId ? match.fact.date : match.planned.date); setQuickAddPending(false); }} className="min-h-11 rounded-lg border border-rose-300 bg-white px-3 text-sm font-semibold text-rose-800 hover:bg-rose-100">Открыть операцию и выбрать компанию</button>}
+                        </div>
+                      </div>}
                       {error && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
                     </>;
                   })()}
