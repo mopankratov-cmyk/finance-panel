@@ -54,6 +54,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
   const [editingEmployee, setEditingEmployee] = useState<PayrollEmployee | null>(null);
   const [employeeModalOpen, setEmployeeModalOpen] = useState(false);
   const [activeView, setActiveView] = useState<"summary" | "staff" | "requisites" | "register">("summary");
+  const [registerCompanyId, setRegisterCompanyId] = useState("all");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -74,12 +75,14 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
   const employeesForPeriod = useMemo(() => {
     if (!range) return [];
     const existingEmployeeIds = new Set(data.entries.filter((entry) => entry.periodId === selectedPeriod?.id).map((entry) => entry.employeeId));
-    return data.employees.filter((employee) => employeeBelongsToPeriod(employee, range.periodStart, range.periodEnd) || existingEmployeeIds.has(employee.id));
-  }, [data.employees, data.entries, range, selectedPeriod?.id]);
+    const employeeMatchesCompany = (employee: PayrollEmployee) => registerCompanyId === "all" || employee.companyIds.includes(registerCompanyId) || employee.companyId === registerCompanyId;
+    const entryMatchesCompany = (employeeId: string) => data.entries.some((entry) => entry.periodId === selectedPeriod?.id && entry.employeeId === employeeId && (entry.companyId === registerCompanyId || entry.lines.some((line) => line.companyId === registerCompanyId)));
+    return data.employees.filter((employee) => (employeeBelongsToPeriod(employee, range.periodStart, range.periodEnd) || existingEmployeeIds.has(employee.id)) && (employeeMatchesCompany(employee) || entryMatchesCompany(employee.id)));
+  }, [data.employees, data.entries, range, registerCompanyId, selectedPeriod?.id]);
 
   useEffect(() => {
     setSkippedEmployeeIds(new Set());
-  }, [payDate]);
+  }, [payDate, registerCompanyId]);
 
   useEffect(() => {
     if (!range) {
@@ -238,13 +241,20 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
             <p className="mt-1 text-sm text-slate-500">5-го числа — за 16–последний день прошлого месяца; 20-го — за 1–15 число текущего месяца.</p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
+            <label className="text-xs font-semibold text-slate-700">Компания ведомости
+              <select value={registerCompanyId} onChange={(event) => setRegisterCompanyId(event.target.value)} className="mt-1 min-h-11 min-w-[210px] rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100">
+                <option value="all">Все компании</option>
+                {companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+              </select>
+            </label>
             <label className="text-xs font-semibold text-slate-700">Дата выплаты
               <input type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} className="mt-1 min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100" />
             </label>
             <button type="button" onClick={() => setPayDate(nextPayrollDate(today))} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><RefreshCw className="h-4 w-4" />Ближайшая выплата</button>
           </div>
         </div>
-        <div className="p-5">
+          <div className="p-5">
+          {registerCompanyId !== "all" && <p role="status" className="mb-4 rounded-xl border border-violet-100 bg-violet-50 px-4 py-3 text-sm text-violet-900">Показаны сотрудники и уже сохранённые строки выбранной компании. Чтобы вернуться к общей ведомости, выберите «Все компании».</p>}
           {range ? (
             <p className="mb-4 rounded-xl bg-violet-50 px-4 py-3 text-sm text-violet-900">Период начисления: <strong>{formatDate(range.periodStart)} — {formatDate(range.periodEnd)}</strong></p>
           ) : (
