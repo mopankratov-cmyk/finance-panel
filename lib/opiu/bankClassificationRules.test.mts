@@ -74,3 +74,98 @@ test("известные правила сразу подставляют ста
 
   assert.deepEqual(suggestions.map((suggestion) => suggestion.category), ["Продажи на МП", "УСН", "РКО"]);
 });
+
+test("перевод владельцу по имени распознаётся как перевод между своими счетами", () => {
+  const [suggestion] = classifyBankStatement({
+    documentHash: "hash",
+    bank: "Точка",
+    owner: "Индивидуальный предприниматель Митриченко Кристина Михайловна",
+    ownerInn: "230910032513",
+    accountNumber: "40702810000000000001",
+    dateFrom: "2026-09-16",
+    dateTo: "2026-09-16",
+    openingBalance: null,
+    closingBalance: null,
+    declaredDebit: 10_000,
+    declaredCredit: 0,
+    rows: [{
+      id: "self-transfer",
+      date: "2026-09-16",
+      amount: -10_000,
+      counterparty: 'ООО "Банк Точка"',
+      counterpartyInn: "",
+      counterpartyAccount: "",
+      purpose: "Перевод по номеру телефона +7 909 444-53-73 Получатель Кристина Михайловна М. через СБП.",
+      documentNumber: "4",
+    }],
+    warnings: [],
+  }, [], [], [], []);
+
+  assert.equal(suggestion.category, "Выбытие — Перевод между счетами");
+  assert.match(suggestion.reasons.join(" "), /получатель перевода совпадает/i);
+});
+
+test("процентный займ означает выдачу тела, а оплата процентов остаётся процентами", () => {
+  const base = {
+    documentHash: "hash",
+    bank: "Ozon Банк",
+    owner: "ИП Панкратов Максим Олегович",
+    ownerInn: "280888215133",
+    accountNumber: "40802810000000002301",
+    dateFrom: "2026-09-17",
+    dateTo: "2026-09-18",
+    openingBalance: null,
+    closingBalance: null,
+    declaredDebit: 450_000,
+    declaredCredit: 0,
+    warnings: [],
+  };
+  const rows = [
+    { id: "loan", date: "2026-09-17", amount: -400_000, counterparty: "Ястимова Татьяна Валерьевна", counterpartyInn: "", counterpartyAccount: "", purpose: "Перевод процентного займа №1 от 16.09.2026г.", documentNumber: "5" },
+    { id: "interest", date: "2026-09-18", amount: -50_000, counterparty: "Кредитор", counterpartyInn: "", counterpartyAccount: "", purpose: "Оплата процентов по договору займа", documentNumber: "6" },
+  ];
+  const suggestions = classifyBankStatement({ ...base, rows }, [], [], [], []);
+
+  assert.deepEqual(suggestions.map((suggestion) => suggestion.category), ["Выдача кредитов и займов", "Оплата % по кредиту"]);
+});
+
+test("русские ключевые слова распознают основные статьи", () => {
+  const rows = [
+    { id: "dividends", amount: -10_000, purpose: "Выплата дивидендов учредителю" },
+    { id: "received-loan", amount: 100_000, purpose: "Получение займа по договору № 7" },
+    { id: "returned-loan", amount: -25_000, purpose: "Возврат займа по договору № 7" },
+    { id: "advertising", amount: -5_000, purpose: "Оплата рекламных услуг" },
+    { id: "delivery", amount: -7_000, purpose: "Оплата транспортных услуг" },
+  ].map((row, index) => ({
+    ...row,
+    date: "2026-09-20",
+    counterparty: "Контрагент",
+    counterpartyInn: "",
+    counterpartyAccount: "",
+    documentNumber: String(index + 1),
+  }));
+
+  const suggestions = classifyBankStatement({
+    documentHash: "hash",
+    bank: "Ozon Банк",
+    owner: "ИП Панкратов Максим Олегович",
+    ownerInn: "280888215133",
+    accountNumber: "40802810000000002301",
+    dateFrom: "2026-09-20",
+    dateTo: "2026-09-20",
+    openingBalance: null,
+    closingBalance: null,
+    declaredDebit: 47_000,
+    declaredCredit: 100_000,
+    rows,
+    warnings: [],
+  }, [], [], [], []);
+
+  assert.deepEqual(suggestions.map((suggestion) => suggestion.category), [
+    "Дивиденды",
+    "Получение кредитов и займов",
+    "Оплаты по кредитам и займам",
+    "Внутренняя реклама на МП",
+    "Доставка до маркеплейса",
+  ]);
+});
