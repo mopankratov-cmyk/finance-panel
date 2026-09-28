@@ -17,7 +17,7 @@ test("долг считается только при наличии начис�
 
 test("в очередь ведомости попадают только явно отмеченные в ДДС зарплатные операции", () => {
   assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "Зарплата административного персонала" }), true);
-  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "Зарплата" }), true);
+  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "Зарплата" }), false);
   assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "Расходы на персонал" }), false);
   assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "" }), false);
   assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-08-31", category: "Зарплата" }), false);

@@ -34,9 +34,6 @@ const PAYROLL_DDS_CATEGORIES = new Set([
   PAYROLL_CATEGORIES.administrative,
   PAYROLL_CATEGORIES.commercial,
   PAYROLL_CATEGORIES.production,
-  // Историческая статья остаётся доступной, пока старые операции не
-  // переклассифицированы в более точные статьи выше.
-  "Зарплата",
 ]);
 
 export function paymentIsPayrollCandidate(payment: Pick<Payment, "status" | "amount" | "date" | "category">, cutoff = "2026-09-01"): boolean {
