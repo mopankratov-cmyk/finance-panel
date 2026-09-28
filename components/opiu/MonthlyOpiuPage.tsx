@@ -12,6 +12,7 @@ import { buildMonthlyOpiuSheetPayload, exportMonthlyOpiuToGoogleSheets } from "@
 import type { MonthlySourceResult } from "@/lib/opiu/monthlySourceFallback";
 import { aggregateOzonSources, aggregateWbSources, filterMonthlySources, monthlyBrandOptions, type MonthlyMarketplaceSource } from "@/lib/opiu/monthlyMarketplaceSources";
 import { combineMonthlyCompanyFacts, monthlyTaxSettingGaps, withCalculatedMonthlyTaxes } from "@/lib/opiu/monthlyTaxFacts";
+import { readBrowserReportCache, reportCacheKey, writeBrowserReportCache } from "@/lib/opiu/browserReportCache";
 import { AlertTriangle, Check, ExternalLink, FileSpreadsheet, LineChart, Loader2, RefreshCw, Settings } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -40,41 +41,7 @@ interface MonthlyOpiuData extends Omit<MonthlyOpiuResponse, "period"> {
   byCompany?: MonthlyFactsResponse["byCompany"];
 }
 
-const MONTH_CACHE_TTL_MS = 5 * 60 * 1000;
-const MONTH_SESSION_CACHE_PREFIX = "finance-panel:opiu-month:v1:";
-const monthlyOpiuMemoryCache = new Map<string, { savedAt: number; data: MonthlyOpiuData }>();
-
-function cachedMonth(month: string): MonthlyOpiuData | null {
-  const cached = monthlyOpiuMemoryCache.get(month);
-  if (cached && Date.now() - cached.savedAt <= MONTH_CACHE_TTL_MS) return cached.data;
-  if (cached) {
-    monthlyOpiuMemoryCache.delete(month);
-  }
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem(`${MONTH_SESSION_CACHE_PREFIX}${month}`);
-    if (!raw) return null;
-    const stored = JSON.parse(raw) as { savedAt?: number; data?: MonthlyOpiuData };
-    if (!stored.savedAt || !stored.data || Date.now() - stored.savedAt > MONTH_CACHE_TTL_MS) {
-      window.sessionStorage.removeItem(`${MONTH_SESSION_CACHE_PREFIX}${month}`);
-      return null;
-    }
-    monthlyOpiuMemoryCache.set(month, { savedAt: stored.savedAt, data: stored.data });
-    return stored.data;
-  } catch {
-    return null;
-  }
-}
-
-function storeMonth(month: string, data: MonthlyOpiuData) {
-  const entry = { savedAt: Date.now(), data };
-  monthlyOpiuMemoryCache.set(month, entry);
-  try {
-    window.sessionStorage.setItem(`${MONTH_SESSION_CACHE_PREFIX}${month}`, JSON.stringify(entry));
-  } catch {
-    // Кэш ускоряет повторный вход, но не должен мешать отчёту при запрете storage.
-  }
-}
+const monthCacheKey = (month: string) => reportCacheKey("opiu-month", [month]);
 
 function combineMonthlyData(
   marketplace: MonthlyOpiuResponse | null,
@@ -169,15 +136,28 @@ export function MonthlyOpiuPage() {
   const [exportedUrl, setExportedUrl] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
   const [detailSelection, setDetailSelection] = useState<MonthlyOpiuDetailSelection | null>(null);
   const loading = marketplaceLoading || factsLoading;
   const elapsed = useElapsedSeconds(loading);
 
   useEffect(() => {
+    const cached = readBrowserReportCache<MonthlyOpiuData>(monthCacheKey(month));
+    const forceRefresh = reloadKey > 0;
+    if (cached && !forceRefresh) {
+      setData(cached.data);
+      setCachedAt(cached.savedAt);
+      setMarketplaceLoading(false);
+      setFactsLoading(false);
+      setError(null);
+      setExportedUrl(null);
+      return;
+    }
+
     const controller = new AbortController();
     let active = true;
     const params = new URLSearchParams({ month });
-    const fallback = cachedMonth(month);
+    const fallback = cached?.data ?? null;
     let marketplaceResult: MonthlyOpiuResponse | null = null;
     let factsResult: MonthlyFactsResponse | null = null;
     let marketplaceError: string | null = null;
@@ -185,6 +165,7 @@ export function MonthlyOpiuPage() {
     let settled = 0;
 
     setData(fallback);
+    setCachedAt(cached?.savedAt ?? null);
     setMarketplaceLoading(true);
     setFactsLoading(true);
     setError(null);
@@ -201,7 +182,8 @@ export function MonthlyOpiuPage() {
         return;
       }
       if (next && marketplaceResult && factsResult) {
-        storeMonth(month, next);
+        const stored = writeBrowserReportCache(monthCacheKey(month), next);
+        setCachedAt(stored.savedAt);
       }
     };
 
@@ -359,7 +341,10 @@ export function MonthlyOpiuPage() {
           <input
             type="month"
             value={month}
-            onChange={(event) => setMonth(event.target.value || currentMonthParam())}
+            onChange={(event) => {
+              setReloadKey(0);
+              setMonth(event.target.value || currentMonthParam());
+            }}
             className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500"
           />
         </label>
@@ -391,6 +376,15 @@ export function MonthlyOpiuPage() {
         </label>
         <button
           type="button"
+          onClick={() => setReloadKey((value) => value + 1)}
+          disabled={loading}
+          className="flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:cursor-wait disabled:opacity-60"
+        >
+          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin motion-reduce:animate-none" : ""}`} />
+          {loading ? "Обновляю…" : "Обновить"}
+        </button>
+        <button
+          type="button"
           onClick={() => void handleExport()}
           disabled={!statement || loading || exporting}
           className="flex min-h-11 items-center gap-2 rounded-lg border border-emerald-300 bg-white px-4 text-sm font-semibold text-emerald-700 shadow-sm transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -399,6 +393,12 @@ export function MonthlyOpiuPage() {
           Google Таблица
         </button>
       </div>
+
+      {cachedAt && !loading ? (
+        <div className="mb-3 text-right text-xs text-slate-400">
+          Данные из кэша на {new Date(cachedAt).toLocaleString("ru-RU")}. Пересчёт — по кнопке «Обновить».
+        </div>
+      ) : null}
 
       {loading ? <LoadingBanner seconds={elapsed} hint={marketplaceLoading ? "продажи маркетплейсов" : "общие расходы"} /> : null}
 

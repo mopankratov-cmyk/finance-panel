@@ -13,6 +13,7 @@ import {
 import type { OpiuReport, OpiuTableRow } from "@/lib/opiu/buildReport";
 import { buildOpiuSheetPayload, exportOpiuToGoogleSheets, OPIU_SECTION_BEFORE } from "@/lib/opiu/googleSheetExport";
 import { createOpiuRequestCoordinator } from "@/lib/opiu/requestCoordinator";
+import { readBrowserReportCache, reportCacheKey, writeBrowserReportCache } from "@/lib/opiu/browserReportCache";
 import { Check, ChevronDown, ChevronLeft, ChevronRight, FileSpreadsheet, Loader2, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -95,6 +96,12 @@ function humanDate(value: string): string {
   const [year, month, day] = value.split("-");
   return [day, month, year].filter(Boolean).join(".");
 }
+
+const financialReportCacheKey = (endDate: string, brands: readonly string[]) =>
+  reportCacheKey("wb-financial-report", [endDate, [...brands].sort().join(",")]);
+
+const financialRangeCacheKey = (from: string, to: string, brands: readonly string[]) =>
+  reportCacheKey("wb-financial-range", [from, to, [...brands].sort().join(",")]);
 
 function OpiuTableSkeleton({ cols }: { cols: number }) {
   return (
@@ -239,6 +246,8 @@ export function OpiuPage() {
 
   const fetchReportRef = useRef(fetchReport);
   fetchReportRef.current = fetchReport;
+  const brandsRef = useRef(brands);
+  brandsRef.current = brands;
 
   const coordinatorRef = useRef<ReturnType<
     typeof createOpiuRequestCoordinator<OpiuResponse>
@@ -257,7 +266,10 @@ export function OpiuPage() {
           throw new Error(json.error ?? "Ошибка сохранения");
         }
       },
-      onReport: (json) => setData(json),
+      onReport: (json, context) => {
+        setData(json);
+        writeBrowserReportCache(financialReportCacheKey(context.month, brandsRef.current), json);
+      },
       onError: setError,
       onSavingChange: (payload, pendingCount) => {
         const key = `${payload.month}:${payload.weekStart}`;
@@ -284,6 +296,14 @@ export function OpiuPage() {
   useEffect(() => {
     if (tab !== "report_date") return;
     coordinator.setMonth(endDate);
+    const cached = readBrowserReportCache<OpiuResponse>(financialReportCacheKey(endDate, brands));
+    if (cached) {
+      setData(cached.data);
+      setError(null);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     setData(null);
     void coordinator.loadReport(endDate, false);
   }, [coordinator, endDate, tab, brands]);
@@ -307,18 +327,30 @@ export function OpiuPage() {
 
   useEffect(() => {
     if (tab !== "sale_date" || !isValidRange) return;
+    const cacheKey = financialRangeCacheKey(rangeFrom, rangeTo, brands);
+    const cached = readBrowserReportCache<OpiuRangeResponse>(cacheKey);
+    if (cached) {
+      setRangeData(cached.data);
+      setRangeError(null);
+      setRangeLoading(false);
+      setRangeRefreshing(false);
+      return;
+    }
     const controller = new AbortController();
     setRangeError(null);
     setRangeLoading(true);
     fetchRange(rangeFrom, rangeTo, controller.signal)
-      .then((json) => setRangeData(json))
+      .then((json) => {
+        setRangeData(json);
+        writeBrowserReportCache(cacheKey, json);
+      })
       .catch((e) => {
         if (e instanceof DOMException && e.name === "AbortError") return;
         setRangeError(e instanceof Error ? e.message : "Ошибка загрузки");
       })
       .finally(() => setRangeLoading(false));
     return () => controller.abort();
-  }, [tab, rangeFrom, rangeTo, isValidRange, fetchRange]);
+  }, [tab, rangeFrom, rangeTo, isValidRange, fetchRange, brands]);
 
   const handleEndDateChange = (nextEndDate: string) => {
     setError(null);
@@ -379,7 +411,10 @@ export function OpiuPage() {
       if (!isValidRange) return;
       setRangeRefreshing(true);
       fetchRange(rangeFrom, rangeTo)
-        .then((json) => setRangeData(json))
+        .then((json) => {
+          setRangeData(json);
+          writeBrowserReportCache(financialRangeCacheKey(rangeFrom, rangeTo, brands), json);
+        })
         .catch((e) => setRangeError(e instanceof Error ? e.message : "Ошибка загрузки"))
         .finally(() => setRangeRefreshing(false));
       return;
@@ -586,7 +621,7 @@ export function OpiuPage() {
 
       {activeTimestamp && !activeLoading && (
         <p className="text-xs text-slate-400">
-          Данные WB: {formatTime(activeTimestamp)}
+          Данные WB из кэша: {formatTime(activeTimestamp)} · пересчёт по кнопке «Обновить»
           {activeMeta && (
             <>
               {" · "}
