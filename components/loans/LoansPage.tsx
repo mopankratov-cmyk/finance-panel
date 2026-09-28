@@ -18,7 +18,7 @@ import { closeLoanScheduleRows, closeLoanScheduleRowWithWb, loadLoanScheduleRows
 import { loadFinanceState } from "@/lib/db";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
-import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
+import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalanceAt, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
 import { loanPaymentCandidates, requiresLoanAmountConfirmation } from "./manualLoanPayment";
 
 type SummaryKey = "outstanding" | "interest" | "next30" | "overdue" | "active";
@@ -35,10 +35,22 @@ type PaymentTrace =
   | { source: "manual" };
 
 async function loadMarketplaceFacts(): Promise<MarketplaceFact[]> {
-  const response = await fetch("/api/finance/loans/marketplace-facts", { cache: "no-store" });
-  const body = await response.json().catch(() => ({})) as { facts?: MarketplaceFact[]; error?: string };
-  if (!response.ok) throw new Error(body.error || "Не удалось прочитать удержания WB");
-  return body.facts ?? [];
+  // Vercel иногда обрывает первый запрос к serverless-функции после простоя.
+  // Повторяем один раз: сверка не меняет данные на GET и не создаёт дублей.
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch("/api/finance/loans/marketplace-facts", { cache: "no-store" });
+      const body = await response.json().catch(() => ({})) as { facts?: MarketplaceFact[]; error?: string };
+      if (!response.ok) throw new Error(body.error || "Не удалось прочитать удержания WB");
+      return body.facts ?? [];
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error && lastError.message !== "Failed to fetch"
+    ? lastError
+    : new Error("Не удалось связаться со сверкой WB. Проверьте подключение и повторите попытку.");
 }
 
 const marker = (loanId: string) => `[loan:${loanId}:`;
@@ -268,12 +280,6 @@ export function LoansPage() {
     const rows = scheduleRows.filter((row) => row.loanId === loan.id);
     return [loan.id, rows.length ? scheduleDraftFromRows(rows) : scheduleFromPayments(state.payments, loan.id)];
   })), [state.loans, state.payments, scheduleRows]);
-  const loanBalances = new Map(filteredLoans.map((loan) => [loan.id, actualLoanBalance(loan.principalAmount, schedules.get(loan.id) ?? [], today)]));
-  const outstanding = [...loanBalances.values()].reduce((sum, value) => sum + value, 0);
-  const next30 = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
-    .filter(({ row }) => row.status === "planned" && row.date >= today && row.date <= next30Date);
-  const overdue = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
-    .filter(({ row }) => row.status === "planned" && row.date < today);
   // Поля "Год" и "С месяца" — контролируемые инпуты: при обычном редактировании
   // (стереть, чтобы вписать новое значение) они на мгновение становятся пустыми
   // или неполными. Это нормальное промежуточное состояние UI, а не ошибка ввода —
@@ -286,6 +292,15 @@ export function LoansPage() {
   const periodEnd = periodMode === "year"
     ? `${safePeriodYear}-12-31`
     : `${safeMonthTo}-${String(new Date(Number(safeMonthTo.slice(0, 4)), Number(safeMonthTo.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
+  // В выбранном периоде показываем договорный остаток именно на его конец.
+  // Фактический остаток остаётся доступен в карточке подробностей и не
+  // подменяется прогнозом исполнения графика.
+  const loanBalances = new Map(filteredLoans.map((loan) => [loan.id, projectedLoanBalanceAt(loan.principalAmount, schedules.get(loan.id) ?? [], periodEnd)]));
+  const outstanding = [...loanBalances.values()].reduce((sum, value) => sum + value, 0);
+  const next30 = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
+    .filter(({ row }) => row.status === "planned" && row.date >= today && row.date <= next30Date);
+  const overdue = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
+    .filter(({ row }) => row.status === "planned" && row.date < today);
   const periodSchedule = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
     .filter(({ row }) => row.status !== "cancelled" && row.date >= periodStart && row.date <= periodEnd);
   const periodInterest = periodSchedule.reduce((sum, item) => sum + item.row.interest + item.row.penalty + item.row.fine, 0);
@@ -611,7 +626,7 @@ export function LoansPage() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Сумма договора" value={formatMoney(loan.principalAmount)} />
-              <Metric label="Остаток тела" value={formatMoney(balance)} strong />
+              <Metric label="Остаток тела на конец периода" value={formatMoney(balance)} strong />
               <Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} />
               <Metric label="Следующий платёж" value={next ? `${formatDate(next.date)} · ${formatMoney(next.principal + next.interest + next.penalty + next.fine)}` : "Нет"} />
             </div>

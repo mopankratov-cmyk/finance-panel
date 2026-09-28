@@ -45,7 +45,7 @@ export function paymentCompanyOptions(companies: readonly DdsCompany[]): DdsComp
   return active.filter((company) => {
     const aliases = active.filter((candidate) => sameCompanyAlias(company.name, candidate.name));
     if (aliases.length < 2) return true;
-    const canonical = aliases.find((candidate) => /коровкин/i.test(candidate.name)) ?? aliases[0];
+    const canonical = aliases.find((candidate) => /филиппов/i.test(candidate.name)) ?? aliases[0];
     return company.id === canonical.id;
   });
 }
@@ -81,7 +81,7 @@ export function companyScopeOptions(companies: readonly DdsCompany[]): DdsCompan
       const aliasesOfOneCompany = members.every((member) => sameCompanyAlias(members[0].name, member.name));
       if (aliasesOfOneCompany) {
         members.forEach((member) => hiddenCompanyIds.add(member.id));
-        const canonical = members.find((member) => /коровкин/i.test(member.name)) ?? members[0];
+        const canonical = members.find((member) => /филиппов/i.test(member.name)) ?? members[0];
         return { name, label: canonical.name };
       }
       return { name, label: name === "Основная группа" ? "Основная группа" : `Группа «${name}» — все компании` };
