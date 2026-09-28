@@ -13,6 +13,12 @@ test("tax route loads legal-entity cabinet links for live WB VAT", () => {
   assert.match(source, /loadWbAdvertisingExpense\(selected\.cabinetIds,/);
   assert.match(source, /loadWbAdvertisingCoverageStart\(selected\.cabinetIds\)/);
   assert.match(source, /rpc\("tax_wb_advert_expense"/);
+  assert.match(source, /isExternalReportingEntity\(\{ id: company\.id, name: company\.name \}\)/);
+});
+
+test("WB tax document sync excludes external sellers from the tax register", () => {
+  const sync = readFileSync(new URL("../../app/api/sync/wb-tax-documents/route.ts", import.meta.url), "utf8");
+  assert.match(sync, /isExternalReportingEntity\(\{ id: scope\.id, name: scope\.name \}\)/);
 });
 
 test("tax page includes report services and full-cabinet advertising in USN without duplicating WB documents", () => {

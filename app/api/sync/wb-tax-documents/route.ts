@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readCompaniesCompat } from "@/lib/finance/companySchema";
+import { isExternalReportingEntity } from "@/lib/finance/groupReportingScope";
 import { buildOpiuCompanyScopes } from "@/lib/opiu/companyScope";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -78,7 +79,7 @@ async function companyByCabinet() {
     return { id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? ""), isActive: Boolean(row.is_active) };
   }), (entities.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })), (links.data ?? []).map((row) => ({
     legalEntityId: String(row.legal_entity_id), cabinetId: String(row.cabinet_id),
-  })));
+  }))).filter((scope) => !isExternalReportingEntity({ id: scope.id, name: scope.name }));
   return new Map(scopes.flatMap((scope) => scope.cabinetIds.map((cabinetId) => [cabinetId, scope.id] as const)));
 }
 

@@ -3,6 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { audit } from "@/lib/audit/log";
 import { readCompaniesCompat } from "@/lib/finance/companySchema";
+import { isExternalReportingEntity } from "@/lib/finance/groupReportingScope";
 import { parseCompanyTaxRate, parseCompanyTaxSystem, parseCompanyVatMode } from "@/lib/finance/companyTax";
 import { buildOpiuCompanyScopes } from "@/lib/opiu/companyScope";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -116,7 +117,7 @@ async function companies() {
   })), (links.data ?? []).map((row) => ({
     legalEntityId: String(row.legal_entity_id),
     cabinetId: String(row.cabinet_id),
-  })));
+  }))).filter((company) => !isExternalReportingEntity({ id: company.id, name: company.name }));
 }
 
 async function loadDetails(paymentIds: string[]): Promise<{ byId: Map<string, DetailRow>; available: boolean }> {
