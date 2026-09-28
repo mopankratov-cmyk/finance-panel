@@ -164,9 +164,10 @@ export function BalancesTab({ entityId, refreshKey }: { entityId: string; refres
 
   const available = data.totals.qty - data.totals.reserved;
   // Отставание считаем от последнего списания. null — на складах нет FBS, и
-  // подпись про продажи там только мешала бы.
+  // подпись про продажи там только мешала бы. Берём время самого снимка:
+  // так расчёт остаётся согласованным с показанными данными и чистым при рендере.
   const fbsLag = data.warehouses.some((warehouse) => warehouse.kind === "fulfillment")
-    ? (data.lastFbsSaleAt ? Math.floor((Date.now() - Date.parse(data.lastFbsSaleAt)) / 86_400_000) : 999)
+    ? (data.lastFbsSaleAt ? Math.floor((Date.parse(data.computedAt) - Date.parse(data.lastFbsSaleAt)) / 86_400_000) : 999)
     : null;
   const breakdown = warehouseBreakdown(byWarehouse, data.warehouses);
 

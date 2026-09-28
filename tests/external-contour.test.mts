@@ -25,7 +25,7 @@ const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf
 
 test("клиенту открыты ровно три модуля", () => {
   assert.deepEqual([...EXTERNAL_MODULES], ["wb", "ozon", "warehouse"]);
-  for (const module of EXTERNAL_MODULES) assert.ok(MODULE_LABEL[module], module);
+  for (const moduleName of EXTERNAL_MODULES) assert.ok(MODULE_LABEL[moduleName], moduleName);
   // Внутренние разделы компании модулем не считаются и клиенту не видны.
   for (const value of ["finance", "payroll", "users", "audit", ""]) {
     assert.equal(isExternalModule(value), false, value);
