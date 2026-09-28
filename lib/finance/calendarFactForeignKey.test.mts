@@ -18,8 +18,10 @@ test("удаление факта возвращает канонически с
   assert.match(migration, /p\.settled_by_payment_id = p_payment_id/);
 });
 
-test("сервер подтверждения пишет каноническую связь вместе с меткой совместимости", () => {
+test("сервер подтверждения пишет каноническую связь и сохраняет метку в базе без новой колонки", () => {
   assert.match(route, /settled_by_payment_id: linked\.settledByPaymentId/);
   assert.match(route, /withCalendarFactLink/);
+  assert.match(route, /\[calendar-fact:\$\{factId\}\]/);
+  assert.match(route, /savedViaLegacyMarker/);
 });
 

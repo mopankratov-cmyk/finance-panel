@@ -245,6 +245,9 @@ export function CalendarPage() {
   const planFactReview = planFactMatching.review;
   const factLinkRequests = useRef(new Set<string>());
   const [factLinkError, setFactLinkError] = useState<string | null>(null);
+  const [manualFactLinkError, setManualFactLinkError] = useState<{ key: string; message: string } | null>(null);
+  const [confirmingFactLinkKey, setConfirmingFactLinkKey] = useState<string | null>(null);
+  const [factLinkNotice, setFactLinkNotice] = useState<string | null>(null);
   useEffect(() => {
     for (const match of allPlanFactMatching.matched) {
       if (match.source !== "automatic") continue;
@@ -477,12 +480,23 @@ export function CalendarPage() {
   };
 
   const confirmPlanFactMatch = async (planned: Payment, fact: Payment) => {
+    const requestKey = `${planned.id}:${fact.id}`;
+    if (confirmingFactLinkKey === requestKey) return;
+    setConfirmingFactLinkKey(requestKey);
+    setManualFactLinkError(null);
+    setFactLinkNotice(null);
     try {
       const payment = await persistCalendarFactLink(planned.id, fact.id, "confirmed");
       dispatch({ type: "UPDATE_PAYMENT", payload: payment });
       setFactLinkError(null);
+      setFactLinkNotice("Совпадение подтверждено: план отмечен как оплаченный.");
     } catch (error) {
-      setFactLinkError(error instanceof Error ? error.message : "Не удалось подтвердить совпадение");
+      setManualFactLinkError({
+        key: requestKey,
+        message: error instanceof Error ? error.message : "Не удалось подтвердить совпадение",
+      });
+    } finally {
+      setConfirmingFactLinkKey(null);
     }
   };
 
@@ -578,18 +592,43 @@ export function CalendarPage() {
           <CardContent>
             <div className="space-y-2">
               {planFactReview.map((match) => (
-                <div key={`${match.planned.id}-${match.fact.id}`} className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 lg:flex-row lg:items-center lg:justify-between">
-                  <div className="grid min-w-0 flex-1 gap-2 text-sm sm:grid-cols-4">
-                    <div><span className="block text-xs text-slate-500">План</span><b>{formatDate(match.planned.date)} · {formatMoney(match.planned.amount)}</b></div>
-                    <div><span className="block text-xs text-slate-500">Факт</span><b>{formatDate(match.fact.date)} · {formatMoney(match.fact.amount)}</b></div>
-                    <div className="sm:col-span-2"><span className="block text-xs text-slate-500">Платёж</span><span className="break-words">{match.fact.name || match.fact.counterparty}</span></div>
-                  </div>
-                  <button onClick={() => void confirmPlanFactMatch(match.planned, match.fact)} className="min-h-11 shrink-0 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить совпадение</button>
+                <div key={`${match.planned.id}-${match.fact.id}`} className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                  {(() => {
+                    const requestKey = `${match.planned.id}:${match.fact.id}`;
+                    const confirming = confirmingFactLinkKey === requestKey;
+                    const error = manualFactLinkError?.key === requestKey ? manualFactLinkError.message : null;
+                    return <>
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="grid min-w-0 flex-1 gap-2 text-sm sm:grid-cols-4">
+                          <div><span className="block text-xs text-slate-500">План</span><b>{formatDate(match.planned.date)} · {formatMoney(match.planned.amount)}</b></div>
+                          <div><span className="block text-xs text-slate-500">Факт</span><b>{formatDate(match.fact.date)} · {formatMoney(match.fact.amount)}</b></div>
+                          <div className="sm:col-span-2"><span className="block text-xs text-slate-500">Платёж</span><span className="break-words">{match.fact.name || match.fact.counterparty}</span></div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void confirmPlanFactMatch(match.planned, match.fact)}
+                          disabled={confirming}
+                          aria-busy={confirming}
+                          className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
+                        >
+                          {confirming && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+                          {confirming ? "Подтверждаем…" : "Подтвердить совпадение"}
+                        </button>
+                      </div>
+                      {error && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{error}</p>}
+                    </>;
+                  })()}
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {factLinkNotice && (
+        <div role="status" aria-live="polite" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {factLinkNotice}
+        </div>
       )}
 
       {factLinkError && (
