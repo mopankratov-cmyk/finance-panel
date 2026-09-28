@@ -92,9 +92,12 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
     const existing = new Map(data.entries.filter((entry) => entry.periodId === selectedPeriod?.id).map((entry) => [entry.employeeId, entry]));
     setDrafts(Object.fromEntries(employeesForPeriod.map((employee) => {
       const entry = existing.get(employee.id);
-      return [employee.id, entry ? draftFromEntry(entry) : blankPayrollEntry(employee)];
+      const draft = entry ? draftFromEntry(entry) : blankPayrollEntry(employee);
+      if (registerCompanyId === "all" || draft.lines.some((line) => line.companyId === registerCompanyId)) return [employee.id, draft];
+      const line = blankPayrollEntry({ ...employee, companyId: registerCompanyId }).lines[0];
+      return [employee.id, { ...draft, lines: [...draft.lines, { ...line, companyId: registerCompanyId, accountId: suggestPayrollAccount(registerCompanyId, null, companies, accounts) }] }];
     })));
-  }, [data.entries, employeesForPeriod, range, selectedPeriod?.id]);
+  }, [accounts, companies, data.entries, employeesForPeriod, range, registerCompanyId, selectedPeriod?.id]);
 
   const employeeById = useMemo(() => new Map(data.employees.map((employee) => [employee.id, employee])), [data.employees]);
   const settlementByEntry = useMemo(() => new Map(data.entries.flatMap((entry) => {
@@ -144,17 +147,18 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
   const summary = useMemo(() => includedEmployeesForPeriod.reduce((result, employee) => {
     const draft = drafts[employee.id] ?? blankPayrollEntry(employee);
     const entry = existingEntryByEmployee.get(employee.id);
-    const settlement = entry ? settlementByEntry.get(entry.id) : undefined;
-    result.salary += payrollSalaryAmount(draft);
-    result.tax += payrollTaxAmount(employee, draft);
-    result.total += payrollSalaryAmount(draft);
-    result.paid += settlement?.paid ?? 0;
+    const lines = registerCompanyId === "all" ? draft.lines : draft.lines.filter((line) => line.companyId === registerCompanyId);
+    const scopedDraft = { ...draft, lines };
+    result.salary += payrollSalaryAmount(scopedDraft);
+    result.tax += payrollTaxAmount(employee, scopedDraft);
+    result.total += payrollSalaryAmount(scopedDraft);
+    result.paid += entry ? data.allocations.filter((allocation) => allocation.entryId === entry.id && (registerCompanyId === "all" || lines.some((line) => line.id === allocation.payrollLineId))).reduce((sum, allocation) => sum + allocation.amount, 0) : 0;
     return result;
-  }, { salary: 0, tax: 0, total: 0, paid: 0 }), [drafts, includedEmployeesForPeriod, existingEntryByEmployee, settlementByEntry]);
+  }, { salary: 0, tax: 0, total: 0, paid: 0 }), [data.allocations, drafts, includedEmployeesForPeriod, existingEntryByEmployee, registerCompanyId]);
 
   const missingTax = includedEmployeesForPeriod.filter((employee) => {
     const draft = drafts[employee.id];
-    return draft && draft.lines.some((line) => payrollLineTaxIsPayable(employee, line) && line.amount > 0 && payrollTaxRate(employee, line) === null && line.taxAmount === 0);
+    return draft && draft.lines.filter((line) => registerCompanyId === "all" || line.companyId === registerCompanyId).some((line) => payrollLineTaxIsPayable(employee, line) && line.amount > 0 && payrollTaxRate(employee, line) === null && line.taxAmount === 0);
   });
 
   const updateDraft = (employeeId: string, patch: Partial<PayrollDraftEntry>) => {
@@ -177,12 +181,17 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
       }
       const entriesToSave = includedEmployeesForPeriod
         .map((employee) => drafts[employee.id] ?? blankPayrollEntry(employee))
-        .filter((entry) => entry.lines.some((line) => line.amount > 0 || line.taxAmount > 0));
+        .filter((entry) => {
+          const scopedLines = entry.lines.filter((line) => registerCompanyId === "all" || line.companyId === registerCompanyId);
+          return registerCompanyId === "all"
+            ? scopedLines.some((line) => line.amount > 0 || line.taxAmount > 0)
+            : scopedLines.length > 0 && (scopedLines.some((line) => line.amount > 0 || line.taxAmount > 0) || existingEntryByEmployee.has(entry.employeeId));
+        });
       if (entriesToSave.length === 0) {
         setSuccess("В этой выплате нет начислений. Ведомость и платёжный календарь не изменены.");
         return;
       }
-      await savePayrollPeriod(payDate, entriesToSave);
+      await savePayrollPeriod(payDate, entriesToSave, registerCompanyId === "all" ? undefined : registerCompanyId);
       await onCalendarUpdated();
       setSuccess("Ведомость сохранена. Зарплата и налог обновлены в платёжном календаре без дублей.");
       await load();
@@ -274,7 +283,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
             </div>
           )}
           {skippedEmployees.length > 0 && <div role="status" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700"><span>Без начисления в этой выплате: {skippedEmployees.map((employee) => employee.fullName).join(", ")}</span><button type="button" onClick={() => setSkippedEmployeeIds(new Set())} className="min-h-11 rounded-lg px-3 text-sm font-semibold text-violet-700 hover:bg-violet-100">Вернуть в ведомость</button></div>}
-          <PayrollLinesTable employees={includedEmployeesForPeriod} drafts={drafts} companies={companies} accounts={accounts} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} onChange={(employeeId, lines) => updateDraft(employeeId, { lines })} onSkipEmployee={(employeeId) => setSkippedEmployeeIds((current) => new Set(current).add(employeeId))} canSkipEmployee={(employee) => !existingEntryByEmployee.has(employee.id)} />
+          <PayrollLinesTable employees={includedEmployeesForPeriod} drafts={drafts} companies={companies} accounts={accounts} companyId={registerCompanyId === "all" ? null : registerCompanyId} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} onChange={(employeeId, lines) => updateDraft(employeeId, { lines })} onSkipEmployee={(employeeId) => setSkippedEmployeeIds((current) => new Set(current).add(employeeId))} canSkipEmployee={(employee) => !existingEntryByEmployee.has(employee.id)} />
           <div className="mt-4 flex justify-end">
             <button type="button" disabled={saving || !range || includedEmployeesForPeriod.length === 0} onClick={() => void savePeriod()} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-5 text-sm font-bold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}{saving ? "Сохраняю…" : "Сохранить и обновить календарь"}
@@ -504,13 +513,15 @@ function RequisitesDirectory({ employees, canViewPrivate, onEdit }: { employees:
   return <Card><div className="border-b border-slate-100 p-5"><h2 className="text-lg font-bold text-slate-950">Реквизиты для оплаты</h2><p className="mt-1 text-sm text-slate-500">Показываем только данные, которые есть в карточке сотрудника. Нажмите на ФИО, чтобы исправить или дополнить.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[1060px] text-sm"><thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-5 py-3">Сотрудник</th><th className="px-4 py-3">Банк</th><th className="px-4 py-3">Расчётный счёт</th><th className="px-4 py-3">Карта / перевод</th><th className="px-4 py-3">Телефон</th><th className="px-4 py-3">Исходные реквизиты</th></tr></thead><tbody className="divide-y divide-slate-100">{rows.length === 0 ? <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">Реквизиты ещё не загружены. Обновите данные из Excel во вкладке «Штат».</td></tr> : rows.map((employee) => <tr key={employee.id} className="align-top hover:bg-slate-50/70"><td className="px-5 py-3"><button type="button" onClick={() => onEdit(employee)} className="min-h-11 cursor-pointer text-left font-semibold text-slate-950 hover:text-violet-700">{employee.fullName}</button></td><td className="px-4 py-3 text-slate-700">{employee.bankName || "—"}</td><td className="max-w-[280px] whitespace-pre-line break-words px-4 py-3 text-slate-700">{employee.settlementAccountDetails || "—"}</td><td className="max-w-[280px] whitespace-pre-line break-words px-4 py-3 text-slate-700">{employee.cardTransferDetails || "—"}</td><td className="px-4 py-3 text-slate-700">{employee.phone || "—"}</td><td className="max-w-[300px] whitespace-pre-line break-words px-4 py-3 text-slate-500">{employee.paymentDetails || "—"}</td></tr>)}</tbody></table></div></Card>;
 }
 
-function PayrollLinesTable({ employees, drafts, companies, accounts, onEdit, onChange, onSkipEmployee, canSkipEmployee }: { employees: PayrollEmployee[]; drafts: Record<string, PayrollDraftEntry>; companies: DdsCompany[]; accounts: Account[]; onEdit: (employee: PayrollEmployee) => void; onChange: (employeeId: string, lines: PayrollAccrualLine[]) => void; onSkipEmployee: (employeeId: string) => void; canSkipEmployee: (employee: PayrollEmployee) => boolean }) {
+function PayrollLinesTable({ employees, drafts, companies, accounts, companyId, onEdit, onChange, onSkipEmployee, canSkipEmployee }: { employees: PayrollEmployee[]; drafts: Record<string, PayrollDraftEntry>; companies: DdsCompany[]; accounts: Account[]; companyId: string | null; onEdit: (employee: PayrollEmployee) => void; onChange: (employeeId: string, lines: PayrollAccrualLine[]) => void; onSkipEmployee: (employeeId: string) => void; canSkipEmployee: (employee: PayrollEmployee) => boolean }) {
   return <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full min-w-[960px] table-fixed text-sm xl:min-w-0"><colgroup><col className="w-[22%]" /><col className="w-[19%]" /><col className="w-[19%]" /><col className="w-[13%]" /><col className="w-[13%]" /><col className="w-[14%]" /></colgroup><thead><tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-3 py-3">Сотрудник</th><th className="px-2 py-3">Компания</th><th className="px-2 py-3">Вид начисления</th><th className="px-2 py-3">Зарплата</th><th className="px-2 py-3">Налог</th><th className="px-2 py-3">Способ оплаты</th></tr></thead><tbody className="divide-y divide-slate-100">{employees.length === 0 ? <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">На выбранный период сотрудников нет</td></tr> : employees.flatMap((employee) => {
-    const lines = drafts[employee.id]?.lines ?? blankPayrollEntry(employee).lines;
+    const allLines = drafts[employee.id]?.lines ?? blankPayrollEntry(employee).lines;
+    const lines = companyId ? allLines.filter((line) => line.companyId === companyId) : allLines;
     const allowedKinds: PayrollAccrualLine["kind"][] = employee.employmentType === "partial" ? ["official", "unofficial"] : employee.employmentType === "official" ? ["official"] : employee.employmentType === "unofficial" ? ["unofficial"] : ["contractor"];
-    const minimumLines = employee.employmentType === "partial" ? 2 : 1;
-    const patchLine = (id: string, patch: Partial<PayrollAccrualLine>) => onChange(employee.id, lines.map((line) => {
+    const minimumLines = companyId ? lines.length : employee.employmentType === "partial" ? 2 : 1;
+    const patchLine = (id: string, patch: Partial<PayrollAccrualLine>) => onChange(employee.id, allLines.map((line) => {
       if (line.id !== id) return line;
+      if (companyId && patch.companyId !== undefined) return line;
       const next = { ...line, ...patch };
       if (patch.companyId !== undefined) next.accountId = suggestPayrollAccount(patch.companyId, null, companies, accounts);
       if (!payrollLineTaxIsPayable(employee, next)) next.taxAmount = 0;
@@ -519,7 +530,7 @@ function PayrollLinesTable({ employees, drafts, companies, accounts, onEdit, onC
     }));
     const addLine = () => {
       const kind = allowedKinds[0];
-      onChange(employee.id, [...lines, { id: crypto.randomUUID(), kind, amount: 0, taxAmount: 0, companyId: employee.companyId, accountId: suggestPayrollAccount(employee.companyId, null, companies, accounts), paymentMethod: kind === "official" || kind === "contractor" ? "bank_account" : "card", salaryPaymentId: null, taxPaymentId: null, comment: "" }]);
+      onChange(employee.id, [...allLines, { id: crypto.randomUUID(), kind, amount: 0, taxAmount: 0, companyId: companyId ?? employee.companyId, accountId: suggestPayrollAccount(companyId ?? employee.companyId, null, companies, accounts), paymentMethod: kind === "official" || kind === "contractor" ? "bank_account" : "card", salaryPaymentId: null, taxPaymentId: null, comment: "" }]);
     };
     return lines.map((line, index) => {
       const taxPayable = payrollLineTaxIsPayable(employee, line);
