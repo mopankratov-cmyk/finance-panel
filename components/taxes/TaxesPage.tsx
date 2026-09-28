@@ -53,6 +53,10 @@ function sumTotals(values: MarketplaceTotals[]): MarketplaceTotals {
   return { income: money(values.reduce((sum, value) => sum + value.income, 0)), serviceExpenses: money(values.reduce((sum, value) => sum + value.serviceExpenses, 0)), advertising: money(values.reduce((sum, value) => sum + value.advertising, 0)), serviceExpensesExAdvertising: money(values.reduce((sum, value) => sum + value.serviceExpensesExAdvertising, 0)), cogs: money(values.reduce((sum, value) => sum + value.cogs, 0)), warnings: [...new Set(values.flatMap((value) => value.warnings))] };
 }
 
+function emptyTotals(warnings: string[] = []): MarketplaceTotals {
+  return { income: 0, serviceExpenses: 0, advertising: 0, serviceExpensesExAdvertising: 0, cogs: 0, warnings };
+}
+
 function blankDocument(date: string): MarketplaceTaxDocument {
   return { id: crypto.randomUUID(), marketplace: "wb", documentDate: date, documentNumber: "", grossExpenseAmount: 0, vatRate: null, vatAmount: 0, vatDocumentStatus: "missing", vatDeductionStatus: "pending", usnExpenseStatus: "pending", note: "", saved: false };
 }
@@ -84,26 +88,34 @@ export function TaxesPage() {
 
   useEffect(() => {
     const controller = new AbortController(); let active = true;
-    setLoading(true); setError("");
+    setLoading(true); setError(""); setByMonth({});
     const load = async () => {
       const taxData = await fetch(`/api/finance/taxes?${new URLSearchParams({ from: dates.from, to: dates.to, company: companyId })}`, { cache: "no-store", signal: controller.signal }).then(json<TaxResponse>);
       if (!companyId && taxData.companies[0]) { if (active) { setRegister(taxData); setCompanyId(taxData.companies[0].id); } return; }
-      const loaded: Record<string, MarketplaceTotals> = {};
+      if (active) setRegister(taxData);
+      const failedMonths: string[] = [];
       for (let start = 0; start < dates.months.length; start += 3) {
         const batch = await Promise.all(dates.months.slice(start, start + 3).map(async (month) => {
           const params = new URLSearchParams({ month, ...(companyId ? { company: companyId } : {}), ...(month === asOf.slice(0, 7) ? { to: asOf } : {}) });
-          return [month, totals(await fetch(`/api/opiu/mp?${params}`, { cache: "no-store", signal: controller.signal }).then(json<MarketplaceResponse>))] as const;
+          try {
+            return [month, totals(await fetch(`/api/opiu/mp?${params}`, { cache: "no-store", signal: controller.signal }).then(json<MarketplaceResponse>))] as const;
+          } catch (reason) {
+            if (reason instanceof DOMException && reason.name === "AbortError") throw reason;
+            failedMonths.push(month);
+            const message = reason instanceof Error ? reason.message : "не удалось загрузить данные";
+            return [month, emptyTotals([`${month}: ${message}`])] as const;
+          }
         }));
-        batch.forEach(([month, value]) => { loaded[month] = value; });
+        if (active) setByMonth((current) => ({ ...current, ...Object.fromEntries(batch) }));
       }
-      if (active) { setRegister(taxData); setByMonth(loaded); }
+      if (active && failedMonths.length) setError(`Раздел открыт, но не загрузились месяцы: ${failedMonths.join(", ")}. Итог за год пока неполный.`);
     };
     void load().catch((reason) => { if (active && !(reason instanceof DOMException && reason.name === "AbortError")) setError(reason instanceof Error ? reason.message : "Не удалось рассчитать налоги"); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; controller.abort(); };
   }, [asOf, companyId, dates.from, dates.months, dates.to, reload]);
 
   const company = register?.selectedCompany ?? null;
-  const marketplace = sumTotals(dates.months.map((month) => byMonth[month] ?? { income: 0, serviceExpenses: 0, advertising: 0, serviceExpensesExAdvertising: 0, cogs: 0, warnings: [] }));
+  const marketplace = sumTotals(dates.months.map((month) => byMonth[month] ?? emptyTotals()));
   const effectiveMonth = (register?.vatEffectiveFrom ?? `${dates.year}-01-01`).slice(0, 7);
   const taxableIncome = money(dates.months.reduce((sum, month) => month >= effectiveMonth ? sum + (byMonth[month]?.income ?? 0) : sum, 0));
   const documents = register?.marketplaceTaxDocuments ?? [];
