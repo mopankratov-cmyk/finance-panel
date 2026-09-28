@@ -452,7 +452,8 @@ async function handlePayroll(request: NextRequest) {
   const payDate = text(body.payDate, 10);
   const range = payrollPeriodForDate(payDate);
   const inputEntries = Array.isArray(body.entries) ? body.entries as Array<Record<string, unknown>> : [];
-  const companyScopeId = nullableId(body.companyId);
+  const companyScopeIds = new Set((Array.isArray(body.companyIds) ? body.companyIds : []).map((value) => nullableId(value)).filter((value): value is string => Boolean(value)));
+  const companyIsInScope = (companyId: string | null | undefined) => companyScopeIds.size === 0 || Boolean(companyId && companyScopeIds.has(companyId));
   if (!range) return NextResponse.json({ error: "Дата выплаты должна быть 5-м или 20-м числом" }, { status: 400 });
   if (!inputEntries.length || inputEntries.length > 500) return NextResponse.json({ error: "Добавьте начисления сотрудников" }, { status: 400 });
 
@@ -581,7 +582,7 @@ async function handlePayroll(request: NextRequest) {
     };
   });
 
-  const paymentIds = entryRows.flatMap((entry) => entry.allocation_lines.filter((line) => companyScopeId === null || line.companyId === companyScopeId).flatMap((line) => [line.salaryPaymentId, line.taxPaymentId])).filter((id): id is string => Boolean(id));
+  const paymentIds = entryRows.flatMap((entry) => entry.allocation_lines.filter((line) => companyIsInScope(line.companyId)).flatMap((line) => [line.salaryPaymentId, line.taxPaymentId])).filter((id): id is string => Boolean(id));
   const financeState = await loadFinanceStateServer();
   const existingPaymentById = new Map(financeState.payments.map((payment) => [payment.id, payment]));
   const calendarStatus = (paymentId: string) => {
@@ -589,7 +590,7 @@ async function handlePayroll(request: NextRequest) {
     return existing?.status === "done" || (existing?.status === "cancelled" && String(existing.comment ?? "").includes("[calendar-fact:")) ? existing.status : "planned";
   };
   const paymentRows: Payment[] = entryRows.flatMap((entry) => {
-    return entry.allocation_lines.filter((line) => companyScopeId === null || line.companyId === companyScopeId).flatMap((line) => {
+    return entry.allocation_lines.filter((line) => companyIsInScope(line.companyId)).flatMap((line) => {
       const kindLabel = line.kind === "official" ? "официальная часть" : line.kind === "unofficial" ? "неофициальная часть" : "выплата по договору";
       const common = { accountId: line.accountId!, companyId: line.companyId, date: payDate };
       const salaryCategory = PAYROLL_CATEGORIES[payrollCategoryForEmployee(entry.employee.position)];
@@ -624,7 +625,7 @@ async function handlePayroll(request: NextRequest) {
   const obsoletePaymentIds = (existingResult.data ?? []).flatMap((entry) => {
     const lines = Array.isArray(entry.allocation_lines) ? entry.allocation_lines as Array<Record<string, unknown>> : [];
     return lines
-      .filter((line) => companyScopeId === null || nullableId(line.companyId) === companyScopeId)
+      .filter((line) => companyIsInScope(nullableId(line.companyId)))
       .flatMap((line) => [nullableId(line.salaryPaymentId), nullableId(line.taxPaymentId)]);
   }).filter((id): id is string => id !== null && !activePaymentIds.has(id));
   const actions: FinanceAction[] = paymentRows.map((payment) => existingPaymentById.has(payment.id)
