@@ -14,6 +14,7 @@ import { OzonForecastPanel } from "./OzonForecastPanel";
 import { FinancialAlertsPanel } from "./FinancialAlertsPanel";
 import { FinanceTasksPanel } from "./FinanceTasksPanel";
 import { calendarTemplateSheets, downloadCalendarXlsx } from "./calendarExport";
+import { parseRussianAmount, parseRussianDate } from "@/components/payments/ddsCsv";
 import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
 import { importedMonths, matchesReplaceScope, plannedPaymentsToReplace } from "./calendarReplace";
 import { OverdueLoanQueue } from "./OverdueLoanQueue";
@@ -58,6 +59,29 @@ interface CalendarDay {
 interface CalendarWeekRow {
   days: (CalendarDay | null)[];
   referenceDate: string;
+}
+
+type TextCorrection = { payment: Payment; next: Payment; summary: string };
+
+function textDate(value: string) {
+  return parseRussianDate(value) ?? null;
+}
+
+function recognizeCalendarCorrection(text: string, payments: Payment[]): { correction?: TextCorrection; error?: string } {
+  const dates = [...text.matchAll(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|20\d{2}-\d{2}-\d{2})\b/g)].map((match) => textDate(match[1])).filter((date): date is string => Boolean(date));
+  if (!/перенест|сдвин|передвин|измен.*дат/i.test(text) || dates.length < 2) {
+    return { error: "Пока понимаю перенос даты. Напишите, например: «перенести платёж 50 000 с 05.10.2026 на 12.10.2026»." };
+  }
+  const amounts = [...text.matchAll(/(?:сумм[ауе]?\s*)?([+-]?[\d\s ]+(?:[,.]\d{1,2})?)\s*(?:₽|руб\.?|р\b)/gi)]
+    .map((match) => parseRussianAmount(match[1])).filter((amount): amount is number => amount !== null);
+  const from = dates[0];
+  const to = dates[1];
+  const candidates = payments.filter((payment) => payment.status === "planned" && payment.date === from && (!amounts.length || amounts.some((amount) => Math.abs(Math.abs(payment.amount) - Math.abs(amount)) < 0.01)));
+  if (candidates.length !== 1) {
+    return { error: candidates.length ? "Нашла несколько плановых платежей. Добавьте сумму и назначение платежа." : "Плановый платёж с такой датой и суммой не найден. Проверьте дату и сумму." };
+  }
+  const payment = candidates[0];
+  return { correction: { payment, next: { ...payment, date: to }, summary: `${formatMoney(payment.amount)} · ${formatDate(from)} → ${formatDate(to)} · ${payment.name || payment.category}` } };
 }
 
 function buildMonthWeeks(
@@ -108,6 +132,9 @@ export function CalendarPage() {
   const [calendarLayout, setCalendarLayout] = useState<"agenda" | "grid">("grid");
   const [loanScheduleRows, setLoanScheduleRows] = useState<ScheduleRowRecord[] | null>(null);
   const [scheduleLinksError, setScheduleLinksError] = useState("");
+  const [textCorrection, setTextCorrection] = useState("");
+  const [textCorrectionPreview, setTextCorrectionPreview] = useState<TextCorrection | null>(null);
+  const [textCorrectionError, setTextCorrectionError] = useState<string | null>(null);
 
   // Сетка месяца на телефоне даёт колонку в 34px: в неё не помещается ни
   // сумма, ни число операций — ячейка превращается в вертикальную полоску с
@@ -641,6 +668,18 @@ export function CalendarPage() {
           Не удалось проверить платежи, уже привязанные к кредитам: {scheduleLinksError}. Сопоставление плана с фактом временно выключено.
         </div>
       )}
+
+      {!isForecastView && <details className="rounded-xl border border-violet-200 bg-violet-50/60 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-violet-950">Корректировка календаря текстом</summary>
+        <p className="mt-2 text-sm text-slate-600">Опишите изменение своими словами. Система подготовит его, но не изменит календарь без вашего подтверждения.</p>
+        <textarea value={textCorrection} onChange={(event) => { setTextCorrection(event.target.value); setTextCorrectionPreview(null); setTextCorrectionError(null); }} placeholder="Например: перенести платёж 50 000 ₽ с 05.10.2026 на 12.10.2026" className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" onClick={() => { const result = recognizeCalendarCorrection(textCorrection, state.payments); setTextCorrectionPreview(result.correction ?? null); setTextCorrectionError(result.error ?? null); }} className="min-h-11 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-100">Распознать</button>
+          {textCorrectionPreview && <button type="button" onClick={() => { dispatch({ type: "UPDATE_PAYMENT", payload: textCorrectionPreview.next }); setTextCorrection(``); setTextCorrectionPreview(null); }} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить изменение</button>}
+        </div>
+        {textCorrectionPreview && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Будет изменено: {textCorrectionPreview.summary}</p>}
+        {textCorrectionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{textCorrectionError}</p>}
+      </details>}
 
       <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-1">
