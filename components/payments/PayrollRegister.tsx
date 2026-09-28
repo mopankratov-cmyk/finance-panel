@@ -151,6 +151,37 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
     }).sort((left, right) => right.date.localeCompare(left.date));
   }, [data.allocations, payments, scheduleRows]);
 
+  const summaryData = useMemo(() => {
+    if (registerCompanyIds === null) return data;
+    const employeeIds = new Set(data.employees.filter((employee) => employee.companyIds.some(companyIsInRegisterScope) || companyIsInRegisterScope(employee.companyId)).map((employee) => employee.id));
+    const entries = data.entries
+      .filter((entry) => employeeIds.has(entry.employeeId))
+      .map((entry) => ({ ...entry, lines: entry.lines.filter((line) => companyIsInRegisterScope(line.companyId)) }))
+      .filter((entry) => entry.lines.length > 0 || data.entries.find((source) => source.id === entry.id)?.lines.length === 0);
+    const entryIds = new Set(entries.map((entry) => entry.id));
+    const lineIds = new Set(entries.flatMap((entry) => entry.lines.map((line) => line.id)));
+    return {
+      ...data,
+      employees: data.employees.filter((employee) => employeeIds.has(employee.id)),
+      entries,
+      debts: data.debts.filter((debt) => employeeIds.has(debt.employeeId)),
+      allocations: data.allocations.filter((allocation) => entryIds.has(allocation.entryId) && (!allocation.payrollLineId || lineIds.has(allocation.payrollLineId))),
+    };
+  }, [companyIsInRegisterScope, data, registerCompanyIds]);
+  const summaryDebtByEmployee = useMemo(() => {
+    const totals = new Map<string, number>();
+    for (const entry of summaryData.entries) {
+      const employee = summaryData.employees.find((item) => item.id === entry.employeeId);
+      if (employee) totals.set(entry.employeeId, (totals.get(entry.employeeId) ?? 0) + settlementFromAllocations(employee, entry, summaryData.allocations).debt);
+    }
+    for (const debt of summaryData.debts) totals.set(debt.employeeId, (totals.get(debt.employeeId) ?? 0) + Math.max(0, debt.amount - allocatedToDebt(debt.id, summaryData.allocations)));
+    return totals;
+  }, [summaryData]);
+  const summaryDebtByYear = useMemo(() => payrollDebtByYear(summaryData), [summaryData]);
+  const summaryPayrollCandidates = useMemo(() => payrollCandidates.filter((payment) => companyIsInRegisterScope(payment.companyId)), [companyIsInRegisterScope, payrollCandidates]);
+  const summaryActiveEmployees = useMemo(() => summaryData.employees.filter((employee) => isEmployeeActiveOn(employee, today)), [summaryData.employees, today]);
+  const summaryFormerEmployees = useMemo(() => summaryData.employees.filter((employee) => !isEmployeeActiveOn(employee, today)), [summaryData.employees, today]);
+
   const summary = useMemo(() => includedEmployeesForPeriod.reduce((result, employee) => {
     const draft = drafts[employee.id] ?? blankPayrollEntry(employee);
     const entry = existingEntryByEmployee.get(employee.id);
@@ -232,10 +263,11 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
       </div>
 
       <div className={activeView === "summary" ? "space-y-5" : "hidden"} role="tabpanel">
-        <PayrollSummary data={data} debtByEmployee={debtByEmployee} debtByYear={debtByYear} />
+        <Card><div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-lg font-bold text-slate-950">Компании в своде</h2><p className="mt-1 text-sm text-slate-500">Выберите, чьи начисления, долги и оплаты показывать.</p></div><div className="flex flex-wrap gap-1 rounded-lg border border-slate-300 bg-white p-1" role="group" aria-label="Компании в своде">{([["all", "Все компании"], ["general", "Общая группа"], ["filippov", "ИП Филиппов"]] as const).map(([mode, label]) => <button key={mode} type="button" onClick={() => setRegisterCompanyMode(mode)} aria-pressed={registerCompanyMode === mode} className={`min-h-11 rounded-md px-3 text-sm font-semibold transition-colors ${registerCompanyMode === mode ? "bg-violet-600 text-white" : "text-slate-700 hover:bg-violet-50 hover:text-violet-800"}`}>{label}</button>)}</div></div></Card>
+        <PayrollSummary data={summaryData} debtByEmployee={summaryDebtByEmployee} debtByYear={summaryDebtByYear} />
         <PaymentAllocationQueue
-          payments={payrollCandidates}
-          data={data}
+          payments={summaryPayrollCandidates}
+          data={summaryData}
           disabled={Boolean(data.preview)}
           onAllocate={async (input) => {
             setSaving(true); setError("");
@@ -244,9 +276,9 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
             finally { setSaving(false); }
           }}
         />
-        <SummaryEmployeeSection title="Действующие сотрудники" employees={activeEmployees} data={data} payments={payments} debtByEmployee={debtByEmployee} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} defaultOpen />
-        <SummaryEmployeeSection title="Уволенные сотрудники" employees={formerEmployees} data={data} payments={payments} debtByEmployee={debtByEmployee} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} />
-        <SummaryEmployeeSection title="Все сотрудники" employees={data.employees} data={data} payments={payments} debtByEmployee={debtByEmployee} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} />
+        <SummaryEmployeeSection title="Действующие сотрудники" employees={summaryActiveEmployees} data={summaryData} payments={payments} debtByEmployee={summaryDebtByEmployee} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} defaultOpen />
+        <SummaryEmployeeSection title="Уволенные сотрудники" employees={summaryFormerEmployees} data={summaryData} payments={payments} debtByEmployee={summaryDebtByEmployee} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} />
+        <SummaryEmployeeSection title="Все сотрудники" employees={summaryData.employees} data={summaryData} payments={payments} debtByEmployee={summaryDebtByEmployee} onEdit={(employee) => { setEditingEmployee(employee); setEmployeeModalOpen(true); }} />
       </div>
 
       <div className={activeView === "register" ? "space-y-5" : "hidden"} role="tabpanel">
@@ -257,14 +289,6 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
             <p className="mt-1 text-sm text-slate-500">5-го числа — за 16–последний день прошлого месяца; 20-го — за 1–15 число текущего месяца.</p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <fieldset>
-              <legend className="text-xs font-semibold text-slate-700">Ведомость</legend>
-              <div className="mt-1 flex flex-wrap gap-1 rounded-lg border border-slate-300 bg-white p-1" role="group" aria-label="Компания ведомости">
-                {([[
-                  "all", "Все компании"], ["general", "Общая группа"], ["filippov", "ИП Филиппов"],
-                ] as const).map(([mode, label]) => <button key={mode} type="button" onClick={() => setRegisterCompanyMode(mode)} aria-pressed={registerCompanyMode === mode} className={`min-h-11 rounded-md px-3 text-sm font-semibold transition-colors ${registerCompanyMode === mode ? "bg-violet-600 text-white" : "text-slate-700 hover:bg-violet-50 hover:text-violet-800"}`}>{label}</button>)}
-              </div>
-            </fieldset>
             <label className="text-xs font-semibold text-slate-700">Дата выплаты
               <input type="date" value={payDate} onChange={(event) => setPayDate(event.target.value)} className="mt-1 min-h-11 rounded-lg border border-slate-300 bg-white px-3 text-sm focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-100" />
             </label>
