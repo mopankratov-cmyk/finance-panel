@@ -10,6 +10,11 @@ interface PaidStorageRow {
   warehouse_price: number | null;
 }
 
+/** Только для fetchPaidStorageByArticle — fetchPaidStorageByWeek не запрашивает barcodes_count. */
+interface PaidStorageRowWithBarcodesCount extends PaidStorageRow {
+  barcodes_count: number | null;
+}
+
 interface PaidStorageDailyRow {
   source_ready: boolean;
   storage_date: string | null;
@@ -51,23 +56,35 @@ function emptyWeekMap(weeks: MonthWeek[]): Record<string, number> {
  * которым buildMarginByBarcode уже матчит себестоимость — unitCost/
  * unitPackaging в metrics.ts используют тот же приём).
  */
+export interface PaidStorageByArticle {
+  storageByArticle: Map<string, number>;
+  /**
+   * Σ WB-поля barcodesCount («единиц, подлежащих тарифицированию за
+   * расчётные сутки») по артикулу — знаменатель для «Хранение на 1 ед».
+   * Сверено построчно с гугл-таблицей: там делят именно на эту сумму, а не
+   * на количество проданных штук (см. комментарий в paidStorageRequest.ts).
+   */
+  barcodesCountByArticle: Map<string, number>;
+}
+
 export async function fetchPaidStorageByArticle(
   cabinetId: string,
   dateFrom: string,
   dateTo: string,
   articlePrefixes?: string[],
-): Promise<Map<string, number>> {
+): Promise<PaidStorageByArticle> {
   const client = getSupabaseAdmin();
-  const map = new Map<string, number>();
-  if (!client) return map;
+  const storageByArticle = new Map<string, number>();
+  const barcodesCountByArticle = new Map<string, number>();
+  if (!client) return { storageByArticle, barcodesCountByArticle };
 
   const prefixFilter = paidStoragePrefixFilter(articlePrefixes);
-  let rows: PaidStorageRow[];
+  let rows: PaidStorageRowWithBarcodesCount[];
   try {
-    rows = await loadAllSupabasePages<PaidStorageRow>((from, to) => {
+    rows = await loadAllSupabasePages<PaidStorageRowWithBarcodesCount>((from, to) => {
       let query = client
         .from("wb_paid_storage_rows")
-        .select("id, date, vendor_code, warehouse_price")
+        .select("id, date, vendor_code, warehouse_price, barcodes_count")
         .eq("cabinet_id", cabinetId)
         .gte("date", dateFrom)
         .lte("date", dateTo);
@@ -79,16 +96,17 @@ export async function fetchPaidStorageByArticle(
     }, { maxPages: 1_000, concurrency: 8, label: "Маржа по артикулам: Платное хранение" });
   } catch (e) {
     console.error("[opiu margin] paid storage read:", e instanceof Error ? e.message : e);
-    return map;
+    return { storageByArticle, barcodesCountByArticle };
   }
 
   for (const row of rows) {
     const vendorCode = String(row.vendor_code ?? "").trim().toUpperCase();
     if (!vendorCode) continue;
     if (!matchesVendorPrefix(row.vendor_code, articlePrefixes)) continue;
-    map.set(vendorCode, (map.get(vendorCode) ?? 0) + Number(row.warehouse_price ?? 0));
+    storageByArticle.set(vendorCode, (storageByArticle.get(vendorCode) ?? 0) + Number(row.warehouse_price ?? 0));
+    barcodesCountByArticle.set(vendorCode, (barcodesCountByArticle.get(vendorCode) ?? 0) + Number(row.barcodes_count ?? 0));
   }
-  return map;
+  return { storageByArticle, barcodesCountByArticle };
 }
 
 export function groupDailyStorageByWeek(

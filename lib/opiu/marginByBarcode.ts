@@ -103,6 +103,7 @@ export function buildMarginByBarcode(
   ordersByNmId: Map<number, OrdersSummary> = new Map(),
   paidStorageByArticle: Map<string, number> = new Map(),
   taxPct = 6,
+  paidStorageBarcodesByArticle: Map<string, number> = new Map(),
 ): MarginByBarcodeResult {
   const lookup = buildCostLookup(costs);
   // Не все строки финотчёта несут баркод — «Хранение», «Транзит» и часть
@@ -208,11 +209,19 @@ export function buildMarginByBarcode(
     // в wb_paid_storage_rows — отличаем «не синкано» от «синкано и правда 0».
     const articleKey = article.toUpperCase();
     const hasPaidStorage = paidStorageByArticle.has(articleKey);
-    const storage = storageUsedForArticle.has(articleKey)
+    const alreadyUsed = storageUsedForArticle.has(articleKey);
+    const storage = alreadyUsed
       ? 0
       : hasPaidStorage
         ? paidStorageByArticle.get(articleKey)!
         : storageFallback;
+    // «Хранение на 1 ед» — сверено построчно с гугл-таблицей на 5 артикулах
+    // (включая один с нулевыми продажами): делят не на проданные штуки, а на
+    // Σ WB-поля barcodesCount («единиц, подлежащих тарифицированию за
+    // расчётные сутки») за период. При нулевых продажах товар всё равно лежит
+    // на складе и тарифицируется — netQty дал бы там пустое значение, хотя в
+    // таблице оно ненулевое. Тот же дедуп по артикулу, что и у storage.
+    const barcodesCount = alreadyUsed ? 0 : (paidStorageBarcodesByArticle.get(articleKey) ?? 0);
     storageUsedForArticle.add(articleKey);
 
     const netQty = salesQty - returnsQty;
@@ -252,7 +261,7 @@ export function buildMarginByBarcode(
       additionalPayments: round2(additionalPayments),
       storage: round2(storage),
       storagePct: revenueWithoutSpp > 0 ? round2((storage / revenueWithoutSpp) * 100) : null,
-      storagePerUnit: netQty > 0 ? round2(storage / netQty) : null,
+      storagePerUnit: barcodesCount > 0 ? round2(storage / barcodesCount) : null,
       acceptance: round2(acceptance),
       acceptancePerUnit: netQty > 0 ? round2(acceptance / netQty) : null,
       transit: round2(transit),
