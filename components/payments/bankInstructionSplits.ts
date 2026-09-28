@@ -1,6 +1,7 @@
 import type { BankReviewItem } from "./bankReviewStore";
 import type { DdsCompany } from "./ddsCompanies";
 import { companyAliasKeys } from "@/lib/finance/companyAliases";
+import { isTransferCategory } from "@/lib/finance/categories";
 
 export const BANK_SPLIT_PREFIX = "__bank_split_v1:";
 
@@ -189,6 +190,10 @@ export function decodeBankSplits(value: string | null): BankInstructionSplit[] |
   } catch {
     return null;
   }
+}
+
+export function unmatchedTransferNeedsDestination(item: Pick<BankReviewItem, "category" | "matchedTransferId">, splits: BankInstructionSplit[] | null) {
+  return isTransferCategory(item.category) && !item.matchedTransferId && !splits;
 }
 
 export function splitsAreReady(item: BankReviewItem, splits: BankInstructionSplit[]) {

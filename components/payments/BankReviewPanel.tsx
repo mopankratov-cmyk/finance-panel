@@ -27,6 +27,7 @@ import {
   splitAccountId,
   splitsAreReady,
   walletTransferSplits,
+  unmatchedTransferNeedsDestination,
   type BankInstructionSplit,
 } from "./bankInstructionSplits";
 import { Card, CardContent } from "@/components/ui/Card";
@@ -184,6 +185,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const itemIsReady = (item: BankReviewItem) => {
     if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return false;
     const splits = decodeBankSplits(item.managerAnswer);
+    if (unmatchedTransferNeedsDestination(item, splits)) return false;
     if (splits) return hasBankAccount(item.accountId) && !splits.some(split => !split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
     const sourceCompany = companies.find((company) => company.id === item.companyId);
     const mustBeIntercompanyLoan = item.amount < 0
@@ -465,7 +467,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                 </div>
                 <label className="block text-xs text-slate-500">Комментарий к платежу<textarea aria-label={`Комментарий к платежу от ${item.date} на ${formatMoney(item.amount)}`} value={item.paymentComment} disabled={saving} rows={2} onChange={(event) => setItems((current) => current.map((row) => row.id===item.id ? {...row,paymentComment:event.target.value}:row))} onBlur={(event) => void updateLocal(item.id,{paymentComment:event.target.value})} placeholder="Пояснение, которое сохранится в ДДС" className="mt-1 min-h-11 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900" /></label>
                 {item.category&&isLoanRepaymentCategory(item.category)&&(()=>{const allOptions=cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category!});const options=relevantCashLoanScheduleOptions(allOptions,item.counterparty,item.purpose);const loanCount=new Set(options.map(option=>option.loanId)).size;return <label className="block text-xs text-slate-500">Связать с графиком кредита<select value={loanLinks.get(item.id)??""} onChange={event=>setLoanLinks(current=>new Map(current).set(item.id,event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900"><option value="">Выберите кредит и дату платежа</option>{options.filter(option=>option.rowIds.length>0).map(option=><option key={option.key} value={option.key}>{option.loanName} · {option.label}</option>)}</select>{!options.some(option=>option.rowIds.length>0)&&<span className="mt-1 block text-amber-700">В графиках нет открытой строки для этой статьи. Добавьте или проверьте график в разделе кредитов.</span>}{options.some(option=>option.rowIds.length>0)&&loanCount>1&&<span className="mt-1 block text-amber-700">Статья уже сохранена. Выберите номер договора — у этого кредитора найдено несколько активных кредитов.</span>}{loanLinks.get(item.id)&&loanCount===1&&<span className="mt-1 block text-emerald-700">Подставлен единственный договор с точным именем кредитора. Проверьте дату и подтвердите операцию.</span>}</label>;})()}
-                {item.category?.includes("Перевод между счетами")&&!item.matchedTransferId&&<p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">Статья уже сохранена. Операция останется здесь только до загрузки встречной стороны перевода; повторно выбирать статью не нужно.</p>}
+                {item.category?.includes("Перевод между счетами")&&!item.matchedTransferId&&!decodeBankSplits(item.managerAnswer)&&<p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">Укажите вторую сторону через «Перевод между кошельками» (банк, наличные или крипто) либо загрузите встречную выписку. Односторонний перевод подтвердить нельзя.</p>}
                 {!companies.length && <p role="status" className="text-xs text-amber-800">Список компаний пуст или не загрузился. <button type="button" onClick={() => void reloadCompanies()} className="min-h-11 underline">Загрузить компании повторно</button></p>}
                 {decodeBankSplits(item.managerAnswer)?.some(split=>!split.excluded&&requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">В разбиении есть расход основной группы на ИП Филиппова. Откройте «Разбивка внутри операции»: выдача и получение займа будут оформлены через наличные вместе с расходом.</p>}
                 {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}
