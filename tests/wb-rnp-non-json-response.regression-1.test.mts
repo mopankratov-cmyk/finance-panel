@@ -44,7 +44,7 @@ test("WB RNP page keeps a same-scope last-good table when refresh times out", ()
 });
 
 test("WB RNP table API wraps cabinet resolution and access checks in JSON error handling", () => {
-  const source = readFileSync(new URL("../app/api/rnp/[shop]/table/route.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../app/api/rnp/[shop]/table/route.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.match(source, /try \{\n    const \{ shop \} = await ctx\.params;/);
   assert.match(source, /const \{ cabinetId, label \} = await resolveShopCabinet\(shop\);/);
   assert.match(source, /return NextResponse\.json\(\n      \{ error: error instanceof Error \? error\.message : "Не удалось собрать РНП" \},\n      \{ status: 500 \},\n    \);/);

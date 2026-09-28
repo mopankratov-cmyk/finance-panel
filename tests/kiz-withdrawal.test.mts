@@ -96,7 +96,7 @@ test("отчёт WB отдаёт код ровно в том виде, кото�
 
 test("экспорт ограничен лимитом документа Честного Знака", async () => {
   const { readFileSync } = await import("node:fs");
-  const src = readFileSync(new URL("../app/api/warehouse/kiz/export/route.ts", import.meta.url), "utf8");
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/export/route.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.match(src, /CHZ_DOC_LIMIT = 30_000/, "больше 30 000 кодов в одном документе ЧЗ не принимает");
 });
 
@@ -134,7 +134,7 @@ test("добор прежних строк не затирает уже изве
 test("сбор файла сужен юрлицом — иначе привязка опаснее, чем её отсутствие", () => {
   // Отметку «отправлено» штатно не откатить: собрать чужие коды в свой документ
   // вывода — ошибка навсегда. Поэтому экспорт обязан фильтровать, а не только экран.
-  const src = readFileSync(new URL("../app/api/warehouse/kiz/export/route.ts", import.meta.url), "utf8");
+  const src = readFileSync(new URL("../app/api/warehouse/kiz/export/route.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.match(src, /const scope = await resolveEntity\(body\?\.entityId \?\? null\);\n  if \(!scope\.ok\) return fail/, "юрлицо должно быть обязательным, а не «если передали»");
   assert.match(src, /p_entity: entityId/, "захват не сужен юрлицом");
 

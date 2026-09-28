@@ -199,7 +199,7 @@ test("Ozon forecast route is an authenticated read-only GET with fail-visible fi
 test("forecast publication is owner-approved and performed by one guarded upsert", () => {
   const ozonPanel = readFileSync(new URL("../../components/calendar/OzonForecastPanel.tsx", import.meta.url), "utf8");
   const wbPanel = readFileSync(new URL("../../components/calendar/SalesForecastPanel.tsx", import.meta.url), "utf8");
-  const publishRoute = readFileSync(new URL("../../app/api/opiu/calendar-publish/route.ts", import.meta.url), "utf8");
+  const publishRoute = readFileSync(new URL("../../app/api/opiu/calendar-publish/route.ts", import.meta.url), "utf8").replace(/\r\n/g, "\n");
   assert.match(ozonPanel, /data\.planSource !== "approved_sales_plan"/);
   assert.match(ozonPanel, /publishForecastToCalendar/);
   assert.match(wbPanel, /data\.planSource !== "approved_sales_plan"/);
@@ -223,5 +223,5 @@ test("calendar fact transition is persisted and revalidated on the server", () =
   assert.match(publishRoute, /export async function PATCH/);
   assert.match(publishRoute, /findPlanFactMatches/);
   assert.match(publishRoute, /plannedRow\.company_id !== factRow\.company_id/);
-  assert.match(publishRoute, /status: linked\.status, comment: linked\.comment/);
+  assert.match(publishRoute, /status:\s*linked\.status,\s*comment:\s*linked\.comment/);
 });

@@ -11,15 +11,15 @@ import test from "node:test";
 // `MarginByArticlePage`. Здесь каждый экран проверяется тем, что верно
 // про него.
 test("финансовый контур владеет вкладками, экран менеджера — нет", async () => {
-  const [unit, wrapper, tabs] = await Promise.all([
+  const [unit, wrapper, navigation] = await Promise.all([
     readFile(new URL("../app/unit/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/opiu/margin/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../components/FinanceTabs.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/Sidebar.tsx", import.meta.url), "utf8"),
   ]);
   assert.doesNotMatch(unit, /FinanceTabs/, "экран менеджера не должен тянуть финансовые вкладки");
   assert.match(wrapper, /<FinanceTabs\s*\/>/);
   assert.match(wrapper, /<MarginByArticlePage\s*\/>/, "финансовый маршрут рисует свой компонент");
-  assert.match(tabs, /\{ href: "\/opiu\/margin", label: "Маржа по артикулам" \}/);
+  assert.match(navigation, /\{ href: "\/opiu\/margin", label: "Маржа по артикулам", icon: PieChart \}/);
 });
 
 test("экран менеджера передаёт кабинет в запрос", async () => {

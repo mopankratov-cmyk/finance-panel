@@ -169,7 +169,9 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
       employees: data.employees.filter((employee) => employeeIds.has(employee.id)),
       entries,
       debts: data.debts.filter((debt) => employeeIds.has(debt.employeeId)),
-      allocations: data.allocations.filter((allocation) => entryIds.has(allocation.entryId) && (!allocation.payrollLineId || lineIds.has(allocation.payrollLineId))),
+      allocations: data.allocations.filter((allocation) => employeeIds.has(allocation.employeeId)
+        && (allocation.entryId === null || entryIds.has(allocation.entryId))
+        && (allocation.payrollLineId === null || lineIds.has(allocation.payrollLineId))),
     };
   }, [companyIsInRegisterScope, data, registerCompanyIds]);
   const summaryDebtByEmployee = useMemo(() => {

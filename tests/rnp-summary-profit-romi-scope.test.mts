@@ -18,7 +18,7 @@ import test from "node:test";
 // себестоимость известна не для всех товаров (обычный случай) или кабинеты
 // продаж/рекламы отстают друг от друга на разные сроки.
 
-const load = () => readFile(new URL("../lib/rnp/buildTable.ts", import.meta.url), "utf8");
+const load = async () => (await readFile(new URL("../lib/rnp/buildTable.ts", import.meta.url), "utf8")).replace(/\r\n/g, "\n");
 
 test("profit_per_unit сводки делится на выкупы ТЕХ ЖЕ SKU и того же периода, что и прибыль в числителе", async () => {
   const sql = await load();
