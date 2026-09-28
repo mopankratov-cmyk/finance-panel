@@ -5,7 +5,7 @@ import { loadDdsExpenseCategories } from "./expenseCategoriesServer";
 import { preferredAliasCompany } from "./companyAliases";
 import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
-import { buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresKorovkinLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
+import { buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
 import { paymentTransferBalances } from "./paymentTransferBalance";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -29,14 +29,14 @@ function applyAliasRecipients(draft: PaymentChainDraft, companies: ChainCompany[
  const source=companies.find(c=>c.id===draft.sourceCompanyId);
  for(const allocation of draft.allocations) {
   const recipient=preferredAliasCompany(`${allocation.name} ${allocation.counterparty}`,companies);
-  if(recipient && requiresKorovkinLoan(source,recipient)) allocation.companyId=recipient.id;
+  if(recipient && requiresFilippovLoan(source,recipient)) allocation.companyId=recipient.id;
  }
- const needsCash=draft.allocations.some(a=>requiresKorovkinLoan(source,companies.find(c=>c.id===a.companyId)));
+ const needsCash=draft.allocations.some(a=>requiresFilippovLoan(source,companies.find(c=>c.id===a.companyId)));
  if(needsCash) {
   const cash=accounts.filter(a=>a.type==='cash'&&a.currency==='RUB');
   draft.throughCash=true;
   if(!draft.cashAccountId&&cash.length===1)draft.cashAccountId=cash[0].id;
-  for(const allocation of draft.allocations) if(requiresKorovkinLoan(source,companies.find(c=>c.id===allocation.companyId))) allocation.accountId=draft.cashAccountId;
+  for(const allocation of draft.allocations) if(requiresFilippovLoan(source,companies.find(c=>c.id===allocation.companyId))) allocation.accountId=draft.cashAccountId;
  }
  return draft;
 }
@@ -85,9 +85,9 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  if(!allocations.length && !raw.length && (origins.length || review?.category) && sectionForCategory(selected?.category??String(review?.category??""))!==TECHNICAL_SECTION) allocations.push({id:crypto.randomUUID(),amount:sourceAmount,date:sourceDate,name:selected?.name??String(review?.purpose??""),category:selected?.category??String(review?.category??""),companyId:selected?.companyId??sourceCompanyId,accountId:sourceAccountId,counterparty:selected?.counterparty??"",excluded:false});
  for(const a of allocations) {
   const recipient=preferredAliasCompany(`${a.name} ${a.counterparty}`,reg.companies);
-  if(recipient && requiresKorovkinLoan(reg.companies.find(c=>c.id===sourceCompanyId),recipient)) a.companyId=recipient.id;
+  if(recipient && requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),recipient)) a.companyId=recipient.id;
  }
- const throughCash=allocations.some(a=>requiresKorovkinLoan(reg.companies.find(c=>c.id===sourceCompanyId),reg.companies.find(c=>c.id===a.companyId))) || origins.some(p=>sectionForCategory(p.category)===TECHNICAL_SECTION) || sectionForCategory(String(review?.category??""))===TECHNICAL_SECTION;
+ const throughCash=allocations.some(a=>requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),reg.companies.find(c=>c.id===a.companyId))) || origins.some(p=>sectionForCategory(p.category)===TECHNICAL_SECTION) || sectionForCategory(String(review?.category??""))===TECHNICAL_SECTION;
  if(throughCash) for(const a of allocations) a.accountId=cash.length===1?cash[0].id:"";
  return {draft:applyAliasRecipients({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},reg.companies,reg.accounts),status:"active",migrationAvailable:!head.error,history:[]};
 }

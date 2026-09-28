@@ -6,7 +6,7 @@
 const ALIAS_GROUPS: ReadonlyArray<readonly string[]> = [
   ["филиппов", "коровкин"],
 ];
-const CANONICAL_ALIAS_KEYS = ["коровкин"] as const;
+const CANONICAL_ALIAS_KEYS = ["филиппов"] as const;
 
 const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
 

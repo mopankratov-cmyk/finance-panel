@@ -12,7 +12,7 @@ test("Филиппов и Коровкин — одна группа, чужие
 
 test("Филиппов выбирает каноническую компанию Коровкин", () => {
   const companies = [{ name: "ИП Филиппов", id: "f" }, { name: "ИП Коровкин", id: "k" }];
-  assert.equal(preferredAliasCompany("ИП ФИЛИППОВ АРТЕМ СЕРГЕЕВИЧ", companies)?.id, "k");
+  assert.equal(preferredAliasCompany("ИП ФИЛИППОВ АРТЕМ СЕРГЕЕВИЧ", companies)?.id, "f");
 });
 
 test("промпт получает формулировку из справочника", () => {

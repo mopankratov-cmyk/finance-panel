@@ -5,8 +5,8 @@ import { ddsSheetNameForCompany } from "./ddsSheetGroups.ts";
 const company = (id: string, name: string) => ({ id, name, groupName: "", isActive: true });
 
 test("Коровкин и Филиппов выгружаются на один отдельный лист", () => {
-  assert.equal(ddsSheetNameForCompany(company("1", "ИП Коровкин")), "ДДС Коровкин-Филиппов");
-  assert.equal(ddsSheetNameForCompany(company("2", "ИП Филиппов")), "ДДС Коровкин-Филиппов");
+  assert.equal(ddsSheetNameForCompany(company("1", "ИП Коровкин")), "ДДС ИП Филиппов");
+  assert.equal(ddsSheetNameForCompany(company("2", "ИП Филиппов")), "ДДС ИП Филиппов");
 });
 
 test("основная группа компаний выгружается вместе", () => {

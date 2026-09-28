@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {allocationTotal,buildChainEntries,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,requiresKorovkinLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
+import {allocationTotal,buildChainEntries,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
 import {DDS_CATEGORIES} from "./categories.ts";
 import type {Account} from "../types.ts";
 const companies=[{id:'main',name:'ИП Митриченко',groupName:'Основная группа'},{id:'kor',name:'ИП Коровкин',groupName:'Коровкин'},{id:'fil',name:'ИП Филиппов',groupName:'Коровкин'},{id:'other',name:'ООО Другая',groupName:'Отдельная'}];
@@ -35,9 +35,9 @@ test('changing the recipient to the main group removes the automatic loan from t
  assert.equal(chainMetadata(entries(d)[0].payment.comment)?.revision,2);
 });
 test('Filippov uses the Korovkin alias; other groups do not acquire this rule',()=>{
- assert.equal(requiresKorovkinLoan(companies[0],companies[2]),true);
- assert.equal(requiresKorovkinLoan(companies[3],companies[1]),false);
- assert.equal(requiresKorovkinLoan(companies[1],companies[1]),false);
+ assert.equal(requiresFilippovLoan(companies[0],companies[2]),true);
+ assert.equal(requiresFilippovLoan(companies[3],companies[1]),false);
+ assert.equal(requiresFilippovLoan(companies[1],companies[1]),false);
 });
 test('rejects an overdrawn original sum, earlier expense date, and a loan from a bank wallet',()=>{
  const d=draft();d.allocations[2].amount=50000;assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/больше исходной/);
