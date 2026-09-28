@@ -68,6 +68,14 @@ type TextCorrection = {
   summary: string;
 };
 
+type TextScheduleLine = { date: string; amount: number; label: string };
+
+const RUSSIAN_MONTHS: Record<string, number> = {
+  января: 1, феврал: 2, марта: 3, апрел: 4, мая: 5, июня: 6,
+  июля: 7, августа: 8, сентября: 9, октября: 10, ноября: 11, декабря: 12,
+};
+const TEXT_STOP_WORDS = new Set(["исправ", "платеж", "платежи", "платежей", "пожалуйста", "нужно", "надо", "список", "дата", "назначение", "сумма", "оплат", "погашение", "проценты", "тело", "займа", "кредит"]);
+
 function textDate(value: string) {
   return parseRussianDate(value) ?? null;
 }
@@ -77,11 +85,103 @@ function correctionAmounts(text: string) {
     .map((match) => parseRussianAmount(match[1])).filter((amount): amount is number => amount !== null);
 }
 
+function normalizedWords(value: string) {
+  return value.toLowerCase().replace(/ё/g, "е").match(/[а-яa-z0-9]+/gi)?.filter((word) => word.length > 2 && ![...TEXT_STOP_WORDS].some((stop) => word.startsWith(stop))) ?? [];
+}
+
+function similarWord(left: string, right: string) {
+  if (left === right) return true;
+  const leftBase = left.replace(/[аеёиоуыэюяй]+$/i, "");
+  const rightBase = right.replace(/[аеёиоуыэюяй]+$/i, "");
+  return leftBase.length >= 4 && rightBase.length >= 4 && (leftBase.startsWith(rightBase) || rightBase.startsWith(leftBase));
+}
+
+function parseTextDate(value: string, fallbackYear: number) {
+  const numeric = textDate(value);
+  if (numeric) return numeric;
+  const human = value.toLowerCase().replace(/ё/g, "е").match(/\b(\d{1,2})\s+(январ\w*|феврал\w*|март\w*|апрел\w*|мая|июн\w*|июл\w*|август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*)(?:\s+(20\d{2}))?/i);
+  if (!human) return null;
+  const monthKey = Object.keys(RUSSIAN_MONTHS).find((key) => human[2].startsWith(key));
+  if (!monthKey) return null;
+  return `${human[3] ?? fallbackYear}-${String(RUSSIAN_MONTHS[monthKey]).padStart(2, "0")}-${human[1].padStart(2, "0")}`;
+}
+
+function parseTextSchedule(text: string, fallbackYear: number): TextScheduleLine[] {
+  return text.split(/\r?\n/).flatMap((rawLine) => {
+    const line = rawLine.trim();
+    const dateMatch = line.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|20\d{2}-\d{2}-\d{2}|\d{1,2}\s+(?:январ\w*|феврал\w*|март\w*|апрел\w*|мая|июн\w*|июл\w*|август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*)(?:\s+20\d{2})?)/i);
+    const amount = correctionAmounts(line)[0];
+    if (!dateMatch || amount === undefined) return [];
+    const label = line
+      .replace(/^\s*\d+[.)]\s*/, "")
+      .replace(dateMatch[0], "")
+      .replace(/(?:сумма\s*платежа|назначение\s*платежа|дата\s*платежа)/gi, "")
+      .replace(/[+-]?[\d\s ]+(?:[,.]\d{1,2})?\s*(?:₽|руб\.?|р\b)/gi, "")
+      .replace(/\s+/g, " ").trim();
+    const date = parseTextDate(dateMatch[1], fallbackYear);
+    return date ? [{ date, amount, label }] : [];
+  });
+}
+
+function paymentSearchText(payment: Payment) {
+  return [payment.name, payment.counterparty, payment.comment, payment.category].filter(Boolean).join(" ");
+}
+
+function textOwnerWords(text: string) {
+  const heading = text.split(/\r?\n/).filter((line) => !/\d{1,2}[./-]\d{1,2}|\d{1,2}\s+(январ|феврал|март|апрел|мая|июн|июл|август|сентябр|октябр|ноябр|декабр)/i.test(line)).join(" ");
+  return normalizedWords(heading);
+}
+
+function scheduleCandidate(line: TextScheduleLine, payments: Payment[], ownerWords: string[], usedPaymentIds: Set<string>) {
+  const labelWords = normalizedWords(line.label);
+  const ranked = payments.filter((payment) => !usedPaymentIds.has(payment.id)).map((payment) => {
+    const paymentWords = new Set(normalizedWords(paymentSearchText(payment)));
+    const ownerScore = ownerWords.length && ownerWords.every((word) => [...paymentWords].some((candidate) => similarWord(word, candidate))) ? 20 : 0;
+    const labelScore = labelWords.filter((word) => [...paymentWords].some((candidate) => similarWord(word, candidate))).length * 3;
+    const amountScore = Math.abs(Math.abs(payment.amount) - Math.abs(line.amount)) < 0.01 ? 8 : 0;
+    const dateScore = payment.date === line.date ? 12 : 0;
+    return { payment, score: ownerScore + labelScore + amountScore + dateScore };
+  }).filter(({ score }) => score >= 8).sort((left, right) => right.score - left.score);
+  if (!ranked.length || (ranked[1] && ranked[0].score === ranked[1].score)) return null;
+  return ranked[0].payment;
+}
+
+function recognizeTextSchedule(text: string, payments: Payment[], fallbackYear: number): { correction?: TextCorrection; error?: string } | null {
+  const lines = parseTextSchedule(text, fallbackYear);
+  if (!lines.length) return null;
+  const ownerWords = textOwnerWords(text);
+  const planned = payments.filter((payment) => payment.status === "planned");
+  const usedPaymentIds = new Set<string>();
+  const updates: Payment[] = [];
+  const unchanged: TextScheduleLine[] = [];
+  const notFound: TextScheduleLine[] = [];
+  for (const line of lines) {
+    const candidate = scheduleCandidate(line, planned, ownerWords, usedPaymentIds);
+    if (!candidate) {
+      notFound.push(line);
+      continue;
+    }
+    usedPaymentIds.add(candidate.id);
+    const nextAmount = candidate.amount < 0 ? -Math.abs(line.amount) : Math.abs(line.amount);
+    if (candidate.date === line.date && Math.abs(candidate.amount - nextAmount) < 0.01) unchanged.push(line);
+    else updates.push({ ...candidate, date: line.date, amount: nextAmount });
+  }
+  if (notFound.length) {
+    return { error: `Не удалось однозначно сопоставить строки: ${notFound.map((line) => `${formatDate(line.date)} · ${formatMoney(line.amount)}${line.label ? ` · ${line.label}` : ""}`).join("; ")}. Проверьте имя получателя, сумму или назначение.` };
+  }
+  const sourcePayment = updates[0] ?? planned.find((payment) => payment.date === lines[0].date && Math.abs(Math.abs(payment.amount) - Math.abs(lines[0].amount)) < 0.01) ?? planned[0];
+  if (!sourcePayment) return { error: "В календаре нет плановых платежей для сверки." };
+  const parts = [updates.length ? `будет исправлено: ${updates.length}` : "изменения не требуются", unchanged.length ? `уже совпадают: ${unchanged.length}` : ""];
+  return { correction: { payment: sourcePayment, updates, additions: [], summary: `Список распознан — ${parts.filter(Boolean).join(", ")}.` } };
+}
+
 function findPlannedCorrectionPayment(payments: Payment[], date: string, amount?: number) {
   return payments.filter((payment) => payment.status === "planned" && payment.date === date && (amount === undefined || Math.abs(Math.abs(payment.amount) - Math.abs(amount)) < 0.01));
 }
 
-function recognizeCalendarCorrection(text: string, payments: Payment[]): { correction?: TextCorrection; error?: string } {
+function recognizeCalendarCorrection(text: string, payments: Payment[], fallbackYear: number): { correction?: TextCorrection; error?: string } {
+  const scheduleResult = recognizeTextSchedule(text, payments, fallbackYear);
+  if (scheduleResult) return scheduleResult;
   const dates = [...text.matchAll(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|20\d{2}-\d{2}-\d{2})\b/g)].map((match) => textDate(match[1])).filter((date): date is string => Boolean(date));
   const amounts = correctionAmounts(text);
   if (!dates.length) {
@@ -752,11 +852,11 @@ export function CalendarPage() {
 
       {!isForecastView && <details className="rounded-xl border border-violet-200 bg-violet-50/60 p-4">
         <summary className="cursor-pointer text-sm font-semibold text-violet-950">Корректировка календаря текстом</summary>
-        <p className="mt-2 text-sm text-slate-600">Опишите изменение своими словами. Система подготовит его, но не изменит календарь без вашего подтверждения.</p>
-        <textarea value={textCorrection} onChange={(event) => { setTextCorrection(event.target.value); setTextCorrectionPreview(null); setTextCorrectionError(null); }} placeholder="Например: перенести 50 000 ₽ с 05.10.2026 на 12.10.2026; изменить сумму 50 000 ₽ 05.10.2026 на 62 500 ₽; разделить 50 000 ₽ с 05.10.2026 на 20 000 ₽ 12.10.2026 и 30 000 ₽ 20.10.2026" className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
+        <p className="mt-2 text-sm text-slate-600">Напишите фразой или вставьте список из таблицы. Понимаю даты с годом и без: «01.10.2026» и «1 октября». Система покажет найденные строки и не изменит календарь без подтверждения.</p>
+        <textarea value={textCorrection} onChange={(event) => { setTextCorrection(event.target.value); setTextCorrectionPreview(null); setTextCorrectionError(null); }} placeholder="Например: «перенеси платёж 50 000 ₽ с 05.10.2026 на 12.10.2026» или вставьте: 1 октября | Погашение процентов | 36 000 ₽" className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" onClick={() => { const result = recognizeCalendarCorrection(textCorrection, state.payments); setTextCorrectionPreview(result.correction ?? null); setTextCorrectionError(result.error ?? null); }} className="min-h-11 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-100">Распознать</button>
-          {textCorrectionPreview && <button type="button" onClick={() => {
+          <button type="button" onClick={() => { const result = recognizeCalendarCorrection(textCorrection, state.payments, currentDate.getFullYear()); setTextCorrectionPreview(result.correction ?? null); setTextCorrectionError(result.error ?? null); }} className="min-h-11 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-100">Распознать</button>
+          {textCorrectionPreview && (textCorrectionPreview.updates.length > 0 || textCorrectionPreview.additions.length > 0) && <button type="button" onClick={() => {
             const companyId = companyByPayment.get(textCorrectionPreview.payment.id) ?? textCorrectionPreview.payment.companyId ?? null;
             for (const payment of textCorrectionPreview.updates) handleUpdatePayment(payment, companyId);
             for (const payment of textCorrectionPreview.additions) handleAddPayment(payment, companyId);
@@ -764,7 +864,7 @@ export function CalendarPage() {
             setTextCorrectionPreview(null);
           }} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить изменение</button>}
         </div>
-        {textCorrectionPreview && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Будет изменено: {textCorrectionPreview.summary}</p>}
+        {textCorrectionPreview && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{textCorrectionPreview.summary}</p>}
         {textCorrectionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{textCorrectionError}</p>}
       </details>}
 
