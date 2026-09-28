@@ -15,10 +15,13 @@ test("долг считается только при наличии начис�
   assert.equal(employeeDebt(10_000, 12_000), 0);
 });
 
-test("старые и непроведённые операции не попадают в зарплатную сверку", () => {
-  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01" }), true);
-  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-08-31" }), false);
-  assert.equal(paymentIsPayrollCandidate({ status: "planned", amount: -10_000, date: "2026-09-01" }), false);
+test("в очередь ведомости попадают только явно отмеченные в ДДС зарплатные операции", () => {
+  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "Зарплата административного персонала" }), true);
+  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "Зарплата" }), true);
+  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "Расходы на персонал" }), false);
+  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-09-01", category: "" }), false);
+  assert.equal(paymentIsPayrollCandidate({ status: "done", amount: -10_000, date: "2026-08-31", category: "Зарплата" }), false);
+  assert.equal(paymentIsPayrollCandidate({ status: "planned", amount: -10_000, date: "2026-09-01", category: "Зарплата" }), false);
 });
 
 test("статья зарплаты определяется единообразно по роли", () => {
