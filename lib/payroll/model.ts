@@ -10,6 +10,11 @@ export function appendPayrollFactMarker(comment: string | null | undefined, fact
   return `${current} ${marker}`.trim();
 }
 
+export function removePayrollFactMarker(comment: string | null | undefined, factId: string): string {
+  const marker = `[${PAYROLL_FACT_MARKER}:${factId}]`;
+  return (comment ?? "").replace(marker, "").replace(/\s{2,}/g, " ").trim();
+}
+
 export function canAllocateFactToPayroll(
   factId: string,
   consumedFactIds: ReadonlySet<string>,
@@ -30,12 +35,12 @@ export function payrollCategoryForEmployee(position: string): "administrative" |
   return "administrative";
 }
 
-const PAYROLL_DDS_CATEGORIES = new Set([
+const PAYROLL_DDS_CATEGORIES: ReadonlySet<string> = new Set([
   PAYROLL_CATEGORIES.administrative,
   PAYROLL_CATEGORIES.commercial,
   PAYROLL_CATEGORIES.production,
 ]);
 
-export function paymentIsPayrollCandidate(payment: Pick<Payment, "status" | "amount" | "date" | "category">, cutoff = "2026-09-01"): boolean {
-  return payment.status === "done" && payment.amount < 0 && payment.date >= cutoff && PAYROLL_DDS_CATEGORIES.has(payment.category.trim());
+export function paymentIsPayrollCandidate(payment: Pick<Payment, "status" | "amount" | "date" | "category">): boolean {
+  return payment.status === "done" && payment.amount < 0 && PAYROLL_DDS_CATEGORIES.has(payment.category.trim());
 }
