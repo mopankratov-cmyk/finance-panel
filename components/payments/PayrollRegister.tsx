@@ -129,20 +129,14 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
     const allocated = new Map<string, number>();
     for (const item of data.allocations) allocated.set(item.paymentId, (allocated.get(item.paymentId) ?? 0) + item.amount);
     const consumed = consumedFactIds(payments, undefined, scheduleRows);
-    const employeeWords = data.employees.map((employee) => employee.fullName.toLowerCase().split(" ")[0]).filter(Boolean);
     return payments.filter((payment) => {
       if (!paymentIsPayrollCandidate(payment)) return false;
       const payrollAllocated = allocated.get(payment.id) ?? 0;
       if (consumed.has(payment.id) && payrollAllocated <= 0) return false;
       const remaining = Math.abs(payment.amount) - payrollAllocated;
-      if (remaining <= 0.009) return false;
-      const haystack = `${payment.name} ${payment.category} ${payment.counterparty} ${payment.comment ?? ""}`.toLowerCase();
-      // Налог по ведомости — самостоятельный расход ФНС. Он не может попасть
-      // в очередь подтверждения зарплаты и уменьшить долг сотрудника.
-      if (/(налог|ндфл|взнос|фнс)/.test(haystack)) return false;
-      return /(зарплат|аванс|зп|сотрудник)/.test(haystack) || employeeWords.some((word) => word.length > 3 && haystack.includes(word));
+      return remaining > 0.009;
     }).sort((left, right) => right.date.localeCompare(left.date));
-  }, [data.allocations, data.employees, payments, scheduleRows]);
+  }, [data.allocations, payments, scheduleRows]);
 
   const summary = useMemo(() => includedEmployeesForPeriod.reduce((result, employee) => {
     const draft = drafts[employee.id] ?? blankPayrollEntry(employee);
@@ -391,7 +385,7 @@ type PayrollEntryTarget = {
 
 function PaymentAllocationQueue({ payments, data, disabled, onAllocate }: { payments: Payment[]; data: PayrollData; disabled: boolean; onAllocate: (input: AllocationInput) => Promise<void> }) {
   return <Card>
-    <div className="border-b border-slate-100 p-5"><div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-violet-700" /><h2 className="font-bold text-slate-950">Оплаты из ДДС требуют подтверждения</h2><span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">{payments.length}</span></div><p className="mt-1 text-sm text-slate-500">Система ничего не закрывает по фамилии автоматически. Выберите сотрудника и долг, к которому относится каждая оплата.</p></div>
+    <div className="border-b border-slate-100 p-5"><div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-violet-700" /><h2 className="font-bold text-slate-950">Оплаты с категорией «Зарплата» в ДДС</h2><span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">{payments.length}</span></div><p className="mt-1 text-sm text-slate-500">Показываем только проведённые расходы, которым в ДДС явно назначена статья зарплаты. Выберите сотрудника и начисление для подтверждения.</p></div>
     <div className="divide-y divide-slate-100">
       {payments.length === 0 ? <p className="p-5 text-sm text-slate-500">Нераспределённых зарплатных оплат нет.</p> : payments.map((payment) => <PaymentAllocationRow key={payment.id} payment={payment} data={data} disabled={disabled} onAllocate={onAllocate} />)}
     </div>

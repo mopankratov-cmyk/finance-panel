@@ -1,4 +1,5 @@
 import type { Payment } from "@/lib/types";
+import { PAYROLL_CATEGORIES } from "@/lib/finance/categories";
 
 export const PAYROLL_FACT_MARKER = "payroll-paid";
 
@@ -29,6 +30,15 @@ export function payrollCategoryForEmployee(position: string): "administrative" |
   return "administrative";
 }
 
-export function paymentIsPayrollCandidate(payment: Pick<Payment, "status" | "amount" | "date">, cutoff = "2026-09-01"): boolean {
-  return payment.status === "done" && payment.amount < 0 && payment.date >= cutoff;
+const PAYROLL_DDS_CATEGORIES = new Set([
+  PAYROLL_CATEGORIES.administrative,
+  PAYROLL_CATEGORIES.commercial,
+  PAYROLL_CATEGORIES.production,
+  // Историческая статья остаётся доступной, пока старые операции не
+  // переклассифицированы в более точные статьи выше.
+  "Зарплата",
+]);
+
+export function paymentIsPayrollCandidate(payment: Pick<Payment, "status" | "amount" | "date" | "category">, cutoff = "2026-09-01"): boolean {
+  return payment.status === "done" && payment.amount < 0 && payment.date >= cutoff && PAYROLL_DDS_CATEGORIES.has(payment.category.trim());
 }
