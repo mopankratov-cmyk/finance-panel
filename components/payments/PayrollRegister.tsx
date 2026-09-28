@@ -87,7 +87,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
     const employeeMatchesCompany = (employee: PayrollEmployee) => registerCompanyIds === null || employee.companyIds.some(companyIsInRegisterScope) || companyIsInRegisterScope(employee.companyId);
     const entryMatchesCompany = (employeeId: string) => data.entries.some((entry) => entry.periodId === selectedPeriod?.id && entry.employeeId === employeeId && (companyIsInRegisterScope(entry.companyId) || entry.lines.some((line) => companyIsInRegisterScope(line.companyId))));
     return data.employees.filter((employee) => (employeeBelongsToPeriod(employee, range.periodStart, range.periodEnd) || existingEmployeeIds.has(employee.id)) && (employeeMatchesCompany(employee) || entryMatchesCompany(employee.id)));
-  }, [companyIsInRegisterScope, data.employees, data.entries, range, selectedPeriod?.id]);
+  }, [companyIsInRegisterScope, data.employees, data.entries, range, registerCompanyIds, selectedPeriod?.id]);
 
   useEffect(() => {
     setSkippedEmployeeIds(new Set());

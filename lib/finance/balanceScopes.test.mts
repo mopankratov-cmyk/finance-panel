@@ -24,8 +24,8 @@ test("Retail Family and Optima remain separate balance scopes", () => {
 
   assert.deepEqual(scopes.map((scope) => ({ id: scope.id, name: scope.name, cabinets: scope.cabinetIds })), [
     { id: "optima", name: "Оптима — NORVIA / RIOBOX (ООО Оптима)", cabinets: ["wb-optima"] },
-    { id: "korovkin", name: "Retail Family (ИП Филиппов)", cabinets: ["wb-retail"] },
+    { id: "retail", name: "Retail Family (ИП Филиппов)", cabinets: ["wb-retail"] },
   ]);
-  assert.deepEqual(scopes.find((scope) => scope.id === "korovkin")?.companyIds.sort(), ["korovkin", "retail"]);
+  assert.deepEqual(scopes.find((scope) => scope.id === "retail")?.companyIds.sort(), ["korovkin", "retail"]);
   assert.equal(scopes.some((scope) => scope.cabinetIds.includes("wb-sloeno")), false);
 });
