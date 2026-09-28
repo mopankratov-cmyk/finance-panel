@@ -61,27 +61,72 @@ interface CalendarWeekRow {
   referenceDate: string;
 }
 
-type TextCorrection = { payment: Payment; next: Payment; summary: string };
+type TextCorrection = {
+  payment: Payment;
+  updates: Payment[];
+  additions: Payment[];
+  summary: string;
+};
 
 function textDate(value: string) {
   return parseRussianDate(value) ?? null;
 }
 
+function correctionAmounts(text: string) {
+  return [...text.matchAll(/(?:сумм[ауе]?\s*)?([+-]?[\d\s ]+(?:[,.]\d{1,2})?)\s*(?:₽|руб\.?|р\b)/gi)]
+    .map((match) => parseRussianAmount(match[1])).filter((amount): amount is number => amount !== null);
+}
+
+function findPlannedCorrectionPayment(payments: Payment[], date: string, amount?: number) {
+  return payments.filter((payment) => payment.status === "planned" && payment.date === date && (amount === undefined || Math.abs(Math.abs(payment.amount) - Math.abs(amount)) < 0.01));
+}
+
 function recognizeCalendarCorrection(text: string, payments: Payment[]): { correction?: TextCorrection; error?: string } {
   const dates = [...text.matchAll(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|20\d{2}-\d{2}-\d{2})\b/g)].map((match) => textDate(match[1])).filter((date): date is string => Boolean(date));
-  if (!/перенест|сдвин|передвин|измен.*дат/i.test(text) || dates.length < 2) {
-    return { error: "Пока понимаю перенос даты. Напишите, например: «перенести платёж 50 000 с 05.10.2026 на 12.10.2026»." };
+  const amounts = correctionAmounts(text);
+  if (!dates.length) {
+    return { error: "Укажите дату планового платежа в формате 05.10.2026." };
   }
-  const amounts = [...text.matchAll(/(?:сумм[ауе]?\s*)?([+-]?[\d\s ]+(?:[,.]\d{1,2})?)\s*(?:₽|руб\.?|р\b)/gi)]
-    .map((match) => parseRussianAmount(match[1])).filter((amount): amount is number => amount !== null);
-  const from = dates[0];
-  const to = dates[1];
-  const candidates = payments.filter((payment) => payment.status === "planned" && payment.date === from && (!amounts.length || amounts.some((amount) => Math.abs(Math.abs(payment.amount) - Math.abs(amount)) < 0.01)));
+
+  const sourceDate = dates[0];
+  const initialAmount = amounts[0];
+  const candidates = findPlannedCorrectionPayment(payments, sourceDate, initialAmount);
   if (candidates.length !== 1) {
     return { error: candidates.length ? "Нашла несколько плановых платежей. Добавьте сумму и назначение платежа." : "Плановый платёж с такой датой и суммой не найден. Проверьте дату и сумму." };
   }
   const payment = candidates[0];
-  return { correction: { payment, next: { ...payment, date: to }, summary: `${formatMoney(payment.amount)} · ${formatDate(from)} → ${formatDate(to)} · ${payment.name || payment.category}` } };
+
+  if (/раздел|распредел|разбить/i.test(text)) {
+    if (loanScheduleKey(payment)) {
+      return { error: "Платёж по кредиту или займу нельзя распределить здесь: откройте договор, чтобы сохранить целостность графика." };
+    }
+    const parts = [...text.matchAll(/([+-]?[\d\s ]+(?:[,.]\d{1,2})?)\s*(?:₽|руб\.?|р\b)\s*(?:на|в)?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{4}|20\d{2}-\d{2}-\d{2})/gi)]
+      .map((match) => ({ amount: parseRussianAmount(match[1]), date: textDate(match[2]) }))
+      .filter((part): part is { amount: number; date: string } => part.amount !== null && Boolean(part.date));
+    if (parts.length < 2) {
+      return { error: "Для распределения укажите минимум две части: «разделить 50 000 ₽ с 05.10.2026 на 20 000 ₽ 12.10.2026 и 30 000 ₽ 20.10.2026»." };
+    }
+    const total = parts.reduce((sum, part) => sum + Math.abs(part.amount), 0);
+    if (Math.abs(total - Math.abs(payment.amount)) >= 0.01) {
+      return { error: `Сумма частей ${formatMoney(total)} не равна исходному платежу ${formatMoney(Math.abs(payment.amount))}. Календарь не изменён.` };
+    }
+    const sign = payment.amount < 0 ? -1 : 1;
+    const [first, ...rest] = parts;
+    const updates = [{ ...payment, date: first.date, amount: sign * Math.abs(first.amount) }];
+    const additions = rest.map((part) => ({ ...payment, id: crypto.randomUUID(), date: part.date, amount: sign * Math.abs(part.amount), settledByPaymentId: null }));
+    return { correction: { payment, updates, additions, summary: `${formatMoney(payment.amount)} · ${formatDate(sourceDate)} будет распределён на ${parts.length} дат: ${parts.map((part) => `${formatMoney(sign * Math.abs(part.amount))} · ${formatDate(part.date)}`).join(", ")}` } };
+  }
+
+  if (/(измен.*сумм|сумм.*измен|постав.*сумм)/i.test(text) && amounts.length >= 2) {
+    const nextAmount = amounts[amounts.length - 1];
+    return { correction: { payment, updates: [{ ...payment, amount: payment.amount < 0 ? -Math.abs(nextAmount) : Math.abs(nextAmount) }], additions: [], summary: `${formatMoney(payment.amount)} → ${formatMoney(payment.amount < 0 ? -Math.abs(nextAmount) : Math.abs(nextAmount))} · ${formatDate(sourceDate)} · ${payment.name || payment.category}` } };
+  }
+
+  const targetDate = dates[1];
+  if (/перенест|сдвин|передвин|измен.*дат/i.test(text) && targetDate) {
+    return { correction: { payment, updates: [{ ...payment, date: targetDate }], additions: [], summary: `${formatMoney(payment.amount)} · ${formatDate(sourceDate)} → ${formatDate(targetDate)} · ${payment.name || payment.category}` } };
+  }
+  return { error: "Понимаю перенос даты, изменение суммы и распределение платежа. Например: «изменить сумму 50 000 ₽ 05.10.2026 на 62 500 ₽» или «разделить 50 000 ₽ с 05.10.2026 на 20 000 ₽ 12.10.2026 и 30 000 ₽ 20.10.2026»." };
 }
 
 function buildMonthWeeks(
@@ -672,10 +717,16 @@ export function CalendarPage() {
       {!isForecastView && <details className="rounded-xl border border-violet-200 bg-violet-50/60 p-4">
         <summary className="cursor-pointer text-sm font-semibold text-violet-950">Корректировка календаря текстом</summary>
         <p className="mt-2 text-sm text-slate-600">Опишите изменение своими словами. Система подготовит его, но не изменит календарь без вашего подтверждения.</p>
-        <textarea value={textCorrection} onChange={(event) => { setTextCorrection(event.target.value); setTextCorrectionPreview(null); setTextCorrectionError(null); }} placeholder="Например: перенести платёж 50 000 ₽ с 05.10.2026 на 12.10.2026" className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
+        <textarea value={textCorrection} onChange={(event) => { setTextCorrection(event.target.value); setTextCorrectionPreview(null); setTextCorrectionError(null); }} placeholder="Например: перенести 50 000 ₽ с 05.10.2026 на 12.10.2026; изменить сумму 50 000 ₽ 05.10.2026 на 62 500 ₽; разделить 50 000 ₽ с 05.10.2026 на 20 000 ₽ 12.10.2026 и 30 000 ₽ 20.10.2026" className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
         <div className="mt-3 flex flex-wrap gap-2">
           <button type="button" onClick={() => { const result = recognizeCalendarCorrection(textCorrection, state.payments); setTextCorrectionPreview(result.correction ?? null); setTextCorrectionError(result.error ?? null); }} className="min-h-11 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-100">Распознать</button>
-          {textCorrectionPreview && <button type="button" onClick={() => { dispatch({ type: "UPDATE_PAYMENT", payload: textCorrectionPreview.next }); setTextCorrection(``); setTextCorrectionPreview(null); }} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить изменение</button>}
+          {textCorrectionPreview && <button type="button" onClick={() => {
+            const companyId = companyByPayment.get(textCorrectionPreview.payment.id) ?? textCorrectionPreview.payment.companyId ?? null;
+            for (const payment of textCorrectionPreview.updates) handleUpdatePayment(payment, companyId);
+            for (const payment of textCorrectionPreview.additions) handleAddPayment(payment, companyId);
+            setTextCorrection("");
+            setTextCorrectionPreview(null);
+          }} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700">Подтвердить изменение</button>}
         </div>
         {textCorrectionPreview && <p role="status" className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">Будет изменено: {textCorrectionPreview.summary}</p>}
         {textCorrectionError && <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{textCorrectionError}</p>}
