@@ -14,6 +14,16 @@ const JOB = "advert_spend_history";
 // paid-storage) — можно смело забирать месяц за один запрос.
 const WINDOW_DAYS = 30;
 const HISTORY_DEPTH_DAYS = 180;
+// WB публикует часть проводок с опозданием на несколько дней (та же
+// "гонка курсора", что и со статистикой заказов — см. docs/PROJECT-
+// KNOWLEDGE.md). "recent" раньше двигал from сразу за newestSynced и
+// больше никогда не перечитывал уже пройденные даты — сверка с сырой
+// выгрузкой WB нашла реальную дыру: кампания 35648004 получила проводки
+// за 15-18.09 уже ПОСЛЕ того, как синк ушёл вперёд, и они не вернулись
+// в базу никогда. Апсёрт здесь безопасен (id — стабильный ключ по
+// advertId/updTime/paymentType, не порядковый номер, как в paid-storage),
+// поэтому просто перечитываем перехлёст на каждый прогон.
+const RECENT_OVERLAP_DAYS = 14;
 
 /**
  * Раньше синк держал только скользящее окно "последние 30 дней от сегодня"
@@ -161,7 +171,9 @@ async function runCabinetStep(
   if (!isRecentCaughtUp) {
     mode = "recent";
     to = today;
-    from = state.newestSynced ? addDays(state.newestSynced, 1) : addDays(today, -(WINDOW_DAYS - 1));
+    from = state.newestSynced
+      ? addDays(state.newestSynced, -(RECENT_OVERLAP_DAYS - 1))
+      : addDays(today, -(WINDOW_DAYS - 1));
   } else {
     const frontier = state.frontier ?? today;
     if (frontier <= historyStart) {
