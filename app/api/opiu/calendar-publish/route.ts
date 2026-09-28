@@ -169,6 +169,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Платёж недостаточно похож на выбранный план" }, { status: 409 });
   }
   const linked = withCalendarFactLink(planned, factId);
+  let savedViaLegacyMarker = false;
   let saved = await db.from("payments")
     .update({
       status: linked.status,
@@ -180,13 +181,24 @@ export async function PATCH(request: Request) {
     .select("id")
     .maybeSingle();
   if (saved.error && (saved.error.code === "42703" || /settled_by_payment_id.*(?:does not exist|schema cache)|could not find.*settled_by_payment_id/i.test(saved.error.message))) {
+    // Preview и локальные базы могут отставать на одну миграцию. В таком
+    // окружении сохраняем прежнюю метку, иначе запрос выглядит успешным лишь
+    // до перезагрузки: новое поле не записалось, а старой метки тоже нет.
+    const legacyComment = [linked.comment, `[calendar-fact:${factId}]`].filter(Boolean).join(" ");
     saved = await db.from("payments")
-      .update({ status: linked.status, comment: linked.comment ?? null })
+      .update({ status: linked.status, comment: legacyComment })
       .eq("id", plannedId)
       .in("status", ["planned", "cancelled"])
       .select("id")
       .maybeSingle();
+    savedViaLegacyMarker = !saved.error && Boolean(saved.data);
   }
   if (saved.error || !saved.data) return NextResponse.json({ error: "Не удалось сохранить связь плана и факта" }, { status: 409 });
-  return NextResponse.json({ ok: true, payment: linked });
+  // Не передаём отсутствующее в старой базе поле обратно в FinanceProvider:
+  // его повторная запись идёт через /api/finance/state и снова падала бы на
+  // неизвестной колонке, хотя метка уже корректно сохранила связь.
+  const payment = savedViaLegacyMarker
+    ? { ...linked, settledByPaymentId: undefined, comment: [linked.comment, `[calendar-fact:${factId}]`].filter(Boolean).join(" ") }
+    : linked;
+  return NextResponse.json({ ok: true, payment });
 }
