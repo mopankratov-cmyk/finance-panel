@@ -6,7 +6,7 @@ import { BulkPaymentModal } from "./BulkPaymentModal";
 import { CalendarAgenda } from "./CalendarAgenda";
 import { CalendarDayCell } from "./CalendarDayCell";
 import { CashFlowSparkline } from "./CashFlowSparkline";
-import { calendarPaymentsWithoutMatchedPlans, findPlanFactMatches, isCalendarCashFlow, isTechnicalTransfer } from "./calendarPlan";
+import { calendarPaymentsWithoutMatchedPlans, findPlanFactMatches, isCalendarCashFlow, isTechnicalTransfer, rejectedCalendarFactIds, withRejectedCalendarFactMatch, withoutRejectedCalendarFactMatch } from "./calendarPlan";
 import { persistCalendarFactLink } from "./forecastPublication";
 import { DayDetailPanel } from "./DayDetailPanel";
 import { SalesForecastPanel } from "./SalesForecastPanel";
@@ -415,6 +415,13 @@ export function CalendarPage() {
   }, [allPlanFactMatching, year, month]);
   const planFactMatches = planFactMatching.matched;
   const planFactReview = planFactMatching.review;
+  const rejectedPlanFactLinks = useMemo(() => {
+    const factsById = new Map(state.payments.filter((payment) => payment.status === "done").map((payment) => [payment.id, payment]));
+    return state.payments.flatMap((planned) => [...rejectedCalendarFactIds(planned)].flatMap((factId) => {
+      const fact = factsById.get(factId);
+      return fact ? [{ planned, fact }] : [];
+    }));
+  }, [state.payments]);
   const factLinkRequests = useRef(new Set<string>());
   const [factLinkError, setFactLinkError] = useState<string | null>(null);
   const [manualFactLinkError, setManualFactLinkError] = useState<{ key: string; message: string } | null>(null);
@@ -673,6 +680,18 @@ export function CalendarPage() {
     }
   };
 
+  const rejectPlanFactMatch = (planned: Payment, fact: Payment) => {
+    if (!window.confirm("Отметить, что это не совпадение? Эта пара больше не будет предлагаться автоматически. Её можно вернуть из списка отклонённых совпадений ниже.")) return;
+    dispatch({ type: "UPDATE_PAYMENT", payload: withRejectedCalendarFactMatch(planned, fact.id) });
+    setManualFactLinkError(null);
+    setFactLinkNotice("Пара исключена из проверки. План и факт остались без изменений.");
+  };
+
+  const restoreRejectedPlanFactMatch = (planned: Payment, fact: Payment) => {
+    dispatch({ type: "UPDATE_PAYMENT", payload: withoutRejectedCalendarFactMatch(planned, fact.id) });
+    setFactLinkNotice("Пара возвращена в проверку совпадений.");
+  };
+
   const alignPaymentCompanyForMatch = async (payment: Payment, companyId: string, requestKey: string, paymentLabel: "плана" | "факта") => {
     if (aligningCompanyKey === requestKey) return;
     const companyName = companyById.get(companyId)?.name ?? "выбранную компанию";
@@ -813,6 +832,13 @@ export function CalendarPage() {
                           {confirming && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
                           {confirming ? "Подтверждаем…" : "Подтвердить совпадение"}
                         </button>}
+                        {!companiesDiffer && <button
+                          type="button"
+                          onClick={() => rejectPlanFactMatch(match.planned, match.fact)}
+                          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                        >
+                          Не совпадает
+                        </button>}
                       </div>
                       {companiesDiffer && <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-sm text-rose-900">
                         <p><b>Совпадение пока нельзя подтвердить:</b> у плана — «{plannedCompanyName}», у факта — «{factCompanyName}».</p>
@@ -832,6 +858,17 @@ export function CalendarPage() {
           </CardContent>
         </Card>
       )}
+
+      {rejectedPlanFactLinks.length > 0 && <details className="rounded-xl border border-slate-200 bg-white p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-slate-800">Отклонённые совпадения ({rejectedPlanFactLinks.length})</summary>
+        <p className="mt-2 text-sm text-slate-500">Эти пары не предлагаются автоматически. При необходимости их можно вернуть в проверку.</p>
+        <div className="mt-3 space-y-2">
+          {rejectedPlanFactLinks.map(({ planned, fact }) => <div key={`${planned.id}-${fact.id}`} className="flex flex-col gap-2 rounded-lg border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+            <span><b>План:</b> {formatDate(planned.date)} · {formatMoney(planned.amount)} <span className="text-slate-400">↔</span> <b>Факт:</b> {formatDate(fact.date)} · {formatMoney(fact.amount)}</span>
+            <button type="button" onClick={() => restoreRejectedPlanFactMatch(planned, fact)} className="min-h-11 shrink-0 rounded-lg border border-violet-300 bg-white px-3 font-semibold text-violet-700 hover:bg-violet-50">Вернуть в проверку</button>
+          </div>)}
+        </div>
+      </details>}
 
       {factLinkNotice && (
         <div role="status" aria-live="polite" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">

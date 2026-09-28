@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { findPlanFactMatches, withCalendarFactLink } from "./calendarPlan.ts";
+import { findPlanFactMatches, withCalendarFactLink, withRejectedCalendarFactMatch, withoutRejectedCalendarFactMatch } from "./calendarPlan.ts";
 import type { Payment } from "../../lib/types.ts";
 
 const payment = (id: string, status: Payment["status"], amount: number, date = "2026-08-10"): Payment => ({
@@ -37,6 +37,17 @@ test("каноническая связь работает после удале
   const plan = { ...payment("plan", "cancelled", 100000), settledByPaymentId: "fact", comment: "Комментарий изменён" };
   const result = findPlanFactMatches([plan, payment("fact", "done", 70000, "2026-08-15")]);
   assert.equal(result.matched[0]?.source, "confirmed");
+});
+
+test("отклонённая пара не появляется снова и может быть возвращена", () => {
+  const rejected = withRejectedCalendarFactMatch(payment("plan", "planned", 100000), "fact");
+  const hidden = findPlanFactMatches([rejected, payment("fact", "done", 100000, "2026-08-11")]);
+  assert.equal(hidden.matched.length, 0);
+  assert.equal(hidden.review.length, 0);
+
+  const restored = withoutRejectedCalendarFactMatch(rejected, "fact");
+  const visible = findPlanFactMatches([restored, payment("fact", "done", 100000, "2026-08-11")]);
+  assert.equal(visible.matched[0]?.fact.id, "fact");
 });
 
 test("назначение платежа усиливает правильное совпадение", () => {

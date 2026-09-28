@@ -34,6 +34,27 @@ const linkedFactId = (payment: Payment) => payment.settledByPaymentId
   ?? payment.comment?.match(/\[calendar-fact:([^\]]+)\]/)?.[1]
   ?? null;
 
+const REJECTED_FACT_MARKER = /\s*\[calendar-rejected:([^\]]+)\]/gi;
+
+/** Пары, которые финансовый специалист явно проверил и отклонил. */
+export function rejectedCalendarFactIds(payment: Payment): Set<string> {
+  return new Set([...(payment.comment?.matchAll(REJECTED_FACT_MARKER) ?? [])].map((match) => match[1]));
+}
+
+export function withRejectedCalendarFactMatch(payment: Payment, factId: string): Payment {
+  const rejected = rejectedCalendarFactIds(payment);
+  rejected.add(factId);
+  const plainComment = (payment.comment ?? "").replace(REJECTED_FACT_MARKER, "").trim();
+  return { ...payment, comment: `${plainComment}${plainComment ? " " : ""}${[...rejected].map((id) => `[calendar-rejected:${id}]`).join(" ")}` };
+}
+
+export function withoutRejectedCalendarFactMatch(payment: Payment, factId: string): Payment {
+  const rejected = rejectedCalendarFactIds(payment);
+  rejected.delete(factId);
+  const plainComment = (payment.comment ?? "").replace(REJECTED_FACT_MARKER, "").trim();
+  return { ...payment, comment: `${plainComment}${plainComment ? " " : ""}${[...rejected].map((id) => `[calendar-rejected:${id}]`).join(" ")}` || undefined };
+}
+
 export function withCalendarFactLink(payment: Payment, factId: string): Payment {
   const withoutOldLink = (payment.comment ?? "").replace(/\s*\[calendar-fact:[^\]]+\]/g, "").trim();
   return {
@@ -67,8 +88,9 @@ export function findPlanFactMatches(
       matched.push({ planned: plan, fact: persistedFact, score: 100, source: "confirmed" });
       continue;
     }
+    const rejectedFactIds = rejectedCalendarFactIds(plan);
     const candidates = facts
-      .filter((fact) => !usedFacts.has(fact.id) && (!consumed.has(fact.id) || persistedFactId === fact.id))
+      .filter((fact) => !usedFacts.has(fact.id) && !rejectedFactIds.has(fact.id) && (!consumed.has(fact.id) || persistedFactId === fact.id))
       .map((fact) => {
         if (Math.sign(plan.amount) !== Math.sign(fact.amount)) return null;
         const planCompany = companyByPayment.get(plan.id) ?? null;
