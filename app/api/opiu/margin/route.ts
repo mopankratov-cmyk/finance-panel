@@ -157,7 +157,7 @@ export async function GET(request: NextRequest) {
   const brand = resolveOpiuBrand(resolveBrandId(request));
 
   try {
-    const [reportRows, costs, adSpendByNmId, ordersByNmId, paidStorageByArticle] = await Promise.all([
+    const [reportRows, costs, adSpendByNmId, ordersByNmId, paidStorage] = await Promise.all([
       fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
       fetchProductCosts(brand),
       fetchAdSpendByNmId(brand.cabinetId, dateFrom, dateTo),
@@ -174,7 +174,9 @@ export async function GET(request: NextRequest) {
       costs,
       adSpendByNmId,
       ordersByNmId,
-      paidStorageByArticle,
+      paidStorage.storageByArticle,
+      6,
+      paidStorage.barcodesCountByArticle,
     );
 
     return NextResponse.json({

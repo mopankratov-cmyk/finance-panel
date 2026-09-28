@@ -30,6 +30,15 @@ export interface CompactPaidStorageRow extends Record<string, unknown> {
   nm_id: number | null;
   vendor_code: string | null;
   warehouse_price: number;
+  /**
+   * WB-поле barcodesCount — «количество единиц товара, подлежащих
+   * тарифицированию за расчётные сутки» (billable item-days). Нужно для
+   * «Хранение на 1 ед»: сверка с гугл-таблицей построчно на 5 артикулах
+   * (включая один с нулевыми продажами) показала, что там делят сумму
+   * хранения именно на это поле, а не на количество проданных штук —
+   * иначе «на 1 ед» был бы ненулевым и при нулевых продажах.
+   */
+  barcodes_count: number;
   synced_at: string;
 }
 
@@ -93,10 +102,13 @@ export function compactPaidStorageRows(
     const key = [date, nmId ?? "", vendorKey].join("|");
     const warehousePrice = Number(row.warehousePrice ?? 0);
     const amount = Number.isFinite(warehousePrice) ? warehousePrice : 0;
+    const barcodesCount = Number(row.barcodesCount ?? 0);
+    const count = Number.isFinite(barcodesCount) ? barcodesCount : 0;
     const existing = grouped.get(key);
 
     if (existing) {
       existing.warehouse_price += amount;
+      existing.barcodes_count += count;
       continue;
     }
 
@@ -107,6 +119,7 @@ export function compactPaidStorageRows(
       nm_id: nmId,
       vendor_code: vendorCode,
       warehouse_price: amount,
+      barcodes_count: count,
       synced_at: syncedAt,
     });
   }

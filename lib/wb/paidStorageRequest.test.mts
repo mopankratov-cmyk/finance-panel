@@ -27,10 +27,10 @@ test("новая задача WB считается ожидающей обра�
 
 test("compactPaidStorageRows sums detailed WB charges without changing the total", () => {
   const rows = compactPaidStorageRows("cabinet-1", [
-    { date: "2026-08-10", nmId: 101, vendorCode: "NV-01", officeId: 1, warehousePrice: 12.25 },
-    { date: "2026-08-10", nmId: 101, vendorCode: "nv-01", officeId: 2, warehousePrice: 7.75 },
-    { date: "2026-08-10", nmId: 202, vendorCode: "HT-02", officeId: 1, warehousePrice: -1.5 },
-    { date: "2026-08-11T00:00:00Z", nmId: 101, vendorCode: "NV-01", officeId: 1, warehousePrice: 3 },
+    { date: "2026-08-10", nmId: 101, vendorCode: "NV-01", officeId: 1, warehousePrice: 12.25, barcodesCount: 5 },
+    { date: "2026-08-10", nmId: 101, vendorCode: "nv-01", officeId: 2, warehousePrice: 7.75, barcodesCount: 3 },
+    { date: "2026-08-10", nmId: 202, vendorCode: "HT-02", officeId: 1, warehousePrice: -1.5, barcodesCount: 1 },
+    { date: "2026-08-11T00:00:00Z", nmId: 101, vendorCode: "NV-01", officeId: 1, warehousePrice: 3, barcodesCount: 2 },
   ], "2026-09-24T10:00:00.000Z");
 
   assert.equal(rows.length, 3);
@@ -42,6 +42,7 @@ test("compactPaidStorageRows sums detailed WB charges without changing the total
     nm_id: 101,
     vendor_code: "NV-01",
     warehouse_price: 20,
+    barcodes_count: 8,
     synced_at: "2026-09-24T10:00:00.000Z",
   });
 });
@@ -57,6 +58,7 @@ test("compactPaidStorageRows keeps a zero coverage row and skips invalid dates",
   assert.equal(rows[0]?.nm_id, null);
   assert.equal(rows[0]?.vendor_code, null);
   assert.equal(rows[0]?.warehouse_price, 0);
+  assert.equal(rows[0]?.barcodes_count, 0);
 });
 
 test("filterPaidStorageRowsByPrefixes keeps only OPIU brands in an agent cabinet", () => {
