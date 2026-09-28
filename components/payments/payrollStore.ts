@@ -166,6 +166,14 @@ export async function allocatePayrollPayment(input: {
   }).then(json<{ allocation: Row }>);
 }
 
+export async function deletePayrollAllocation(allocationId: string): Promise<void> {
+  await fetch("/api/payroll", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "delete_allocation", allocationId }),
+  }).then(json<{ ok: boolean }>);
+}
+
 export async function savePayrollEmployee(employee: PayrollEmployee): Promise<void> {
   const result = await fetch("/api/payroll", {
     method: "POST",

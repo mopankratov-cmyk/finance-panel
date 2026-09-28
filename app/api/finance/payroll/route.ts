@@ -8,7 +8,7 @@ import { PAYROLL_CATEGORIES } from "@/lib/finance/categories";
 import { preservedLoanMarkers } from "@/lib/finance/factLinks";
 import { loadConsumedFactIds } from "@/lib/finance/factLinksServer";
 import { loadFinanceStateServer, persistFinanceActionServer } from "@/lib/finance/dbServer";
-import { appendPayrollFactMarker, canAllocateFactToPayroll, payrollCategoryForEmployee } from "@/lib/payroll/model";
+import { appendPayrollFactMarker, canAllocateFactToPayroll, payrollCategoryForEmployee, removePayrollFactMarker } from "@/lib/payroll/model";
 import { financeReducer } from "@/lib/reducer";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -424,6 +424,28 @@ async function handlePayroll(request: NextRequest) {
       throw error;
     }
     return NextResponse.json({ allocation: result.data });
+  }
+
+  if (action === "delete_allocation") {
+    const allocationId = nullableId(body.allocationId);
+    if (!allocationId) return NextResponse.json({ error: "Выберите подтверждённую оплату" }, { status: 400 });
+    const allocationResult = await db.from("payroll_payment_allocations").select("id,payment_id").eq("id", allocationId).single();
+    if (allocationResult.error || !allocationResult.data) return NextResponse.json({ error: "Подтверждённая оплата не найдена" }, { status: 404 });
+    const paymentId = String(allocationResult.data.payment_id);
+    const allocationsResult = await db.from("payroll_payment_allocations").select("id").eq("payment_id", paymentId);
+    if (allocationsResult.error) return NextResponse.json({ error: allocationsResult.error.message }, { status: 500 });
+
+    if ((allocationsResult.data?.length ?? 0) === 1) {
+      const financeState = await loadFinanceStateServer();
+      const fact = financeState.payments.find((payment) => payment.id === paymentId);
+      if (!fact) return NextResponse.json({ error: "Факт ДДС не найден в основном реестре" }, { status: 404 });
+      const financeAction: FinanceAction = { type: "UPDATE_PAYMENT", payload: { ...fact, comment: removePayrollFactMarker(fact.comment, paymentId) } };
+      await persistFinanceActionServer(financeAction, financeState, financeReducer(financeState, financeAction));
+    }
+
+    const deleteResult = await db.from("payroll_payment_allocations").delete().eq("id", allocationId);
+    if (deleteResult.error) return NextResponse.json({ error: deleteResult.error.message }, { status: 500 });
+    return NextResponse.json({ ok: true });
   }
 
   if (action !== "save_period") return NextResponse.json({ error: "Неизвестное действие" }, { status: 400 });
