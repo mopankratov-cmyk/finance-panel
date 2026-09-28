@@ -449,8 +449,18 @@ function PaymentAllocationQueue({ payments, data, disabled, onAllocate }: { paym
   </Card>;
 }
 
+function paymentEmployeeSuggestion(payment: Payment, employees: PayrollEmployee[]): string | null {
+  const paymentText = [payment.counterparty, payment.name, payment.comment].filter(Boolean).join(" ").toLocaleLowerCase("ru-RU");
+  const matches = employees.filter((employee) => paymentText.includes(employee.fullName.toLocaleLowerCase("ru-RU")));
+  return matches.length === 1 ? matches[0].id : null;
+}
+
 function PaymentAllocationRow({ payment, data, disabled, onAllocate }: { payment: Payment; data: PayrollData; disabled: boolean; onAllocate: (input: AllocationInput) => Promise<void> }) {
   const [employeeId, setEmployeeId] = useState("");
+  const suggestedEmployeeId = useMemo(() => paymentEmployeeSuggestion(payment, data.employees), [data.employees, payment]);
+  useEffect(() => {
+    if (suggestedEmployeeId) setEmployeeId((current) => current || suggestedEmployeeId);
+  }, [suggestedEmployeeId]);
   const [target, setTarget] = useState("");
   const alreadyAllocated = data.allocations.filter((item) => item.paymentId === payment.id).reduce((sum, item) => sum + item.amount, 0);
   const available = Math.max(0, Math.round((Math.abs(payment.amount) - alreadyAllocated) * 100) / 100);
