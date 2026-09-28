@@ -20,7 +20,7 @@ function safeSheetPart(value: string) {
 export function ddsSheetNameForCompany(company: DdsCompany | null | undefined): string {
   if (!company) return "ДДС На проверке";
   const name = normalize(company.name);
-  if (companyAliasKeys(name).length) return "ДДС Коровкин-Филиппов";
+  if (companyAliasKeys(name).length) return "ДДС ИП Филиппов";
   if (MAIN_GROUP_COMPANIES.some((known) => name.includes(known))) return "ДДС Группа компаний";
   return `ДДС ${safeSheetPart(company.name)}`.slice(0, 31);
 }

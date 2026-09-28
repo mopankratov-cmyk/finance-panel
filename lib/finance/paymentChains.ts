@@ -23,8 +23,8 @@ const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
 export function isMainGroup(company: ChainCompany | undefined) {
   return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);
 }
-export function requiresKorovkinLoan(source: ChainCompany | undefined, recipient: ChainCompany | undefined) {
-  return Boolean(source && recipient && source.id !== recipient.id && isMainGroup(source) && companyAliasKeys(recipient.name).includes("коровкин"));
+export function requiresFilippovLoan(source: ChainCompany | undefined, recipient: ChainCompany | undefined) {
+  return Boolean(source && recipient && source.id !== recipient.id && isMainGroup(source) && companyAliasKeys(recipient.name).includes("филиппов"));
 }
 export function allocationTotal(draft: PaymentChainDraft) {
   return draft.allocations.reduce((sum, p) => sum + cents(p.amount), 0) / 100;
@@ -72,8 +72,8 @@ export function validateChain(d: PaymentChainDraft, accounts: Account[], compani
     }
     if (/Поступление|Получение кредитов|Продажи на МП/.test(a.category)) errors.push("У части расхода выбрана статья поступления");
     if (/зарплат/i.test(a.category) && !a.counterparty.trim()) errors.push("Для зарплаты укажите получателя в каждой части");
-    if (requiresKorovkinLoan(source, recipient) && (!d.throughCash || account?.type !== "cash")) errors.push("Расход основной группы на Коровкина оформляется займом через наличные: выберите наличные группы и получателя");
-    if (d.throughCash && !requiresKorovkinLoan(source, recipient) && a.accountId !== d.cashAccountId) errors.push("Обычный расход этой суммы должен идти из её наличного кошелька");
+    if (requiresFilippovLoan(source, recipient) && (!d.throughCash || account?.type !== "cash")) errors.push("Расход основной группы на ИП Филиппова оформляется займом через наличные: выберите наличные группы и получателя");
+    if (d.throughCash && !requiresFilippovLoan(source, recipient) && a.accountId !== d.cashAccountId) errors.push("Обычный расход этой суммы должен идти из её наличного кошелька");
     if (!d.throughCash && a.accountId !== d.sourceAccountId) errors.push("Для расхода с другого кошелька включите перевод через наличные");
   }
   if (chainRemainder(d) < 0) errors.push("Сумма частей больше исходной суммы");
@@ -93,7 +93,7 @@ export function buildChainEntries(d: PaymentChainDraft, companies: ChainCompany[
   for (const a of d.allocations) {
     if (a.excluded) continue;
     const recipient = companies.find(c => c.id === a.companyId);
-    if (requiresKorovkinLoan(source, recipient)) {
+    if (requiresFilippovLoan(source, recipient)) {
       add("loan-out", -a.amount, d.sourceDate, "Займ " + recipient!.name, INTERCOMPANY_LOAN_CATEGORIES.issued, d.sourceCompanyId, d.cashAccountId, recipient!.name, a.id);
       add("loan-in", a.amount, d.sourceDate, "Получение займа от " + source!.name, LOAN_CATEGORIES.receipt, a.companyId, a.accountId, source!.name, a.id);
     }

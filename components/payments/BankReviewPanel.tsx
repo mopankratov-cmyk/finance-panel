@@ -4,7 +4,7 @@ import { Check, HelpCircle, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CounterpartySelect } from "./CounterpartySelect";
 import { PaymentChainModal } from "./PaymentChainModal";
-import { chainMetadata, requiresKorovkinLoan } from "@/lib/finance/paymentChains";
+import { chainMetadata, requiresFilippovLoan } from "@/lib/finance/paymentChains";
 import { loadDdsCompanies, type DdsCompany } from "./ddsCompanies";
 import type { DdsDraft, DdsParseResult } from "./ddsCsv";
 import { commitImport, planImport } from "./ddsImport";
@@ -184,7 +184,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const itemIsReady = (item: BankReviewItem) => {
     if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return false;
     const splits = decodeBankSplits(item.managerAnswer);
-    if (splits) return hasBankAccount(item.accountId) && !splits.some(split => !split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
+    if (splits) return hasBankAccount(item.accountId) && !splits.some(split => !split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
     const sourceCompany = companies.find((company) => company.id === item.companyId);
     const mustBeIntercompanyLoan = item.amount < 0
       && isRioCompany(sourceCompany)
@@ -202,7 +202,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
     const loanItem = targetItems.find(item=>{
       if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return true;
       const splits=decodeBankSplits(item.managerAnswer);
-      return splits?.some(split=>!split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) || (item.amount<0 && isRioCompany(companies.find(c=>c.id===item.companyId)) && mentionedCompanyId(item,companies));
+      return splits?.some(split=>!split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) || (item.amount<0 && isRioCompany(companies.find(c=>c.id===item.companyId)) && mentionedCompanyId(item,companies));
     });
     if(loanItem){setChainReviewId(loanItem.id);return;}
     if (targetItems.length === 0 || targetItems.some((item) => !itemIsReady(item))) return;
@@ -375,7 +375,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   };
 
   const saveAndApproveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
-    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || splits.some(split=>!split.excluded && requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {setChainReviewId(item.id);return;}
+    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || splits.some(split=>!split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {setChainReviewId(item.id);return;}
     if (!hasBankAccount(item.accountId) || !splitsAreReady(item, splits)) return;
     const prepared = { ...item, managerAnswer: encodeBankSplits(splits), status: "ready" as const };
     try {
@@ -467,7 +467,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                 {item.category&&isLoanRepaymentCategory(item.category)&&(()=>{const allOptions=cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category!});const options=relevantCashLoanScheduleOptions(allOptions,item.counterparty,item.purpose);const loanCount=new Set(options.map(option=>option.loanId)).size;return <label className="block text-xs text-slate-500">Связать с графиком кредита<select value={loanLinks.get(item.id)??""} onChange={event=>setLoanLinks(current=>new Map(current).set(item.id,event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900"><option value="">Выберите кредит и дату платежа</option>{options.filter(option=>option.rowIds.length>0).map(option=><option key={option.key} value={option.key}>{option.loanName} · {option.label}</option>)}</select>{!options.some(option=>option.rowIds.length>0)&&<span className="mt-1 block text-amber-700">В графиках нет открытой строки для этой статьи. Добавьте или проверьте график в разделе кредитов.</span>}{options.some(option=>option.rowIds.length>0)&&loanCount>1&&<span className="mt-1 block text-amber-700">Статья уже сохранена. Выберите номер договора — у этого кредитора найдено несколько активных кредитов.</span>}{loanLinks.get(item.id)&&loanCount===1&&<span className="mt-1 block text-emerald-700">Подставлен единственный договор с точным именем кредитора. Проверьте дату и подтвердите операцию.</span>}</label>;})()}
                 {item.category?.includes("Перевод между счетами")&&!item.matchedTransferId&&<p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">Статья уже сохранена. Операция останется здесь только до загрузки встречной стороны перевода; повторно выбирать статью не нужно.</p>}
                 {!companies.length && <p role="status" className="text-xs text-amber-800">Список компаний пуст или не загрузился. <button type="button" onClick={() => void reloadCompanies()} className="min-h-11 underline">Загрузить компании повторно</button></p>}
-                {decodeBankSplits(item.managerAnswer)?.some(split=>!split.excluded&&requiresKorovkinLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">В разбиении есть расход основной группы на Коровкина. Откройте «Разбивка внутри операции»: выдача и получение займа будут оформлены через наличные вместе с расходом.</p>}
+                {decodeBankSplits(item.managerAnswer)?.some(split=>!split.excluded&&requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">В разбиении есть расход основной группы на ИП Филиппова. Откройте «Разбивка внутри операции»: выдача и получение займа будут оформлены через наличные вместе с расходом.</p>}
                 {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}
                 {requiresCounterparty(item.category) && !item.counterparty.trim() && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   Для зарплаты обязательно укажите получателя. Без контрагента строку подтвердить нельзя.

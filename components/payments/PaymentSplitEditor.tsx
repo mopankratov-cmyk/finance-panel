@@ -5,7 +5,7 @@ import { CounterpartySelect } from "./CounterpartySelect";
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import { balanceLast, splitEvenly } from "@/lib/finance/paymentSplitAmounts";
-import { allocationTotal, chainRemainder, requiresKorovkinLoan, type ChainAllocation, type PaymentChainDraft } from "@/lib/finance/paymentChains";
+import { allocationTotal, chainRemainder, requiresFilippovLoan, type ChainAllocation, type PaymentChainDraft } from "@/lib/finance/paymentChains";
 import { TRANSFER_CATEGORIES } from "@/lib/finance/categories";
 import type { Account } from "@/lib/types";
 import type { DdsCompany } from "./ddsCompanies";
@@ -33,10 +33,10 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
     setExpanded(id);
   };
   const changeCompany = (a: ChainAllocation, companyId: string) => {
-    const loan = requiresKorovkinLoan(source, companies.find(c => c.id === companyId));
+    const loan = requiresFilippovLoan(source, companies.find(c => c.id === companyId));
     if (loan) {
       const recipientCash = cashAccounts.filter(acc => acc.id !== draft.cashAccountId);
-      patch({ throughCash: true, allocations: draft.allocations.map(p => p.id === a.id ? { ...p, companyId, accountId: recipientCash.length === 1 ? recipientCash[0].id : "" } : { ...p, accountId: requiresKorovkinLoan(source, companies.find(c => c.id === p.companyId)) ? p.accountId : draft.cashAccountId }) });
+      patch({ throughCash: true, allocations: draft.allocations.map(p => p.id === a.id ? { ...p, companyId, accountId: recipientCash.length === 1 ? recipientCash[0].id : "" } : { ...p, accountId: requiresFilippovLoan(source, companies.find(c => c.id === p.companyId)) ? p.accountId : draft.cashAccountId }) });
       setExpanded(a.id);
     } else change(a.id, { companyId, accountId: draft.throughCash ? draft.cashAccountId : draft.sourceAccountId });
   };
@@ -56,7 +56,7 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
       <div className={`hidden gap-2 px-2 text-xs text-slate-500 md:grid ${columns}`} aria-hidden="true"><span>Получатель</span><span>Статья</span><span>Сумма, ₽</span><span>%</span><span>Компания</span><span>Дата расхода</span><span/></div>
       <div className="divide-y divide-slate-200 rounded-xl border border-slate-200">
         {draft.allocations.map((a, i) => {
-          const loan = !a.excluded && requiresKorovkinLoan(source, companies.find(c => c.id === a.companyId));
+          const loan = !a.excluded && requiresFilippovLoan(source, companies.find(c => c.id === a.companyId));
           const open = expanded === a.id;
           return <div key={a.id} className={a.excluded ? "bg-slate-50 p-2" : "p-2"}>
             <div className={`grid grid-cols-2 items-start gap-2 ${columns}`}>
@@ -88,7 +88,7 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
       <label className="text-sm">Дата операции<input type="date" className={field} disabled={Boolean(draft.bankReviewId)} value={draft.sourceDate} onChange={e => patch({ sourceDate: e.target.value })}/></label>
       <label className="text-sm">Компания источника<select className={field} value={draft.sourceCompanyId} onChange={e => patch({ sourceCompanyId: e.target.value })}><option value="">Выберите компанию</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
     </div>
-    <details open={draft.throughCash || undefined} className="rounded-lg border border-slate-200 px-3"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Перевод через наличные{draft.throughCash ? " · включён" : ""}</summary><div className="space-y-2 pb-3"><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={draft.throughCash} onChange={e => patch({ throughCash: e.target.checked, allocations: draft.allocations.map(a => ({ ...a, accountId: e.target.checked ? draft.cashAccountId : draft.sourceAccountId })) })}/>Сначала перевести исходную сумму в наличные</label>{draft.throughCash && <label className="block text-sm">Наличные основной группы<select className={field} value={draft.cashAccountId} onChange={e => patch({ cashAccountId: e.target.value, allocations: draft.allocations.map(a => requiresKorovkinLoan(source, companies.find(c => c.id === a.companyId)) ? a : { ...a, accountId: e.target.value }) })}><option value="">Выберите наличные</option>{cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}</div></details>
+    <details open={draft.throughCash || undefined} className="rounded-lg border border-slate-200 px-3"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Перевод через наличные{draft.throughCash ? " · включён" : ""}</summary><div className="space-y-2 pb-3"><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={draft.throughCash} onChange={e => patch({ throughCash: e.target.checked, allocations: draft.allocations.map(a => ({ ...a, accountId: e.target.checked ? draft.cashAccountId : draft.sourceAccountId })) })}/>Сначала перевести исходную сумму в наличные</label>{draft.throughCash && <label className="block text-sm">Наличные основной группы<select className={field} value={draft.cashAccountId} onChange={e => patch({ cashAccountId: e.target.value, allocations: draft.allocations.map(a => requiresFilippovLoan(source, companies.find(c => c.id === a.companyId)) ? a : { ...a, accountId: e.target.value }) })}><option value="">Выберите наличные</option>{cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}</div></details>
     {!draft.bankReviewId && <details className="rounded-lg border border-slate-200 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">Изменить исходную сумму</summary><label className="mb-3 block text-sm">Сумма операции<input type="number" min="0.01" step="0.01" className={field} value={draft.sourceAmount} onChange={e => { const sourceAmount = Number(e.target.value); patch({ sourceAmount, ...(autoLast ? { allocations: balanceLast(draft.allocations, sourceAmount) } : {}) }); }}/></label></details>}
   </fieldset>;
 }
