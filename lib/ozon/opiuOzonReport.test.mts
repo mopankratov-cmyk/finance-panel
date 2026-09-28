@@ -100,11 +100,9 @@ test("Продажи → Заказы comes from commission rows' extra.sale_amo
     }),
   );
   const sales = report.sections.find((s) => s.key === "sales")!;
-  const ordersChild = sales.children.find((c) => c.label === "Заказы")!;
+  const ordersChild = sales.children.find((c) => c.label === "Заказы (оценка)")!;
   assert.equal(ordersChild.amount, 2000);
-  const cancelledChild = sales.children.find((c) => c.label === "Возвраты и отмены")!;
-  assert.equal(cancelledChild.amount, -200);
-  assert.equal(sales.amount, 2000 - 200);
+  assert.equal(sales.amount, 2000);
 });
 
 test("a commission row with no extra field contributes zero to Заказы without throwing", () => {
@@ -112,8 +110,34 @@ test("a commission row with no extra field contributes zero to Заказы with
     baseInput({ accrualRows: [{ accrued_category: "POSTING", type_id: 69, amount: -50 }] }),
   );
   const sales = report.sections.find((s) => s.key === "sales")!;
-  const ordersChild = sales.children.find((c) => c.label === "Заказы")!;
+  const ordersChild = sales.children.find((c) => c.label === "Заказы (оценка)")!;
   assert.equal(ordersChild.amount, 0);
+});
+
+test("cancelled postings show as an informational Продажи child but never reduce Продажи or the total (finding C2)", () => {
+  // The only revenue the total contains is Σ extra.sale_amount from
+  // commission rows, which only exist for postings that actually accrued a
+  // sale. A cancelled posting never gets one, so subtracting its
+  // ozon_postings.amount from Продажи removed money the total never held —
+  // real orders come out under-reported by roughly the value of every
+  // cancellation in the period.
+  const report = buildOzonOpiuReport(
+    baseInput({
+      postings: [{ status: "cancelled", amount: 500 }],
+      accrualRows: [{ accrued_category: "POSTING", type_id: 69, amount: -10, extra: { sale_amount: 1000 } }],
+    }),
+  );
+  const sales = report.sections.find((s) => s.key === "sales")!;
+  assert.equal(sales.amount, 1000, "cancelled postings must not reduce Продажи");
+  assert.equal(report.total, 1000 - 10, "cancelled postings must not reduce К выплате");
+  const cancelledChild = sales.children.find((c) => c.label === "Возвраты и отмены (справочно)")!;
+  assert.equal(cancelledChild.amount, -500, "still shown for visibility, just not summed in");
+});
+
+test("the top-level Заказы section is labelled to disambiguate it from Продажи → Заказы (finding I3)", () => {
+  const report = buildOzonOpiuReport(baseInput({ postings: [{ status: "delivered", amount: 100 }] }));
+  const orders = report.sections.find((s) => s.key === "orders")!;
+  assert.equal(orders.label, "Заказы (по отправлениям)");
 });
 
 test("total sums Продажи + Комиссия + Логистика + Реклама + Прочие удержания, excluding Себестоимость", () => {
@@ -145,6 +169,34 @@ test("a type_id absent from the cache is surfaced as a new category exactly once
     report.newCategories.map((c) => c.typeId),
     [12],
   );
+});
+
+test("an uncached logistics type_id is never flagged as new — the banner only ever names Прочие удержания (finding I4)", () => {
+  // Spec §6 scopes the banner to Прочие удержания specifically ("внутри
+  // «Прочие удержания» ... появился совсем новый type_id"). Logistics rows
+  // are always correctly sectioned by the structural rule regardless of the
+  // cache, so flagging them as "new" pointed the user at the wrong section.
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [{ accrued_category: "POSTING", type_id: 32, amount: -10 }],
+      knownTypeIds: new Set([69]),
+    }),
+  );
+  assert.deepEqual(report.newCategories, []);
+});
+
+test("an empty accrual-types cache flags nothing as new, rather than announcing every category as new (finding I4)", () => {
+  // Before the migration is applied, before the first cron run, or while
+  // Ozon is unreachable, ozon_accrual_types is empty. An empty cache is not
+  // evidence any category is new — it just means there is nothing yet to
+  // compare against.
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [{ accrued_category: "NON_ITEM", type_id: 12, amount: -3 }],
+      knownTypeIds: new Set(),
+    }),
+  );
+  assert.deepEqual(report.newCategories, []);
 });
 
 test("the same type_id under ITEM and under NON_ITEM contributes both amounts, neither one dropping the other", () => {

@@ -20,3 +20,22 @@ test("OzonOpiuPage renders the new-category banner conditionally, not unconditio
     "the banner must be gated on newCategories being non-empty, not always shown",
   );
 });
+
+test("OzonOpiuPage visually marks the top-level Заказы funnel as informational, not part of the total (finding I3)", async () => {
+  const source = await readFile(new URL("../components/opiu/OzonOpiuPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /не входит в сумму/, "must tell the user the orders funnel isn't summed into К выплате");
+});
+
+test("OzonOpiuPage ignores a stale response from an older request (finding I6)", async () => {
+  const source = await readFile(new URL("../components/opiu/OzonOpiuPage.tsx", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /AbortController|requestId|requestSeq/,
+    "must guard against an older, slower request overwriting a newer one's result",
+  );
+});
+
+test("OzonOpiuPage renders a data-range warning from the API when the period predates the accrual backfill window (finding I7)", async () => {
+  const source = await readFile(new URL("../components/opiu/OzonOpiuPage.tsx", import.meta.url), "utf8");
+  assert.match(source, /warning/, "must read and render the route's warning field");
+});

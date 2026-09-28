@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isValidDateParam } from "@/lib/opiu/weeks";
-import { OZON_AD_CABINET_TOTAL_SKU } from "@/lib/ozon/adDailyMarkers";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { readOzonAdDaily } from "@/lib/ozon/adDailyRead";
 import { readCachedAccrualTypeIds, readCachedAccrualTypeNames } from "@/lib/ozon/accrualTypesCache";
-import { buildOzonOpiuReport } from "@/lib/ozon/opiuOzonReport";
+import { buildOzonOpiuReport, type OzonOpiuAccrualInput, type OzonOpiuPostingInput } from "@/lib/ozon/opiuOzonReport";
+import { sumOzonAdSpend } from "@/lib/ozon/opiuOzonAdSpend";
+import { buildOzonOpiuDateRangeWarning } from "@/lib/ozon/opiuOzonDateRangeWarning";
 
 export const maxDuration = 60;
 
@@ -37,47 +40,76 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ report: null, cabinetIds: [], error: "Нет доступных кабинетов Ozon" }, { status: 200 });
   }
 
-  const [accrualRes, postingsRes, adRes, typeNames, knownTypeIds] = await Promise.all([
-    db
-      .from("ozon_accrual_rows")
-      .select("accrued_category, type_id, amount, extra")
-      .in("cabinet_id", cabinetIds)
-      .gte("date", dateFrom)
-      .lte("date", dateTo),
-    db
-      .from("ozon_postings")
-      .select("status, amount")
-      .in("cabinet_id", cabinetIds)
-      .gte("created_at", `${dateFrom}T00:00:00.000Z`)
-      .lte("created_at", `${dateTo}T23:59:59.999Z`),
-    db
-      .from("ozon_ad_daily")
-      .select("spent")
-      .in("client_id", clientIds)
-      .eq("sku", OZON_AD_CABINET_TOTAL_SKU)
-      .gte("date", dateFrom)
-      .lte("date", dateTo),
+  // Supabase молча обрезает выборку на 1000 строк без ошибки — обычный
+  // ассортимент за месяц перешагивает этот потолок быстро (одно отправление
+  // с продажей уже даёт строку комиссии плюс по одной на каждую услугу
+  // доставки), см. docs/PROJECT-KNOWLEDGE.md §4 и finding C1 финального
+  // ревью. loadAllSupabasePages читает ВСЕ страницы, с сортировкой по
+  // первичному ключу для устойчивой пагинации.
+  let accrualRows: OzonOpiuAccrualInput[];
+  let postings: OzonOpiuPostingInput[];
+  let adSpend: number;
+  try {
+    [accrualRows, postings, adSpend] = await Promise.all([
+      loadAllSupabasePages(
+        async (from, to) => {
+          const result = await db
+            .from("ozon_accrual_rows")
+            .select("accrued_category, type_id, amount, extra")
+            .in("cabinet_id", cabinetIds)
+            .gte("date", dateFrom)
+            .lte("date", dateTo)
+            .order("accrual_id", { ascending: true })
+            .order("sku", { ascending: true })
+            .order("type_id", { ascending: true })
+            .range(from, to);
+          return { data: result.data, error: result.error };
+        },
+        { label: "ozon_accrual_rows" },
+      ).then((rows) =>
+        rows.map((r) => ({
+          accrued_category: String(r.accrued_category),
+          type_id: Number(r.type_id),
+          amount: Number(r.amount),
+          extra: (r.extra ?? null) as { sale_amount?: number } | null,
+        })),
+      ),
+      loadAllSupabasePages(
+        async (from, to) => {
+          const result = await db
+            .from("ozon_postings")
+            .select("status, amount")
+            .in("cabinet_id", cabinetIds)
+            .gte("created_at", `${dateFrom}T00:00:00.000Z`)
+            .lte("created_at", `${dateTo}T23:59:59.999Z`)
+            .order("posting_number", { ascending: true })
+            .range(from, to);
+          return { data: result.data, error: result.error };
+        },
+        { label: "ozon_postings" },
+      ).then((rows) => rows.map((r) => ({ status: String(r.status), amount: Number(r.amount) }))),
+      // Итог по кабинету за день (sku='*') не всегда готов — разнесение по
+      // товарам едет отдельными отчётами. Наивный запрос только по '*' терял
+      // расход для кабинета/дня без готового итога (finding I1). readOzonAdDaily
+      // читает ВСЕ строки за период (тоже постранично), sumOzonAdSpend
+      // выбирает источник независимо для каждой пары (кабинет, день).
+      readOzonAdDaily(db, clientIds, dateFrom, dateTo).then(({ rows }) => sumOzonAdSpend(rows.map((r) => ({
+        client_id: String(r.client_id),
+        sku: String(r.sku),
+        date: String(r.date),
+        spent: Number(r.spent ?? 0),
+      })))),
+    ]);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
+  }
+
+  const [typeNames, knownTypeIds] = await Promise.all([
     readCachedAccrualTypeNames(db),
     readCachedAccrualTypeIds(db),
   ]);
 
-  if (accrualRes.error) return NextResponse.json({ error: accrualRes.error.message }, { status: 502 });
-  if (postingsRes.error) return NextResponse.json({ error: postingsRes.error.message }, { status: 502 });
-  if (adRes.error) return NextResponse.json({ error: adRes.error.message }, { status: 502 });
-
-  const input = {
-    accrualRows: (accrualRes.data ?? []).map((r) => ({
-      accrued_category: String(r.accrued_category),
-      type_id: Number(r.type_id),
-      amount: Number(r.amount),
-      extra: (r.extra ?? null) as { sale_amount?: number } | null,
-    })),
-    postings: (postingsRes.data ?? []).map((r) => ({ status: String(r.status), amount: Number(r.amount) })),
-    adSpend: (adRes.data ?? []).reduce((sum, r) => sum + Number(r.spent), 0),
-    typeNames,
-    knownTypeIds,
-  };
-
-  const report = buildOzonOpiuReport(input);
-  return NextResponse.json({ report, cabinetIds });
+  const report = buildOzonOpiuReport({ accrualRows, postings, adSpend, typeNames, knownTypeIds });
+  const warning = buildOzonOpiuDateRangeWarning(dateFrom, new Date());
+  return NextResponse.json({ report, cabinetIds, warning });
 }

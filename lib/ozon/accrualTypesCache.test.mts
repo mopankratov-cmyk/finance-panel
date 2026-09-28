@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAccrualTypeRows } from "./accrualTypesCache.ts";
+import { labelFromAccrualType, parseAccrualTypeRows } from "./accrualTypesCache.ts";
 
 test("maps Ozon's accrual-types response into upsert-ready rows", () => {
   const now = new Date("2026-09-25T00:00:00.000Z");
@@ -28,4 +28,18 @@ test("drops entries with a non-finite or missing id rather than writing a broken
   );
   assert.equal(rows.length, 1);
   assert.equal(rows[0].type_id, 69);
+});
+
+test("labelFromAccrualType prefers the Russian description over the internal English name (finding I5)", () => {
+  // The plan's own fixture has name: "SaleCommission", description: "Комиссия
+  // за продажу" — a finance report for a Russian-speaking user should show
+  // the description, not Ozon's internal identifier.
+  assert.equal(
+    labelFromAccrualType({ name: "SaleCommission", description: "Комиссия за продажу" }),
+    "Комиссия за продажу",
+  );
+});
+
+test("labelFromAccrualType falls back to name when description is empty", () => {
+  assert.equal(labelFromAccrualType({ name: "SomeNonItemFee", description: "" }), "SomeNonItemFee");
 });

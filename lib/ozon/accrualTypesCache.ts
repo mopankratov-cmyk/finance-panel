@@ -21,12 +21,22 @@ export function parseAccrualTypeRows(types: OzonAccrualType[], now: Date): OzonA
     }));
 }
 
-/** type_id → имя, для подписи строк детализации отчёта (lib/ozon/opiuOzonReport.ts). */
+/**
+ * `name` — внутренний идентификатор Ozon (например, "SaleCommission"),
+ * `description` — человекочитаемое русское название (например, «Комиссия за
+ * продажу»). Отчёт на русском показывает description, если он есть —
+ * подпись строки, а не идентификатор поля (finding I5 в финальном ревью).
+ */
+export function labelFromAccrualType(row: { name: string; description: string }): string {
+  return row.description || row.name;
+}
+
+/** type_id → подпись строки детализации отчёта (lib/ozon/opiuOzonReport.ts). */
 export async function readCachedAccrualTypeNames(db: SupabaseClient): Promise<Map<number, string>> {
-  const { data } = await db.from("ozon_accrual_types").select("type_id, name");
+  const { data } = await db.from("ozon_accrual_types").select("type_id, name, description");
   const names = new Map<number, string>();
   for (const row of data ?? []) {
-    names.set(Number(row.type_id), String(row.name));
+    names.set(Number(row.type_id), labelFromAccrualType({ name: String(row.name), description: String(row.description ?? "") }));
   }
   return names;
 }

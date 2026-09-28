@@ -34,8 +34,13 @@ interface Cabinet {
   marketplace: string;
 }
 
-const REVENUE_SECTIONS = new Set(["orders", "sales", "cogs"]);
+// "orders" — воронка отправлений по статусам, показана только для
+// наглядности и никогда не входит в «К выплате» (см. lib/ozon/opiuOzonReport.ts).
+// Не в REVENUE_SECTIONS намеренно — иначе цвет строки намекал бы, что она
+// участвует в сумме (finding I3 в финальном ревью).
+const REVENUE_SECTIONS = new Set(["sales", "cogs"]);
 const ALWAYS_OPEN_SECTIONS = new Set(["sales"]);
+const INFORMATIONAL_SECTIONS = new Set(["orders"]);
 
 function formatRub(value: number | null): string {
   if (value === null) return "—";
@@ -137,9 +142,16 @@ export function OzonOpiuPage() {
   const [cabinets, setCabinets] = useState<Cabinet[]>([]);
   const [selectedCabinets, setSelectedCabinets] = useState<string[]>([]);
   const [report, setReport] = useState<OzonOpiuReport | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Дата/кабинет можно поменять быстрее, чем успевает ответить предыдущий
+  // запрос — без этой защиты медленный старый ответ мог прилететь позже
+  // нового и показать цифры не за тот период/набор кабинетов, что стоит в
+  // фильтрах (finding I6 в финальном ревью).
+  const requestIdRef = useRef(0);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     fetch("/api/cabinets")
@@ -151,18 +163,32 @@ export function OzonOpiuPage() {
   }, []);
 
   const load = useCallback(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const requestId = ++requestIdRef.current;
+
     setLoading(true);
     setError(null);
     const params = new URLSearchParams({ dateFrom, dateTo });
     for (const id of selectedCabinets) params.append("cabinetId", id);
-    fetch(`/api/opiu/ozon?${params.toString()}`)
+    fetch(`/api/opiu/ozon?${params.toString()}`, { signal: controller.signal })
       .then((res) => res.json())
-      .then((data: { report: OzonOpiuReport | null; error?: string }) => {
+      .then((data: { report: OzonOpiuReport | null; error?: string; warning?: string | null }) => {
+        if (requestId !== requestIdRef.current) return; // устаревший ответ — игнорируем
         if (data.error && !data.report) setError(data.error);
         setReport(data.report);
+        setWarning(data.warning ?? null);
       })
-      .catch(() => setError("Не удалось загрузить отчёт"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        if (requestId !== requestIdRef.current) return;
+        setError("Не удалось загрузить отчёт");
+        setReport(null);
+      })
+      .finally(() => {
+        if (requestId === requestIdRef.current) setLoading(false);
+      });
   }, [dateFrom, dateTo, selectedCabinets]);
 
   useEffect(() => {
@@ -228,6 +254,10 @@ export function OzonOpiuPage() {
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>
         )}
 
+        {warning && (
+          <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-800">{warning}</div>
+        )}
+
         {rowsHaveNewCategories && (
           <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -251,7 +281,8 @@ export function OzonOpiuPage() {
 
             {report.sections.map((section) => {
               const isRevenue = REVENUE_SECTIONS.has(section.key);
-              const bg = section.kind === "stub" ? "bg-white" : isRevenue ? "bg-sky-50" : "bg-rose-50";
+              const isInformational = INFORMATIONAL_SECTIONS.has(section.key);
+              const bg = section.kind === "stub" || isInformational ? "bg-white" : isRevenue ? "bg-sky-50" : "bg-rose-50";
               const hasChildren = section.children.length > 0;
               const alwaysOpen = ALWAYS_OPEN_SECTIONS.has(section.key);
               const isOpen = alwaysOpen || !!expanded[section.key];
@@ -269,6 +300,9 @@ export function OzonOpiuPage() {
                       <div className="flex flex-grow items-center gap-2 text-sm font-bold text-slate-900">
                         <span className="inline-block w-3 text-slate-400">{isOpen ? "▾" : "▸"}</span>
                         {section.label}
+                        {isInformational && (
+                          <span className="text-xs font-normal italic text-slate-400">не входит в сумму</span>
+                        )}
                       </div>
                       <div className={`w-40 text-right text-sm font-bold tabular-nums ${valueColorClass(section.amount)}`}>
                         {formatRub(section.amount)}
@@ -280,6 +314,9 @@ export function OzonOpiuPage() {
                         {section.label}
                         {section.kind === "stub" && (
                           <span className="ml-2 text-xs font-normal italic text-slate-400">не подключено</span>
+                        )}
+                        {isInformational && (
+                          <span className="ml-2 text-xs font-normal italic text-slate-400">не входит в сумму</span>
                         )}
                       </div>
                       <div className={`w-40 text-right text-sm font-bold tabular-nums ${valueColorClass(section.amount)}`}>

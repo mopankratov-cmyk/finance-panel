@@ -86,13 +86,18 @@ function toChildren(byType: Map<number, number>, typeNames: Map<number, string>)
  * Разбивка по разделам (Комиссия/Логистика/Прочие удержания) — структурная,
  * проверена по коду синка, не по названиям категорий: POSTING+69 — всегда
  * синтетическая комиссия (OZON_ACCRUAL_SALE_COMMISSION_TYPE_ID, см.
- * lib/ozon/accrualRows.ts), любая другая POSTING-строка — всегда услуга
- * доставки (по построению flattenOzonAccrual), ITEM/NON_ITEM — «Прочие
- * удержания». Ни одна строка не может остаться без раздела — сумма «К
- * выплате» верна независимо от того, насколько точно расставлены отдельные
- * строки. «Продажи → Заказы» — исключение: она не структурная, а
+ * lib/ozon/accrualRows.ts), любая другая POSTING-строка — услуга доставки
+ * (по построению flattenOzonAccrual — это предположение о форме ответа Ozon,
+ * не гарантия), ITEM/NON_ITEM — «Прочие удержания». Каждая строка, которая
+ * реально дошла до этой функции, попадёт ровно в один раздел — это НЕ
+ * гарантия того, что каждый рубль от Ozon дошёл до этой функции: полнота
+ * зависит от того, что вызывающий код (роут) прочитал ВСЕ строки за период
+ * без обрезки постраничным лимитом (см. финальное ревью, finding C1), и от
+ * того, что sale_amount/spent действительно отражают всю выручку/расход
+ * (§7, finding I1/I2). «Продажи → Заказы» — не структурная величина, а
  * приближение через extra.sale_amount (спека §7), пока нет живого доступа к
- * Ozon для точной сверки с эталонной таблицей.
+ * Ozon для точной сверки с эталонной таблицей; «Возвраты и отмены» —
+ * справочная строка, не входит в сумму (finding C2).
  */
 export function buildOzonOpiuReport(input: OzonOpiuReportInput): OzonOpiuReport {
   const byStage = new Map<OzonPostingStage, number>();
@@ -118,7 +123,7 @@ export function buildOzonOpiuReport(input: OzonOpiuReportInput): OzonOpiuReport 
       // точный type_id для неё неизвестен без живого доступа к Ozon (спека
       // §7). sale_amount — сумма продажи, зафиксированная на тот же момент
       // начисления, что и комиссия; проверено на реальном примере.
-      salesOrdersAmount += row.extra?.sale_amount ?? 0;
+      salesOrdersAmount += Number(row.extra?.sale_amount ?? 0);
     } else if (row.accrued_category === "POSTING") {
       logisticsByType.set(row.type_id, (logisticsByType.get(row.type_id) ?? 0) + row.amount);
     } else {
@@ -126,14 +131,20 @@ export function buildOzonOpiuReport(input: OzonOpiuReportInput): OzonOpiuReport 
     }
   }
 
-  // «Возвраты и отмены» — из отменённых отправлений (надёжный источник,
-  // отдельный от «Заказы» выше; спека §4/§7 не требует, чтобы оба числа шли
-  // из одного и того же места).
+  // «Возвраты и отмены» — из отменённых отправлений, показывается только
+  // справочно. Единственная выручка, которая реально входит в «Продажи» и в
+  // итог — Σ extra.sale_amount по строкам-комиссиям (см. выше); отменённое
+  // отправление никогда не порождает такую строку (комиссия начисляется
+  // только на реально прошедшую продажу), поэтому вычитать его amount из
+  // «Продажи» означало бы убирать деньги, которых там никогда не было — итог
+  // становился заниженным примерно на сумму отмен периода (finding C2 в
+  // финальном ревью). ozon_postings.amount — надёжный источник для самого
+  // факта отмены, просто из другого измерения, чем sale_amount.
   const cancelledAmount = byStage.get("cancelled") ?? 0;
-  const salesTotal = salesOrdersAmount - cancelledAmount;
+  const salesTotal = salesOrdersAmount;
   const salesChildren: OzonOpiuChildRow[] = [
-    { key: "orders", label: "Заказы", amount: salesOrdersAmount },
-    { key: "cancelled", label: "Возвраты и отмены", amount: -cancelledAmount },
+    { key: "orders", label: "Заказы (оценка)", amount: salesOrdersAmount },
+    { key: "cancelled", label: "Возвраты и отмены (справочно)", amount: -cancelledAmount },
   ];
 
   const otherByType = sumByType(otherRows);
@@ -146,15 +157,25 @@ export function buildOzonOpiuReport(input: OzonOpiuReportInput): OzonOpiuReport 
   // -0, и assert.equal (Object.is под капотом) отличает его от 0.
   const adsAmount = -input.adSpend || 0;
 
-  const newCategories: OzonOpiuNewCategory[] = [...new Set([...logisticsByType.keys(), ...otherByType.keys()])]
-    .filter((typeId) => !input.knownTypeIds.has(typeId))
-    .sort((a, b) => a - b)
-    .map((typeId) => ({ typeId, label: labelForType(typeId, input.typeNames) }));
+  // Баннер (спека §6) намеренно смотрит только на «Прочие удержания» —
+  // Логистика/Комиссия уже корректно разложены структурным правилом
+  // независимо от кэша, и называть их «новой категорией» указывало бы
+  // пользователю не туда (finding I4). Пустой кэш (миграция ещё не
+  // применена, крон ещё не пробежал, Ozon недоступен) — это отсутствие
+  // данных для сравнения, а не факт, что всё новое: без этой защиты каждая
+  // реальная категория при первом запуске объявлялась бы «новой».
+  const newCategories: OzonOpiuNewCategory[] =
+    input.knownTypeIds.size === 0
+      ? []
+      : [...otherByType.keys()]
+          .filter((typeId) => !input.knownTypeIds.has(typeId))
+          .sort((a, b) => a - b)
+          .map((typeId) => ({ typeId, label: labelForType(typeId, input.typeNames) }));
 
   const total = salesTotal + commissionTotal + logisticsTotal + adsAmount + otherTotal;
 
   const sections: OzonOpiuSection[] = [
-    { key: "orders", label: "Заказы", kind: "metric", amount: ordersTotal, children: ordersChildren },
+    { key: "orders", label: "Заказы (по отправлениям)", kind: "metric", amount: ordersTotal, children: ordersChildren },
     { key: "sales", label: "Продажи", kind: "metric", amount: salesTotal, children: salesChildren },
     { key: "cogs", label: "Себестоимость", kind: "stub", amount: null, children: [] },
     { key: "commission", label: "Комиссия за продажу", kind: "metric", amount: commissionTotal, children: [] },
