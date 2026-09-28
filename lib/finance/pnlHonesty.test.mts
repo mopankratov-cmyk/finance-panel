@@ -50,7 +50,8 @@ test("переключение компании фильтрует уже заг
   assert.match(monthlyPage, /\[month, reloadKey\]/);
   assert.doesNotMatch(monthlyPage, /\[month, companyId, reloadKey\]/);
   assert.match(monthlyPage, /filterMonthlySources\(data\.sources \?\? \[\], \{ companyId, brand \}\)/);
-  assert.match(monthlyPage, /monthlyOpiuMemoryCache/);
+  assert.match(monthlyPage, /readBrowserReportCache<MonthlyOpiuData>\(monthCacheKey\(month\)\)/);
+  assert.match(monthlyPage, /writeBrowserReportCache\(monthCacheKey\(month\), next\)/);
 });
 
 test("месячный ОПиУ имеет бренд-фильтр и не выводит отдельную колонку общих расходов", () => {

@@ -39,7 +39,7 @@ function methodsOf(source: string): string[] {
 }
 
 const ROUTES = routeFiles(API_DIR).map((file) => ({
-  url: "/" + relative(APP_DIR, file).replace(/\/route\.ts$/, ""),
+  url: "/" + relative(APP_DIR, file).replaceAll("\\", "/").replace(/\/route\.ts$/, ""),
   methods: methodsOf(readFileSync(file, "utf8")),
 }));
 

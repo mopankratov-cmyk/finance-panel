@@ -48,7 +48,7 @@ const ROUTES = routeFiles(API_DIR).map((file) => {
     .map((name) => name.trim())
     .filter((name) => ["GET", "POST", "PUT", "PATCH", "DELETE"].includes(name));
   return {
-    url: "/" + relative(APP_DIR, file).replace(/\/route\.ts$/, ""),
+    url: "/" + relative(APP_DIR, file).replaceAll("\\", "/").replace(/\/route\.ts$/, ""),
     methods: [...new Set([...declared, ...reexported])],
   };
 });

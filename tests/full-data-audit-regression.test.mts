@@ -11,7 +11,8 @@ test("finance screens use synced WB facts and the multi-cabinet Ozon resolver", 
     readFile(new URL("../lib/opiu/loadMonth.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/opiu/reportRows.ts", import.meta.url), "utf8"),
   ]);
-  assert.match(marketplacePnl, /loadWbCachedFinance/);
+  assert.match(marketplacePnl, /loadOpiuSalePeriod/);
+  assert.match(marketplacePnl, /monthlyWbActualFromOpiu/);
   assert.match(marketplacePnl, /getOzonCabinetScope/);
   assert.doesNotMatch(marketplacePnl, /fetchWbReportRows|getActiveOzonCreds/);
   assert.match(wbLosses, /loadWbCachedFinance/);

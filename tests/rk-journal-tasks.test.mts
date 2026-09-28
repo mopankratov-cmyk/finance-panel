@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { blockMatchesFilter, bothBlockFor } from "../lib/wb/advertBlocks.ts";
 import { CTR_MIN_CAMPAIGN_SPEND } from "../lib/wb/ctrCampaignPick.ts";
 
-const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
+const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 /**
  * Замечания по журналу РК с живого обхода 09.09.2026.

@@ -99,7 +99,6 @@ const esc = (s: string) =>
   s
     .replace(/_(x[0-9A-Fa-f]{4})_/g, "_x005F_$1_")
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
-    // eslint-disable-next-line no-control-regex -- ровно эти символы XML и запрещает
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, (ch) =>
       `_x${ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}_`);
 
@@ -137,7 +136,6 @@ export function assertSheetIsUsable(file: Buffer, expectedRows: number) {
   if (rowCount < expectedRows + 1) {
     throw new Error(`В документе ${Math.max(0, rowCount - 1)} строк вместо ${expectedRows} — файл собрался неверно`);
   }
-  // eslint-disable-next-line no-control-regex -- ровно эти символы и ломают книгу
   if (/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/.test(body)) {
     throw new Error("В документе остались управляющие символы — Excel откроет его пустым");
   }

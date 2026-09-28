@@ -141,13 +141,13 @@ test("unit warmup carries CRON_SECRET through internalFetch", async () => {
 });
 
 test("finance navigation and report-date UI are wired without dishonest fallback", async () => {
-  const [tabs, unitPage, opiuPage] = await Promise.all([
-    readFile(new URL("../components/FinanceTabs.tsx", import.meta.url), "utf8"),
+  const [navigation, unitPage, opiuPage] = await Promise.all([
+    readFile(new URL("../components/Sidebar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/unit/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../components/opiu/OpiuPage.tsx", import.meta.url), "utf8"),
   ]);
 
-  assert.match(tabs, /\{ href: "\/opiu\/margin", label: "Маржа по артикулам" \}/);
+  assert.match(navigation, /\{ href: "\/opiu\/margin", label: "Маржа по артикулам", icon: PieChart \}/);
   assert.doesNotMatch(unitPage, /FinanceTabs/);
   // По решению владельца вкладку "report_date" развернули на дату продажи
   // целиком (не тихий fallback через `??` — источник данных заменён явно,
