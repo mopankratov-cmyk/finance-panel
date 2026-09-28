@@ -17,6 +17,8 @@ import type { BankStatement } from "@/lib/finance/bankStatementGrid";
 import { isEmailStatementImportRequest } from "@/lib/opiu/emailStatementImportAuth";
 import { withPaymentComment } from "@/lib/opiu/bankReviewMetadata";
 import { isLoanRepaymentCategory } from "@/components/payments/cashLoanScheduleLink";
+import { isTransferCategory } from "@/lib/finance/categories";
+import { bankNameFromWalletName } from "@/lib/finance/bankNames";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -148,8 +150,8 @@ export async function POST(request: Request) {
       ownerInn?: string;
       dateFrom?: string;
       dateTo?: string;
-      openingBalance?: number;
-      closingBalance?: number;
+      openingBalance?: number | null;
+      closingBalance?: number | null;
       declaredDebit?: number;
       declaredCredit?: number;
     };
@@ -281,12 +283,15 @@ export async function POST(request: Request) {
     const missingCompanyIds = distinctCompanyIds.filter((id) => !foundCompanyIds.has(id));
     if (missingCompanyIds.length) return jsonError(`Компания не найдена в справочнике: ${missingCompanyIds.join(", ")}`, 400);
   }
+  let sourceAccountName = "";
   if (distinctAccountIds.length) {
-    const { data: foundAccounts, error: accountsError } = await db.from("accounts").select("id").in("id", distinctAccountIds);
+    const { data: foundAccounts, error: accountsError } = await db.from("accounts").select("id,name").in("id", distinctAccountIds);
     if (accountsError) return jsonError(accountsError.message, 500);
     const foundAccountIds = new Set((foundAccounts ?? []).map((row) => row.id));
     const missingAccountIds = distinctAccountIds.filter((id) => !foundAccountIds.has(id));
     if (missingAccountIds.length) return jsonError(`Счёт не найден в справочнике: ${missingAccountIds.join(", ")}`, 400);
+    const sourceAccountId = rows.find((row) => row.account_id)?.account_id;
+    sourceAccountName = String((foundAccounts ?? []).find((row) => row.id === sourceAccountId)?.name ?? "");
   }
 
   const incomingIdentities = new Set(rows.map((row) => operationIdentityFromReasons(row.reasons)).filter((identity): identity is string => Boolean(identity)));
@@ -462,14 +467,14 @@ export async function POST(request: Request) {
     const selectedExternalIds=new Set(rows.map(row=>row.external_id));
     const ledgerStatement: BankStatement = {
       documentHash,
-      bank: text(body.statement.bank, 255) || "Банк не определён",
+      bank: bankNameFromWalletName(sourceAccountName, text(body.statement.bank, 255) || "Банк не определён"),
       owner: text(body.statement.owner, 500),
       ownerInn,
       accountNumber: bankAccountNumber,
       dateFrom: text(body.statement.dateFrom, 10),
       dateTo: text(body.statement.dateTo, 10),
-      openingBalance: Number(body.statement.openingBalance) || 0,
-      closingBalance: Number(body.statement.closingBalance) || 0,
+      openingBalance: body.statement.openingBalance == null ? null : Number(body.statement.openingBalance),
+      closingBalance: body.statement.closingBalance == null ? null : Number(body.statement.closingBalance),
       declaredDebit: Number(body.statement.declaredDebit) || 0,
       declaredCredit: Number(body.statement.declaredCredit) || 0,
       rows: body.suggestions.flatMap((suggestion) => {
@@ -508,6 +513,7 @@ export async function POST(request: Request) {
       const needsCashChain = row.amount < 0 && /основн|рио|митриченко|панкратов|кучеренко/i.test(sourceName) && recipientAliases.length > 0;
       const categoryConfirmed = explicitIds.has(row.external_id) || Boolean(row.matched_transfer_id);
       return selectedExternalIds.has(row.external_id) && ["ready","needs_info"].includes(row.status) && !row.manager_answer && categoryConfirmed && !needsCashChain
+        && (!isTransferCategory(row.category) || Boolean(row.matched_transfer_id))
         && !isLoanRepaymentCategory(row.category ?? "")
         && row.company_id && row.account_id && row.category && categoryMatchesDirection(row.category,row.amount)
         && (!requiresCounterparty(row.category) || row.counterparty.trim());

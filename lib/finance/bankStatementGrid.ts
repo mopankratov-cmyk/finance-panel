@@ -22,8 +22,8 @@ export interface BankStatement {
   accountNumber: string;
   dateFrom: string;
   dateTo: string;
-  openingBalance: number;
-  closingBalance: number;
+  openingBalance: number | null;
+  closingBalance: number | null;
   declaredDebit: number;
   declaredCredit: number;
   rows: BankStatementRow[];
@@ -35,6 +35,13 @@ export function parseStatementNumber(value: string): number {
   const normalized = value.replace(/[\s  ]/g, "").replace(",", ".");
   const result = Number(normalized);
   return Number.isFinite(result) ? result : 0;
+}
+
+function parseOptionalStatementNumber(value: string): number | null {
+  if (!value.trim()) return null;
+  const normalized = value.replace(/[\s  ]/g, "").replace(",", ".");
+  const result = Number(normalized);
+  return Number.isFinite(result) ? result : null;
 }
 
 export function statementIsoDate(value: string): string {
@@ -116,8 +123,8 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
         accountNumber: valueAfterLabel(grid, /^выписка операций по счету$/).replace(/\D/g, ""),
         dateFrom: statementIsoDate(period?.[1] ?? ""),
         dateTo: statementIsoDate(period?.[2] ?? ""),
-        openingBalance: parseStatementNumber(valueAfterLabel(grid, /^входящий остаток$/)),
-        closingBalance: parseStatementNumber(valueAfterLabel(grid, /^исходящий остаток$/)),
+        openingBalance: parseOptionalStatementNumber(valueAfterLabel(grid, /^входящий остаток$/)),
+        closingBalance: parseOptionalStatementNumber(valueAfterLabel(grid, /^исходящий остаток$/)),
         declaredDebit: parseStatementNumber(valueAfterLabel(grid, /^обороты по дебету$/)),
         declaredCredit: parseStatementNumber(valueAfterLabel(grid, /^обороты по кредиту$/)),
         rows: [],
@@ -249,7 +256,7 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
   const bank = /озон банк|ozon bank/i.test(statementHeader) ? "Ozon Банк"
     : /(?:ооо?|оо)\s*[«\"]?вб банк|\bвб банк\b/i.test(statementHeader) ? "ВБ Банк"
     : /банк точка|точка банк/i.test(statementHeader) ? "Банк Точка"
-      : /т[- ]?банк|тинькофф/i.test(statementHeader) ? "Т-Банк"
+      : /(?:^|[^а-яa-z0-9])т[- ]?банк(?:$|[^а-яa-z0-9])|тинькофф/i.test(statementHeader) ? "Т-Банк"
         : "Банковская выписка";
   return {
     documentHash,
@@ -259,8 +266,8 @@ export function statementFromGrid(grid: string[][], metadata: string, documentHa
     accountNumber,
     dateFrom: dates[0] ?? "",
     dateTo: dates.at(-1) ?? "",
-    openingBalance: parseStatementNumber(valueAfterLabel(grid, /^входящий остаток/)),
-    closingBalance: parseStatementNumber(valueAfterLabel(grid, /^исходящий остаток/)),
+    openingBalance: parseOptionalStatementNumber(valueAfterLabel(grid, /^входящий остаток/)),
+    closingBalance: parseOptionalStatementNumber(valueAfterLabel(grid, /^исходящий остаток/)),
     declaredDebit,
     declaredCredit,
     rows: operations,

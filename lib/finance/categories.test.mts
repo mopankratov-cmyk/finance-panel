@@ -40,9 +40,11 @@ test("старые статьи импорта календаря получаю
 
 test("опции формы не теряют текущую статью, которой нет в справочнике", () => {
   const options = categoryOptions("Старая статья из выгрузки");
-  assert.equal(options[0], "Старая статья из выгрузки");
+  assert.ok(options.includes("Старая статья из выгрузки"));
   assert.equal(options.length, DDS_CATEGORIES.length + 1);
-  assert.deepEqual(categoryOptions(LOAN_CATEGORIES.principal), [...DDS_CATEGORIES]);
-  assert.deepEqual(categoryOptions(""), [...DDS_CATEGORIES]);
-  assert.deepEqual(categoryOptions(undefined), [...DDS_CATEGORIES]);
+  assert.deepEqual(options, [...options].sort((left, right) => left.localeCompare(right, "ru")));
+  const sortedRegistry = [...DDS_CATEGORIES].sort((left, right) => left.localeCompare(right, "ru"));
+  assert.deepEqual(categoryOptions(LOAN_CATEGORIES.principal), sortedRegistry);
+  assert.deepEqual(categoryOptions(""), sortedRegistry);
+  assert.deepEqual(categoryOptions(undefined), sortedRegistry);
 });

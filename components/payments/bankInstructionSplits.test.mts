@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseBankInstructionList, splitBankTotal, splitNetTotal, splitsAreReady, splitTotal, walletTransferSplits } from "./bankInstructionSplits.ts";
+import { parseBankInstructionList, splitBankTotal, splitNetTotal, splitsAreReady, splitTotal, unmatchedTransferNeedsDestination, walletTransferSplits } from "./bankInstructionSplits.ts";
 import type { BankReviewItem } from "./bankReviewStore.ts";
 
 const item = (id: string, date: string, amount: number): BankReviewItem => ({
@@ -90,4 +90,12 @@ test("a bank inflow creates a separate source wallet choice", () => {
   ]);
   assert.equal(splitBankTotal(review, splits), 10_000);
   assert.equal(splitNetTotal(review, splits), 0);
+});
+
+test("односторонний перевод ждёт встречную выписку или выбранный кошелёк", () => {
+  const review = item("transfer", "2026-09-22", -10_000);
+  review.category = "Выбытие — Перевод между счетами";
+  assert.equal(unmatchedTransferNeedsDestination(review, null), true);
+  assert.equal(unmatchedTransferNeedsDestination({ ...review, matchedTransferId: "pair" }, null), false);
+  assert.equal(unmatchedTransferNeedsDestination(review, []), false);
 });

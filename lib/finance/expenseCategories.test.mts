@@ -40,7 +40,7 @@ test("новая статья доступна в опциях и относит
   const names = ["Курсы команды"];
   assert.equal(categoryOptions(undefined, names).includes(names[0]), true);
   assert.equal(categoryOptions(names[0], names).filter((name) => name === names[0]).length, 1);
-  assert.equal(categoryOptions("Старая статья", names)[0], "Старая статья");
+  assert.equal(categoryOptions("Старая статья", names).includes("Старая статья"), true);
   assert.equal(sectionForCategory(names[0], names), "Операционная");
   assert.equal(sectionForCategory(TRANSFER_CATEGORIES.outgoing, [TRANSFER_CATEGORIES.outgoing]), "Техническая");
 });

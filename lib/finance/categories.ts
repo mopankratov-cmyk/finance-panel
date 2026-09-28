@@ -141,5 +141,11 @@ export function sectionForCategory(category: string | null | undefined, customEx
 export function categoryOptions(current?: string | null, customExpenseNames: readonly string[] = []): string[] {
   const value = (current ?? "").trim();
   const options = [...new Set([...DDS_CATEGORIES, ...customExpenseNames])];
-  return value && !options.includes(value) ? [value, ...options] : options;
+  if (value && !options.includes(value)) options.push(value);
+  return options.sort((left, right) => left.localeCompare(right, "ru"));
+}
+
+export function isTransferCategory(category: string | null | undefined): boolean {
+  const value = (category ?? "").trim();
+  return value === TRANSFER_CATEGORIES.incoming || value === TRANSFER_CATEGORIES.outgoing;
 }
