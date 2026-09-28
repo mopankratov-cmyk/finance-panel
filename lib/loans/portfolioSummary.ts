@@ -38,6 +38,25 @@ export function projectedLoanBalances(principal: number, schedule: readonly Loan
     });
 }
 
+/**
+ * Договорный (плановый) остаток на конец выбранной даты. В отличие от
+ * actualLoanBalance он учитывает запланированное по графику погашение тела —
+ * именно такой остаток нужен в своде за месяц и в карточках при выборе периода.
+ */
+export function projectedLoanBalanceAt(principal: number, schedule: readonly LoanScheduleDraft[], asOf: string): number {
+  let balance = Math.max(0, principal);
+  for (const row of [...schedule].sort((left, right) => left.date.localeCompare(right.date))) {
+    if (row.date > asOf || row.status === "cancelled") continue;
+    const hasContractBalance = Number.isFinite(row.balanceBefore)
+      && Number.isFinite(row.balanceAfter)
+      && (Number(row.balanceBefore) > 0 || Number(row.balanceAfter) > 0);
+    balance = hasContractBalance
+      ? Math.max(0, Number(row.balanceAfter))
+      : Math.max(0, balance - Math.max(0, Number(row.principal || 0)));
+  }
+  return round2(balance);
+}
+
 /** Фактический остаток на дату: плановый платёж не считается совершённым. */
 export function actualLoanBalance(principal: number, schedule: readonly LoanScheduleDraft[], asOf: string): number {
   let balance = Math.max(0, principal);
@@ -87,7 +106,7 @@ export function buildMonthlyLoanSummary(
     return {
       month,
       interestAccrued: round2(rows.reduce((sum, row) => sum + row.interest + row.penalty + row.fine, 0)),
-      principalBalance: round2(loans.reduce((sum, loan) => sum + actualLoanBalance(loan.principalAmount, schedules.get(loan.id) ?? [], end), 0)),
+      principalBalance: round2(loans.reduce((sum, loan) => sum + projectedLoanBalanceAt(loan.principalAmount, schedules.get(loan.id) ?? [], end), 0)),
       scheduledTotal: round2(rows.reduce((sum, row) => sum + row.principal + row.interest + row.penalty + row.fine, 0)),
       paidTotal: round2(rows.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal + row.interest + row.penalty + row.fine, 0)),
     };

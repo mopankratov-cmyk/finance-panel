@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 const isoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const daysBetween = (left: string, right: string) => Math.abs(new Date(`${left}T12:00:00`).getTime() - new Date(`${right}T12:00:00`).getTime()) / 86_400_000;
+const normalizedContractNumber = (value: string | null | undefined) => String(value ?? "").replace(/\D/g, "");
 
 type LoanRow = { id: string; creditor: string; start_date: string };
 type PaymentRow = { comment: string | null };
@@ -35,7 +36,11 @@ export async function GET() {
       const contract = contractNumberFromComment(payment.comment);
       const loanId = payment.comment?.match(/\[loan:([0-9a-f-]{36})/i)?.[1];
       const loan = loans.find((item) => item.id === loanId);
-      if (contract && loan) byContract.set(contract, loan);
+      if (contract && loan) {
+        byContract.set(contract, loan);
+        const normalized = normalizedContractNumber(contract);
+        if (normalized) byContract.set(normalized, loan);
+      }
     }
     const schedules = loans.length ? await loadAllSupabasePages<Record<string, unknown>>((from, to) => db.from("loan_schedule_rows").select("*").in("loan_id", loans.map((loan) => loan.id)).order("due_date").range(from, to), { label: "Графики кредитов", maxPages: 50 }) : [];
     const scheduleRows = schedules.map(scheduleRowFromDb);
@@ -46,11 +51,14 @@ export async function GET() {
       // дату выдачи в назначение — используем её только для того, чтобы
       // показать кандидата; автозачёт всё равно потребует точного совпадения.
       const issueDate = fact.reason.match(/от\s+(\d{4}-\d{2}-\d{2})/)?.[1];
-      const loan = (fact.contractNumber ? byContract.get(fact.contractNumber) : undefined)
+      const loan = (fact.contractNumber ? byContract.get(fact.contractNumber) ?? byContract.get(normalizedContractNumber(fact.contractNumber)) : undefined)
         ?? loans.find((item) => item.creditor.toLowerCase().includes("вб финанс") && item.start_date === issueDate);
       const candidates = loan && fact.kind !== "unknown"
         ? scheduleRows.filter((row) => row.loanId === loan.id && row.status === "planned" && row.kind === fact.kind
-          && Math.abs(row.amountRub - fact.amountRub) <= 0.01 && daysBetween(row.dueDate, fact.date) <= 14)
+          // Отчёт WB фиксирует дату удержания, а не дату графика. В соседние
+          // месяцы она регулярно сдвигается на 2–3 недели; точная сумма и вид
+          // платежа по конкретному договору остаются обязательными.
+          && Math.abs(row.amountRub - fact.amountRub) <= 0.01 && daysBetween(row.dueDate, fact.date) <= 31)
         : [];
       const recorded = scheduleRows.some((row) => row.paidByMarketplaceSource === fact.source);
       return [{ ...fact, loanId: loan?.id ?? null, loanName: loan?.creditor ?? null, scheduleRowId: candidates.length === 1 ? candidates[0].id : null,

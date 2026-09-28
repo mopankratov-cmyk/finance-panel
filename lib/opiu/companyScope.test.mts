@@ -9,7 +9,7 @@ test("компания сопоставляется с юрлицом по но�
   assert.equal(companyNamesMatch("ИП Панкратов", "ИП Кучеренко"), false);
 });
 
-test("Филиппов и Коровкин становятся одним пунктом и сохраняют оба id", () => {
+test("Филиппов и Коровкин становятся одним пунктом Филиппова и сохраняют оба id", () => {
   const scopes = buildOpiuCompanyScopes(
     [
       { id: "kor", name: "ИП Коровкин", groupName: "Коровкин", isActive: true },
@@ -20,9 +20,9 @@ test("Филиппов и Коровкин становятся одним пу�
     [{ legalEntityId: "entity", cabinetId: "retail" }],
   );
   assert.deepEqual(scopes, [{
-    id: "kor",
-    name: "ИП Коровкин",
-    groupName: "Коровкин",
+    id: "fil",
+    name: "ИП Филиппов",
+    groupName: "Основная группа",
     companyIds: ["kor", "fil"],
     cabinetIds: ["retail"],
   }]);

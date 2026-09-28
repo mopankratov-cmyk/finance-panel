@@ -10,7 +10,7 @@ test("старая общая группа показывается как не 
   assert.equal(companyLabel("ИП Митриченко"), "ИП Митриченко");
 });
 
-test("алиасы Коровкина показываются одним пунктом без Филиппова", () => {
+test("алиасы Коровкина показываются одним пунктом Филиппова", () => {
   const options = companyScopeOptions([
     { id: "kor", name: "ИП Коровкин", groupName: "Коровкин", isActive: true },
     { id: "fil", name: "ИП Филиппов", groupName: "Коровкин", isActive: true },
@@ -18,7 +18,7 @@ test("алиасы Коровкина показываются одним пун
     { id: "off", name: "ООО Архив", groupName: "Коровкин", isActive: false },
   ]);
 
-  assert.deepEqual(options.groups, [{ name: "Коровкин", label: "ИП Коровкин" }]);
+  assert.deepEqual(options.groups, [{ name: "Коровкин", label: "ИП Филиппов" }]);
   assert.deepEqual(options.companies.map((company) => company.name), ["ООО Одно"]);
   assert.deepEqual(options.unassignedCompanyIds, []);
 });
@@ -60,7 +60,7 @@ test("в операции не дублируются алиасы и не по�
     { id: "pan", name: "ИП Панкратов", groupName: "Основная группа", isActive: true },
   ];
 
-  assert.deepEqual(paymentCompanyOptions(companies).map((company) => company.id), ["kor", "pan"]);
+  assert.deepEqual(paymentCompanyOptions(companies).map((company) => company.id), ["fil", "pan"]);
 });
 
 test("название наличного счёта подставляет только известную компанию", () => {
@@ -71,6 +71,6 @@ test("название наличного счёта подставляет то
   ]);
 
   assert.equal(companyIdForAccountName("Наличка ИП Панкратов", companies), "pan");
-  assert.equal(companyIdForAccountName("Наличка ИП Филиппов", companies), "kor");
+  assert.equal(companyIdForAccountName("Наличка ИП Филиппов", companies), "fil");
   assert.equal(companyIdForAccountName("Наличка", companies), "");
 });

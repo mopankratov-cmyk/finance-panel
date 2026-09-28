@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalances } from "./portfolioSummary.ts";
+import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalanceAt, projectedLoanBalances } from "./portfolioSummary.ts";
 import type { LoanScheduleDraft } from "./schedule.ts";
 
 const row = (over: Partial<LoanScheduleDraft>): LoanScheduleDraft => ({
@@ -14,6 +14,8 @@ test("плановое ежемесячное тело уменьшает про
     row({ id: "c", date: "2026-11-01", principal: 100_000 }),
   ];
   assert.deepEqual(projectedLoanBalances(500_000, schedule).map((item) => item.balanceAfter), [400_000, 300_000, 200_000]);
+  assert.equal(projectedLoanBalanceAt(500_000, schedule, "2026-09-30"), 400_000, "остаток за сентябрь берётся после сентябрьской строки");
+  assert.equal(projectedLoanBalanceAt(500_000, schedule, "2026-10-31"), 300_000, "остаток за октябрь не остаётся начальным");
   assert.equal(actualLoanBalance(500_000, schedule, "2026-10-31"), 500_000, "неоплаченный план не уменьшает фактический долг");
 });
 
@@ -34,7 +36,7 @@ test("помесячный свод разделяет начислено, ос�
   const summary = buildMonthlyLoanSummary([{ id: "L", principalAmount: 500_000 }], new Map([["L", schedule]]), "2026-09-01", "2026-10-31");
   assert.deepEqual(summary, [
     { month: "2026-09", interestAccrued: 20_000, principalBalance: 400_000, scheduledTotal: 120_000, paidTotal: 120_000 },
-    { month: "2026-10", interestAccrued: 18_000, principalBalance: 400_000, scheduledTotal: 118_000, paidTotal: 0 },
+    { month: "2026-10", interestAccrued: 18_000, principalBalance: 300_000, scheduledTotal: 118_000, paidTotal: 0 },
   ]);
 });
 

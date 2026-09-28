@@ -59,7 +59,8 @@ export function marketplaceCabinetIdsForCompany(
 /**
  * ОПиУ показывает одно юрлицо один раз. Исторические карточки
  * «ИП Коровкин» и «ИП Филиппов» объединяются, но их id сохраняются для
- * фильтрации ДДС и зарплаты без потери старых операций.
+ * фильтрации ДДС и зарплаты без потери старых операций. Каноническим именем
+ * всегда остаётся Филиппов: Коровкин — только алиас для распознавания истории.
  */
 export function buildOpiuCompanyScopes(
   companies: readonly CompanyRow[],
@@ -77,7 +78,7 @@ export function buildOpiuCompanyScopes(
   }
   return [...grouped.values()]
     .map((members) => {
-      const canonical = members.find((company) => /коровкин/i.test(company.name)) ?? members[0]!;
+      const canonical = members.find((company) => /филиппов/i.test(company.name)) ?? members[0]!;
       const taxOwner = members.find((company) => company.taxSystem != null || company.vatMode != null || company.taxRate != null || company.taxAdditionalRate != null) ?? canonical;
       const cabinetIds = new Set<string>();
       for (const member of members) {
