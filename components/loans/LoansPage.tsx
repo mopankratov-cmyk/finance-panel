@@ -493,10 +493,13 @@ export function LoansPage() {
     // Приход кредита — обычный платёж; график — строки loan_schedule_rows,
     // плановые платежи календаря сервер строит из них сам (PR-C по ТЗ).
     for (const payment of desired) {
+      // Метаданные договора (в частности [contract-number:...]) хранятся в
+      // комментарии платежа выдачи. Одного UPDATE_PAYMENT недостаточно: он
+      // обновляет только локальный state и после перезагрузки данные пропадают.
+      await savePaymentWithCompany(payment, result.companyId);
       if (state.payments.some((item) => item.id === payment.id)) {
         dispatch({ type: "UPDATE_PAYMENT", payload: payment });
       } else {
-        await savePaymentWithCompany(payment, result.companyId);
         dispatch({ type: "ADD_PAYMENT", payload: payment });
       }
       setCompanyByPayment((current) => new Map(current).set(payment.id, result.companyId));
@@ -721,10 +724,12 @@ function LoanDetails({ loan, company, companyId, schedule, payments, companyByPa
   onLinkPayment: (loanId: string, dueDate: string, paymentId: string, confirmed: boolean) => Promise<void>; onClose: () => void; onEdit: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
+  const documentInput = useRef<HTMLInputElement>(null);
   useDialogBehavior(true, onClose, panel);
   const [documents, setDocuments] = useState<LoanDocumentInfo[]>([]);
   const [documentsLoading, setDocumentsLoading] = useState(true);
   const [documentsError, setDocumentsError] = useState("");
+  const [documentUploading, setDocumentUploading] = useState(false);
   const [traceRow, setTraceRow] = useState<LoanScheduleDraft | null>(null);
   const paidPrincipal = schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
   const fee = metadataNumber(payments, loan.id, "origination-fee");
@@ -743,6 +748,20 @@ function LoanDetails({ loan, company, companyId, schedule, payments, companyByPa
       .finally(() => { if (active) setDocumentsLoading(false); });
     return () => { active = false; };
   }, [loan.id]);
+  const uploadDocument = async (file: File | undefined) => {
+    if (!file) return;
+    setDocumentUploading(true);
+    setDocumentsError("");
+    try {
+      await saveLoanDocument(loan.id, file, companyId ?? undefined);
+      setDocuments(await listLoanDocuments(loan.id));
+    } catch (error) {
+      setDocumentsError(error instanceof Error ? error.message : "Не удалось загрузить документ");
+    } finally {
+      setDocumentUploading(false);
+      if (documentInput.current) documentInput.current.value = "";
+    }
+  };
   return <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
     <button type="button" aria-label="Закрыть карточку" className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm" onClick={onClose} />
     <div ref={panel} role="dialog" aria-modal="true" aria-label={`Договор ${loan.creditorName}`} className="relative flex max-h-[92dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-2xl">
@@ -750,13 +769,17 @@ function LoanDetails({ loan, company, companyId, schedule, payments, companyByPa
       <div className="overflow-y-auto p-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"><Metric label="Сумма договора" value={currency === "RUB" ? formatMoney(loan.principalAmount) : `${roundLoanMoney(originalPrincipal).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency} · ${formatMoney(loan.principalAmount)}`} /><Metric label="Погашено тела" value={formatMoney(paidPrincipal)} /><Metric label="Остаток тела" value={formatMoney(balance)} strong /><Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} /><Metric label="Комиссия в ОПиУ" value={fee ? `${formatMoney(fee)} / ${feeMonths} мес.` : "Нет"} /></div>
         <section className="mt-5 rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div><h3 className="font-bold text-slate-950">Документы договора</h3><p className="mt-1 text-sm text-slate-500">Все загруженные договоры, графики и дополнения сохраняются в истории.</p></div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{documents.length}</span>
+            <div className="flex shrink-0 items-center gap-2 self-start sm:self-auto">
+              <input ref={documentInput} type="file" className="sr-only" accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.jpg,.jpeg,.png,.webp" onChange={(event) => { void uploadDocument(event.target.files?.[0]); }} />
+              <button type="button" onClick={() => documentInput.current?.click()} disabled={documentUploading} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 text-sm font-semibold text-violet-700 transition hover:bg-violet-50 disabled:cursor-wait disabled:opacity-60"><FileText className="h-4 w-4" />{documentUploading ? "Загружаю…" : "Загрузить документ"}</button>
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{documents.length}</span>
+            </div>
           </div>
           {documentsLoading && <p className="mt-4 text-sm text-slate-500">Загружаю документы…</p>}
           {documentsError && <p className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">{documentsError}</p>}
-          {!documentsLoading && !documentsError && documents.length === 0 && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Файлы ещё не прикреплены. Добавьте документ через редактирование кредита или займа.</p>}
+          {!documentsLoading && !documentsError && documents.length === 0 && <p className="mt-4 rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Файлы ещё не прикреплены. Загрузите первый документ кнопкой выше.</p>}
           {documents.length > 0 && <div className="mt-4 space-y-2">{documents.map((document) => <div key={document.id} className="flex flex-col gap-3 rounded-xl bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3"><FileText className="mt-0.5 h-5 w-5 shrink-0 text-violet-600" /><div className="min-w-0"><p className="truncate font-semibold text-slate-900">{document.fileName}</p><p className="mt-1 text-xs text-slate-500">{new Date(document.createdAt).toLocaleString("ru-RU")} · {(document.sizeBytes / 1024).toLocaleString("ru-RU", { maximumFractionDigits: 0 })} КБ</p></div></div>
             <div className="flex shrink-0 gap-2"><button type="button" onClick={() => openListedLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 font-semibold text-violet-700"><ExternalLink className="h-4 w-4" />Открыть</button><button type="button" onClick={() => downloadLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 font-semibold text-slate-700"><Download className="h-4 w-4" />Скачать</button></div>
