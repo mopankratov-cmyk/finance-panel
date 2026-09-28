@@ -30,6 +30,21 @@ begin
     return;
   end if;
 
+  -- Часть операций может быть компонентами цепочки ДДС. Обычный UPDATE
+  -- специально запрещён триггером, чтобы не порвать цепочку наполовину.
+  -- Миграция меняет только владельца и делает это атомарно: локальный флаг
+  -- действует лишь до конца текущей транзакции, а JSON-черновики цепочек
+  -- получают тот же canonical id, что и созданные ими платежи.
+  perform set_config('finance.chain_edit', 'on', true);
+  update public.finance_payment_chains
+  set draft = replace(draft::text, v_korovkin::text, v_filippov::text)::jsonb,
+      updated_at = now()
+  where draft::text like '%' || v_korovkin::text || '%';
+
+  update public.finance_payment_chain_revisions
+  set draft = replace(draft::text, v_korovkin::text, v_filippov::text)::jsonb
+  where draft::text like '%' || v_korovkin::text || '%';
+
   -- ДДС и договоры берут компанию через платёж выдачи/оплаты.
   update public.payments
   set company_id = v_filippov
