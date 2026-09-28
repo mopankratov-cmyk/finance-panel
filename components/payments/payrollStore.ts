@@ -223,10 +223,10 @@ export async function importPayrollEmployees(records: Array<Pick<PayrollEmployee
   return result.updated;
 }
 
-export async function savePayrollPeriod(payDate: string, entries: PayrollDraftEntry[], companyId?: string): Promise<void> {
+export async function savePayrollPeriod(payDate: string, entries: PayrollDraftEntry[], companyIds?: string[]): Promise<void> {
   await fetch("/api/payroll", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "save_period", payDate, entries, companyId }),
+    body: JSON.stringify({ action: "save_period", payDate, entries, companyIds }),
   }).then(json<{ ok: boolean }>);
 }
