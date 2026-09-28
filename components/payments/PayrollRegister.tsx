@@ -10,6 +10,7 @@ import { paymentIsPayrollCandidate } from "@/lib/payroll/model";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import type { Account, Payment } from "@/lib/types";
 import { defaultCalendarAccountId } from "@/components/calendar/defaultCalendarAccount";
+import { companyAliasKeys } from "@/lib/finance/companyAliases";
 import type { DdsCompany } from "./ddsCompanies";
 import {
   EMPLOYMENT_LABELS,
@@ -57,7 +58,10 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
   const [registerCompanyMode, setRegisterCompanyMode] = useState<"all" | "general" | "filippov">("all");
   const registerCompanyIds = useMemo<string[] | null>(() => {
     if (registerCompanyMode === "all") return null;
-    return companies.filter((company) => company.isActive && (registerCompanyMode === "filippov" ? /филиппов/i.test(company.name) : !/филиппов/i.test(company.name))).map((company) => company.id);
+    return companies.filter((company) => {
+      const isFilippovCompany = companyAliasKeys(company.name).includes("филиппов");
+      return company.isActive && (registerCompanyMode === "filippov" ? isFilippovCompany : !isFilippovCompany);
+    }).map((company) => company.id);
   }, [companies, registerCompanyMode]);
   const companyIsInRegisterScope = useCallback((companyId: string | null | undefined) => registerCompanyIds === null || Boolean(companyId && registerCompanyIds.includes(companyId)), [registerCompanyIds]);
 
