@@ -20,11 +20,11 @@ export const maxDuration = 300;
 const JOB = "wb_tax_documents";
 const PAGE_SIZE = 50;
 const LOOKBACK_DAYS = 60;
-const MAX_LIST_PAGES = 10;
+const MAX_LIST_PAGES = 40;
 const MAX_DOWNLOADS_PER_CABINET = 5;
 
 type Cabinet = { id: string; name: string; inn: string | null; token: string };
-type SourceRow = { external_id: string; status: string };
+type SourceRow = { external_id: string; status: string; last_error: string | null };
 
 function mskDate(date: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
@@ -108,14 +108,20 @@ async function syncCabinet(cabinet: Cabinet, companyId: string | undefined) {
       if (inserted.error) throw new Error(inserted.error.message);
     }
 
-    const externalIds = listed.map((item) => item.serviceName);
+    const taxItems = listed.filter(isTaxDocumentCategory);
+    const externalIds = taxItems.map((item) => item.serviceName);
     const existing = externalIds.length
-      ? await db.from("marketplace_tax_document_sources").select("external_id,status").eq("cabinet_id", cabinet.id).in("external_id", externalIds)
+      ? await db.from("marketplace_tax_document_sources").select("external_id,status,last_error").eq("cabinet_id", cabinet.id).in("external_id", externalIds)
       : { data: [] as SourceRow[], error: null };
     if (existing.error) throw new Error(existing.error.message);
     const statusByExternal = new Map((existing.data ?? []).map((row) => [String(row.external_id), String(row.status)]));
-    const pending = listed.filter(isTaxDocumentCategory).filter((item) => !["imported", "skipped", "needs_review"].includes(statusByExternal.get(item.serviceName) ?? ""));
-    const matched = listed.filter(isTaxDocumentCategory).length;
+    const reviewReasonCounts = new Map<string, number>();
+    const addReviewReason = (reason: string) => reviewReasonCounts.set(reason, (reviewReasonCounts.get(reason) ?? 0) + 1);
+    for (const row of (existing.data ?? []) as SourceRow[]) {
+      if (row.status === "needs_review" && row.last_error) addReviewReason(row.last_error);
+    }
+    const pending = taxItems.filter((item) => !["imported", "skipped", "needs_review"].includes(statusByExternal.get(item.serviceName) ?? ""));
+    const matched = taxItems.length;
     let imported = 0; let review = 0; let skipped = 0; let errors = 0;
 
     for (const item of pending.slice(0, MAX_DOWNLOADS_PER_CABINET)) {
@@ -128,7 +134,9 @@ async function syncCabinet(cabinet: Cabinet, companyId: string | undefined) {
       }
       if (!extension) {
         review++;
-        await updateSource(sourceId, { status: "needs_review", last_error: "WB не предоставил XML/ZIP для автоматического разбора", last_attempt_at: new Date().toISOString() });
+        const reason = "WB не предоставил XML/ZIP для автоматического разбора";
+        addReviewReason(reason);
+        await updateSource(sourceId, { status: "needs_review", last_error: reason, last_attempt_at: new Date().toISOString() });
         continue;
       }
       try {
@@ -136,7 +144,9 @@ async function syncCabinet(cabinet: Cabinet, companyId: string | undefined) {
         const parsed = parseWbTaxDocumentFile(file, extension, cabinet.inn);
         if (!parsed) {
           review++;
-          await updateSource(sourceId, { status: "needs_review", last_error: "Не найден входящий формализованный УПД с совпадающим ИНН покупателя", last_attempt_at: new Date().toISOString() });
+          const reason = "Не найден входящий формализованный УПД с совпадающим ИНН покупателя";
+          addReviewReason(reason);
+          await updateSource(sourceId, { status: "needs_review", last_error: reason, last_attempt_at: new Date().toISOString() });
           continue;
         }
         if (parsed.vatAmount <= 0) {
@@ -181,7 +191,8 @@ async function syncCabinet(cabinet: Cabinet, companyId: string | undefined) {
       lastError: errors ? `${errors} документов не обработано` : null,
       state: { from: range.from, to: range.to, lookbackDays: LOOKBACK_DAYS, discovered: listed.length, matched },
     });
-    return { cabinet: cabinet.name, status: errors ? "partial" : "ok", from: range.from, to: range.to, discovered: listed.length, matched, imported, review, skipped, errors };
+    const reviewReasons = [...reviewReasonCounts.entries()].map(([reason, count]) => ({ reason, count }));
+    return { cabinet: cabinet.name, status: errors ? "partial" : "ok", from: range.from, to: range.to, discovered: listed.length, matched, imported, review, skipped, errors, reviewReasons };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
     await writeWbSyncState(db, cabinet.id, JOB, { cursor: previous?.cursor ?? null, status: "error", attempts: (previous?.attempts ?? 0) + 1, lastError: message.slice(0, 1_000), state: { from: range.from, to: range.to, lookbackDays: LOOKBACK_DAYS } });

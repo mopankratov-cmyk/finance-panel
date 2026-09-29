@@ -15,6 +15,7 @@ test("WB tax document listing paginates the recent window", () => {
   assert.match(route, /for \(let page = 0; page < MAX_LIST_PAGES; page\+\+\)/);
   assert.match(route, /listWbDocuments\(token, from, to, page \* PAGE_SIZE\)/);
   assert.match(route, /if \(batch\.length < PAGE_SIZE\) return documents/);
+  assert.match(route, /MAX_LIST_PAGES = 40/);
 });
 
 test("tax page always shows document sync totals and cabinet diagnostics", () => {
@@ -22,6 +23,7 @@ test("tax page always shows document sync totals and cabinet diagnostics", () =>
   assert.match(page, /налоговых документов \$\{totals\.matched\}/);
   assert.match(page, /Результат загрузки УПД WB/);
   assert.match(page, /Получить УПД из WB за 60 дней/);
+  assert.match(page, /причины проверки/);
 });
 
 test("WB tax sync excludes cabinets outside the tax reporting scope before API calls", () => {
