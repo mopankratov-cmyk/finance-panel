@@ -7,6 +7,7 @@ import type { BankReviewItem } from "./bankReviewStore.ts";
 const companies = [
   {id:"pankratov",name:"ИП Панкратов",groupName:"Основная группа",isActive:true},
   {id:"mitrichenko",name:"ИП Митриченко",groupName:"Основная группа",isActive:true},
+  {id:"rio",name:"ООО РИО",groupName:"Основная группа",isActive:true},
   {id:"filippov",name:"ИП Филиппов",groupName:"ИП Филиппов",isActive:true},
 ];
 const item = (patch: Partial<BankReviewItem> = {}): BankReviewItem => ({
@@ -22,7 +23,9 @@ const split = (patch: Partial<BankInstructionSplit> = {}): BankInstructionSplit 
 
 test("Коровкин автоматически выбирает отдельный контур Филиппова",()=>{
   assert.equal(economicCompanyId(item(),companies),"filippov");
-  const reconciled=reconcileSimpleExpenseOwner(item({managerAnswer:encodeBankSplits([split()])}),companies);
+  const reconciled=reconcileSimpleExpenseOwner(item({
+    managerAnswer:encodeBankSplits([split({description:"Старое разбиение: расход ООО РИО"})]),
+  }),companies);
   assert.equal(decodeBankSplits(reconciled.managerAnswer)?.[0].companyId,"filippov");
 });
 

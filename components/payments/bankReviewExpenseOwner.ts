@@ -7,6 +7,15 @@ import type { DdsCompany } from "./ddsCompanies";
 const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]+/g, " ").trim();
 
 export function mentionedCompanyId(item: BankReviewItem, companies: DdsCompany[]) {
+  // The current review fields are the user's latest decision. In particular,
+  // Korovkin/Filippov aliases must win over company names left in an old split.
+  const currentText = normalize(`${item.counterparty} ${item.purpose}`);
+  const currentAlias = preferredAliasCompany(
+    currentText,
+    companies.filter((company) => company.id !== item.companyId),
+  );
+  if (currentAlias) return currentAlias.id;
+
   const answer = normalize(`${item.managerAnswer ?? ""} ${item.counterparty} ${item.purpose}`);
   const direct = companies.find((company) => {
     const name = normalize(company.name).replace(/^(ип|ооо) /, "");
