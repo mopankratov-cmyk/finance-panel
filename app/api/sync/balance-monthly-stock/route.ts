@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
 import { fulfillmentReconciliation, valueMarketplaceStocks, moscowMonthSnapshot, type MarketplaceStockInput, type MarketplaceUnitCost, type ValuedMarketplaceStock } from "@/lib/finance/monthlyMarketplaceStock";
-import { ozonMarketplaceBalance, ozonStocks } from "@/lib/ozon/api";
+import { ozonBalanceStocks, ozonMarketplaceBalance } from "@/lib/ozon/api";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { allowsProduct } from "@/lib/wb/productScope";
-import { fetchWarehouseRemains, remainsToStockRows } from "@/lib/wb/remainsApi";
-import { isWbWarehouse } from "@/lib/wb/realStock";
+import { fetchWarehouseRemains, remainsToBalanceStockRows } from "@/lib/wb/remainsApi";
 import { getWbSyncTargets, groupWbStatisticsTargets } from "@/lib/sync/cabinets";
 import { checkCronAuth, chunkedUpsert, writeSyncLog } from "@/lib/sync/helpers";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -33,11 +32,11 @@ const scopedWbCashSourceKey = (sellerIdentity: string, cabinetId: string) =>
   privateSourceKey("wb", `${sellerIdentity}:brand-report-allocation:${cabinetId}`);
 const shiftDate = (date: string, days: number) => new Date(Date.parse(`${date}T00:00:00.000Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
-async function loadOzonStocksForSnapshot(creds: Parameters<typeof ozonStocks>[0]) {
-  let last = await ozonStocks(creds, { fresh: true });
+async function loadOzonStocksForSnapshot(creds: Parameters<typeof ozonBalanceStocks>[0]) {
+  let last = await ozonBalanceStocks(creds, { fresh: true });
   for (let attempt = 1; !last.ok && attempt < 3 && transientOzonStockError(last.error); attempt += 1) {
     await new Promise((resolve) => setTimeout(resolve, 2_000 * attempt));
-    last = await ozonStocks(creds, { fresh: true });
+    last = await ozonBalanceStocks(creds, { fresh: true });
   }
   return last;
 }
@@ -431,9 +430,8 @@ export async function GET(request: NextRequest) {
           const byNm = new Map<number, number>();
           const productScope = balanceWbProductScope(target.name, target.productScope);
           const catalogByNm = target.cabinetId ? wbCatalogIndex.get(target.cabinetId) : null;
-          for (const row of remainsToStockRows(remains.filter((item) => allowsProduct(productScope, item.nmId, catalogByNm?.get(item.nmId)?.brand)))) {
-            if (!isWbWarehouse(row.warehouse)) continue;
-            const quantity = Number(row.quantity ?? 0);
+          for (const row of remainsToBalanceStockRows(remains.filter((item) => allowsProduct(productScope, item.nmId, catalogByNm?.get(item.nmId)?.brand)))) {
+            const quantity = Number(row.quantity ?? 0) + Number(row.in_way_to_client ?? 0) + Number(row.in_way_from_client ?? 0);
             if (quantity > 0) byNm.set(row.nm_id, (byNm.get(row.nm_id) ?? 0) + quantity);
           }
           const cabinet = target.cabinetId ? metaById.get(target.cabinetId) : null;
@@ -547,7 +545,7 @@ export async function GET(request: NextRequest) {
           const warehouses = await loadOzonStocksForSnapshot(cabinet.creds);
           if (!warehouses.ok) throw new Error(warehouses.error);
           const meta = metaById.get(cabinet.id) ?? { id: cabinet.id, name: cabinet.name, organization_id: null };
-          const stocks = warehouses.rows.map((row) => ({ article: row.article, name: row.name, quantity: row.free + row.reserved, lineKey: `${row.article}:${row.warehouse}`, locationName: `Склад Ozon · ${cabinet.name}${row.warehouse ? ` · ${row.warehouse}` : ""}` }));
+          const stocks = warehouses.rows.map((row) => ({ article: row.article, name: row.name, quantity: row.quantity, lineKey: `${row.article}:${row.warehouse}`, locationName: `Склад Ozon · ${cabinet.name}${row.warehouse ? ` · ${row.warehouse}` : ""}` }));
           const lines = valueMarketplaceStocks(stocks, costsForOrganization(costRows, meta.organization_id));
           const summary = await saveSource({
             month: window.month, capturedAt, sourceKind: "ozon", sourceLabel: `Склад Ozon · ${cabinet.name}`,
@@ -564,7 +562,7 @@ export async function GET(request: NextRequest) {
         if (balance.ok) {
           cashSummaries.push(await saveCashSnapshot({
             month: window.month, sourceKey: key, marketplace: "ozon", cabinet: meta,
-            amount: balance.balance.closing, availableAmount: null, currency: balance.balance.currency,
+            amount: balance.balance.opening, availableAmount: null, currency: balance.balance.currency,
             capturedAt, persist: !dryRun,
           }));
         } else {
