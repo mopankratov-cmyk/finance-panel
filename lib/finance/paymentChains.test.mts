@@ -4,7 +4,7 @@ import {allocationTotal,bankReviewSpendingSplits,buildChainEntries,chainRemainde
 import {DDS_CATEGORIES} from "./categories.ts";
 import type {Account} from "../types.ts";
 const companies=[{id:'main',name:'ИП Митриченко',groupName:'Основная группа'},{id:'kor',name:'ИП Коровкин',groupName:'Коровкин'},{id:'fil',name:'ИП Филиппов',groupName:'Коровкин'},{id:'other',name:'ООО Другая',groupName:'Отдельная'}];
-const accounts=[{id:'bank',name:'Точка',type:'bank'},{id:'cash',name:'Наличные группы',type:'cash'},{id:'korcash',name:'Наличные Коровкина',type:'cash'}].map(a=>({...a,currency:'RUB',balance:0}) as Account);
+const accounts=[{id:'bank',name:'Точка',type:'bank'},{id:'cash',name:'Наличные группы',type:'cash'},{id:'korcash',name:'Наличные Коровкина',type:'cash'},{id:'filbank',name:'ИП Филиппов Точка',type:'bank'}].map(a=>({...a,currency:'RUB',balance:0}) as Account);
 const draft=():PaymentChainDraft=>({id:'chain',revision:0,label:'55 тысяч в наличные',sourceDate:'2026-09-10',sourceAmount:55000,sourceAccountId:'bank',sourceCompanyId:'main',throughCash:true,cashAccountId:'cash',bankReviewId:null,originPaymentIds:[],allocations:[
  {id:'salary1',amount:5000,date:'2026-09-10',name:'Ефремова зп',category:'Зарплата административного персонала',companyId:'main',accountId:'cash',counterparty:'Ефремова',excluded:false},
  {id:'salary2',amount:10000,date:'2026-09-11',name:'Митриченко зп',category:'Зарплата административного персонала',companyId:'main',accountId:'cash',counterparty:'Митриченко',excluded:false},
@@ -78,6 +78,14 @@ test('transfer to a card has its matching incoming entry and does not masquerade
  const rows=entries(d);assert.equal(rows.at(-1)?.role,'transfer-in');assert.equal(rows.at(-1)?.payment.amount,30000);
  assert.equal(rows.reduce((sum,e)=>sum+e.payment.amount,0),-15000);
  d.allocations[2].targetAccountId='';assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/кошелёк поступления/);
+});
+
+test('bank-review chain requires the exact incoming statement row for a transfer to Filippov bank',()=>{
+ const d=draft();d.bankReviewId='source-review';d.sourceAmount=300000;d.allocations=[{...d.allocations[2],amount:300000,category:'Выбытие — Перевод между счетами',targetAccountId:'filbank'}];
+ assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/встречное поступление из выписки/);
+ d.allocations[0].targetReviewId='incoming-review';
+ assert.deepEqual(validateChain(d,accounts,companies,DDS_CATEGORIES),[]);
+ const rows=entries(d);assert.equal(rows.at(-1)?.role,'transfer-in');assert.equal(rows.at(-1)?.payment.accountId,'filbank');
 });
 
 test('one bank payment is not listed as a split operation',()=>{
