@@ -5,7 +5,7 @@ import { loadDdsExpenseCategories } from "./expenseCategoriesServer";
 import { preferredAliasCompany } from "./companyAliases";
 import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
-import { buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
+import { bankReviewSpendingSplits, buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
 import { paymentTransferBalances } from "./paymentTransferBalance";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -81,8 +81,9 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  const costs=origins.filter(p=>p.amount<0 && sectionForCategory(p.category)!==TECHNICAL_SECTION && p.category!==INTERCOMPANY_LOAN_CATEGORIES.issued);
  const cash=reg.accounts.filter(a=>a.type==='cash' && a.currency==='RUB');
  const allocations=costs.length?costs.map(p=>({id:crypto.randomUUID(),amount:Math.abs(p.amount),date:p.date,name:p.name,category:p.category,companyId:p.companyId??sourceCompanyId,accountId:p.accountId,counterparty:p.counterparty,excluded:false})):
-  raw.filter(a=>a.countsTowardBank!==false&&!a.isRemainder).map(a=>({id:crypto.randomUUID(),amount:a.amount,date:sourceDate,name:a.description,category:a.category??"",companyId:a.companyId??sourceCompanyId,accountId:a.accountId??sourceAccountId,counterparty:/зарплат/i.test(a.category??"")?a.description.replace(/(?:^|[^а-я])зп(?:$|[^а-я])|зарплата/gi," ").trim():"",excluded:Boolean(a.excluded)}));
- if(!allocations.length && !raw.length && (origins.length || review?.category) && sectionForCategory(selected?.category??String(review?.category??""))!==TECHNICAL_SECTION) allocations.push({id:crypto.randomUUID(),amount:sourceAmount,date:sourceDate,name:selected?.name??String(review?.purpose??""),category:selected?.category??String(review?.category??""),companyId:selected?.companyId??sourceCompanyId,accountId:sourceAccountId,counterparty:selected?.counterparty??"",excluded:false});
+  bankReviewSpendingSplits(raw).map(a=>({id:crypto.randomUUID(),amount:a.amount,date:sourceDate,name:a.description,category:a.category??"",companyId:a.companyId??sourceCompanyId,accountId:a.accountId??sourceAccountId,counterparty:/зарплат/i.test(a.category??"")?a.description.replace(/(?:^|[^а-я])зп(?:$|[^а-я])|зарплата/gi," ").trim():"",excluded:Boolean(a.excluded)}));
+ const rawHasAutomaticLoan = raw.some(a=>a.category===INTERCOMPANY_LOAN_CATEGORIES.issued || a.category===LOAN_CATEGORIES.receipt);
+ if(!allocations.length && (!raw.length || rawHasAutomaticLoan) && (origins.length || review?.category) && sectionForCategory(selected?.category??String(review?.category??""))!==TECHNICAL_SECTION) allocations.push({id:crypto.randomUUID(),amount:sourceAmount,date:sourceDate,name:selected?.name??String(review?.purpose??""),category:selected?.category??String(review?.category??""),companyId:selected?.companyId??sourceCompanyId,accountId:sourceAccountId,counterparty:selected?.counterparty??String(review?.counterparty??""),excluded:false});
  for(const a of allocations) {
   const recipient=preferredAliasCompany(`${a.name} ${a.counterparty}`,reg.companies);
   if(recipient && requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),recipient)) a.companyId=recipient.id;

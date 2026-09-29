@@ -65,11 +65,6 @@ function mentionedCompanyId(item: BankReviewItem, companies: DdsCompany[]) {
   return aliased?.id ?? null;
 }
 
-function isRioCompany(company: DdsCompany | undefined) {
-  const value = normalizeCompanyText(`${company?.groupName ?? ""} ${company?.name ?? ""}`);
-  return /основн|рио|митриченко|панкратов|кучеренко/.test(value);
-}
-
 export function BankReviewPanel({ accounts, companies: providedCompanies, paymentCompanies = new Map() }: { accounts: Account[]; companies: DdsCompany[]; paymentCompanies?: ReadonlyMap<string,string|null> }) {
   const [loadedCompanies, setLoadedCompanies] = useState<DdsCompany[]>([]);
   const companies = providedCompanies.length ? providedCompanies : loadedCompanies;
@@ -193,9 +188,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
     if (unmatchedTransferNeedsDestination(item, splits)) return false;
     if (splits) return hasBankAccount(item.accountId) && !splits.some(split => !split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
     const sourceCompany = companies.find((company) => company.id === item.companyId);
-    const mustBeIntercompanyLoan = item.amount < 0
-      && isRioCompany(sourceCompany)
-      && Boolean(mentionedCompanyId(item, companies));
+    const destinationCompany = companies.find((company) => company.id === mentionedCompanyId(item, companies));
+    const mustBeIntercompanyLoan = item.amount < 0 && requiresFilippovLoan(sourceCompany, destinationCompany);
     const loanReady = !item.category || !isLoanRepaymentCategory(item.category)
       || cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category})
         .some(option=>option.rowIds.length>0&&option.key===loanLinks.get(item.id));
@@ -209,7 +203,9 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
     const loanItem = targetItems.find(item=>{
       if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return true;
       const splits=decodeBankSplits(item.managerAnswer);
-      return splits?.some(split=>!split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) || (item.amount<0 && isRioCompany(companies.find(c=>c.id===item.companyId)) && mentionedCompanyId(item,companies));
+      const source=companies.find(c=>c.id===item.companyId);
+      const destination=companies.find(c=>c.id===mentionedCompanyId(item,companies));
+      return splits?.some(split=>!split.excluded && requiresFilippovLoan(source,companies.find(c=>c.id===split.companyId))) || (item.amount<0 && requiresFilippovLoan(source,destination));
     });
     if(loanItem){setChainReviewId(loanItem.id);return;}
     if (targetItems.length === 0 || targetItems.some((item) => !itemIsReady(item))) return;
@@ -483,10 +479,11 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                   const splits = decodeBankSplits(item.managerAnswer);
                   const destinationCompanyId = mentionedCompanyId(item, companies);
                   const sourceCompany = companies.find((company) => company.id === item.companyId);
-                  const intercompanyLoanSuggested = item.amount < 0 && isRioCompany(sourceCompany) && Boolean(destinationCompanyId);
+                  const destinationCompany = companies.find((company) => company.id === destinationCompanyId);
+                  const intercompanyLoanSuggested = item.amount < 0 && requiresFilippovLoan(sourceCompany, destinationCompany);
                   if (!splits) return (
                     <div className="space-y-2">
-                    {intercompanyLoanSuggested && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-medium text-amber-900">Похоже на займ между компаниями: источник относится к группе РИО, а в ответе указан получатель {companyById.get(destinationCompanyId!)}. Проверьте и оформите две связанные записи ДДС.</p>}
+                    {intercompanyLoanSuggested && <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-medium text-amber-900">Платёж из основной группы в отдельный контур ИП Филиппова нужно провести как займ. Система создаст обе стороны займа через наличные и конечный расход.</p>}
                     <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => updateSplitsLocal(item.id, walletTransferSplits(item))} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800">
                       Перевод между кошельками
@@ -508,11 +505,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     ])} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800">
                       Перевод на другой кошелёк + расход
                     </button>}
-                    {item.amount < 0 && <button type="button" onClick={() => updateSplitsLocal(item.id, [
-                      { id: crypto.randomUUID(), amount: Math.abs(item.amount), description: "Выдача займа другой компании", category: "Выдача кредитов и займов", companyId: item.companyId, accountId: item.accountId, flow: "expense", countsTowardBank: true, excluded: false, needsClarification: false },
-                      { id: crypto.randomUUID(), amount: Math.abs(item.amount), description: "Получение займа от другой компании", category: "Получение кредитов и займов", companyId: destinationCompanyId, accountId: null, flow: "income", countsTowardBank: false, excluded: false, needsClarification: false },
-                    ])} className={`rounded-lg border px-3 py-2 text-xs font-medium ${intercompanyLoanSuggested ? "border-amber-400 bg-amber-100 text-amber-950" : "border-emerald-300 bg-emerald-50 text-emerald-800"}`}>
-                      Оформить займ между компаниями
+                    {intercompanyLoanSuggested && <button type="button" onClick={() => setChainReviewId(item.id)} className="rounded-lg border border-amber-400 bg-amber-100 px-3 py-2 text-xs font-medium text-amber-950">
+                      Оформить займ с ИП Филипповым
                     </button>}
                     </div>
                     </div>
