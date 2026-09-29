@@ -1,11 +1,17 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateScopedWbCash, requiresScopedWbCash, wbReportSettlementDates } from "./balanceWbCash.ts";
+import { calculateScopedWbCash, requiresScopedWbCash, scopedWbCashArticlePrefixes, wbReportSettlementDates } from "./balanceWbCash.ts";
 
 test("Optima and Retail Family always use scoped cash calculation", () => {
   assert.equal(requiresScopedWbCash("Оптима — NORVIA / RIOBOX"), true);
   assert.equal(requiresScopedWbCash("Retail Family"), true);
   assert.equal(requiresScopedWbCash("CLERIN"), false);
+});
+
+test("shared sellers include only the configured owned-brand article prefixes", () => {
+  assert.deepEqual(scopedWbCashArticlePrefixes("Retail Family"), ["NV-", "HT-"]);
+  assert.deepEqual(scopedWbCashArticlePrefixes("Оптима — NORVIA / RIOBOX"), ["ESC", "NV-", "HT-"]);
+  assert.deepEqual(scopedWbCashArticlePrefixes("CLERIN"), []);
 });
 
 test("week 7-13 September is expected in the bank on 7 October", () => {

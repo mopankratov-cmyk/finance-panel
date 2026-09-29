@@ -1,6 +1,7 @@
 import type { WbFinanceReportSummary } from "@/lib/wb/financeApi";
 
 export interface ScopedWbReportRow {
+  rrd_id?: number | string | null;
   realizationreport_id: number | string | null;
   doc_type_name: string | null;
   supplier_oper_name: string | null;
@@ -42,6 +43,16 @@ const round2 = (value: number) => Math.round((value + Number.EPSILON) * 100) / 1
 export function requiresScopedWbCash(cabinetName: unknown) {
   const name = String(cabinetName ?? "").normalize("NFKC").toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]+/gi, "");
   return name.includes("optima") || name.includes("оптима") || name.includes("retailfamily") || name.includes("ритейлфэмили") || name.includes("ритейлфемили");
+}
+
+/** Префиксы артикулов наших брендов внутри общих seller-кабинетов WB. */
+export function scopedWbCashArticlePrefixes(cabinetName: unknown): string[] {
+  const name = String(cabinetName ?? "").normalize("NFKC").toLocaleLowerCase("ru-RU").replace(/[^a-zа-яё0-9]+/gi, "");
+  if (name.includes("retailfamily") || name.includes("ритейлфэмили") || name.includes("ритейлфемили")) {
+    return ["NV-", "HT-"];
+  }
+  if (name.includes("optima") || name.includes("оптима")) return ["ESC", "NV-", "HT-"];
+  return [];
 }
 
 function addDays(date: string, days: number) {
