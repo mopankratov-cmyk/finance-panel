@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CounterpartySelect } from "./CounterpartySelect";
 import { PaymentChainModal } from "./PaymentChainModal";
 import { chainMetadata, requiresFilippovLoan } from "@/lib/finance/paymentChains";
-import { loadDdsCompanies, type DdsCompany } from "./ddsCompanies";
+import { canonicalPaymentCompanyId, loadDdsCompanies, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
 import type { DdsDraft, DdsParseResult } from "./ddsCsv";
 import { commitImport, planImport } from "./ddsImport";
 import {
@@ -73,6 +73,11 @@ function isRioCompany(company: DdsCompany | undefined) {
 export function BankReviewPanel({ accounts, companies: providedCompanies, paymentCompanies = new Map() }: { accounts: Account[]; companies: DdsCompany[]; paymentCompanies?: ReadonlyMap<string,string|null> }) {
   const [loadedCompanies, setLoadedCompanies] = useState<DdsCompany[]>([]);
   const companies = providedCompanies.length ? providedCompanies : loadedCompanies;
+  const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
+  const canonicalizeItems = useCallback((rows: BankReviewItem[]) => rows.map((row) => {
+    const canonicalCompanyId = canonicalPaymentCompanyId(row.companyId, companies);
+    return canonicalCompanyId && canonicalCompanyId !== row.companyId ? { ...row, companyId: canonicalCompanyId } : row;
+  }), [companies]);
   const reloadCompanies = async () => {
     try { setLoadedCompanies(await loadDdsCompanies()); }
     catch (e) { setError(e instanceof Error ? e.message : "Не удалось загрузить компании"); }
@@ -111,23 +116,23 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const bankAccountIds = useMemo(() => new Set(bankAccounts.map((account) => account.id)), [bankAccounts]);
   const hasBankAccount = (accountId: string | null) => Boolean(accountId && bankAccountIds.has(accountId));
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      setItems(await loadBankReviewItems());
+      setItems(canonicalizeItems(await loadBankReviewItems()));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить очередь");
     } finally {
       setLoading(false);
     }
-  };
+  }, [canonicalizeItems, setError, setItems, setLoading]);
 
   useEffect(() => {
     let cancelled = false;
     loadBankReviewItems()
       .then((loaded) => {
-        if (!cancelled) setItems(loaded);
+        if (!cancelled) setItems(canonicalizeItems(loaded));
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "Не удалось загрузить очередь");
@@ -138,7 +143,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canonicalizeItems]);
 
   useEffect(()=>{let cancelled=false;loadLoanScheduleRows().then(result=>{if(!cancelled)setScheduleRows(result.rows);}).catch(()=>{});return()=>{cancelled=true;};},[]);
 
@@ -163,7 +168,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
     if (!items.some((item) => item.status === "waiting_manager")) return;
     const timer = window.setInterval(() => void refresh(), 15_000);
     return () => window.clearInterval(timer);
-  }, [items]);
+  }, [items, refresh]);
 
   const updateLocal = async (id: string, patch: Partial<BankReviewItem>) => {
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
@@ -448,7 +453,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                 </div>
                 <div className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
                   <label className="text-xs text-slate-500">Компания<select aria-label="Компания банковской операции" value={item.companyId ?? ""} onChange={(e) => void updateLocal(item.id, { companyId: e.target.value || null })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm text-slate-900">
-                    <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                    <option value="">Выберите компанию</option>{selectableCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                   </select></label>
                   <label className="text-xs text-slate-500">Счёт выписки<select aria-label="Банковский счёт выписки" value={hasBankAccount(item.accountId) ? item.accountId! : ""} onChange={(e) => void updateLocal(item.id, { accountId: e.target.value || null })} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-2 text-sm text-slate-900">
                     <option value="">Банковский счёт не определён</option>{bankAccounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}
@@ -531,7 +536,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                           <select value={split.flow ?? (item.amount < 0 ? "expense" : "income")} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, flow: event.target.value as "income" | "expense" } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50"><option value="expense">Расход</option><option value="income">Поступление</option></select>
                           <input aria-label="Назначение части" placeholder="Назначение части" value={split.description} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, description: event.target.value, isRemainder: false } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2" />
                           <select value={split.companyId ?? ""} disabled={split.excluded} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, companyId: event.target.value || null } : part))} className="min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 disabled:opacity-50">
-                            <option value="">Выберите компанию</option>{companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                            <option value="">Выберите компанию</option>{selectableCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                           </select>
                           <label className="text-[10px] text-slate-500">{split.countsTowardBank === false ? "Кошелёк перевода" : "Счёт выписки"}<select aria-label={`${split.countsTowardBank === false ? "Кошелёк перевода" : "Счёт выписки"} части ${index + 1}`} value={splitAccountId(item, split) ?? ""} disabled={split.excluded || split.countsTowardBank !== false} onChange={(event) => updateSplitsLocal(item.id, splits.map((part, partIndex) => partIndex === index ? { ...part, accountId: event.target.value || null } : part))} className="mt-0.5 min-h-10 w-full min-w-0 rounded border border-slate-300 px-2 text-xs text-slate-900 disabled:opacity-60">
                             <option value="">{split.countsTowardBank === false ? "Выберите банк, наличные или крипто" : "Счёт выписки не определён"}</option>{(split.countsTowardBank === false ? accounts : bankAccounts).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}

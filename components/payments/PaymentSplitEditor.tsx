@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CounterpartySelect } from "./CounterpartySelect";
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -8,7 +8,7 @@ import { balanceLast, splitEvenly } from "@/lib/finance/paymentSplitAmounts";
 import { allocationTotal, chainRemainder, requiresFilippovLoan, type ChainAllocation, type PaymentChainDraft } from "@/lib/finance/paymentChains";
 import { TRANSFER_CATEGORIES } from "@/lib/finance/categories";
 import type { Account } from "@/lib/types";
-import type { DdsCompany } from "./ddsCompanies";
+import { paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
 
 const field = "min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-2 text-base md:text-sm disabled:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400";
 const columns = "md:grid-cols-[1fr_1.2fr_96px_64px_1fr_128px_44px]";
@@ -19,6 +19,7 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [autoLast, setAutoLast] = useState(false);
+  const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
   const remainder = chainRemainder(draft);
   const source = companies.find(c => c.id === draft.sourceCompanyId);
   const cashAccounts = accounts.filter(a => a.type === "cash" && a.currency === "RUB");
@@ -64,7 +65,7 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
               <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Статья части {i + 1}</span><select aria-label={`Статья части ${i + 1}`} className={field} value={a.category} disabled={a.excluded} onChange={e => change(a.id, { category: e.target.value, ...(!a.name ? { name: e.target.value } : {}) })}><option value="">Выберите статью</option>{[...new Set([...categories, a.category].filter(Boolean))].sort((left,right)=>left.localeCompare(right,"ru")).map(c => <option key={c}>{c}</option>)}</select></label>
               <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Сумма части {i + 1}</span><input aria-label={`Сумма части ${i + 1}`} type="number" inputMode="decimal" min="0.01" step="0.01" className={field} value={a.amount} readOnly={autoLast && i === draft.allocations.length - 1} onChange={e => change(a.id, { amount: Number(e.target.value) })}/></label>
               <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Доля части {i + 1}, %</span><input aria-label={`Доля части ${i + 1}, %`} type="number" inputMode="decimal" min="0" max="100" step="0.01" className={field} value={draft.sourceAmount ? Math.round(a.amount / draft.sourceAmount * 10000) / 100 : 0} readOnly={autoLast && i === draft.allocations.length - 1} onChange={e => change(a.id, { amount: Math.round(draft.sourceAmount * Number(e.target.value)) / 100 })}/></label>
-              <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Компания части {i + 1}</span><select aria-label={`Компания части ${i + 1}`} className={field} value={a.companyId} disabled={a.excluded} onChange={e => changeCompany(a, e.target.value)}><option value="">Выберите компанию</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+              <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Компания части {i + 1}</span><select aria-label={`Компания части ${i + 1}`} className={field} value={a.companyId} disabled={a.excluded} onChange={e => changeCompany(a, e.target.value)}><option value="">Выберите компанию</option>{selectableCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
               <label className="min-w-0"><span className="mb-1 block text-xs text-slate-500 md:sr-only">Дата части {i + 1}</span><input aria-label={`Дата части ${i + 1}`} type="date" min={draft.sourceDate} className={field} value={a.date} onChange={e => change(a.id, { date: e.target.value })}/></label>
               <button type="button" aria-label={`Подробности части ${i + 1}`} aria-expanded={open} onClick={() => setExpanded(open ? null : a.id)} className="flex min-h-11 items-center justify-center gap-2 rounded-lg text-slate-600 hover:bg-slate-100"><MoreHorizontal className="h-5 w-5"/><span className="text-sm md:hidden">Подробнее</span></button>
             </div>
@@ -86,7 +87,7 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
     <div className="grid gap-3 border-t border-slate-200 pt-4 sm:grid-cols-3">
       <label className="text-sm">Счёт списания<select className={field} disabled={Boolean(draft.bankReviewId)} value={draft.sourceAccountId} onChange={e => patch({ sourceAccountId: e.target.value })}><option value="">Выберите счёт</option>{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>
       <label className="text-sm">Дата операции<input type="date" className={field} disabled={Boolean(draft.bankReviewId)} value={draft.sourceDate} onChange={e => patch({ sourceDate: e.target.value })}/></label>
-      <label className="text-sm">Компания источника<select className={field} value={draft.sourceCompanyId} onChange={e => patch({ sourceCompanyId: e.target.value })}><option value="">Выберите компанию</option>{companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <label className="text-sm">Компания источника<select className={field} value={draft.sourceCompanyId} onChange={e => patch({ sourceCompanyId: e.target.value })}><option value="">Выберите компанию</option>{selectableCompanies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
     </div>
     <details open={draft.throughCash || undefined} className="rounded-lg border border-slate-200 px-3"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium">Перевод через наличные{draft.throughCash ? " · включён" : ""}</summary><div className="space-y-2 pb-3"><label className="flex min-h-11 items-center gap-2 text-sm"><input type="checkbox" checked={draft.throughCash} onChange={e => patch({ throughCash: e.target.checked, allocations: draft.allocations.map(a => ({ ...a, accountId: e.target.checked ? draft.cashAccountId : draft.sourceAccountId })) })}/>Сначала перевести исходную сумму в наличные</label>{draft.throughCash && <label className="block text-sm">Наличные основной группы<select className={field} value={draft.cashAccountId} onChange={e => patch({ cashAccountId: e.target.value, allocations: draft.allocations.map(a => requiresFilippovLoan(source, companies.find(c => c.id === a.companyId)) ? a : { ...a, accountId: e.target.value }) })}><option value="">Выберите наличные</option>{cashAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></label>}</div></details>
     {!draft.bankReviewId && <details className="rounded-lg border border-slate-200 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">Изменить исходную сумму</summary><label className="mb-3 block text-sm">Сумма операции<input type="number" min="0.01" step="0.01" className={field} value={draft.sourceAmount} onChange={e => { const sourceAmount = Number(e.target.value); patch({ sourceAmount, ...(autoLast ? { allocations: balanceLast(draft.allocations, sourceAmount) } : {}) }); }}/></label></details>}

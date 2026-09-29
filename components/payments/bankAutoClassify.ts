@@ -135,7 +135,9 @@ function learnedOwnership(row: BankStatementRow, payments: PaymentWithCompany[])
 
 function ownerCompany(statement: BankStatement, companies: DdsCompany[], mappings: BankAccountMapping[]) {
   const mapped = mappings.find((mapping) => mapping.bankAccountNumber === statement.accountNumber);
-  if (mapped) return { companyId: mapped.companyId, confidence: 1, reason: "Компания запомнена для этого банковского счёта" };
+  if (mapped && companies.some((company) => company.id === mapped.companyId && company.isActive)) {
+    return { companyId: mapped.companyId, confidence: 1, reason: "Компания запомнена для этого банковского счёта" };
+  }
   const owner = normalize(statement.owner).replace(/^индивидуальный предприниматель\s+/, "");
   // Владелец не распознан (банк пишет «Наименование:» вместо «Клиент:») —
   // `name.includes("")` было бы true для первой же компании, и вся выписка

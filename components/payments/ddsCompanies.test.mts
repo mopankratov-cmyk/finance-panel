@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { companyGroupLabel, companyIdForAccountName, companyLabel, companyScopeOptions, paymentCompanyOptions } from "./ddsCompanies.ts";
+import { canonicalPaymentCompanyId, companyGroupLabel, companyIdForAccountName, companyLabel, companyScopeOptions, paymentCompanyOptions } from "./ddsCompanies.ts";
 
 test("старая общая группа показывается как не распределённые по компаниям операции", () => {
   assert.equal(companyLabel("Общая группа РИО"), "Не распределено по компаниям");
@@ -61,6 +61,8 @@ test("в операции не дублируются алиасы и не по�
   ];
 
   assert.deepEqual(paymentCompanyOptions(companies).map((company) => company.id), ["fil", "pan"]);
+  assert.equal(canonicalPaymentCompanyId("kor", companies), "fil");
+  assert.equal(canonicalPaymentCompanyId("fil", companies), "fil");
 });
 
 test("название наличного счёта подставляет только известную компанию", () => {
