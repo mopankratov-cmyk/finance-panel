@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {allocationTotal,buildChainEntries,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
+import {allocationTotal,bankReviewSpendingSplits,buildChainEntries,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,isMainGroup,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
 import {DDS_CATEGORIES} from "./categories.ts";
 import type {Account} from "../types.ts";
 const companies=[{id:'main',name:'ИП Митриченко',groupName:'Основная группа'},{id:'kor',name:'ИП Коровкин',groupName:'Коровкин'},{id:'fil',name:'ИП Филиппов',groupName:'Коровкин'},{id:'other',name:'ООО Другая',groupName:'Отдельная'}];
@@ -38,6 +38,22 @@ test('Filippov uses the Korovkin alias; other groups do not acquire this rule',(
  assert.equal(requiresFilippovLoan(companies[0],companies[2]),true);
  assert.equal(requiresFilippovLoan(companies[3],companies[1]),false);
  assert.equal(requiresFilippovLoan(companies[1],companies[1]),false);
+});
+test('all legal entities of the main contour stay inside one group without loans',()=>{
+ const names=['ООО РИО','ИП Кучеренко','ИП Панкратов','ООО ГЛОБАЛКОС','ИП Митриченко','ООО Иллюмей'];
+ for(const [index,name] of names.entries()) {
+  const company={id:`main-${index}`,name,groupName:'Основная группа'};
+  assert.equal(isMainGroup(company),true,name);
+  assert.equal(requiresFilippovLoan(company,{id:'other-main',name:'ИП Панкратов',groupName:'Основная группа'}),false,name);
+ }
+});
+test('technical loan rows do not multiply the source amount in the split editor',()=>{
+ const rows=[
+  {amount:200000,category:'Выдача кредитов и займов',flow:'expense' as const,countsTowardBank:true},
+  {amount:200000,category:'Получение кредитов и займов',flow:'income' as const,countsTowardBank:false},
+  {amount:200000,category:'Дивиденды',flow:'expense' as const,countsTowardBank:false},
+ ];
+ assert.deepEqual(bankReviewSpendingSplits(rows),[rows[2]]);
 });
 test('rejects an overdrawn original sum, earlier expense date, and a loan from a bank wallet',()=>{
  const d=draft();d.allocations[2].amount=50000;assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/больше исходной/);

@@ -18,13 +18,28 @@ export interface ChainEntry { payment: Payment; role: ChainRole; allocationId: s
 export interface ChainMetadata { id: string; revision: number; amount: number; date: string; label: string; role: ChainRole; allocationId?: string | null }
 export interface ChainHistory { revision: number; createdAt: string; reason: string; entries: ChainEntry[] }
 export interface PaymentChainDetail { draft: PaymentChainDraft; status: "active" | "cancelled"; migrationAvailable: boolean; history: ChainHistory[] }
+export interface BankReviewChainSplit {
+  amount: number; category: string | null; excluded?: boolean;
+  flow?: "income" | "expense"; countsTowardBank?: boolean; isRemainder?: boolean;
+}
 const cents = (n: number) => Math.round(n * 100);
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
 export function isMainGroup(company: ChainCompany | undefined) {
-  return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);
+  return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко|глобалкос|иллюмей/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);
 }
 export function requiresFilippovLoan(source: ChainCompany | undefined, recipient: ChainCompany | undefined) {
   return Boolean(source && recipient && source.id !== recipient.id && isMainGroup(source) && companyAliasKeys(recipient.name).includes("филиппов"));
+}
+
+/** Technical loan and wallet-transfer entries are generated from one allocation. */
+export function bankReviewSpendingSplits<T extends BankReviewChainSplit>(splits: readonly T[]) {
+  const flow = (split: T) => split.flow ?? "expense";
+  const technicalLoan = (split: T) => split.category === INTERCOMPANY_LOAN_CATEGORIES.issued || split.category === LOAN_CATEGORIES.receipt;
+  const downstream = splits.filter((split) => !split.excluded && !split.isRemainder
+    && split.countsTowardBank === false && flow(split) === "expense" && !technicalLoan(split));
+  if (downstream.length) return downstream;
+  return splits.filter((split) => !split.excluded && !split.isRemainder
+    && split.countsTowardBank !== false && flow(split) === "expense" && !technicalLoan(split));
 }
 export function allocationTotal(draft: PaymentChainDraft) {
   return draft.allocations.reduce((sum, p) => sum + cents(p.amount), 0) / 100;
