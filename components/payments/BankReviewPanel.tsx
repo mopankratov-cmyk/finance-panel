@@ -4,7 +4,7 @@ import { Check, HelpCircle, Loader2, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CounterpartySelect } from "./CounterpartySelect";
 import { PaymentChainModal } from "./PaymentChainModal";
-import { chainMetadata, requiresFilippovLoan } from "@/lib/finance/paymentChains";
+import { bankReviewSpendingSplits, chainMetadata, requiresFilippovLoan } from "@/lib/finance/paymentChains";
 import { canonicalPaymentCompanyId, loadDdsCompanies, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
 import type { DdsDraft, DdsParseResult } from "./ddsCsv";
 import { commitImport, planImport } from "./ddsImport";
@@ -40,6 +40,7 @@ import { useFinance, useDdsCategories } from "@/components/providers/FinanceProv
 import { loadFinanceState } from "@/lib/db";
 import { preferredAliasCompany } from "@/lib/finance/companyAliases";
 import { bankStatementSourceAccounts } from "./ddsReconciliationAccounts";
+import { economicCompanyId, expenseOwnerSplits, mentionedCompanyId, reconcileSimpleExpenseOwner } from "./bankReviewExpenseOwner";
 import {
   cashLoanScheduleOptions,
   isLoanRepaymentCategory,
@@ -52,26 +53,14 @@ import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
 // Статьи — из единого справочника (раньше свой список дублировал «Получение кредитов и займов»).
 
-const normalizeCompanyText = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^a-zа-я0-9]+/g, " ").trim();
-
-function mentionedCompanyId(item: BankReviewItem, companies: DdsCompany[]) {
-  const answer = normalizeCompanyText(`${item.managerAnswer ?? ""} ${item.counterparty} ${item.purpose}`);
-  const direct = companies.find((company) => {
-    const name = normalizeCompanyText(company.name).replace(/^(ип|ооо) /, "");
-    return company.id !== item.companyId && Boolean(name) && answer.includes(name);
-  });
-  if (direct) return direct.id;
-  const aliased = preferredAliasCompany(answer,companies.filter((company)=>company.id!==item.companyId));
-  return aliased?.id ?? null;
-}
-
 export function BankReviewPanel({ accounts, companies: providedCompanies, paymentCompanies = new Map() }: { accounts: Account[]; companies: DdsCompany[]; paymentCompanies?: ReadonlyMap<string,string|null> }) {
   const [loadedCompanies, setLoadedCompanies] = useState<DdsCompany[]>([]);
   const companies = providedCompanies.length ? providedCompanies : loadedCompanies;
   const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
   const canonicalizeItems = useCallback((rows: BankReviewItem[]) => rows.map((row) => {
     const canonicalCompanyId = canonicalPaymentCompanyId(row.companyId, companies);
-    return canonicalCompanyId && canonicalCompanyId !== row.companyId ? { ...row, companyId: canonicalCompanyId } : row;
+    const canonical = canonicalCompanyId && canonicalCompanyId !== row.companyId ? { ...row, companyId: canonicalCompanyId } : row;
+    return reconcileSimpleExpenseOwner(canonical, companies);
   }), [companies]);
   const reloadCompanies = async () => {
     try { setLoadedCompanies(await loadDdsCompanies()); }
@@ -87,7 +76,9 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const { categories: REVIEW_CATEGORIES } = useDdsCategories();
   const { state, dispatch } = useFinance();
   const [chainReviewId, setChainReviewId] = useState<string | null>(null);
-  const closeChain = useCallback(() => setChainReviewId(null), []);
+  const [chainConfirmationOnly, setChainConfirmationOnly] = useState(false);
+  const closeChain = useCallback(() => {setChainReviewId(null);setChainConfirmationOnly(false);}, []);
+  const openChain = (id: string, confirmationOnly = false) => {setChainConfirmationOnly(confirmationOnly);setChainReviewId(id);};
   const [items, setItems] = useState<BankReviewItem[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -166,12 +157,15 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   }, [items, refresh]);
 
   const updateLocal = async (id: string, patch: Partial<BankReviewItem>) => {
+    setSaving(true);
     setItems((current) => current.map((item) => item.id === id ? { ...item, ...patch } : item));
     try {
       await updateBankReviewItem(id, patch);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось сохранить изменение");
       await refresh();
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -207,7 +201,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
       const destination=companies.find(c=>c.id===mentionedCompanyId(item,companies));
       return splits?.some(split=>!split.excluded && requiresFilippovLoan(source,companies.find(c=>c.id===split.companyId))) || (item.amount<0 && requiresFilippovLoan(source,destination));
     });
-    if(loanItem){setChainReviewId(loanItem.id);return;}
+    if(loanItem){openChain(loanItem.id,true);return;}
     if (targetItems.length === 0 || targetItems.some((item) => !itemIsReady(item))) return;
     setSaving(true);
     setError(null);
@@ -378,7 +372,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   };
 
   const saveAndApproveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
-    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || splits.some(split=>!split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {setChainReviewId(item.id);return;}
+    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || splits.some(split=>!split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {openChain(item.id,true);return;}
     if (!hasBankAccount(item.accountId) || !splitsAreReady(item, splits)) return;
     const prepared = { ...item, managerAnswer: encodeBankSplits(splits), status: "ready" as const };
     try {
@@ -444,7 +438,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     {item.reasons.filter((reason) => !reason.startsWith("__")).length > 0 && <p className="mt-1 text-xs text-violet-700">{item.reasons.filter((reason) => !reason.startsWith("__")).join(" · ")}</p>}
                     {item.matchedTransferId && <p className="mt-1 text-xs font-medium text-emerald-700">Найдена встречная операция в другой выписке — платежи связаны</p>}
                   </div>
-                  {item.amount<0 && <button type="button" onClick={()=>setChainReviewId(item.id)} className="min-h-11 rounded-lg border border-violet-300 px-3 text-xs text-violet-800">Разбивка внутри операции · {formatMoney(Math.abs(item.amount))}</button>}
+                   {item.amount<0 && <button type="button" onClick={()=>openChain(item.id)} className="min-h-11 rounded-lg border border-violet-300 px-3 text-xs text-violet-800">Разбивка внутри операции · {formatMoney(Math.abs(item.amount))}</button>}
                   <button onClick={() => openManagerQuestion(item)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs text-slate-600"><HelpCircle className="h-4 w-4" /> Спросить</button>
                 </div>
                 <div className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -457,15 +451,23 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                   <label className="text-xs text-slate-500">Статья<select aria-label="Статья банковской операции" value={item.category ?? ""} onChange={(e) => {
                     const category = e.target.value || null;
                     const valid = category && item.companyId && hasBankAccount(item.accountId) && categoryMatchesDirection(category, item.amount) && (!requiresCounterparty(category) || Boolean(item.counterparty.trim()));
-                    void updateLocal(item.id, { category, status: valid ? "ready" : "needs_info" });
+                    const spending = bankReviewSpendingSplits(decodeBankSplits(item.managerAnswer) ?? []);
+                    const managerAnswer = spending.length === 1 ? encodeBankSplits([{...spending[0],category,needsClarification:!category}]) : item.managerAnswer;
+                    void updateLocal(item.id, { category, managerAnswer, status: valid ? "ready" : "needs_info" });
                   }} className={`mt-1 min-h-11 w-full rounded-lg border px-2 text-sm text-slate-900 ${item.category && !categoryMatchesDirection(item.category, item.amount) ? "border-red-400 bg-red-50" : "border-slate-300"}`}>
                     <option value="">Статья не определена</option>{REVIEW_CATEGORIES.map((category) => <option key={category}>{category}</option>)}
                   </select></label>
                   <CounterpartySelect label="Контрагент" ariaLabel={`Контрагент операции от ${item.date} на ${formatMoney(item.amount)}`} value={item.counterparty} options={counterparties} disabled={saving} onChange={counterparty => {
                     const valid = item.category && item.companyId && hasBankAccount(item.accountId) && categoryMatchesDirection(item.category,item.amount) && (!requiresCounterparty(item.category) || Boolean(counterparty.trim()));
-                    void updateLocal(item.id, {counterparty, status: valid ? "ready" : "needs_info"});
+                    const recipient = preferredAliasCompany(counterparty, companies);
+                    const source = companies.find((company) => company.id === item.companyId);
+                    const current = bankReviewSpendingSplits(decodeBankSplits(item.managerAnswer) ?? []);
+                    const resetWrongLoan = current.length === 1 && current[0].companyId && requiresFilippovLoan(source, companies.find((company) => company.id === current[0].companyId)) && (!recipient || !requiresFilippovLoan(source, recipient));
+                    const managerAnswer = resetWrongLoan ? null : item.managerAnswer;
+                    void updateLocal(item.id, {counterparty, managerAnswer, status: valid ? "ready" : "needs_info"});
                   }}/>
                 </div>
+                {item.amount < 0 && (()=>{const splits=bankReviewSpendingSplits(decodeBankSplits(item.managerAnswer)??[]);const complex=splits.length>1;const ownerId=economicCompanyId(item,companies)??"";const source=companies.find(company=>company.id===item.companyId);const owner=companies.find(company=>company.id===ownerId);const needsLoan=requiresFilippovLoan(source,owner);return <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"><label className="text-xs text-slate-600">Чей это расход<select aria-label={`Чей расход от ${item.date} на ${formatMoney(item.amount)}`} value={ownerId} disabled={saving||complex} onChange={event=>{const companyId=event.target.value;const managerAnswer=companyId===item.companyId?null:encodeBankSplits(expenseOwnerSplits(item,companyId));const prepared={...item,managerAnswer};const decoded=decodeBankSplits(managerAnswer);const status=hasBankAccount(item.accountId)&&(decoded?splitsAreReady(prepared,decoded):Boolean(item.category&&item.companyId&&categoryMatchesDirection(item.category,item.amount)))?"ready":"needs_info";void updateLocal(item.id,{managerAnswer,status});}} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"><option value={item.companyId??""}>{source?.name??"Компания счёта"}</option>{selectableCompanies.filter(company=>company.id!==item.companyId).map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select>{complex&&<span className="mt-1 block text-amber-700">Расход уже разбит на несколько частей; компания выбирается в каждой части.</span>}</label>{needsLoan&&<button type="button" disabled={saving} onClick={()=>openChain(item.id,true)} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-semibold text-amber-950 disabled:opacity-50">Подтвердить займ и расход</button>}</div>;})()}
                 <label className="block text-xs text-slate-500">Комментарий к платежу<textarea aria-label={`Комментарий к платежу от ${item.date} на ${formatMoney(item.amount)}`} value={item.paymentComment} disabled={saving} rows={2} onChange={(event) => setItems((current) => current.map((row) => row.id===item.id ? {...row,paymentComment:event.target.value}:row))} onBlur={(event) => void updateLocal(item.id,{paymentComment:event.target.value})} placeholder="Пояснение, которое сохранится в ДДС" className="mt-1 min-h-11 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900" /></label>
                 {item.category&&isLoanRepaymentCategory(item.category)&&(()=>{const allOptions=cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category!});const options=relevantCashLoanScheduleOptions(allOptions,item.counterparty,item.purpose);const loanCount=new Set(options.map(option=>option.loanId)).size;return <label className="block text-xs text-slate-500">Связать с графиком кредита<select value={loanLinks.get(item.id)??""} onChange={event=>setLoanLinks(current=>new Map(current).set(item.id,event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900"><option value="">Выберите кредит и дату платежа</option>{options.filter(option=>option.rowIds.length>0).map(option=><option key={option.key} value={option.key}>{option.loanName} · {option.label}</option>)}</select>{!options.some(option=>option.rowIds.length>0)&&<span className="mt-1 block text-amber-700">В графиках нет открытой строки для этой статьи. Добавьте или проверьте график в разделе кредитов.</span>}{options.some(option=>option.rowIds.length>0)&&loanCount>1&&<span className="mt-1 block text-amber-700">Статья уже сохранена. Выберите номер договора — у этого кредитора найдено несколько активных кредитов.</span>}{loanLinks.get(item.id)&&loanCount===1&&<span className="mt-1 block text-emerald-700">Подставлен единственный договор с точным именем кредитора. Проверьте дату и подтвердите операцию.</span>}</label>;})()}
                 {item.category?.includes("Перевод между счетами")&&!item.matchedTransferId&&!decodeBankSplits(item.managerAnswer)&&<p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">Укажите вторую сторону через «Перевод между кошельками» (банк, наличные или крипто) либо загрузите встречную выписку. Односторонний перевод подтвердить нельзя.</p>}
@@ -491,7 +493,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     {suggestLoanSplits(item, state.payments) && <button type="button" onClick={() => updateSplitsLocal(item.id, suggestLoanSplits(item, state.payments)!)} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">
                       Разбить по графику кредита
                     </button>}
-                    <button type="button" onClick={() => {if(item.amount<0){setChainReviewId(item.id);return;}updateSplitsLocal(item.id, [{
+                    <button type="button" onClick={() => {if(item.amount<0){openChain(item.id);return;}updateSplitsLocal(item.id, [{
                       id: crypto.randomUUID(), amount: Math.abs(item.amount), description: item.purpose || "Часть платежа",
                       category: item.category, companyId: item.companyId, excluded: false, needsClarification: false,
                       flow: item.amount < 0 ? "expense" : "income", accountId: item.accountId, countsTowardBank: true,
@@ -505,8 +507,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     ])} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-2 text-xs font-medium text-sky-800">
                       Перевод на другой кошелёк + расход
                     </button>}
-                    {intercompanyLoanSuggested && <button type="button" onClick={() => setChainReviewId(item.id)} className="rounded-lg border border-amber-400 bg-amber-100 px-3 py-2 text-xs font-medium text-amber-950">
-                      Оформить займ с ИП Филипповым
+                    {intercompanyLoanSuggested && <button type="button" disabled={saving} onClick={() => openChain(item.id,true)} className="rounded-lg border border-amber-400 bg-amber-100 px-3 py-2 text-xs font-medium text-amber-950 disabled:opacity-50">
+                      Подтвердить займ и расход
                     </button>}
                     </div>
                     </div>
@@ -573,7 +575,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
           ))}
         </div>
       )}
-      {chainReviewId&&<PaymentChainModal seed={{reviewId:chainReviewId}} accounts={accounts} companies={companies} onClose={closeChain} onSaved={async()=>{dispatch({type:"LOAD",payload:await loadFinanceState()});setSelected(current=>{const next=new Set(current);next.delete(chainReviewId);return next;});await refresh();}}/>}
+      {chainReviewId&&<PaymentChainModal seed={{reviewId:chainReviewId}} accounts={accounts} companies={companies} confirmationOnly={chainConfirmationOnly} onClose={closeChain} onSaved={async()=>{dispatch({type:"LOAD",payload:await loadFinanceState()});setSelected(current=>{const next=new Set(current);next.delete(chainReviewId);return next;});await refresh();}}/>}
       {/* Общее окно вместо самодельного: Escape, ловушка фокуса, неподвижный
           фон и кнопки, которые не уезжают под экранную клавиатуру. */}
       <Modal
