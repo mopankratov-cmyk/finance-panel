@@ -881,6 +881,35 @@ export async function ozonPrices(
 // Остатки по складам.
 export interface OzonStockRow { sku: number; article: string; name: string; warehouse: string; free: number; reserved: number }
 
+export interface OzonBalanceStockRow {
+  sku: number;
+  article: string;
+  name: string;
+  warehouse: string;
+  quantity: number;
+  statusCounts: Record<string, number>;
+}
+
+/**
+ * Ozon «FBO → Управление остатками» отдаёт каждый количественный столбец как
+ * отдельное поле `*_stock_count`. Для баланса владелец учитывает сумму ВСЕХ
+ * этих столбцов, включая общий «Всего товаров»: не выбираем вручную знакомые
+ * статусы, чтобы новые колонки Ozon не выпали из снимка молча.
+ */
+export function ozonBalanceStockCounts(item: Record<string, unknown>): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const [key, raw] of Object.entries(item)) {
+    if (!key.endsWith("_stock_count")) continue;
+    const value = Number(raw ?? 0);
+    if (Number.isFinite(value) && value > 0) counts[key] = value;
+  }
+  return counts;
+}
+
+export function ozonBalanceStockQuantity(item: Record<string, unknown>): number {
+  return Object.values(ozonBalanceStockCounts(item)).reduce((sum, value) => sum + value, 0);
+}
+
 /** Подпись собственного склада продавца в разрезе складов. */
 export const OZON_FBS_WAREHOUSE = "Свой склад (FBS)";
 
@@ -961,6 +990,82 @@ export async function ozonStocks(
     return { ok: true, rows };
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 120) };
+  }
+}
+
+/**
+ * Полный остаток для месячного баланса из нового отчёта Ozon. Старый
+ * stock_on_warehouses содержит только free/reserved и поэтому теряет товары
+ * в доставке, возвратах, проверке, перемещении и на вывозе.
+ */
+export async function ozonBalanceStocks(
+  c: OzonCreds,
+  options: { fresh?: boolean } = {},
+): Promise<{ ok: true; rows: OzonBalanceStockRow[] } | { ok: false; error: string }> {
+  try {
+    const productIds: number[] = [];
+    let lastId = "";
+    for (let page = 0; page < 20; page++) {
+      const res = await tfetch(c, `${BASE}/v3/product/list`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({ filter: { visibility: "ALL" }, limit: 1000, last_id: lastId }),
+        ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
+      const json = (await res.json()) as { result?: { items?: { product_id?: number }[]; last_id?: string } };
+      const items = json.result?.items ?? [];
+      for (const item of items) {
+        const productId = Number(item.product_id ?? 0);
+        if (productId > 0) productIds.push(productId);
+      }
+      lastId = String(json.result?.last_id ?? "");
+      if (items.length < 1000 || !lastId) break;
+    }
+
+    const skus = new Set<string>();
+    for (let index = 0; index < productIds.length; index += 1000) {
+      const res = await tfetch(c, `${BASE}/v3/product/info/list`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({ product_id: productIds.slice(index, index + 1000) }),
+        ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
+      const json = (await res.json()) as { items?: { sku?: number; sources?: { sku?: number }[] }[] };
+      for (const item of json.items ?? []) {
+        if (Number(item.sku ?? 0) > 0) skus.add(String(item.sku));
+        for (const source of item.sources ?? []) if (Number(source.sku ?? 0) > 0) skus.add(String(source.sku));
+      }
+    }
+
+    const rows: OzonBalanceStockRow[] = [];
+    const allSkus = [...skus];
+    for (let index = 0; index < allSkus.length; index += 100) {
+      const res = await tfetch(c, `${BASE}/v1/analytics/stocks`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({ skus: allSkus.slice(index, index + 100) }),
+        ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
+      });
+      if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 160)}` };
+      const json = (await res.json()) as { items?: Record<string, unknown>[] };
+      for (const item of json.items ?? []) {
+        const quantity = ozonBalanceStockQuantity(item);
+        if (quantity <= 0) continue;
+        rows.push({
+          sku: Number(item.sku ?? 0),
+          article: String(item.offer_id ?? ""),
+          name: String(item.name ?? ""),
+          warehouse: String(item.warehouse_name ?? item.cluster_name ?? "Ozon"),
+          quantity,
+          statusCounts: ozonBalanceStockCounts(item),
+        });
+      }
+    }
+    return { ok: true, rows };
+  } catch (error) {
+    return { ok: false, error: String(error).slice(0, 160) };
   }
 }
 
