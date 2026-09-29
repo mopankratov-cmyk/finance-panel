@@ -41,8 +41,17 @@ export function bankReviewSpendingSplits<T extends BankReviewChainSplit>(splits:
   return splits.filter((split) => !split.excluded && !split.isRemainder
     && split.countsTowardBank !== false && flow(split) === "expense" && !technicalLoan(split));
 }
+// Только НЕисключённые части: buildChainEntries ниже для excluded-частей не
+// создаёт ни одной записи платежа — включать их сумму сюда значило бы
+// считать деньги распределёнными там, где их разнесение в ДДС на самом деле
+// пропущено. С этим совпадением chainRemainder/validateChain (при
+// throughCash=false, где remainder обязан быть строго 0) молча пропускали
+// сохранение цепочки с исключённой частью: allocationTotal засчитывал её как
+// уже распределённую, buildChainEntries эту же часть просто выбрасывал — и
+// сумма реального банковского оттока переставала существовать в ДДС вообще,
+// без единой ошибки при сохранении.
 export function allocationTotal(draft: PaymentChainDraft) {
-  return draft.allocations.reduce((sum, p) => sum + cents(p.amount), 0) / 100;
+  return draft.allocations.reduce((sum, p) => sum + (p.excluded ? 0 : cents(p.amount)), 0) / 100;
 }
 export function chainRemainder(draft: PaymentChainDraft) { return (cents(draft.sourceAmount) - cents(allocationTotal(draft))) / 100; }
 export function encodeChainMetadata(meta: ChainMetadata, comment = "") {

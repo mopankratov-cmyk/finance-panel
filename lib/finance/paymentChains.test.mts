@@ -71,6 +71,44 @@ test('excluded parts do not create loans or expenses; malformed metadata does no
  assert.deepEqual(chainMetadata(encodeChainMetadata(meta,'[calendar-fact:abc] пояснение')),meta);
  assert.match(encodeChainMetadata(meta,'[calendar-fact:abc]'),/calendar-fact:abc/);
 });
+test('excluded part is NOT counted as already distributed — allocationTotal/remainder stay honest',()=>{
+ // Дивиденды (30000) исключены — buildChainEntries для них не создаёт ни
+ // одной записи (проверено тестом выше). allocationTotal раньше засчитывал
+ // их как распределённые (5000+10000+30000=45000, остаток 10000 — как будто
+ // ничего не изменилось), хотя реально распределено только 15000, а 40000
+ // (10000 остаток + 30000 исключённое) нигде не проведены.
+ const d=draft();d.allocations[2].excluded=true;
+ assert.equal(allocationTotal(d),15000,'исключённая часть не должна считаться распределённой');
+ assert.equal(chainRemainder(d),40000,'остаток обязан честно показывать и невыделенное, и исключённое');
+});
+test('excluded part on a non-cash chain blocks saving with an honest remainder, not a silent success',()=>{
+ // Банковская выписка на -100000 без наличных (throughCash=false, прямой
+ // расход со счёта источника): разносим 60000 обычной частью, 40000 —
+ // «не включать в ДДС». Раньше exclude 40000 проходил валидацию
+ // (allocationTotal их засчитывал как распределённые), а buildChainEntries
+ // эту сумму просто не проводил — 40000 ₽ реального банковского оттока
+ // переставали существовать где-либо в ДДС, без единой ошибки при сохранении.
+ const d=draft();d.throughCash=false;d.sourceAmount=100000;d.cashAccountId='';
+ d.allocations=[
+  {id:'a',amount:60000,date:'2026-09-10',name:'Обычная часть',category:'Прочие расходы',companyId:'main',accountId:'bank',counterparty:'',excluded:false},
+  {id:'b',amount:40000,date:'2026-09-10',name:'Не включать',category:'',companyId:'',accountId:'',counterparty:'',excluded:true},
+ ];
+ const errors=validateChain(d,accounts,companies,DDS_CATEGORIES);
+ assert.match(errors.join(' '),/Распределите исходную сумму полностью/,'исключённая часть должна требовать довести остаток до нуля, а не проходить молча');
+ assert.equal(chainRemainder(d),40000);
+});
+test('excluding a part is still valid when routed through cash — the full source amount is a real payment either way',()=>{
+ // throughCash=true уже И ДО фикса не требовал remainder===0 (наличные
+ // сами по себе — легитимный "карман" для ещё не разнесённой суммы). Важно,
+ // что buildChainEntries.source по-прежнему проводит ПОЛНУЮ sourceAmount —
+ // исключённая часть не вычитает деньги из банковского оттока, только не
+ // создаёт для них отдельную статью расхода.
+ const d=draft();d.allocations[2].excluded=true;
+ assert.deepEqual(validateChain(d,accounts,companies,DDS_CATEGORIES),[],'наличные — легитимный способ оставить часть неразнесённой');
+ const rows=entries(d);
+ const source=rows.find(e=>e.role==='source')!;
+ assert.equal(source.payment.amount,-55000,'вся банковская сумма уходит в наличные независимо от исключённых частей');
+});
 
 test('transfer to a card has its matching incoming entry and does not masquerade as an expense',()=>{
  const d=draft();d.allocations[2]={...d.allocations[2],category:'Выбытие — Перевод между счетами',targetAccountId:'bank'};
