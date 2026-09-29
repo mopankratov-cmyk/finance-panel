@@ -420,7 +420,13 @@ export async function GET(request: NextRequest) {
     const wbCatalogIndex = await loadWbCatalogIndex(reportingWbTargets.flatMap((target) => target.cabinetId ? [target.cabinetId] : []));
     for (const group of groupWbStatisticsTargets(reportingWbTargets)) {
       try {
-        const remains = await fetchWarehouseRemains({ token: group[0].statsToken });
+        const remains = await fetchWarehouseRemains({
+          token: group[0].statsToken,
+          // Снимок запускается раз в месяц и обязан пережить краткий общий
+          // лимит seller-analytics. Три ожидания по подсказке WB укладываются
+          // в maxDuration=300 и не меняют поведение часового синка остатков.
+          maxRateLimitRetries: 3,
+        });
         for (const target of group) {
           const byNm = new Map<number, number>();
           const productScope = balanceWbProductScope(target.name, target.productScope);

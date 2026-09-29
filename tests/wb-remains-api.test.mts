@@ -128,6 +128,29 @@ test("429 без Retry-After ждёт по X-RateLimit-Retry, а не слепы
   assert.deepEqual(waits, [17_000, 5_000]);
 });
 
+test("критичный снимок может пережить три последовательных 429", async () => {
+  let calls = 0;
+  const waits: number[] = [];
+  const fetchImpl = async () => {
+    calls++;
+    if (calls <= 3) return new Response("too many requests", { status: 429, headers: { "x-ratelimit-retry": "2" } });
+    if (calls === 4) return Response.json({ data: { taskId: "task-critical" } });
+    if (calls === 5) return Response.json({ data: { id: "task-critical", status: "done" } });
+    return Response.json([]);
+  };
+
+  const report = await fetchWarehouseRemains({
+    token: "test-token",
+    fetchImpl,
+    sleep: async (ms) => { waits.push(ms); },
+    maxRateLimitRetries: 3,
+  });
+
+  assert.equal(calls, 6);
+  assert.deepEqual(waits, [2_000, 2_000, 2_000, 5_000]);
+  assert.deepEqual(report, []);
+});
+
 test("нежданный статус задачи — ошибка, а не вечный цикл", async () => {
   const fetchImpl = async (input: string | URL | Request) => {
     if (String(input).includes("/status")) return Response.json({ data: { status: "canceled" } });
