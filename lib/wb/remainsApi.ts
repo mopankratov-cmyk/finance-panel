@@ -70,6 +70,7 @@ export interface WarehouseRemainsOptions {
   sleep?: (ms: number) => Promise<void>;
   pollIntervalMs?: number;
   maxStatusPolls?: number;
+  maxRateLimitRetries?: number;
 }
 
 function retryDelayMs(response: Response, fallbackMs: number): number {
@@ -82,7 +83,7 @@ function retryDelayMs(response: Response, fallbackMs: number): number {
 
 async function requestJson<T>(
   url: string,
-  options: { fetchImpl: FetchLike; sleep: (ms: number) => Promise<void>; token: string },
+  options: { fetchImpl: FetchLike; sleep: (ms: number) => Promise<void>; token: string; maxRateLimitRetries: number },
 ): Promise<T> {
   const init: RequestInit = {
     method: "GET",
@@ -90,9 +91,10 @@ async function requestJson<T>(
     cache: "no-store",
   };
   let response = await options.fetchImpl(url, init);
-  // Лимит warehouse_remains действует на аккаунт продавца: один повтор спасает,
-  // когда ручной запуск пересёкся с cron.
-  if (response.status === 429) {
+  // Лимит warehouse_remains действует на аккаунт продавца. Обычный часовой
+  // синк делает один повтор, а критичный месячный снимок может дать больше
+  // попыток в своём 300-секундном бюджете.
+  for (let attempt = 0; response.status === 429 && attempt < options.maxRateLimitRetries; attempt += 1) {
     await options.sleep(retryDelayMs(response, 60_000));
     response = await options.fetchImpl(url, init);
   }
@@ -108,7 +110,8 @@ export async function fetchWarehouseRemains(options: WarehouseRemainsOptions): P
   const sleep = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const pollIntervalMs = options.pollIntervalMs ?? 5_000;
   const maxStatusPolls = options.maxStatusPolls ?? 36;
-  const ctx = { fetchImpl, sleep, token: options.token };
+  const maxRateLimitRetries = Math.max(0, Math.floor(options.maxRateLimitRetries ?? 1));
+  const ctx = { fetchImpl, sleep, token: options.token, maxRateLimitRetries };
 
   const created = await requestJson<{ data?: { taskId?: string } }>(
     `${WB_WAREHOUSE_REMAINS_URL}?groupByNm=true`,
