@@ -19,50 +19,31 @@ export const maxDuration = 300;
 
 const JOB = "wb_tax_documents";
 const PAGE_SIZE = 50;
+const LOOKBACK_DAYS = 60;
+const MAX_LIST_PAGES = 10;
 const MAX_DOWNLOADS_PER_CABINET = 5;
-
-interface CursorState extends Record<string, unknown> {
-  month: string;
-  offset: number;
-  backfillComplete: boolean;
-}
 
 type Cabinet = { id: string; name: string; inn: string | null; token: string };
 type SourceRow = { external_id: string; status: string };
 
-function currentMonth(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit" }).format(new Date());
+function mskDate(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
 }
 
-function previousMonth(month: string): string {
-  const [year, number] = month.split("-").map(Number);
-  const date = new Date(Date.UTC(year, number - 2, 1));
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+function recentWindow(): { from: string; to: string } {
+  const now = new Date();
+  return { from: mskDate(new Date(now.getTime() - LOOKBACK_DAYS * 86_400_000)), to: mskDate(now) };
 }
 
-function monthRange(month: string): { from: string; to: string } {
-  const [year, number] = month.split("-").map(Number);
-  const last = new Date(Date.UTC(year, number, 0)).getUTCDate();
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-  return { from: `${month}-01`, to: month === today.slice(0, 7) ? today : `${month}-${String(last).padStart(2, "0")}` };
-}
-
-function cursorState(value: Partial<CursorState> | undefined): CursorState {
-  const now = currentMonth();
-  const validMonth = /^\d{4}-\d{2}$/.test(String(value?.month ?? "")) ? String(value!.month) : now;
-  return {
-    month: validMonth,
-    offset: Math.max(0, Number(value?.offset) || 0),
-    backfillComplete: Boolean(value?.backfillComplete),
-  };
-}
-
-function nextCursor(state: CursorState, rowCount: number): CursorState {
-  if (rowCount >= PAGE_SIZE) return { ...state, offset: state.offset + PAGE_SIZE };
-  if (state.backfillComplete) return { month: currentMonth(), offset: 0, backfillComplete: true };
-  const previous = previousMonth(state.month);
-  if (previous < `${currentMonth().slice(0, 4)}-01`) return { month: currentMonth(), offset: 0, backfillComplete: true };
-  return { month: previous, offset: 0, backfillComplete: false };
+async function listRecentDocuments(token: string, from: string, to: string): Promise<WbDocumentListItem[]> {
+  const documents: WbDocumentListItem[] = [];
+  for (let page = 0; page < MAX_LIST_PAGES; page++) {
+    if (page > 0 && page % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 10_000));
+    const batch = await listWbDocuments(token, from, to, page * PAGE_SIZE);
+    documents.push(...batch);
+    if (batch.length < PAGE_SIZE) return documents;
+  }
+  throw new Error(`WB вернул больше ${PAGE_SIZE * MAX_LIST_PAGES} документов за последние ${LOOKBACK_DAYS} дней; сузьте окно или увеличьте лимит`);
 }
 
 async function companyByCabinet() {
@@ -104,13 +85,12 @@ async function updateSource(id: string, values: Record<string, unknown>) {
 async function syncCabinet(cabinet: Cabinet, companyId: string | undefined) {
   const db = getSupabaseAdmin()!;
   const claimed = await claimWbSyncJob(db, cabinet.id, JOB, 600);
-  if (!claimed) return { cabinet: cabinet.name, status: "busy", discovered: 0, imported: 0, review: 0, skipped: 0, errors: 0 };
-  const previous = await readWbSyncState<CursorState>(db, cabinet.id, JOB);
-  const state = cursorState(previous?.state);
-  const range = monthRange(state.month);
+  if (!claimed) return { cabinet: cabinet.name, status: "busy", discovered: 0, matched: 0, imported: 0, review: 0, skipped: 0, errors: 0 };
+  const previous = await readWbSyncState<Record<string, unknown>>(db, cabinet.id, JOB);
+  const range = recentWindow();
 
   try {
-    const listed = (await listWbDocuments(cabinet.token, range.from, range.to, state.offset)).map(normalizeItem).filter((item): item is WbDocumentListItem => Boolean(item));
+    const listed = (await listRecentDocuments(cabinet.token, range.from, range.to)).map(normalizeItem).filter((item): item is WbDocumentListItem => Boolean(item));
     const sourceRows = listed.map((item) => ({
       id: stableTaxDocumentId(cabinet.id, item.serviceName, "source"),
       cabinet_id: cabinet.id,
@@ -135,6 +115,7 @@ async function syncCabinet(cabinet: Cabinet, companyId: string | undefined) {
     if (existing.error) throw new Error(existing.error.message);
     const statusByExternal = new Map((existing.data ?? []).map((row) => [String(row.external_id), String(row.status)]));
     const pending = listed.filter(isTaxDocumentCategory).filter((item) => !["imported", "skipped", "needs_review"].includes(statusByExternal.get(item.serviceName) ?? ""));
+    const matched = listed.filter(isTaxDocumentCategory).length;
     let imported = 0; let review = 0; let skipped = 0; let errors = 0;
 
     for (const item of pending.slice(0, MAX_DOWNLOADS_PER_CABINET)) {
@@ -193,19 +174,18 @@ async function syncCabinet(cabinet: Cabinet, companyId: string | undefined) {
       }
     }
 
-    const next = nextCursor(state, listed.length);
     await writeWbSyncState(db, cabinet.id, JOB, {
-      cursor: `${state.month}:${state.offset}`,
+      cursor: `${range.from}:${range.to}`,
       status: errors ? "partial" : "ok",
       attempts: errors ? (previous?.attempts ?? 0) + 1 : 0,
       lastError: errors ? `${errors} документов не обработано` : null,
-      state: next,
+      state: { from: range.from, to: range.to, lookbackDays: LOOKBACK_DAYS, discovered: listed.length, matched },
     });
-    return { cabinet: cabinet.name, status: errors ? "partial" : "ok", month: state.month, offset: state.offset, discovered: listed.length, imported, review, skipped, errors };
+    return { cabinet: cabinet.name, status: errors ? "partial" : "ok", from: range.from, to: range.to, discovered: listed.length, matched, imported, review, skipped, errors };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
-    await writeWbSyncState(db, cabinet.id, JOB, { cursor: previous?.cursor ?? null, status: "error", attempts: (previous?.attempts ?? 0) + 1, lastError: message.slice(0, 1_000), state });
-    return { cabinet: cabinet.name, status: "error", month: state.month, offset: state.offset, discovered: 0, imported: 0, review: 0, skipped: 0, errors: 1, error: message };
+    await writeWbSyncState(db, cabinet.id, JOB, { cursor: previous?.cursor ?? null, status: "error", attempts: (previous?.attempts ?? 0) + 1, lastError: message.slice(0, 1_000), state: { from: range.from, to: range.to, lookbackDays: LOOKBACK_DAYS } });
+    return { cabinet: cabinet.name, status: "error", from: range.from, to: range.to, discovered: 0, matched: 0, imported: 0, review: 0, skipped: 0, errors: 1, error: message };
   }
 }
 
@@ -223,9 +203,10 @@ export async function GET(request: NextRequest) {
   const companies = await companyByCabinet();
   const results = await Promise.all(((data ?? []) as Cabinet[]).map((cabinet) => syncCabinet(cabinet, companies.get(cabinet.id))));
   const totals = results.reduce((sum, result) => ({
-    discovered: sum.discovered + result.discovered, imported: sum.imported + result.imported,
+    discovered: sum.discovered + result.discovered, matched: sum.matched + result.matched, imported: sum.imported + result.imported,
     review: sum.review + result.review, skipped: sum.skipped + result.skipped, errors: sum.errors + result.errors,
-  }), { discovered: 0, imported: 0, review: 0, skipped: 0, errors: 0 });
+  }), { discovered: 0, matched: 0, imported: 0, review: 0, skipped: 0, errors: 0 });
   await writeSyncLog(JOB, totals.errors ? "partial" : "ok", totals.imported, totals.errors ? `${totals.errors} ошибок` : null, startedAt);
   return NextResponse.json({ ok: totals.errors === 0, totals, cabinets: results });
 }
+
