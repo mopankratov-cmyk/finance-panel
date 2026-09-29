@@ -28,3 +28,8 @@ test("tax page includes report services and full-cabinet advertising in USN with
   assert.match(page, /marketplaceExpensesGross: \(register\?\.yearSettings\.recognizedCogs \?\? 0\) \+ automaticMarketplaceExpenses \+ additionalMpExpenses/);
   assert.match(page, /advertisingCoverageIncomplete/);
 });
+
+test("tax route returns complete defaults before a company is selected", () => {
+  assert.match(source, /yearSettings:\s*\{[\s\S]*fixedInsuranceContributions:\s*0/);
+  assert.match(source, /marketplaceTaxDocuments:\s*\[\]/);
+});

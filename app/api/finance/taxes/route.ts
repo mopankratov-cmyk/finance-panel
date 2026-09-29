@@ -23,7 +23,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const DOCUMENT_STATUSES = new Set<VatDocumentStatus>(["missing", "received", "not_required"]);
 const DEDUCTION_STATUSES = new Set<VatDeductionStatus>(["pending", "eligible", "not_eligible"]);
 const USN_STATUSES = new Set<UsnExpenseStatus>(["pending", "included", "excluded"]);
-const TAX_PAYMENT_KINDS = new Set(["operating_expense", "insurance_contribution", "usn_tax_payment", "other_tax"] as const);
+const TAX_PAYMENT_KINDS = new Set(["operating_expense", "insurance_contribution", "usn_tax_payment", "vat_tax_payment", "other_tax"] as const);
 const MARKETPLACES = new Set(["wb", "ozon", "other"] as const);
 const MISSING_TABLE = new Set(["42P01", "PGRST204", "PGRST205"]);
 
@@ -50,7 +50,7 @@ type DetailRow = {
   tax_payment_kind?: TaxPaymentKind;
 };
 
-type TaxPaymentKind = "operating_expense" | "insurance_contribution" | "usn_tax_payment" | "other_tax";
+type TaxPaymentKind = "operating_expense" | "insurance_contribution" | "usn_tax_payment" | "vat_tax_payment" | "other_tax";
 
 type MarketplaceTaxDocumentRow = {
   id: string;
@@ -251,6 +251,16 @@ export async function GET(request: NextRequest) {
         wbAdvertisingExpense: 0,
         wbAdvertisingCoverageStart: null,
         taxPaid: 0,
+        yearSettings: {
+          fixedInsuranceContributions: 0,
+          insuranceReductionLimitPercent: 0,
+          priorYearLoss: 0,
+          recognizedCogs: 0,
+          outputVatConfirmed: null,
+          hasEmployees: false,
+          note: "",
+        },
+        marketplaceTaxDocuments: [],
       });
     }
     const rows = await loadAllSupabasePages<PaymentRow>((pageFrom, pageTo) => db
@@ -276,6 +286,9 @@ export async function GET(request: NextRequest) {
     // ЕНП и обычный платёж «налог» нельзя автоматически отнести к УСН:
     // внутри ЕНС он может погашать НДС, страховые взносы и другие обязанности.
     const taxPattern = /(?:^|[^а-яё])усн(?:[^а-яё]|$)|упрощ[её]нн|единый\s+налог[^а-яё]+.*упрощ/i;
+    // Обычное назначение «оплата услуг, в т.ч. НДС» не является уплатой
+    // налога. Подсказываем НДС только при явной налоговой формулировке.
+    const vatTaxPattern = /(?:уплата|перечисление|налоговый\s+плат[её]ж)\s+(?:налога\s+)?(?:на\s+добавленную\s+стоимость|ндс)|(?:^|[^а-яё])ндс\s+(?:за|налог)/i;
     const payments = rows
       .map((row) => {
         const saved = details.byId.get(row.id);
@@ -283,6 +296,8 @@ export async function GET(request: NextRequest) {
         const paymentText = `${row.category} ${row.name} ${row.counterparty ?? ""}`;
         const suggestedTaxKind: TaxPaymentKind = taxPattern.test(paymentText)
           ? "usn_tax_payment"
+          : vatTaxPattern.test(paymentText)
+            ? "vat_tax_payment"
           : /страхов.*взнос|взнос.*(?:опс|омс|сфр)/i.test(paymentText)
             ? "insurance_contribution"
             : "operating_expense";
