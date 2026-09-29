@@ -309,7 +309,17 @@ export function normalizePurchaseOrderPayload(raw: unknown, forced?: { id?: stri
   const orderDate = nullableDate(source.orderDate);
   const productionDays = number(source.productionDays);
   const currency = text(source.currency, 3) as PurchaseCurrency;
-  const exchangeRate = number(source.exchangeRate);
+  // unitPrice/amount заказа в RUB уже в рублях — курс конвертации не
+  // применяется нигде дальше по документу (purchaseOrderTotals умножает
+  // goodsCurrency на exchangeRate безусловно; тот же курс масштабирует
+  // ordered/received в /api/purchase-orders/settlements). Форма не сбрасывала
+  // курс при переключении валюты на RUB в select'е — «Итого заказа»,
+  // «Заказано»/«Получено» и баланс с поставщиком считались завышенными в
+  // exchangeRate раз (например, оставшийся от CNY курс 12.5). Игнорируем
+  // присланный курс для RUB и всегда фиксируем 1 — сервер, не клиент,
+  // потому что это единственное место, которое реально сохраняет документ.
+  const rawExchangeRate = number(source.exchangeRate);
+  const exchangeRate = currency === "RUB" ? 1 : rawExchangeRate;
   const status = text(source.status, 20) as PurchaseOrderStatus;
 
   if (!cabinetId) return { ok: false, error: "Укажите кабинет" };

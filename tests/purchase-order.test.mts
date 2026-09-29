@@ -32,6 +32,41 @@ test("purchase order normalizes dates and calculates the complete landed total",
   });
 });
 
+// Regression: комплексный аудит панели — форма не сбрасывала курс валюты
+// при переключении на RUB (оставался старый курс CNY, например 12.5), и
+// purchaseOrderTotals безусловно умножал goodsCurrency на этот курс. Заказ
+// на 2000 ₽ товара показывал бы «Итого» 25 000 ₽.
+test("RUB-заказ игнорирует присланный курс и считает 1:1, независимо от того, что осталось в форме", () => {
+  const result = normalizePurchaseOrderPayload({ ...draft, currency: "RUB", exchangeRate: 12.5 });
+  assert.equal(result.ok, true);
+  if (!result.ok) return;
+  assert.equal(result.value.exchangeRate, 1, "курс должен зафиксироваться в 1, а не остаться от предыдущей валюты");
+  assert.deepEqual(purchaseOrderTotals(result.value), {
+    goodsCurrency: 2_000,
+    goodsRub: 2_000,
+    logisticsRub: 5_000,
+    expensesRub: 1_000,
+    totalRub: 8_000,
+    quantity: 100,
+  });
+});
+
+test("RUB-заказ проходит валидацию даже с мусорным/пустым курсом — он всё равно игнорируется", () => {
+  const zero = normalizePurchaseOrderPayload({ ...draft, currency: "RUB", exchangeRate: 0 });
+  assert.equal(zero.ok, true, "нулевой курс не должен блокировать сохранение RUB-заказа — он не участвует в расчёте");
+  if (zero.ok) assert.equal(zero.value.exchangeRate, 1);
+
+  const negative = normalizePurchaseOrderPayload({ ...draft, currency: "RUB", exchangeRate: -5 });
+  assert.equal(negative.ok, true);
+  if (negative.ok) assert.equal(negative.value.exchangeRate, 1);
+});
+
+test("не-RUB заказ по-прежнему требует корректный курс", () => {
+  const invalid = normalizePurchaseOrderPayload({ ...draft, currency: "CNY", exchangeRate: 0 });
+  assert.equal(invalid.ok, false);
+  if (!invalid.ok) assert.match(invalid.error, /курс/);
+});
+
 test("purchase order rejects duplicate SKU and invalid quantity", () => {
   const duplicate = normalizePurchaseOrderPayload({ ...draft, items: [...draft.items, { ...draft.items[0], quantity: 1 }] });
   assert.equal(duplicate.ok, false);
