@@ -62,14 +62,19 @@ const RATIO_RULES: Record<string, (g: Get) => number | null> = {
     return fbs != null && known > 0 ? r1((fbs / known) * 100) : null;
   },
   drr: (g) => pctOf(g("ad_spent"), g("orders_sum")),
-  romi: (g) => pctOf(g("gross"), g("ad_spent")),
+  // romi/profit_per_unit — В weightedRules, не здесь: g("gross") суммирует
+  // только SKU с известной себестоимостью (она null у остальных), а
+  // g("ad_spent")/g("buyouts_count") суммировали бы ВСЕ выбранные SKU — тот же
+  // баг, что чинили для margin_pct (costedRatio ниже), просто для другой пары
+  // полей. SKU A gross=100000₽/buyouts=50 (себестоимость известна) + SKU B
+  // gross=null/buyouts=200 (неизвестна) давало бы profit_per_unit=400₽/шт
+  // вместо верных 100000/50=2000₽/шт.
   gmroi: (g) => {
     const value = pctOf(g("gross"), g("money"));
     return value == null ? null : Math.min(999, value);
   },
   avg_order_price: (g) => perUnit(g("orders_sum"), g("orders_count")),
   avg_buyout_price: (g) => perUnit(g("buyouts_sum"), g("buyouts_count")),
-  profit_per_unit: (g) => perUnit(g("gross"), g("buyouts_count")),
 };
 
 type At = (metric: BaseMetric) => number | null;
@@ -90,29 +95,36 @@ function weightedRules(skusMetrics: Map<string, BaseMetric>[], at: At): Record<s
     }
     return weightTotal > 0 ? weightedSum / weightTotal : null;
   };
-  // Знаменатель маржи — выкупы ТОЛЬКО тех SKU, у которых прибыль посчитана.
-  // Сервер считает именно так (costedBuyoutsSumDaily в buildTable). Общий
-  // знаменатель по всем выбранным SKU занижал маржу тем сильнее, чем больше
-  // товаров без себестоимости: половина ассортимента без закупочной цены
-  // превращала честные 20% в 10%, и по этой цифре поднимали цены.
-  const costedRatio = (profitField: string) => (): number | null => {
+  // Знаменатель — сумма поля denominatorField ТОЛЬКО тех SKU, у которых
+  // числитель (profitField) посчитан. Сервер считает именно так
+  // (costedBuyoutsSumDaily/costedBuyoutsCountDaily/costedAdSpendDaily в
+  // buildTable). Знаменатель по ВСЕМ выбранным SKU занижал бы метрику тем
+  // сильнее, чем больше товаров без себестоимости: половина ассортимента без
+  // закупочной цены превращала честные 20% маржи в 10%, и по этой цифре
+  // поднимали цены (тот же класс бага для profit_per_unit/romi — см. коммент
+  // у RATIO_RULES выше).
+  const costedRatio = (profitField: string, denominatorField: string, scale: 100 | 1) => (): number | null => {
     let profit = 0;
-    let buyouts = 0;
+    let denominator = 0;
     let seen = false;
     for (const metrics of skusMetrics) {
-      const gross = metrics.has(profitField) ? at(metrics.get(profitField)!) : null;
-      const sum = metrics.has("buyouts_sum") ? at(metrics.get("buyouts_sum")!) : null;
-      if (gross == null || sum == null) continue;
-      profit += gross;
-      buyouts += sum;
+      const value = metrics.has(profitField) ? at(metrics.get(profitField)!) : null;
+      const den = metrics.has(denominatorField) ? at(metrics.get(denominatorField)!) : null;
+      if (value == null || den == null) continue;
+      profit += value;
+      denominator += den;
       seen = true;
     }
-    return seen && buyouts > 0 ? r1((profit / buyouts) * 100) : null;
+    if (!seen || denominator <= 0) return null;
+    const result = (profit / denominator) * scale;
+    return scale === 100 ? r1(result) : Math.round(result);
   };
 
   return {
-    margin_pct: costedRatio("gross"),
-    net_margin_pct: costedRatio("net_profit"),
+    margin_pct: costedRatio("gross", "buyouts_sum", 100),
+    net_margin_pct: costedRatio("net_profit", "buyouts_sum", 100),
+    profit_per_unit: costedRatio("gross", "buyouts_count", 1),
+    romi: costedRatio("gross", "ad_spent", 100),
     // Цена покупателя = Σ(цена_i × выкупы_gross_i) / Σвыкупов — точная сумма оплат.
     final_price: () => {
       const value = collect("final_price", "buyouts_gross_count");

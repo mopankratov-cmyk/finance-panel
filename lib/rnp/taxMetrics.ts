@@ -38,6 +38,18 @@ export function appendTaxMetrics(
   if (!buyoutsSum || !gross) return metrics;
   if (metrics.some((metric) => metric.field === "tax_rub")) return metrics;
   const sppPct = metrics.find((metric) => metric.field === "spp_pct");
+  // Знаменатель net_margin_pct обязан быть тем же, что у margin_pct — иначе
+  // сиблинг воспроизводит уже раз найденный и исправленный баг ("Общая сводка"
+  // делит costed-числитель на выкупы ВСЕХ SKU и занижает долю). На строке
+  // сводки margin_pct несёт weeklyParts.denominator — выкупы только SKU с
+  // известной себестоимостью (см. lib/rnp/buildTable.ts). У строки одного SKU
+  // weeklyParts нет: там своего расхождения нет, buyoutsSum.daily и так верный
+  // знаменатель для этого единственного SKU.
+  const marginMetric = metrics.find((metric) => metric.field === "margin_pct");
+  const revenueDaily = marginMetric?.weeklyParts?.denominator ?? buyoutsSum.daily;
+  const revenueTotal = marginMetric?.weeklyParts
+    ? revenueDaily.reduce<number | null>((sum, value) => (value == null ? sum : (sum ?? 0) + value), null)
+    : buyoutsSum.total;
   const rate = Number.isFinite(taxPct) && taxPct > 0 ? taxPct : 0;
   const extraRate = Number.isFinite(options.extraCommissionPct) && Number(options.extraCommissionPct) > 0
     ? Number(options.extraCommissionPct)
@@ -67,7 +79,7 @@ export function appendTaxMetrics(
     ? null
     : gross.total - taxTotal - agentTotal;
   const netMarginDaily = netDaily.map((value, index) => {
-    const revenue = buyoutsSum.daily[index];
+    const revenue = revenueDaily[index];
     return value == null || revenue == null || revenue <= 0 ? null : Math.round((value / revenue) * 1000) / 10;
   });
   const shared = {
@@ -103,10 +115,16 @@ export function appendTaxMetrics(
       label: "Чистая маржа, %",
       kind: "pct",
       daily: netMarginDaily,
-      total: netTotal != null && buyoutsSum.total != null && buyoutsSum.total > 0
-        ? Math.round((netTotal / buyoutsSum.total) * 1000) / 10
+      total: netTotal != null && revenueTotal != null && revenueTotal > 0
+        ? Math.round((netTotal / revenueTotal) * 1000) / 10
         : null,
-      note: `Чистая прибыль / выручка по выкупам. ${note}`,
+      note: `Чистая прибыль / выручка по выкупам${marginMetric?.weeklyParts ? " (только SKU с известной себестоимостью, как в margin_pct)" : ""}. ${note}`,
+      // Только у строки сводки (когда у margin_pct есть weeklyParts) — недельная
+      // колонка иначе взяла бы net_profit/buyouts_sum из WEEKLY_RATIO_PAIRS, тот
+      // же расхождающийся по охвату знаменатель. Не `parts`: сводка под
+      // фильтром требует такую же часть у каждого SKU, а у SKU её нет — см.
+      // комментарий у Metric.weeklyParts.
+      ...(marginMetric?.weeklyParts ? { weeklyParts: { numerator: netDaily, denominator: revenueDaily, scale: 100 as const } } : {}),
       ...shared,
     },
   ];

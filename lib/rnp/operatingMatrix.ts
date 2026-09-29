@@ -804,6 +804,8 @@ interface GranularityMetricLike {
   daily: (number | null)[];
   /** Числитель и знаменатель, которых нет среди строк таблицы (см. Metric.parts). */
   parts?: { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1 };
+  /** Только для строки сводки — см. Metric.weeklyParts. */
+  weeklyParts?: { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1 };
 }
 
 interface GranularityTableLike {
@@ -881,6 +883,13 @@ const WEEKLY_RATIO_PAIRS: Record<string, { numerator: string; denominator: strin
   // в наборе метрик такого знаменателя нет. Пересчёт по общему buyouts_sum
   // занижал бы недельную маржу и расходился с колонкой «Итого» на том же
   // экране — ровно та ошибка, которую чинили в сводке под фильтром.
+  //
+  // net_margin_pct/romi/profit_per_unit здесь ОСТАЮТСЯ — эти пары по-прежнему
+  // нужны СТРОКАМ ОТДЕЛЬНЫХ SKU (у одного SKU costed-разрыва нет, buyouts_sum/
+  // ad_spent/buyouts_count того же SKU и так верный знаменатель). Строку
+  // СВОДКИ они больше не считают: buildTable.ts/taxMetrics.ts кладут ей
+  // weeklyParts с costed-ограниченным знаменателем, и mapMetrics выше
+  // проверяет weeklyParts раньше этой карты (см. комментарий там же).
   net_margin_pct: { numerator: "net_profit", denominator: "buyouts_sum", scale: 100 },
   romi: { numerator: "gross", denominator: "ad_spent", scale: 100 },
   avg_order_price: { numerator: "orders_sum", denominator: "orders_count", scale: 1 },
@@ -949,6 +958,29 @@ export function aggregateRnpWeekly<T extends GranularityTableLike>(table: T, fro
       if (!metric.parts && PARTS_ONLY_METRIC_FIELDS.has(metric.field)) {
         // Снимок старше `parts`: среднее процентов по дням было бы неверным.
         return { ...metric, daily: buckets.map(() => null) };
+      }
+      // weeklyParts — только у строки СВОДКИ (margin_pct/profit_per_unit/romi),
+      // не у SKU: их знаменатель — сумма по SKU С ИЗВЕСТНОЙ себестоимостью, а не
+      // "факт есть у всех выбранных SKU", как у обычных `parts`. Намеренно НЕ
+      // кладём weeklyParts обратно в результат и не трогаем `parts` этой
+      // метрики — сводка под фильтром (composeRnpSummaryFromSkus) читает только
+      // `parts`, weeklyParts ей не виден, и это защищает от регресса: если бы
+      // знаменатель тут ушёл в `parts`, под фильтром метрика обнулялась бы —
+      // parts требует такую же часть у КАЖДОГО SKU, а у SKU её нет.
+      if (metric.weeklyParts) {
+        const numerator = bucketSums(metric.weeklyParts.numerator);
+        const denominator = bucketSums(metric.weeklyParts.denominator);
+        const scale = metric.weeklyParts.scale;
+        return {
+          ...metric,
+          daily: buckets.map((_, index) => {
+            const num = numerator[index];
+            const den = denominator[index];
+            if (num == null || den == null || !(den > 0)) return null;
+            const value = (num / den) * scale;
+            return scale === 100 ? Math.round(value * 10) / 10 : Math.round(value);
+          }),
+        };
       }
       if (metric.parts) {
         const numerator = bucketSums(metric.parts.numerator);

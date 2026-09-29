@@ -158,7 +158,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const [reportRows, costs, adSpendByNmId, ordersByNmId, paidStorage] = await Promise.all([
-      fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId),
+      // articlePrefixes обязателен для агентских кабинетов (Оптима, ~116k строк
+      // отчёта/день, 92% — чужие товары): без него запрос идёт по всему кабинету
+      // без дневного chunking'а и падает по statement timeout — тот же путь,
+      // который lib/opiu/loadMonth.ts уже проходит с этим аргументом.
+      fetchReportRows(dateFrom, dateTo, "sale", brand.cabinetId, brand.articlePrefixes),
       fetchProductCosts(brand),
       fetchAdSpendByNmId(brand.cabinetId, dateFrom, dateTo),
       fetchOrdersByNmId(brand.cabinetId, dateFrom, dateTo, brand.articlePrefixes),

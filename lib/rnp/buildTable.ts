@@ -451,6 +451,20 @@ export interface Metric {
    * что и день с тремястами.
    */
   parts?: RnpMetricParts;
+  /**
+   * Как `parts`, но только для недельной колонки строки СВОДКИ — не тронь для
+   * сводки под фильтром (composeRnpSummaryFromSkus). У `parts` семантика иная:
+   * это поле обязано быть на КАЖДОМ SKU (сводка под фильтром суммирует их части
+   * построчно, и пустая часть у одного SKU гасит весь день). У margin_pct/
+   * profit_per_unit/romi/net_margin_pct корректный знаменатель — это сумма по
+   * SKU С ИЗВЕСТНОЙ себестоимостью, а не пересечение "факт есть у всех" — тот
+   * же costedBuyoutsSumDaily уже верно считает composeRnpSummaryFromSkus через
+   * свой weightedRules/costedRatio. Если положить этот знаменатель в `parts`,
+   * а не сюда, summaryFromSkus.ts решит, что у КАЖДОГО SKU должна быть своя
+   * часть, не найдёт её (у SKU таких частей нет и не должно быть) и обнулит
+   * метрику под любым фильтром.
+   */
+  weeklyParts?: RnpMetricParts;
 }
 
 export interface RnpMetricParts {
@@ -3505,6 +3519,17 @@ export async function buildRnpTable(
         : null,
       forecast: null,
       source: "WB Финотчёт + себестоимость + WB Реклама",
+      // Без weeklyParts недельная колонка (aggregateRnpWeekly) не находит
+      // margin_pct в WEEKLY_RATIO_PAIRS (он там намеренно исключён — см.
+      // комментарий там же) и проваливается в наивное среднее по дням: день с
+      // тремя заказами весит столько же, сколько день с тремястами. С
+      // weeklyParts недельная колонка честно пересчитывает долю из сумм
+      // costedBuyoutsSumDaily — того же знаменателя, что и в total. Именно
+      // weeklyParts, не parts: сводка под фильтром (composeRnpSummaryFromSkus)
+      // читает parts и требует его у КАЖДОГО SKU — если положить сюда parts,
+      // она обнулит margin_pct под любым фильтром (см. комментарий у поля
+      // Metric.weeklyParts).
+      weeklyParts: { numerator: grossDaily, denominator: costedBuyoutsSumDaily, scale: 100 },
     });
     // Экономика сводки складывается по SKU: себестоимость и ставки WB у каждого свои,
     // общей ставки для всего кабинета не существует. Статьи удержаний — тоже:
@@ -3528,6 +3553,16 @@ export async function buildRnpTable(
         ? Math.round(grossTotal / costedBuyoutsCountTotal)
         : null,
       forecast: null,
+      // Без weeklyParts недельная колонка находит profit_per_unit в
+      // WEEKLY_RATIO_PAIRS (gross/buyouts_count) и суммирует поле buyouts_count
+      // как есть — а это сумма по ВСЕМ SKU, не только costedSkus. Тот же баг,
+      // что чинили для total/daily чуть выше, воспроизводился бы заново на
+      // недельном виде. WEEKLY_RATIO_PAIRS[profit_per_unit] оставлен как есть —
+      // он по-прежнему нужен строкам отдельных SKU (у них своего
+      // coverage-разрыва нет). weeklyParts, не parts — см. комментарий у поля
+      // Metric.weeklyParts: parts читает и сводка под фильтром, требуя его у
+      // каждого SKU, а у SKU такой части нет и не должно быть.
+      weeklyParts: { numerator: grossDaily, denominator: costedBuyoutsCountDaily, scale: 1 },
     });
     const romiMetric = summary.find((item) => item.field === "romi");
     if (romiMetric) Object.assign(romiMetric, {
@@ -3540,6 +3575,10 @@ export async function buildRnpTable(
         ? Math.round((grossTotal / costedAdSpendTotal) * 1000) / 10
         : null,
       forecast: null,
+      // Та же история, что у profit_per_unit чуть выше: без weeklyParts
+      // недельная колонка возьмёт romi из WEEKLY_RATIO_PAIRS (gross/ad_spent) и
+      // просуммирует ad_spent по ВСЕМ SKU, а не только costedSkus.
+      weeklyParts: { numerator: grossDaily, denominator: costedAdSpendDaily, scale: 100 },
     });
     applyMetricForecasts(summary, days, asOf);
     // Повторный проход прогнозов сбросил бы покрытие производных долей на 100%.

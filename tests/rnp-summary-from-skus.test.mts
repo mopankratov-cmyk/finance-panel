@@ -174,6 +174,33 @@ test("маржа под фильтром делится на выкупы тол
   assert.equal(summary[0].daily[0], 20);
 });
 
+test("прибыль на единицу и ROMI под фильтром считаются по SKU только с известной себестоимостью", () => {
+  // SKU A: gross=100000₽, buyouts_count=50, ad_spent=200 (себестоимость известна).
+  // SKU B: gross неизвестен (null), buyouts_count=200, ad_spent=800 — наивная
+  // сумма buyouts_count/ad_spent по ОБОИМ SKU дала бы 100000/250=400₽/шт и
+  // 100000/1000×100=10000% вместо верных 100000/50=2000₽/шт и 100000/200×100=50000%.
+  const withCost = { metrics: [
+    metric("gross", "money", [100_000], 100_000),
+    metric("buyouts_count", "int", [50], 50),
+    metric("ad_spent", "money", [200], 200),
+  ] };
+  const withoutCost = { metrics: [
+    metric("buyouts_count", "int", [200], 200),
+    metric("ad_spent", "money", [800], 800),
+  ] };
+  const summary = composeRnpSummaryFromSkus(
+    [metric("profit_per_unit", "money", [null], null), metric("romi", "pct", [null], null)],
+    [withCost, withoutCost],
+    30,
+  );
+  const profitPerUnit = summary.find((item) => item.field === "profit_per_unit")!;
+  const romi = summary.find((item) => item.field === "romi")!;
+  assert.equal(profitPerUnit.total, 2_000, "100000 / 50, а не 100000 / 250");
+  assert.equal(profitPerUnit.daily[0], 2_000);
+  assert.equal(romi.total, 50_000, "100000/200×100, а не 100000/1000×100");
+  assert.equal(romi.daily[0], 50_000);
+});
+
 test("доля отмен под фильтром считается к оформленным заказам", () => {
   const sku = { metrics: [
     metric("cancels_count", "int", [10], 10),
