@@ -30,6 +30,11 @@ export class WbDocumentsError extends Error {
   }
 }
 
+function retryAfterMs(response: Response): number {
+  const seconds = Number(response.headers.get("x-ratelimit-retry") ?? response.headers.get("retry-after"));
+  return Number.isFinite(seconds) && seconds >= 0 ? Math.min(30_000, Math.max(100, seconds * 1_000)) : 10_000;
+}
+
 function money(value: string | undefined): number | null {
   if (!value) return null;
   const parsed = Number(value.replace(/\s/g, "").replace(",", "."));
@@ -158,12 +163,17 @@ export function stableTaxDocumentId(cabinetId: string, externalId: string, kind 
 }
 
 async function wbFetch(token: string, url: URL): Promise<Response> {
-  const response = await fetch(url, { headers: { Authorization: token }, cache: "no-store", signal: AbortSignal.timeout(25_000) });
-  if (!response.ok) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(url, { headers: { Authorization: token }, cache: "no-store", signal: AbortSignal.timeout(25_000) });
+    if (response.ok) return response;
+    if (response.status === 429 && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, retryAfterMs(response)));
+      continue;
+    }
     const detail = (await response.text()).replace(/\s+/g, " ").slice(0, 300);
     throw new WbDocumentsError(`WB Документы: ${response.status}${detail ? ` — ${detail}` : ""}`, response.status);
   }
-  return response;
+  throw new WbDocumentsError("WB Документы: исчерпан лимит повторов", 429);
 }
 
 export async function listWbDocuments(token: string, from: string, to: string, offset: number): Promise<WbDocumentListItem[]> {

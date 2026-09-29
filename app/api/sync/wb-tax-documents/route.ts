@@ -201,11 +201,13 @@ export async function GET(request: NextRequest) {
   const { data, error } = await db.from("wb_cabinets").select("id,name,inn,token").eq("marketplace", "wb").eq("is_active", true).order("created_at");
   if (error) return NextResponse.json({ error: error.message }, { status: 502 });
   const companies = await companyByCabinet();
-  const results = await Promise.all(((data ?? []) as Cabinet[]).map((cabinet) => syncCabinet(cabinet, companies.get(cabinet.id))));
-  const totals = results.reduce((sum, result) => ({
+  const cabinets = (data ?? []) as Cabinet[];
+  const relevantCabinets = cabinets.filter((cabinet) => companies.has(cabinet.id));
+  const results = await Promise.all(relevantCabinets.map((cabinet) => syncCabinet(cabinet, companies.get(cabinet.id))));
+  const totals = { ...results.reduce((sum, result) => ({
     discovered: sum.discovered + result.discovered, matched: sum.matched + result.matched, imported: sum.imported + result.imported,
     review: sum.review + result.review, skipped: sum.skipped + result.skipped, errors: sum.errors + result.errors,
-  }), { discovered: 0, matched: 0, imported: 0, review: 0, skipped: 0, errors: 0 });
+  }), { discovered: 0, matched: 0, imported: 0, review: 0, skipped: 0, errors: 0 }), excludedCabinets: cabinets.length - relevantCabinets.length };
   await writeSyncLog(JOB, totals.errors ? "partial" : "ok", totals.imported, totals.errors ? `${totals.errors} ошибок` : null, startedAt);
   return NextResponse.json({ ok: totals.errors === 0, totals, cabinets: results });
 }

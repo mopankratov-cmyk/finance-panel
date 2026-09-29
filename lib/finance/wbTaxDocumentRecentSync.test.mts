@@ -23,3 +23,8 @@ test("tax page always shows document sync totals and cabinet diagnostics", () =>
   assert.match(page, /Результат загрузки УПД WB/);
   assert.match(page, /Получить УПД из WB за 60 дней/);
 });
+
+test("WB tax sync excludes cabinets outside the tax reporting scope before API calls", () => {
+  assert.match(route, /filter\(\(cabinet\) => companies\.has\(cabinet\.id\)\)/);
+  assert.match(route, /excludedCabinets: cabinets\.length - relevantCabinets\.length/);
+});
