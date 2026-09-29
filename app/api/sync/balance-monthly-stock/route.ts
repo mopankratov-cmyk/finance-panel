@@ -12,7 +12,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalogItem, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
-import { calculateScopedWbCash, requiresScopedWbCash, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
+import { calculateScopedWbCash, requiresScopedWbCash, scopedWbCashArticlePrefixes, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
 import { fetchWbAccountBalance, fetchWbFinanceReportSummaries } from "@/lib/wb/financeApi";
 import { loadBalanceCompanyScopes } from "@/lib/finance/balanceScopes";
 
@@ -93,16 +93,46 @@ async function saveCashSnapshot(input: {
   return summary;
 }
 
-async function loadScopedWbReportRows(cabinetId: string, reportIds: readonly string[]) {
+async function loadScopedWbReportRows(
+  cabinetId: string,
+  cabinetName: string,
+  reports: readonly Pick<Awaited<ReturnType<typeof fetchWbFinanceReportSummaries>>[number], "reportId" | "periodFrom" | "periodTo">[],
+) {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
-  if (!reportIds.length) return [] as ScopedWbReportRow[];
-  return loadAllSupabasePages<ScopedWbReportRow>((from, to) => db.from("wb_report_rows")
-    .select("realizationreport_id,doc_type_name,supplier_oper_name,ppvz_for_pay,delivery_rub,storage_fee,acceptance,penalty,deduction,additional_payment,cashback_discount")
-    .eq("cabinet_id", cabinetId)
-    .in("realizationreport_id", reportIds)
-    .order("realizationreport_id")
-    .range(from, to), { label: `Баланс WB: строки отчётов ${cabinetId}`, maxPages: 300, concurrency: 4 });
+  if (!reports.length) return [] as ScopedWbReportRow[];
+  const prefixes = scopedWbCashArticlePrefixes(cabinetName);
+  const prefixFilter = prefixes.map((prefix) => `sa_name.ilike.${prefix.replace(/[%,]/g, "")}%`).join(",");
+
+  // Агентские кабинеты содержат до 116 тыс. строк в день, большинство —
+  // чужие товары. Читаем каждый недельный отчёт отдельно, одновременно
+  // ограничивая его датами и SQL-фильтром по артикулам наших брендов. Это
+  // использует существующие индексы cabinet_id+rr_dt и sa_name и не тянет
+  // весь seller в память ради нескольких процентов нужных строк.
+  const rows: ScopedWbReportRow[] = [];
+  let next = 0;
+  const workers = Array.from({ length: Math.min(2, reports.length) }, async () => {
+    while (next < reports.length) {
+      const report = reports[next++]!;
+      const reportRows = await loadAllSupabasePages<ScopedWbReportRow>((from, to) => {
+        let query = db.from("wb_report_rows")
+          .select("rrd_id,realizationreport_id,doc_type_name,supplier_oper_name,ppvz_for_pay,delivery_rub,storage_fee,acceptance,penalty,deduction,additional_payment,cashback_discount")
+          .eq("cabinet_id", cabinetId)
+          .eq("realizationreport_id", report.reportId)
+          .gte("rr_dt", report.periodFrom)
+          .lte("rr_dt", report.periodTo);
+        if (prefixFilter) query = query.or(prefixFilter);
+        return query.order("rrd_id").range(from, to);
+      }, {
+        label: `Баланс WB: отчёт ${report.reportId} (${cabinetName})`,
+        maxPages: 150,
+        concurrency: 2,
+      });
+      rows.push(...reportRows);
+    }
+  });
+  await Promise.all(workers);
+  return rows;
 }
 
 async function fulfillmentFinality(closeThrough: string, legalEntityIds: ReadonlySet<string>) {
@@ -442,7 +472,7 @@ export async function GET(request: NextRequest) {
           for (const target of group) {
             if (!target.cabinetId) continue;
             const targetCabinet = metaById.get(target.cabinetId) ?? { id: target.cabinetId, name: target.name, organization_id: null };
-            const rows = await loadScopedWbReportRows(target.cabinetId, reports.map((report) => report.reportId));
+            const rows = await loadScopedWbReportRows(target.cabinetId, targetCabinet.name || target.name, reports);
             const calculation = calculateScopedWbCash({ snapshotDate: window.month, reports, rows });
             const targetLabel = targetCabinet.name || target.name;
             cashSummaries.push(await saveCashSnapshot({
