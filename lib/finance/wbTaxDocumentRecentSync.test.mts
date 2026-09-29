@@ -12,10 +12,10 @@ test("WB tax documents use a rolling 60-day window instead of a yearly backfill"
 });
 
 test("WB tax document listing paginates the recent window", () => {
-  assert.match(route, /for \(let page = 0; page < MAX_LIST_PAGES; page\+\+\)/);
-  assert.match(route, /listWbDocuments\(token, from, to, page \* PAGE_SIZE\)/);
-  assert.match(route, /if \(batch\.length < PAGE_SIZE\) return documents/);
-  assert.match(route, /MAX_LIST_PAGES = 40/);
+  assert.match(route, /listWbDocumentCategories\(token\)/);
+  assert.match(route, /isTaxDocumentCategory\(\{ name: category\.name, category: category\.title \}\)/);
+  assert.match(route, /listWbDocuments\(token, from, to, page \* PAGE_SIZE, category\.name\)/);
+  assert.match(route, /MAX_LIST_PAGES_PER_CATEGORY = 20/);
 });
 
 test("tax page always shows document sync totals and cabinet diagnostics", () => {
