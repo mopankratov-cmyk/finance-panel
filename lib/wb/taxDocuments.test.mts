@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { downloadWbDocument, isTaxDocumentCategory, listWbDocuments, parseWbUpdXml, stableTaxDocumentId } from "./taxDocuments.ts";
+import { downloadWbDocument, isTaxDocumentCategory, listWbDocumentCategories, listWbDocuments, parseWbUpdXml, stableTaxDocumentId } from "./taxDocuments.ts";
 
 const XML = `<?xml version="1.0" encoding="windows-1251"?>
 <Файл><Документ><СвСчФакт НомерСчФ="УПД-42" ДатаСчФ="25.09.2026" />
@@ -56,6 +56,21 @@ test("retries WB document requests after a 429 response", async () => {
   try {
     assert.deepEqual(await listWbDocuments("token", "2026-08-01", "2026-09-29", 0), []);
     assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("loads WB document categories for server-side tax filtering", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input);
+    return Response.json({ data: { categories: [{ name: "upd", title: "УПД" }] } });
+  };
+  try {
+    assert.deepEqual(await listWbDocumentCategories("token"), [{ name: "upd", title: "УПД" }]);
+    assert.match(requestedUrl, /\/categories\?locale=ru/);
   } finally {
     globalThis.fetch = originalFetch;
   }
