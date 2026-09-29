@@ -8,7 +8,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { BankStatement } from "./bankStatement";
 import { requiresCounterparty, type BankSuggestion } from "./bankAutoClassify";
 import { mandatoryBankCategory } from "@/lib/opiu/bankPaymentRules";
-import type { DdsCompany } from "./ddsCompanies";
+import { canonicalPaymentCompanyId, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
 import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
 import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
 import { useDdsCategories, useFinance } from "@/components/providers/FinanceProvider";
@@ -50,6 +50,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   const [suggestions, setSuggestions] = useState<BankSuggestion[]>([]);
   const [done, setDone] = useState<{ queued: number; approved: number; matchedTransfers: number; duplicatesSkipped: number } | null>(null);
   const [controlMismatchAccepted, setControlMismatchAccepted] = useState(false);
+  const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
 
   const selectedAccount = accounts.find((account) => account.id === accountId);
   const selectedCompany = companies.find((company) => company.id === companyId);
@@ -118,7 +119,10 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
           suggestions.map((suggestion) => [suggestion.row.id, suggestion.category ?? ""]),
         ),
       );
-      const suggestedCompanyId = suggestions.find((suggestion) => suggestion.companyId)?.companyId;
+      const suggestedCompanyId = canonicalPaymentCompanyId(
+        suggestions.find((suggestion) => suggestion.companyId)?.companyId,
+        companies,
+      );
       const suggestedAccountId = suggestions.find((suggestion) => suggestion.accountId)?.accountId;
       if (suggestedCompanyId) setCompanyId(suggestedCompanyId);
       if (parsed.accountNumber && data.accountNumberKnown === false) setAccountId("");
@@ -297,7 +301,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                   <label className="mb-1 block text-xs text-slate-500">Компания по умолчанию — необязательно</label>
                   <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3">
                     <option value="">Определять отдельно по платежам</option>
-                    {companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                    {selectableCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                   </select>
                 </div>
                 <div>

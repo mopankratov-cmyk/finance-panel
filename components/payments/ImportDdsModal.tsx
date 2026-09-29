@@ -2,7 +2,7 @@
 
 import { AlertTriangle, FileUp, Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
-import { createDdsCompany, type DdsCompany } from "./ddsCompanies";
+import { createDdsCompany, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
 import type { DdsParseResult } from "./ddsCsv";
 import {
   buildImportPlan,
@@ -57,6 +57,7 @@ export function ImportDdsModal({
   const [newCompanyName, setNewCompanyName] = useState("");
   const [newCompanyGroup, setNewCompanyGroup] = useState("");
   const [savingCompany, setSavingCompany] = useState(false);
+  const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
 
   // Единственное место сброса состояния окна. Оно стабильно (сеттеры useState
   // не меняются), поэтому close остаётся стабильным вместе с ним.
@@ -315,7 +316,7 @@ export function ImportDdsModal({
                   <option value="">Выберите юрлицо</option>
                   <option value="from-file">Брать из колонки «Направление бизнеса»</option>
                   <option value="unassigned">Общее по группе (без одного юрлица)</option>
-                  {companies.filter((company) => company.isActive).map((company) => (
+                  {selectableCompanies.map((company) => (
                     <option key={company.id} value={company.id}>
                       {company.name} · {company.groupName}
                     </option>

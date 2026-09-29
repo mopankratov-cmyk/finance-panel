@@ -1,6 +1,6 @@
 "use client";
 
-import { sameCompanyAlias } from "@/lib/finance/companyAliases";
+import { preferredAliasCompany, sameCompanyAlias } from "@/lib/finance/companyAliases";
 import {
   companyGroupLabel,
   companyLabel,
@@ -48,6 +48,16 @@ export function paymentCompanyOptions(companies: readonly DdsCompany[]): DdsComp
     const canonical = aliases.find((candidate) => /филиппов/i.test(candidate.name)) ?? aliases[0];
     return company.id === canonical.id;
   });
+}
+
+/** Возвращает рабочий id компании, заменяя исторический алиас канонической карточкой. */
+export function canonicalPaymentCompanyId(companyId: string | null | undefined, companies: readonly DdsCompany[]): string {
+  if (!companyId) return "";
+  const selected = companies.find((company) => company.id === companyId);
+  if (!selected) return "";
+  const selectable = paymentCompanyOptions(companies);
+  if (selectable.some((company) => company.id === selected.id)) return selected.id;
+  return preferredAliasCompany(selected.name, selectable)?.id ?? "";
 }
 
 /** Компания однозначно известна, когда её название (или алиас) есть в названии счёта. */

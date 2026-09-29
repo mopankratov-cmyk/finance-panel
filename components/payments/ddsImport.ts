@@ -6,7 +6,8 @@
 
 import type { Account, Payment } from "@/lib/types";
 import type { DdsDraft, DdsParseResult } from "./ddsCsv";
-import type { DdsCompany } from "./ddsCompanies";
+import { canonicalPaymentCompanyId, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
+import { preferredAliasCompany } from "@/lib/finance/companyAliases";
 
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number };
 type PaymentRow = {
@@ -80,9 +81,15 @@ function companyIdForDraft(
   if (assignment.overrideCompanyId !== undefined) return assignment.overrideCompanyId;
   // Явный id из очереди выписок важнее имени: поиск по имени терял компанию,
   // если её переименовали или деактивировали, и платёж уходил в «Общее по группе».
-  if (draft.companyId !== undefined) return draft.companyId;
+  if (draft.companyId !== undefined) {
+    if (draft.companyId === null) return null;
+    return canonicalPaymentCompanyId(draft.companyId, assignment.companies) || draft.companyId;
+  }
   if (draft.company === "Группа (общее)") return null;
-  return assignment.companies.find((company) => company.name === draft.company)?.id ?? null;
+  const selectable = paymentCompanyOptions(assignment.companies);
+  const exact = selectable.find((company) => company.name === draft.company);
+  if (exact) return exact.id;
+  return preferredAliasCompany(draft.company, selectable)?.id ?? null;
 }
 
 // Строит план вставки против переданного снимка базы (без записи).

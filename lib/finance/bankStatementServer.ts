@@ -72,7 +72,9 @@ export async function suggestForStatement(db: SupabaseClient, statement: BankSta
   const accountList: Account[] = (accounts.data ?? []).map((row) => ({
     id: String(row.id), name: String(row.name), type: row.type as Account["type"], currency: row.currency as Account["currency"], balance: Number(row.balance),
   }));
-  const companyList = (companies.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? ""), isActive: Boolean(row.is_active) }));
+  const companyList = (companies.data ?? [])
+    .map((row) => ({ id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? ""), isActive: Boolean(row.is_active) }))
+    .filter((company) => company.isActive);
   const mappingList: BankAccountMapping[] = (mappings.data ?? []).map((row) => ({
     bankAccountNumber: String(row.bank_account_number ?? "").replace(/\D/g, ""),
     ownerInn: String(row.owner_inn ?? "").replace(/\D/g, ""),
