@@ -209,3 +209,4 @@ export async function GET(request: NextRequest) {
   await writeSyncLog(JOB, totals.errors ? "partial" : "ok", totals.imported, totals.errors ? `${totals.errors} ошибок` : null, startedAt);
   return NextResponse.json({ ok: totals.errors === 0, totals, cabinets: results });
 }
+
