@@ -8,7 +8,11 @@ import { composeRnpSummaryFromSkus } from "../lib/rnp/summaryFromSkus";
 // Главный закон: производные считаются из СУММ, а не усреднением процентов —
 // среднее из ДРР двух SKU с разными оборотами исказило бы агрегат.
 
-const metric = (field: string, kind: string, daily: (number | null)[], total: number | null, forecast: number | null = null) =>
+interface TestMetricParts { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1 }
+
+const metric = (
+  field: string, kind: string, daily: (number | null)[], total: number | null, forecast: number | null = null,
+): { field: string; kind: string; daily: (number | null)[]; total: number | null; forecast: number | null; label: string; parts?: TestMetricParts } =>
   ({ field, kind, daily, total, forecast, label: field });
 
 const skuA = { metrics: [
