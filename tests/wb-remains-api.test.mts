@@ -7,6 +7,7 @@ import {
   WB_REMAINS_TOTAL,
   WB_WAREHOUSE_REMAINS_URL,
   fetchWarehouseRemains,
+  remainsToBalanceStockRows,
   remainsToStockRows,
   type WbRemainsRow,
 } from "../lib/wb/remainsApi";
@@ -126,6 +127,19 @@ test("429 без Retry-After ждёт по X-RateLimit-Retry, а не слепы
   });
 
   assert.deepEqual(waits, [17_000, 5_000]);
+});
+
+test("баланс WB складывает ровно три итоговые строки, не городские склады", () => {
+  const rows = remainsToBalanceStockRows(SAMPLE);
+
+  assert.deepEqual(rows, [{
+    nm_id: 755558105,
+    warehouse: "Склад WB + товары в пути",
+    quantity: 733,
+    in_way_to_client: 5,
+    in_way_from_client: 15,
+  }]);
+  assert.equal(rows[0].quantity + rows[0].in_way_to_client + rows[0].in_way_from_client, 753);
 });
 
 test("критичный снимок может пережить три последовательных 429", async () => {
