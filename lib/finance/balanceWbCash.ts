@@ -55,6 +55,23 @@ export function scopedWbCashArticlePrefixes(cabinetName: unknown): string[] {
   return [];
 }
 
+export function scopedWbCashReportDates(
+  reports: readonly Pick<WbFinanceReportSummary, "periodFrom" | "periodTo">[],
+): string[] {
+  const bounds = reports.flatMap((report) => [report.periodFrom, report.periodTo])
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+    .sort();
+  if (!bounds.length) return [];
+  const start = new Date(`${bounds[0]}T00:00:00.000Z`);
+  const end = new Date(`${bounds[bounds.length - 1]}T00:00:00.000Z`);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || start > end) return [];
+  const dates: string[] = [];
+  for (let current = start; current <= end; current = new Date(current.getTime() + DAY_MS)) {
+    dates.push(current.toISOString().slice(0, 10));
+  }
+  return dates;
+}
+
 function addDays(date: string, days: number) {
   return new Date(Date.parse(`${date}T00:00:00.000Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }

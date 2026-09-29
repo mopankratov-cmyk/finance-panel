@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateScopedWbCash, requiresScopedWbCash, scopedWbCashArticlePrefixes, wbReportSettlementDates } from "./balanceWbCash.ts";
+import { calculateScopedWbCash, requiresScopedWbCash, scopedWbCashArticlePrefixes, scopedWbCashReportDates, wbReportSettlementDates } from "./balanceWbCash.ts";
 
 test("Optima and Retail Family always use scoped cash calculation", () => {
   assert.equal(requiresScopedWbCash("Оптима — NORVIA / RIOBOX"), true);
@@ -12,6 +12,16 @@ test("shared sellers include only the configured owned-brand article prefixes", 
   assert.deepEqual(scopedWbCashArticlePrefixes("Retail Family"), ["NV-", "HT-"]);
   assert.deepEqual(scopedWbCashArticlePrefixes("Оптима — NORVIA / RIOBOX"), ["ESC", "NV-", "HT-"]);
   assert.deepEqual(scopedWbCashArticlePrefixes("CLERIN"), []);
+});
+
+test("scoped WB cash loads every report day once in chronological order", () => {
+  assert.deepEqual(scopedWbCashReportDates([
+    { periodFrom: "2026-09-07", periodTo: "2026-09-13" },
+    { periodFrom: "2026-09-14", periodTo: "2026-09-15" },
+  ]), [
+    "2026-09-07", "2026-09-08", "2026-09-09", "2026-09-10", "2026-09-11",
+    "2026-09-12", "2026-09-13", "2026-09-14", "2026-09-15",
+  ]);
 });
 
 test("week 7-13 September is expected in the bank on 7 October", () => {
