@@ -73,6 +73,38 @@ export interface WarehouseRemainsOptions {
   maxRateLimitRetries?: number;
 }
 
+/**
+ * Остаток для бухгалтерского баланса.
+ *
+ * В отчёте WB это три независимых актива по каждому артикулу: товар на
+ * складах, товар у получателя в доставке и возврат в пути обратно на WB.
+ * Городские строки являются расшифровкой «Всего находится на складах»,
+ * поэтому их здесь не складываем — иначе складская часть задвоится.
+ */
+export function remainsToBalanceStockRows(rows: readonly WbRemainsRow[]): WbStockAggregate[] {
+  const byNm = new Map<number, WbStockAggregate>();
+  for (const row of rows) {
+    const nm_id = row.nmId;
+    if (!Number.isInteger(nm_id) || nm_id <= 0) continue;
+    const result = byNm.get(nm_id) ?? {
+      nm_id,
+      warehouse: "Склад WB + товары в пути",
+      quantity: 0,
+      in_way_to_client: 0,
+      in_way_from_client: 0,
+    };
+    for (const wh of row.warehouses ?? []) {
+      const warehouse = wh?.warehouseName?.trim();
+      const quantity = Number(wh?.quantity ?? 0) || 0;
+      if (warehouse === WB_REMAINS_TOTAL) result.quantity += quantity;
+      else if (warehouse === WB_REMAINS_TO_CLIENT) result.in_way_to_client += quantity;
+      else if (warehouse === WB_REMAINS_FROM_CLIENT) result.in_way_from_client += quantity;
+    }
+    byNm.set(nm_id, result);
+  }
+  return [...byNm.values()];
+}
+
 function retryDelayMs(response: Response, fallbackMs: number): number {
   // WB на этом эндпоинте кладёт время ожидания в X-RateLimit-Retry (секунды),
   // а не в стандартный Retry-After — читаем оба, слепой fallback только затем.
