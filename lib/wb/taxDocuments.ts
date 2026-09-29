@@ -14,6 +14,11 @@ export interface WbDocumentListItem {
   creationTime: string;
 }
 
+export interface WbDocumentCategory {
+  name: string;
+  title: string;
+}
+
 export interface ParsedWbTaxDocument {
   documentNumber: string;
   documentDate: string;
@@ -176,9 +181,18 @@ async function wbFetch(token: string, url: URL): Promise<Response> {
   throw new WbDocumentsError("WB Документы: исчерпан лимит повторов", 429);
 }
 
-export async function listWbDocuments(token: string, from: string, to: string, offset: number): Promise<WbDocumentListItem[]> {
+export async function listWbDocumentCategories(token: string): Promise<WbDocumentCategory[]> {
+  const url = new URL(`${BASE}/categories`);
+  url.search = new URLSearchParams({ locale: "ru" }).toString();
+  const body = await (await wbFetch(token, url)).json() as { data?: { categories?: WbDocumentCategory[] } };
+  return Array.isArray(body.data?.categories) ? body.data.categories : [];
+}
+
+export async function listWbDocuments(token: string, from: string, to: string, offset: number, category?: string): Promise<WbDocumentListItem[]> {
   const url = new URL(`${BASE}/list`);
-  url.search = new URLSearchParams({ locale: "ru", beginTime: from, endTime: to, sort: "date", order: "desc", limit: "50", offset: String(offset) }).toString();
+  const query: Record<string, string> = { locale: "ru", beginTime: from, endTime: to, sort: "date", order: "desc", limit: "50", offset: String(offset) };
+  if (category) query.category = category;
+  url.search = new URLSearchParams(query).toString();
   const body = await (await wbFetch(token, url)).json() as { data?: { documents?: WbDocumentListItem[] } };
   return Array.isArray(body.data?.documents) ? body.data.documents : [];
 }
