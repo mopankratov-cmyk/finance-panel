@@ -142,10 +142,16 @@ test("внешний менеджер видит и редактирует се�
   for (const role of EXTERNAL_ROLES) allowed(role, ["cost.view", "cost.edit"]);
 });
 
-test("внешний менеджер создаёт складские заявки, но не утверждает их", () => {
+test("внешний менеджер создаёт и выполняет складские задания в своём юрлице, но не утверждает чужие", () => {
+  // Решение владельца 29.09.2026 (аудит панели, находка №12): в своём юрлице
+  // внешний селлер — хозяин товара, а не наёмный исполнитель, и сам ведёт
+  // склад (canManageStock() в lib/warehouse/operatorScope.ts это уже
+  // разрешал на уровне роута — здесь ему не хватало только права на входе).
+  // Утверждение чужого расхождения и произвольная коррекция остатка
+  // остаются за ролями с warehouse.approve/warehouse.stock.adjust.
   for (const role of EXTERNAL_ROLES) {
-    allowed(role, ["warehouse.request.create"]);
-    denied(role, ["warehouse.approve", "warehouse.stock.adjust", "warehouse.task.execute"]);
+    allowed(role, ["warehouse.request.create", "warehouse.task.execute"]);
+    denied(role, ["warehouse.approve", "warehouse.stock.adjust"]);
   }
 });
 

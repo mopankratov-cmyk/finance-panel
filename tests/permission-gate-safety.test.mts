@@ -85,17 +85,19 @@ function lostPermissions(role: Role, allowed: (path: string, method: string) => 
   return [...lost].sort();
 }
 
-test("внешний менеджер теряет только складские операции и набор команды", () => {
-  // Ровно то, что владелец подтвердил в §7: остатки и заявки — да, приёмка,
-  // отгрузка и списание вместо фулфилмента — нет. Набирает команду главный
-  // пользователь клиента, рядовой сотрудник — нет.
+test("внешний менеджер теряет только утверждение чужого и списание, не набор команды", () => {
+  // Ровно то, что владелец подтвердил в §7 и повторно 29.09.2026 (находка
+  // №12 аудита панели): остатки, заявки и собственные задания склада — да
+  // (в своём юрлице селлер хозяин товара, а не наёмный исполнитель), а
+  // утверждение чужого расхождения и произвольная коррекция остатка —
+  // нет, это осталось за ролями с warehouse.approve/warehouse.stock.adjust.
   assert.deepEqual(lostPermissions("seller", isSellerApiAllowed), [
     "purchase.manage", "settings.manage", "users.manage",
-    "warehouse.approve", "warehouse.stock.adjust", "warehouse.task.execute",
+    "warehouse.approve", "warehouse.stock.adjust",
   ]);
-  // Аналитика, себестоимость, цены, реклама, поставки и заявки на склад
-  // остаются — иначе внешний контур перестал бы работать.
-  for (const permission of ["analytics.view", "cost.edit", "price.edit", "ads.manage", "supply.manage", "warehouse.view", "warehouse.request.create"] as const) {
+  // Аналитика, себестоимость, цены, реклама, поставки, заявки и собственные
+  // задания склада остаются — иначе внешний контур перестал бы работать.
+  for (const permission of ["analytics.view", "cost.edit", "price.edit", "ads.manage", "supply.manage", "warehouse.view", "warehouse.request.create", "warehouse.task.execute"] as const) {
     assert.equal(rolesCan(["seller"], permission), true, permission);
   }
 });
@@ -104,7 +106,7 @@ test("главный пользователь клиента команду на
   assert.equal(rolesCan(["seller_owner"], "users.manage"), true);
   assert.deepEqual(lostPermissions("seller_owner", isSellerApiAllowed), [
     "purchase.manage", "settings.manage",
-    "warehouse.approve", "warehouse.stock.adjust", "warehouse.task.execute",
+    "warehouse.approve", "warehouse.stock.adjust",
   ]);
 });
 
