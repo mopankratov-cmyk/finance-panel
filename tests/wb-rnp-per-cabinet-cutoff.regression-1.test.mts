@@ -85,6 +85,9 @@ test("WB RNP prefers WB funnel order totals over supplier order events", () => {
     d: "2026-07-20",
     orders_count: 451,
     orders_sum: 298_742,
+    // Сумма статистики сохраняется ДО подмены воронкой: это пара к
+    // orders_gross_sum для скидки продавца — обе части из одних строк wb_orders.
+    orders_stat_sum: 151_079,
     buyouts_count: 12,
     buyouts_sum: 8_000,
     ad_spent: 3_000,
@@ -101,6 +104,8 @@ test("WB RNP creates a daily order row from WB funnel when supplier events are m
     d: "2026-07-20",
     orders_count: 37,
     orders_sum: 21_990,
+    // Статистика заказов этого дня не знала вовсе — её сумма ноль.
+    orders_stat_sum: 0,
     buyouts_count: 0,
     buyouts_sum: 0,
     ad_spent: 0,

@@ -373,10 +373,10 @@ const METRIC_LABELS: Record<string, string> = {
   stock: "Остаток",
   stock_in_way_to_client: "В пути к клиенту",
   stock_in_way_from_client: "В пути от клиента",
-  stock_total: "Всего на складах",
+  stock_total: "Остаток + в пути",
   turnover: "Оборачиваемость",
   money: "Деньги в остатках",
-  gmroi: "GMROI",
+  gmroi: "Прибыль к запасу",
   reviews_count: "Отзывы",
   ads_manual_spent: "Ручн. ₽",
   ads_manual_views: "Ручн. показы",
@@ -459,10 +459,10 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   stock: "остаток",
   stock_in_way_to_client: "в пути к клиенту",
   stock_in_way_from_client: "в пути от клиента",
-  stock_total: "всего на складах",
+  stock_total: "остаток + в пути",
   turnover: "оборач.",
   money: "деньги в остатках",
-  gmroi: "GMROI",
+  gmroi: "Прибыль к запасу",
   reviews_count: "Отзывы",
   ads_manual_spent: "Ручн. ₽",
   ads_manual_views: "Ручн. показы",
@@ -900,6 +900,11 @@ const WEEKLY_RATIO_PAIRS: Record<string, { numerator: string; denominator: strin
 /**
  * Метрики-снимки: остаток на складе не складывается за неделю. Суммирование
  * давало семикратный остаток и такую же оборачиваемость.
+ *
+ * Цена покупателя, СПП, скидка продавца и доля плохих отзывов — не снимки, а
+ * доли: при `parts` неделя пересчитывает их из сумм (ветка parts идёт раньше).
+ * Здесь они только как запасной путь для строк без частей (снимок до них, SKU
+ * без первичных строк), чтобы деньги не сложились в «недельную цену».
  */
 const WEEKLY_POINT_IN_TIME = new Set([
   "stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total",
@@ -936,24 +941,32 @@ export function aggregateRnpWeekly<T extends GranularityTableLike>(table: T, fro
   // за тот же период.
   const mapMetrics = <M extends GranularityMetricLike>(metrics: M[]): M[] => {
     const byField = new Map(metrics.map((metric) => [metric.field, metric]));
-    const sums = new Map<string, (number | null)[]>();
-    const sumOf = (field: string): (number | null)[] => {
-      const cached = sums.get(field);
-      if (cached) return cached;
-      const source = byField.get(field);
-      const value = source
-        ? buckets.map((bucket) => {
-          const values = bucketValues(source.daily, bucket);
-          return values.length ? values.reduce((acc, item) => acc + item, 0) : null;
-        })
-        : buckets.map(() => null);
-      sums.set(field, value);
-      return value;
-    };
     const bucketSums = (values: (number | null)[]) => buckets.map((bucket) => {
       const known = bucketValues(values, bucket);
       return known.length ? known.reduce((acc, item) => acc + item, 0) : null;
     });
+    // Числитель и знаменатель недели — только за дни, где известны оба. Источники
+    // кончаются в разные дни: заказы за сегодня есть, переходов ещё нет, и
+    // «заказы за 2 дня / переходы за 1» давали конверсию вдвое выше.
+    const matchedBucketSums = (numeratorDaily: (number | null)[], denominatorDaily: (number | null)[]) => {
+      const known = (value: number | null | undefined): value is number => value != null && Number.isFinite(value);
+      const numerator: (number | null)[] = [];
+      const denominator: (number | null)[] = [];
+      for (const bucket of buckets) {
+        let num = 0, den = 0, seen = false;
+        for (const index of bucket.indexes) {
+          const n = numeratorDaily[index];
+          const d = denominatorDaily[index];
+          if (!known(n) || !known(d)) continue;
+          num += n;
+          den += d;
+          seen = true;
+        }
+        numerator.push(seen ? num : null);
+        denominator.push(seen ? den : null);
+      }
+      return { numerator, denominator };
+    };
     return metrics.map((metric) => {
       if (!metric.parts && PARTS_ONLY_METRIC_FIELDS.has(metric.field)) {
         // Снимок старше `parts`: среднее процентов по дням было бы неверным.
@@ -999,12 +1012,32 @@ export function aggregateRnpWeekly<T extends GranularityTableLike>(table: T, fro
           parts: { numerator, denominator, scale },
         };
       }
+      // Рейтинг отзывов — средняя оценка, взвешенная числом отзывов, а не оценка
+      // последнего дня недели и не среднее по дням.
+      if (metric.field === "reviews_rating" && byField.has("reviews_count")) {
+        const counts = byField.get("reviews_count")!.daily;
+        const weighted = metric.daily.map((rating, index) => {
+          const count = counts[index];
+          return rating != null && count != null ? rating * count : null;
+        });
+        const { numerator, denominator } = matchedBucketSums(weighted, counts);
+        return {
+          ...metric,
+          daily: buckets.map((_, index) => {
+            const num = numerator[index];
+            const den = denominator[index];
+            return num == null || den == null || !(den > 0) ? null : Math.round((num / den) * 100) / 100;
+          }),
+        };
+      }
       const pair = WEEKLY_RATIO_PAIRS[metric.field];
       if (!pair || !byField.has(pair.numerator) || !byField.has(pair.denominator)) {
         return { ...metric, daily: aggregateDaily(metric.field, metric.kind, metric.daily, buckets) };
       }
-      const numerator = sumOf(pair.numerator);
-      const denominator = sumOf(pair.denominator);
+      const { numerator, denominator } = matchedBucketSums(
+        byField.get(pair.numerator)!.daily,
+        byField.get(pair.denominator)!.daily,
+      );
       return {
         ...metric,
         daily: buckets.map((_, index) => {

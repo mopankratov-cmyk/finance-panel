@@ -50,7 +50,7 @@ import {
 } from "@/lib/rnp/operatingMatrix";
 import { RNP_DEFAULT_TURNOVER_WINDOW_DAYS } from "@/lib/rnp/warmupPlan";
 import { appendTaxMetrics, RNP_DEFAULT_TAX_PCT } from "@/lib/rnp/taxMetrics";
-import { composeRnpSummaryFromSkus } from "@/lib/rnp/summaryFromSkus";
+import { composeRnpSummaryFromSkus, composeRnpWeeklySummaryFromDailySkus } from "@/lib/rnp/summaryFromSkus";
 import { parseSkuOrderInput, SKU_ORDER_LIMIT, sortByCustomSkuOrder } from "@/lib/wb/skuOrder";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useCategoryMap } from "@/lib/useCategoryMap";
@@ -203,7 +203,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   avg_buyout_price: { label: "Средняя цена выкупа, ₽", kind: "money" },
   final_price: { label: "Цена для покупателя, ₽", kind: "money" },
   spp_pct: { label: "СПП, %", kind: "pct" },
-  gross: { label: "Прибыль после расходов МП, ₽", kind: "money" },
+  gross: { label: "Прибыль после МП и рекламы, ₽", kind: "money" },
   agent_commission_rub: { label: "Комиссия кабинета, ₽", kind: "money" },
   ad_orders: { label: "Заказы из рекламы, шт.", kind: "int" },
   ad_orders_sum: { label: "Заказы из рекламы, ₽", kind: "money" },
@@ -223,7 +223,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   ads_unified_orders: { label: "Единая: заказы, шт.", kind: "int" },
   ads_unified_orders_sum: { label: "Единая: заказы, ₽", kind: "money" },
   reviews_count: { label: "Новые отзывы, шт.", kind: "int" },
-  reviews_rating: { label: "Рейтинг новых отзывов", kind: "pct" },
+  reviews_rating: { label: "Рейтинг новых отзывов", kind: "rating" },
   reviews_bad_share_pct: { label: "Доля 1–3★, %", kind: "pct" },
   tax_rub: { label: "Налог, ₽", kind: "money" },
   net_profit: { label: "Чистая прибыль, ₽", kind: "money" },
@@ -247,10 +247,10 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   stock: { label: "Остаток, шт", kind: "int" },
   stock_in_way_to_client: { label: "В пути к клиенту, шт", kind: "int" },
   stock_in_way_from_client: { label: "В пути от клиента, шт", kind: "int" },
-  stock_total: { label: "Всего на складах, шт", kind: "int" },
+  stock_total: { label: "Остаток + в пути, шт", kind: "int" },
   turnover: { label: "Оборачиваемость, дней", kind: "int" },
   money: { label: "Деньги в остатках, ₽", kind: "money" },
-  gmroi: { label: "GMROI, %", kind: "pct" },
+  gmroi: { label: "Прибыль к запасу за период, %", kind: "pct" },
 };
 
 const METRIC_ROW_HEIGHT = 34;
@@ -301,7 +301,7 @@ const SORTS = [
   { field: "stock", label: "Остаток" },
   { field: "orders_sum", label: "Заказы" },
   { field: "turnover", label: "Оборач" },
-  { field: "gmroi", label: "GMROI" },
+  { field: "gmroi", label: "Прибыль к запасу" },
   { field: "drr", label: "ДРР" },
   { field: "money", label: "Деньги в остатках" },
 ] as const;
@@ -538,6 +538,8 @@ function matchingPresetCategory(preset: RnpFilterPreset, categories: string[]) {
 function fmt(value: number | null | undefined, kind: string) {
   if (value == null || !Number.isFinite(value)) return "—";
   if (kind === "pct") return `${Math.round(value * 10) / 10}%`;
+  // Оценка 1–5: два знака, без «%» и без округления до целого.
+  if (kind === "rating") return (Math.round(value * 100) / 100).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (kind === "money") return `${Math.round(value).toLocaleString("ru-RU")} ₽`;
   return Math.round(value).toLocaleString("ru-RU");
 }
@@ -545,12 +547,13 @@ function fmt(value: number | null | undefined, kind: string) {
 function compactFmt(value: number | null | undefined, kind: string) {
   if (value == null || !Number.isFinite(value)) return "—";
   if (kind === "pct") return `${Math.round(value * 10) / 10}%`;
+  if (kind === "rating") return fmt(value, kind);
   return new Intl.NumberFormat("ru-RU", { notation: "compact", maximumFractionDigits: 1 }).format(Math.round(value));
 }
 
 function denseFmt(value: number | null | undefined, kind: string) {
   if (value == null || !Number.isFinite(value)) return "—";
-  if (kind === "pct") return fmt(value, kind);
+  if (kind === "pct" || kind === "rating") return fmt(value, kind);
   if (kind === "money" && Math.abs(value) >= 100_000) return `${compactFmt(value, kind)} ₽`;
   if (kind !== "money" && Math.abs(value) >= 1_000_000) return compactFmt(value, kind);
   return fmt(value, kind);
@@ -766,16 +769,21 @@ export function WbRnpPage() {
       })),
     };
   }, [cabinetExtraPct, skuNames, taxPct]);
+  // Дневной снимок держим отдельно: оборачиваемость сводки под фильтром считается
+  // только по дням — из недельных SKU она вышла бы в неделях.
+  const dailyData = useMemo(
+    () => withTax(dataKey === currentDataKey ? data : null),
+    [currentDataKey, data, dataKey, withTax],
+  );
   const activeData = useMemo(
     () => {
-      const base = withTax(dataKey === currentDataKey ? data : null);
       // Недельная гранулярность применяется к готовому дневному снимку:
       // все потребители ниже (фасеты, сортировка, ячейки, CSV) работают
       // с колонками как есть и получают недели прозрачно.
-      if (!base || granularity === "day") return base;
-      return aggregateRnpWeekly(base, range.from);
+      if (!dailyData || granularity === "day") return dailyData;
+      return aggregateRnpWeekly(dailyData, range.from);
     },
-    [currentDataKey, data, dataKey, granularity, range.from, withTax],
+    [dailyData, granularity, range.from],
   );
 
   // Аномалии откалиброваны по дневным колонкам; планирование редактирует дни.
@@ -1017,17 +1025,18 @@ export function WbRnpPage() {
     return () => controller.abort();
   }, [cabinetId, hasExactCabinet]);
 
+  // Прошлый период тоже считаем по текущей ставке — иначе дельта по чистой
+  // прибыли сравнивала бы налог с его отсутствием.
+  const dailyPrevious = useMemo(() => withTax(previousData), [previousData, withTax]);
   const activePrevious = useMemo(
-    // Прошлый период тоже считаем по текущей ставке — иначе дельта по чистой
-    // прибыли сравнивала бы налог с его отсутствием. И в той же гранулярности,
-    // что текущий — иначе первая недельная колонка сравнивалась бы с одним днём.
+    // И в той же гранулярности, что текущий — иначе первая недельная колонка
+    // сравнивалась бы с одним днём.
     () => {
-      const base = withTax(previousData);
-      if (!base || granularity === "day") return base;
+      if (!dailyPrevious || granularity === "day") return dailyPrevious;
       const previous = previousEqualRange(range.from, range.to);
-      return aggregateRnpWeekly(base, previous.from);
+      return aggregateRnpWeekly(dailyPrevious, previous.from);
     },
-    [granularity, previousData, range.from, range.to, withTax],
+    [dailyPrevious, granularity, range.from, range.to],
   );
   const previousSkuByNm = useMemo(
     () => new Map((activePrevious?.skus ?? []).map((sku) => [sku.nm, sku])),
@@ -1243,17 +1252,24 @@ export function WbRnpPage() {
   const displaySummary = useMemo(() => {
     if (!activeData) return [];
     if (!summaryFiltered) return activeData.summary;
+    // Недельный вид собирается из ДНЕВНЫХ SKU и только потом сворачивается в
+    // недели: из недельных SKU итог под фильтром зависел бы от гранулярности.
+    if (granularity === "week" && dailyData) {
+      return composeRnpWeeklySummaryFromDailySkus(dailyData, new Set(sortedSkus.map((sku) => sku.nm)), turnoverWindowDays, range.from);
+    }
     return composeRnpSummaryFromSkus(activeData.summary, sortedSkus, turnoverWindowDays);
-  }, [activeData, sortedSkus, summaryFiltered, turnoverWindowDays]);
+  }, [activeData, dailyData, granularity, range.from, sortedSkus, summaryFiltered, turnoverWindowDays]);
   const previousSummaryByField = useMemo(() => {
     const summary = activePrevious?.summary ?? [];
     if (!summaryFiltered || !activePrevious) {
       return new Map(summary.map((metric) => [metric.field, metric]));
     }
     const visibleNms = new Set(sortedSkus.map((sku) => sku.nm));
-    const previousSkus = activePrevious.skus.filter((sku) => visibleNms.has(sku.nm));
-    return new Map(composeRnpSummaryFromSkus(summary, previousSkus, turnoverWindowDays).map((metric) => [metric.field, metric]));
-  }, [activePrevious, sortedSkus, summaryFiltered, turnoverWindowDays]);
+    const composed = granularity === "week" && dailyPrevious
+      ? composeRnpWeeklySummaryFromDailySkus(dailyPrevious, visibleNms, turnoverWindowDays, previousEqualRange(range.from, range.to).from)
+      : composeRnpSummaryFromSkus(summary, activePrevious.skus.filter((sku) => visibleNms.has(sku.nm)), turnoverWindowDays);
+    return new Map(composed.map((metric) => [metric.field, metric]));
+  }, [activePrevious, dailyPrevious, granularity, range.from, range.to, sortedSkus, summaryFiltered, turnoverWindowDays]);
   const metricRowHeight = showDeltas ? DELTA_METRIC_ROW_HEIGHT : METRIC_ROW_HEIGHT;
   const skuBlockHeight = metricFields.length * metricRowHeight;
   const tablePrefixHeight = 38 + 34 + metricFields.length * metricRowHeight + 34;
@@ -1746,7 +1762,7 @@ export function WbRnpPage() {
               tone={focusSummary.drr != null && focusSummary.drr >= 30 ? "rose" : focusSummary.drr != null && focusSummary.drr >= 20 ? "amber" : "slate"}
             />
             <OverviewMetric
-              label="Прибыль после МП"
+              label="Прибыль после МП и рекламы"
               value={fmt(focusSummary.gross, "money")}
               detail={`Маржа ${fmt(focusSummary.marginPct, "pct")}`}
               tone={focusSummary.gross == null ? "slate" : focusSummary.gross < 0 ? "rose" : "emerald"}
@@ -1758,9 +1774,9 @@ export function WbRnpPage() {
               tone="slate"
             />
             <OverviewMetric
-              label="GMROI"
+              label="Прибыль к запасу"
               value={fmt(focusSummary.gmroi, "pct")}
-              detail="прибыль / деньги в остатках"
+              detail="прибыль за период / деньги в остатках"
               tone={focusSummary.gmroi == null ? "slate" : focusSummary.gmroi < 30 ? "amber" : "violet"}
             />
           </div>
@@ -2879,6 +2895,7 @@ function OptimaMetricRow({
 function metricUnit(metric: Metric) {
   if (metric.kind === "money") return "₽";
   if (metric.kind === "pct") return "%";
+  if (metric.kind === "rating") return "★";
   if (metric.field === "turnover") return "дн.";
   return "шт.";
 }
