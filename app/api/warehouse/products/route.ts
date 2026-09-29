@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
@@ -94,7 +95,7 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession();
   // Справочник — зона администратора и менеджера: оператор фулфилмента
   // принимает и отгружает то, что в нём есть, но не заводит новое.
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 

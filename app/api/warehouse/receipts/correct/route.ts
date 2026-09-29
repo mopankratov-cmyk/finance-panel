@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { recordWarehouseEvent, type EventChange } from "@/lib/warehouse/events";
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession();
   // Оператор фулфилмента пересчитывает, но не правит: правка — это спор с его
   // же пересчётом, и вести его должен тот, кто отвечает за товар.
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
 
   const body = (await request.json().catch(() => null)) as
     | { entityId?: string; batchId?: string; reason?: string; docKey?: string; lines?: ReceiptCorrectionLineInput[] }

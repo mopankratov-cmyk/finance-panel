@@ -28,7 +28,7 @@ const fail = (error: string, status: number) => NextResponse.json({ error }, { s
 const GROUPS = new Set(["main", "funnel"]);
 
 export async function PATCH(request: NextRequest) {
-  const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"]);
+  const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller", "seller_owner"]);
   if (gate) return gate;
 
   const body = await request.json().catch(() => null) as { url?: string; cabinet?: string; group?: string | null } | null;

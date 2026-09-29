@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { canManageStock } from "@/lib/warehouse/operatorScope";
@@ -476,7 +477,7 @@ async function handlePut(request: NextRequest) {
   // Колонки до миграции нет — тогда признак просто не запишется.
   // Оператор фулфилмента приёмку заводит, но справочник не правит: флаг новинки
   // от него не принимаем — по ТЗ это отметка администратора для запуска в РНП.
-  const noveltyProducts = canManageStock(session?.role)
+  const noveltyProducts = sessionRoles(session).some((role) => canManageStock(role))
     ? [...new Set(lines.filter((line) => line.novelty).map((line) => line.productId))]
     : [];
   if (noveltyProducts.length > 0) {

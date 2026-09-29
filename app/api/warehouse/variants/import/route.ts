@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { noWildberriesSourceReason, wildberriesOwnCabinets } from "@/lib/warehouse/cabinetChannels";
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
   if (gate) return gate;
   const session = await getServerSession();
   // Импорт пишет в справочник — это зона администратора и менеджера.
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as { entityId?: string } | null;
   if (!body) return fail("Некорректное тело запроса", 400);
 

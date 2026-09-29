@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { assertVariantsInScope } from "@/lib/warehouse/ownership";
@@ -92,7 +93,7 @@ export async function POST(request: NextRequest) {
   if (!scope.ok) return fail(scope.error, scope.status);
   const session = await getServerSession();
   if (!session) return fail("Требуется вход", 401);
-  if (!canManageStock(session.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
 
   if (!body.warehouseId) return fail("Выберите склад, с которого отгружаем", 400);
   const cabinet = scope.entity.cabinets.find((link) => link.cabinetId === body.cabinetId);
