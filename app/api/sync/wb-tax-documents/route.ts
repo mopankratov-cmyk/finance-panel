@@ -7,6 +7,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   downloadWbDocument,
   isTaxDocumentCategory,
+  listWbDocumentCategories,
   listWbDocuments,
   parseWbTaxDocumentFile,
   stableTaxDocumentId,
@@ -20,7 +21,7 @@ export const maxDuration = 300;
 const JOB = "wb_tax_documents";
 const PAGE_SIZE = 50;
 const LOOKBACK_DAYS = 60;
-const MAX_LIST_PAGES = 40;
+const MAX_LIST_PAGES_PER_CATEGORY = 20;
 const MAX_DOWNLOADS_PER_CABINET = 5;
 
 type Cabinet = { id: string; name: string; inn: string | null; token: string };
@@ -36,14 +37,23 @@ function recentWindow(): { from: string; to: string } {
 }
 
 async function listRecentDocuments(token: string, from: string, to: string): Promise<WbDocumentListItem[]> {
+  const categories = (await listWbDocumentCategories(token))
+    .filter((category) => isTaxDocumentCategory({ name: category.name, category: category.title }));
   const documents: WbDocumentListItem[] = [];
-  for (let page = 0; page < MAX_LIST_PAGES; page++) {
-    if (page > 0 && page % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 10_000));
-    const batch = await listWbDocuments(token, from, to, page * PAGE_SIZE);
-    documents.push(...batch);
-    if (batch.length < PAGE_SIZE) return documents;
+  let requestCount = 1;
+  for (const category of categories) {
+    for (let page = 0; page < MAX_LIST_PAGES_PER_CATEGORY; page++) {
+      if (requestCount > 0 && requestCount % 5 === 0) await new Promise((resolve) => setTimeout(resolve, 10_000));
+      const batch = await listWbDocuments(token, from, to, page * PAGE_SIZE, category.name);
+      requestCount++;
+      documents.push(...batch);
+      if (batch.length < PAGE_SIZE) break;
+      if (page === MAX_LIST_PAGES_PER_CATEGORY - 1) {
+        throw new Error(`WB вернул больше ${PAGE_SIZE * MAX_LIST_PAGES_PER_CATEGORY} документов категории «${category.title}» за последние ${LOOKBACK_DAYS} дней`);
+      }
+    }
   }
-  throw new Error(`WB вернул больше ${PAGE_SIZE * MAX_LIST_PAGES} документов за последние ${LOOKBACK_DAYS} дней; сузьте окно или увеличьте лимит`);
+  return documents;
 }
 
 async function companyByCabinet() {
