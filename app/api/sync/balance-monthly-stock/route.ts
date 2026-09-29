@@ -12,7 +12,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadGroupReportingScope } from "@/lib/finance/groupReportingScope";
 import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalogItem, type BalanceWbCatalogRow } from "@/lib/finance/balanceWbCatalog";
-import { calculateScopedWbCash, requiresScopedWbCash, scopedWbCashArticlePrefixes, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
+import { calculateScopedWbCash, requiresScopedWbCash, scopedWbCashArticlePrefixes, scopedWbCashReportDates, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
 import { fetchWbAccountBalance, fetchWbFinanceReportSummaries } from "@/lib/wb/financeApi";
 import { loadBalanceCompanyScopes } from "@/lib/finance/balanceScopes";
 
@@ -103,36 +103,35 @@ async function loadScopedWbReportRows(
   if (!reports.length) return [] as ScopedWbReportRow[];
   const prefixes = scopedWbCashArticlePrefixes(cabinetName);
   const prefixFilter = prefixes.map((prefix) => `sa_name.ilike.${prefix.replace(/[%,]/g, "")}%`).join(",");
+  const dates = scopedWbCashReportDates(reports);
 
-  // Агентские кабинеты содержат до 116 тыс. строк в день, большинство —
-  // чужие товары. Читаем каждый недельный отчёт отдельно, одновременно
-  // ограничивая его датами и SQL-фильтром по артикулам наших брендов. Это
-  // использует существующие индексы cabinet_id+rr_dt и sa_name и не тянет
-  // весь seller в память ради нескольких процентов нужных строк.
-  const rows: ScopedWbReportRow[] = [];
-  let next = 0;
-  const workers = Array.from({ length: Math.min(2, reports.length) }, async () => {
-    while (next < reports.length) {
-      const report = reports[next++]!;
-      const reportRows = await loadAllSupabasePages<ScopedWbReportRow>((from, to) => {
+  // У агентских кабинетов до 116 тыс. строк в день, большинство — чужие
+  // товары. Недельные выборки всё ещё создают глубокий OFFSET и в сумме не
+  // укладываются в 300 секунд serverless-функции. Дневной диапазон держит
+  // каждую страницу маленькой, а три параллельных дня — уже проверенный
+  // режим загрузчика ОПиУ для той же таблицы и тех же общих кабинетов.
+  const byDate = new Array<ScopedWbReportRow[]>(dates.length);
+  let nextDate = 0;
+  const workers = Array.from({ length: Math.min(3, dates.length) }, async () => {
+    while (nextDate < dates.length) {
+      const index = nextDate++;
+      const date = dates[index]!;
+      byDate[index] = await loadAllSupabasePages<ScopedWbReportRow>((from, to) => {
         let query = db.from("wb_report_rows")
           .select("rrd_id,realizationreport_id,doc_type_name,supplier_oper_name,ppvz_for_pay,delivery_rub,storage_fee,acceptance,penalty,deduction,additional_payment,cashback_discount")
           .eq("cabinet_id", cabinetId)
-          .eq("realizationreport_id", report.reportId)
-          .gte("rr_dt", report.periodFrom)
-          .lte("rr_dt", report.periodTo);
+          .eq("rr_dt", date);
         if (prefixFilter) query = query.or(prefixFilter);
         return query.order("rrd_id").range(from, to);
       }, {
-        label: `Баланс WB: отчёт ${report.reportId} (${cabinetName})`,
+        label: `Баланс WB: ${date} (${cabinetName})`,
         maxPages: 150,
-        concurrency: 2,
+        concurrency: 1,
       });
-      rows.push(...reportRows);
     }
   });
   await Promise.all(workers);
-  return rows;
+  return byDate.flat();
 }
 
 async function fulfillmentFinality(closeThrough: string, legalEntityIds: ReadonlySet<string>) {
