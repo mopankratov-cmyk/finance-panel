@@ -455,15 +455,15 @@ export function LoansPage() {
     setWbLinkingSource(fact.source);
     try {
       await saveWbContractLink(fact.contractNumber, loanId);
-      const freshFacts = await loadMarketplaceFacts();
-      setMarketplaceFacts(freshFacts);
-      alert(`Договор WB № ${fact.contractNumber} связан с договором панели. Нажмите «Обновить сверку», чтобы закрыть точные строки графика.`);
+      // Связь уже выбрана пользователем, поэтому сразу запускаем повторную
+      // сверку: не заставляем отдельно нажимать «Обновить сверку».
+      await reconcileWithWb();
     } catch (error) {
       alert(error instanceof Error ? error.message : "Не удалось связать договор WB");
     } finally {
       setWbLinkingSource(null);
     }
-  }, [wbLinkLoanIds]);
+  }, [reconcileWithWb, wbLinkLoanIds]);
 
   const manuallyReconcileWbFact = useCallback(async (fact: MarketplaceFact) => {
     const rowId = wbReviewRowIds[fact.source];

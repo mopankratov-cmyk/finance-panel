@@ -41,11 +41,6 @@ export async function GET() {
     const loans = (loansResult.data ?? []) as LoanRow[];
     const cabinetNames = new Map(((cabinetsResult.data ?? []) as CabinetRow[]).map((cabinet) => [cabinet.id, cabinet.name?.trim() || null]));
     const byContract = new Map<string, LoanRow>();
-    for (const link of (linksResult.data ?? []) as ContractLinkRow[]) {
-      const loan = loans.find((item) => item.id === link.loan_id);
-      const number = normalizedContractNumber(link.contract_number);
-      if (loan && number) byContract.set(number, loan);
-    }
     for (const payment of paymentRows) {
       const contract = contractNumberFromComment(payment.comment);
       const loanId = payment.comment?.match(/\[loan:([0-9a-f-]{36})/i)?.[1];
@@ -55,6 +50,14 @@ export async function GET() {
         const normalized = normalizedContractNumber(contract);
         if (normalized) byContract.set(normalized, loan);
       }
+    }
+    // Проверенная связь из WB имеет приоритет над старой меткой в платежах.
+    // Иначе пользователь мог выбрать нужный договор, но следующий GET молча
+    // возвращал его к дубликату, который встретился в истории платежей позже.
+    for (const link of (linksResult.data ?? []) as ContractLinkRow[]) {
+      const loan = loans.find((item) => item.id === link.loan_id);
+      const number = normalizedContractNumber(link.contract_number);
+      if (loan && number) byContract.set(number, loan);
     }
     const schedules = loans.length ? await loadAllSupabasePages<Record<string, unknown>>((from, to) => db.from("loan_schedule_rows").select("*").in("loan_id", loans.map((loan) => loan.id)).order("due_date").range(from, to), { label: "Графики кредитов", maxPages: 50 }) : [];
     const scheduleRows = schedules.map(scheduleRowFromDb);
