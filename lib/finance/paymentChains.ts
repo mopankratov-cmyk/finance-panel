@@ -5,7 +5,7 @@ import { INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES, TRANSFER_CATEGORIES } fr
 export interface ChainCompany { id: string; name: string; groupName: string }
 export interface ChainAllocation {
   id: string; amount: number; date: string; name: string; category: string;
-  companyId: string; accountId: string; targetAccountId?: string; counterparty: string; excluded: boolean;
+  companyId: string; accountId: string; targetAccountId?: string; targetReviewId?: string; counterparty: string; excluded: boolean;
 }
 export interface PaymentChainDraft {
   id: string; revision: number; label: string; sourceDate: string; sourceAmount: number;
@@ -17,7 +17,11 @@ export type ChainRole = "source" | "cash-in" | "loan-out" | "loan-in" | "transfe
 export interface ChainEntry { payment: Payment; role: ChainRole; allocationId: string | null }
 export interface ChainMetadata { id: string; revision: number; amount: number; date: string; label: string; role: ChainRole; allocationId?: string | null }
 export interface ChainHistory { revision: number; createdAt: string; reason: string; entries: ChainEntry[] }
-export interface PaymentChainDetail { draft: PaymentChainDraft; status: "active" | "cancelled"; migrationAvailable: boolean; history: ChainHistory[] }
+export interface PaymentChainBankTarget {
+  id: string; date: string; amount: number; purpose: string; accountId: string;
+  companyId: string; sourceFileName: string; status: string;
+}
+export interface PaymentChainDetail { draft: PaymentChainDraft; status: "active" | "cancelled"; migrationAvailable: boolean; history: ChainHistory[]; bankTargets: PaymentChainBankTarget[] }
 export interface BankReviewChainSplit {
   amount: number; category: string | null; excluded?: boolean;
   flow?: "income" | "expense"; countsTowardBank?: boolean; isRemainder?: boolean;
@@ -93,6 +97,7 @@ export function validateChain(d: PaymentChainDraft, accounts: Account[], compani
     if(a.category===TRANSFER_CATEGORIES.outgoing) {
       const target=accounts.find(acc=>acc.id===a.targetAccountId);
       if(!target || target.currency!=="RUB" || target.id===a.accountId)errors.push("У перевода между кошельками выберите другой рублёвый кошелёк поступления");
+      if(d.bankReviewId && target?.type==="bank" && !a.targetReviewId)errors.push("Для внесения на банковский счёт выберите встречное поступление из выписки");
     }
     if (/Поступление|Получение кредитов|Продажи на МП/.test(a.category)) errors.push("У части расхода выбрана статья поступления");
     if (/зарплат/i.test(a.category) && !a.counterparty.trim()) errors.push("Для зарплаты укажите получателя в каждой части");

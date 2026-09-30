@@ -2,10 +2,10 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadDdsExpenseCategories } from "./expenseCategoriesServer";
-import { preferredAliasCompany } from "./companyAliases";
+import { companyAliasKeys, preferredAliasCompany, sameCompanyAlias } from "./companyAliases";
 import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
-import { bankReviewSpendingSplits, buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
+import { bankReviewSpendingSplits, buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainBankTarget, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
 import { paymentTransferBalances } from "./paymentTransferBalance";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,6 +25,21 @@ async function registry() {
  if(a.error) throw fail(a.error.message,500);
  return {companies:((c.result.data??[]) as unknown as Array<Record<string,unknown>>).map(r=>({id:String(r.id),name:String(r.name),groupName:String(r.group_name)} as ChainCompany)),accounts:(a.data??[]).map(r=>({...r,balance:0} as Account)),categories:categoryOptions(undefined,x.categories.map(r=>r.name))};
 }
+async function loadBankTargets(sourceDate: string, chainId: string): Promise<PaymentChainBankTarget[]> {
+ const db=dbRequired();
+ const rows=await loadAllSupabasePages<Record<string,unknown>>((from,to)=>db.from("bank_review_items")
+  .select("id,date,amount,purpose,account_id,company_id,source_file_name,status")
+  .gt("amount",0).gte("date",sourceDate).in("status",["ready","needs_info","approved"])
+  .is("matched_transfer_id",null)
+  .order("date").order("id").range(from,to),{label:"Встречные поступления для цепочки"});
+ const heads=await loadAllSupabasePages<{id:string;draft:PaymentChainDraft}>((from,to)=>db.from("finance_payment_chains")
+  .select("id,draft").eq("status","active").range(from,to),{label:"Связанные поступления цепочек"}).catch(()=>[]);
+ const used=new Set(heads.filter(head=>head.id!==chainId).flatMap(head=>head.draft.allocations.map(allocation=>allocation.targetReviewId).filter(Boolean) as string[]));
+ return rows.filter(row=>!used.has(String(row.id))).flatMap(row=>row.account_id&&row.company_id?[{
+  id:String(row.id),date:String(row.date).slice(0,10),amount:Number(row.amount),purpose:String(row.purpose??""),
+  accountId:String(row.account_id),companyId:String(row.company_id),sourceFileName:String(row.source_file_name??""),status:String(row.status??""),
+ }]:[]);
+}
 function applyAliasRecipients(draft: PaymentChainDraft, companies: ChainCompany[], accounts: Account[]) {
  const source=companies.find(c=>c.id===draft.sourceCompanyId);
  for(const allocation of draft.allocations) {
@@ -34,9 +49,14 @@ function applyAliasRecipients(draft: PaymentChainDraft, companies: ChainCompany[
  const needsCash=draft.allocations.some(a=>requiresFilippovLoan(source,companies.find(c=>c.id===a.companyId)));
  if(needsCash) {
   const cash=accounts.filter(a=>a.type==='cash'&&a.currency==='RUB');
+  const sourceCash=cash.filter(account=>!companyAliasKeys(account.name).length);
   draft.throughCash=true;
-  if(!draft.cashAccountId&&cash.length===1)draft.cashAccountId=cash[0].id;
-  for(const allocation of draft.allocations) if(requiresFilippovLoan(source,companies.find(c=>c.id===allocation.companyId))) allocation.accountId=draft.cashAccountId;
+  if(!draft.cashAccountId&&(sourceCash.length===1||cash.length===1))draft.cashAccountId=(sourceCash[0]??cash[0]).id;
+  for(const allocation of draft.allocations) if(requiresFilippovLoan(source,companies.find(c=>c.id===allocation.companyId))) {
+   const recipient=companies.find(c=>c.id===allocation.companyId);
+   const recipientCash=cash.filter(account=>recipient&&sameCompanyAlias(account.name,recipient.name));
+   if(recipientCash.length===1)allocation.accountId=recipientCash[0].id;
+  }
  }
  return draft;
 }
@@ -58,7 +78,8 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
   const payments: Payment[]=[];
   for(let i=0;i<links.length;i+=300) {const rows=await db.from("payments").select("*").in("id",links.slice(i,i+300).map(l=>l.payment_id));if(rows.error)throw fail(rows.error.message,500);payments.push(...(rows.data??[]).map(paymentFromRow));}
   const byId=new Map(payments.map(p=>[p.id,p]));
-  return {draft:applyAliasRecipients({...head.data.draft,revision:head.data.revision},reg.companies,reg.accounts),status:head.data.status,migrationAvailable:true,history:revisions.map(r=>({revision:r.revision,reason:r.reason,createdAt:r.created_at,entries:links.filter(l=>l.revision===r.revision).flatMap(l=>byId.has(l.payment_id)?[{payment:byId.get(l.payment_id)!,role:l.role==='legacy'?'source':l.role as ChainEntry['role'],allocationId:l.allocation_id}]:[])}))};
+  const draft=applyAliasRecipients({...head.data.draft,revision:head.data.revision},reg.companies,reg.accounts);
+  return {draft,status:head.data.status,migrationAvailable:true,bankTargets:await loadBankTargets(draft.sourceDate,id),history:revisions.map(r=>({revision:r.revision,reason:r.reason,createdAt:r.created_at,entries:links.filter(l=>l.revision===r.revision).flatMap(l=>byId.has(l.payment_id)?[{payment:byId.get(l.payment_id)!,role:l.role==='legacy'?'source':l.role as ChainEntry['role'],allocationId:l.allocation_id}]:[])}))};
  }
  const canonicalId=seed.reviewId??(selected?chainIdForPayment(selected)??selected.id:null);
  if(!canonicalId || id!==canonicalId)throw fail("Укажите исходную операцию этой цепочки",404);
@@ -91,14 +112,15 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  }
  const throughCash=allocations.some(a=>requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),reg.companies.find(c=>c.id===a.companyId))) || origins.some(p=>sectionForCategory(p.category)===TECHNICAL_SECTION) || sectionForCategory(String(review?.category??""))===TECHNICAL_SECTION;
  if(throughCash) for(const a of allocations) a.accountId=cash.length===1?cash[0].id:"";
- return {draft:applyAliasRecipients({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},reg.companies,reg.accounts),status:"active",migrationAvailable:!head.error,history:[]};
+ const draft=applyAliasRecipients({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},reg.companies,reg.accounts);
+ return {draft,status:"active",migrationAvailable:!head.error,bankTargets:await loadBankTargets(sourceDate,id),history:[]};
 }
 function parseDraft(value: unknown): PaymentChainDraft {
  if(!value || typeof value!=="object")throw fail("Некорректная цепочка");
  const d=value as PaymentChainDraft;
  if(!UUID.test(d.id??"") || !Number.isInteger(d.revision) || d.revision<0 || !Array.isArray(d.allocations) || d.allocations.length>100 || typeof d.throughCash!=="boolean")throw fail("Некорректная цепочка");
  for(const key of ['label','sourceDate','sourceAccountId','sourceCompanyId','cashAccountId'] as const) if(typeof d[key]!=='string'||d[key].length>2000)throw fail("Некорректные поля цепочки");
- for(const a of d.allocations) {if(!a||!UUID.test(a.id??"")||typeof a.excluded!=='boolean')throw fail("Некорректная часть");for(const key of ['date','name','category','companyId','accountId','counterparty'] as const)if(typeof a[key]!=='string'||a[key].length>2000)throw fail("Некорректные поля части");}
+ for(const a of d.allocations) {if(!a||!UUID.test(a.id??"")||typeof a.excluded!=='boolean')throw fail("Некорректная часть");for(const key of ['date','name','category','companyId','accountId','counterparty'] as const)if(typeof a[key]!=='string'||a[key].length>2000)throw fail("Некорректные поля части");if(a.targetReviewId&&!UUID.test(a.targetReviewId))throw fail("Некорректное встречное поступление");}
  return d;
 }
 export async function savePaymentChain(body: Record<string,unknown>) {
@@ -112,6 +134,27 @@ export async function savePaymentChain(body: Record<string,unknown>) {
  const cancel=body.cancel===true;
  const reg=await registry();
  if(!cancel) {const errors=validateChain(d,reg.accounts,reg.companies,reg.categories);if(errors.length)throw fail(errors.join(". "));}
+ const targetAllocations=d.allocations.filter(a=>!a.excluded&&a.targetReviewId);
+ const targetIds=targetAllocations.map(a=>a.targetReviewId!);
+ if(new Set(targetIds).size!==targetIds.length)throw fail("Одно поступление из выписки нельзя использовать для нескольких частей");
+ if(!cancel&&targetIds.length) {
+  const targets=await dbRequired().from("bank_review_items").select("id,date,amount,account_id,company_id,status,matched_transfer_id").in("id",targetIds);
+  if(targets.error)throw fail(targets.error.message,500);
+  const byId=new Map((targets.data??[]).map(row=>[String(row.id),row]));
+  for(const allocation of targetAllocations) {
+   const target=byId.get(allocation.targetReviewId!);
+   if(!target||target.status==='rejected'||target.matched_transfer_id||Number(target.amount)!==allocation.amount||String(target.date).slice(0,10)!==allocation.date||String(target.account_id??'')!==allocation.targetAccountId||String(target.company_id??'')!==allocation.companyId)
+    throw fail("Встречное поступление изменилось или не соответствует сумме, дате, компании и банковскому счёту");
+  }
+  const otherHeads=await dbRequired().from("finance_payment_chains").select("id,draft").eq("status","active").neq("id",d.id);
+  if(otherHeads.error&&!missing(otherHeads.error))throw fail(otherHeads.error.message,500);
+  if((otherHeads.data??[]).some(head=>(head.draft as PaymentChainDraft).allocations.some(a=>a.targetReviewId&&targetIds.includes(a.targetReviewId))))throw fail("Встречное поступление уже входит в другую цепочку",409);
+  if(d.revision===0) {
+   const facts=await dbRequired().from("payments").select("id,import_source").in("import_source",targetIds.map(id=>`bank-review:${id}`)).eq("status","done");
+   if(facts.error)throw fail(facts.error.message,500);
+   d.originPaymentIds=[...new Set([...d.originPaymentIds,...(facts.data??[]).map(row=>String(row.id))])];
+  }
+ }
  const entries=cancel?[]:buildChainEntries(d,reg.companies);
  const imbalance=paymentTransferBalances(entries).find(group=>!group.balanced);
  if(imbalance)throw fail(imbalance.label+": выбытие и поступление не сходятся, разница "+imbalance.net+" ₽");
