@@ -87,6 +87,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const [managerText, setManagerText] = useState("");
   const [instructionResult, setInstructionResult] = useState("");
   const [queueFilter, setQueueFilter] = useState<"review" | "waiting" | "answered">("review");
+  const [reviewIssueFilter, setReviewIssueFilter] = useState<"all" | "missing_category" | "unmatched_transfer">("all");
   const [askItem, setAskItem] = useState<BankReviewItem | null>(null);
   const [askText, setAskText] = useState("");
   const [scheduleRows,setScheduleRows]=useState<ScheduleRowRecord[]>([]);
@@ -192,6 +193,26 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
       && (!requiresCounterparty(item.category) || item.counterparty.trim()));
   };
   const invalidSelected = readySelected.filter((item) => !itemIsReady(item));
+  const hasManagerAnswer = (item: BankReviewItem) => Boolean(item.managerAnswer && !decodeBankSplits(item.managerAnswer));
+  const reviewQueueItems = items.filter((item) => item.status !== "waiting_manager" && !hasManagerAnswer(item));
+  const itemNeedsCategory = (item: BankReviewItem) => {
+    const splits = decodeBankSplits(item.managerAnswer);
+    if (!splits) return !item.category;
+    const spending = bankReviewSpendingSplits(splits);
+    return spending.length === 0 || spending.some((split) => !split.category);
+  };
+  const itemNeedsTransferMatch = (item: BankReviewItem) => unmatchedTransferNeedsDestination(item, decodeBankSplits(item.managerAnswer));
+  const missingCategoryCount = reviewQueueItems.filter(itemNeedsCategory).length;
+  const unmatchedTransferCount = reviewQueueItems.filter(itemNeedsTransferMatch).length;
+  const visibleItems = items.filter((item) => {
+    const answered = hasManagerAnswer(item);
+    if (queueFilter === "waiting") return item.status === "waiting_manager" && !answered;
+    if (queueFilter === "answered") return answered;
+    if (item.status === "waiting_manager" || answered) return false;
+    if (reviewIssueFilter === "missing_category") return itemNeedsCategory(item);
+    if (reviewIssueFilter === "unmatched_transfer") return itemNeedsTransferMatch(item);
+    return true;
+  });
 
   const approveItems = async (targetItems: BankReviewItem[]) => {
     const loanItem = targetItems.find(item=>{
@@ -400,9 +421,9 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
       </Card>
 
       <div className="flex flex-wrap items-center gap-2">
-        <button onClick={() => setQueueFilter("review")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "review" ? "bg-violet-600 text-white" : "border border-slate-300"}`}>На проверке ({items.filter((item) => item.status !== "waiting_manager" && !(item.managerAnswer && !decodeBankSplits(item.managerAnswer))).length})</button>
-        <button onClick={() => setQueueFilter("waiting")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "waiting" ? "bg-amber-500 text-white" : "border border-amber-300 text-amber-800"}`}>Ждут ответа ({items.filter((item) => item.status === "waiting_manager" && !(item.managerAnswer && !decodeBankSplits(item.managerAnswer))).length})</button>
-        <button onClick={() => setQueueFilter("answered")} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "answered" ? "bg-emerald-600 text-white" : "border border-emerald-300 text-emerald-800"}`}>Ответ получен ({items.filter((item) => item.managerAnswer && !decodeBankSplits(item.managerAnswer)).length})</button>
+        <button onClick={() => {setQueueFilter("review");setReviewIssueFilter("all");}} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "review" ? "bg-violet-600 text-white" : "border border-slate-300"}`}>На проверке ({reviewQueueItems.length})</button>
+        <button onClick={() => {setQueueFilter("waiting");setReviewIssueFilter("all");}} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "waiting" ? "bg-amber-500 text-white" : "border border-amber-300 text-amber-800"}`}>Ждут ответа ({items.filter((item) => item.status === "waiting_manager" && !hasManagerAnswer(item)).length})</button>
+        <button onClick={() => {setQueueFilter("answered");setReviewIssueFilter("all");}} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "answered" ? "bg-emerald-600 text-white" : "border border-emerald-300 text-emerald-800"}`}>Ответ получен ({items.filter(hasManagerAnswer).length})</button>
         <button onClick={() => void refresh()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm"><RefreshCw className="h-4 w-4" /> Обновить</button>
         <button onClick={approve} disabled={saving || selected.size === 0 || invalidSelected.length > 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" /> Подтвердить ({selected.size})</button>
         <button onClick={reject} disabled={saving || selected.size === 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm text-red-600 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Исключить</button>
@@ -410,19 +431,23 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
         {invalidSelected.length > 0 && <span className="text-xs text-amber-700">У {invalidSelected.length} выбранных строк не заполнены компания, кошелёк или статья</span>}
       </div>
 
+      {queueFilter === "review" && <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2" aria-label="Фильтры проблем операций">
+        <span className="px-1 text-xs font-medium text-slate-500">Показать:</span>
+        <button type="button" onClick={() => setReviewIssueFilter("all")} aria-pressed={reviewIssueFilter === "all"} className={`min-h-11 rounded-lg px-3 text-sm ${reviewIssueFilter === "all" ? "bg-slate-800 text-white" : "bg-white text-slate-700"}`}>Все ({reviewQueueItems.length})</button>
+        <button type="button" onClick={() => setReviewIssueFilter("missing_category")} aria-pressed={reviewIssueFilter === "missing_category"} className={`min-h-11 rounded-lg px-3 text-sm ${reviewIssueFilter === "missing_category" ? "bg-amber-500 text-amber-950" : "bg-white text-slate-700"}`}>Без статьи ({missingCategoryCount})</button>
+        <button type="button" onClick={() => setReviewIssueFilter("unmatched_transfer")} aria-pressed={reviewIssueFilter === "unmatched_transfer"} className={`min-h-11 rounded-lg px-3 text-sm ${reviewIssueFilter === "unmatched_transfer" ? "bg-sky-600 text-white" : "bg-white text-slate-700"}`}>Нет встречной операции ({unmatchedTransferCount})</button>
+      </div>}
+
       {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
       {loading ? (
         <div className="flex items-center gap-2 py-10 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /> Загружаю очередь…</div>
       ) : items.length === 0 && !error ? (
         <Card><CardContent className="py-10 text-center text-slate-400">Операций на проверке нет</CardContent></Card>
+      ) : visibleItems.length === 0 ? (
+        <Card><CardContent className="py-10 text-center text-slate-500">По выбранному фильтру операций нет</CardContent></Card>
       ) : (
         <div className="space-y-3">
-          {items.filter((item) => {
-            const hasManagerAnswer = Boolean(item.managerAnswer && !decodeBankSplits(item.managerAnswer));
-            if (queueFilter === "waiting") return item.status === "waiting_manager" && !hasManagerAnswer;
-            if (queueFilter === "answered") return hasManagerAnswer;
-            return item.status !== "waiting_manager" && !hasManagerAnswer;
-          }).map((item) => {
+          {visibleItems.map((item) => {
             const spendingSplits = bankReviewSpendingSplits(decodeBankSplits(item.managerAnswer) ?? []);
             const inferredOwnerId = economicCompanyId(item, companies) ?? "";
             const expenseOwnerId = canonicalPaymentCompanyId(inferredOwnerId, companies) || inferredOwnerId;
