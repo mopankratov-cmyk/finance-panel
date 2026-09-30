@@ -340,7 +340,7 @@ const METRIC_LABELS: Record<string, string> = {
   return_pct: "Доля возвратов",
   buyout_pct: "Выкуп",
   actual_buyout_pct: "Фактический выкуп",
-  cohort_resolved_pct: "Заказы с итогом",
+  cohort_resolved_pct: "Окончательный итог",
   buyouts_gross_count: "Выкуплено, шт",
   buyouts_gross_rub: "Выкуплено, ₽",
   orders_spp_sum: "Заказы с СПП",
@@ -427,7 +427,7 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   return_pct: "доля возвратов",
   buyout_pct: "выкуп",
   actual_buyout_pct: "факт. выкуп",
-  cohort_resolved_pct: "заказы с итогом",
+  cohort_resolved_pct: "окончательный итог",
   buyouts_gross_count: "выкуплено",
   buyouts_gross_rub: "выкуплено ₽",
   orders_spp_sum: "заказы с СПП",
@@ -774,7 +774,7 @@ export type RnpGranularity = "day" | "week";
  * Производные, у которых нет пары среди строк таблицы: неделя, сводка под
  * фильтром и сравнение с прошлым периодом пересчитывают их только из `parts`.
  */
-export const PARTS_ONLY_METRIC_FIELDS = new Set<string>(["actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit"]);
+export const PARTS_ONLY_METRIC_FIELDS = new Set<string>(["actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit", "avg_buyout_price"]);
 
 /**
  * Снимок РНП живёт в кэше до 12 часов и переживает выкладку. В снимке, собранном
@@ -893,7 +893,6 @@ const WEEKLY_RATIO_PAIRS: Record<string, { numerator: string; denominator: strin
   net_margin_pct: { numerator: "net_profit", denominator: "buyouts_sum", scale: 100 },
   romi: { numerator: "gross", denominator: "ad_spent", scale: 100 },
   avg_order_price: { numerator: "orders_sum", denominator: "orders_count", scale: 1 },
-  avg_buyout_price: { numerator: "buyouts_sum", denominator: "buyouts_count", scale: 1 },
   profit_per_unit: { numerator: "gross", denominator: "buyouts_count", scale: 1 },
 };
 

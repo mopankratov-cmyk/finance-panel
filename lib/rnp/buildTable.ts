@@ -207,6 +207,11 @@ interface MetricCutoffs {
    * от заказов за него молчат. Не задано — воронки нет вовсе, запасных дней нет.
    */
   ordersPrimary?: string | null;
+  /**
+   * До какого дня известна схема заказа (FBS по сборочным заданиям Marketplace).
+   * Не задано — схема определяется по самим строкам дня.
+   */
+  scheme?: string | null;
 }
 interface FunnelCutoffs { adverts: string | null; funnel: string | null }
 type SupabaseAdmin = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
@@ -413,6 +418,7 @@ export function applyRnpScopeCutoff<Row extends DailyRow>(rows: Row[], asOf: str
     ...(row.returns_count == null ? {} : { returns_count: 0, returns_sum: 0 }),
     ...(row.orders_gross_sum == null ? {} : { orders_gross_sum: 0 }),
     ...(row.orders_stat_sum == null ? {} : { orders_stat_sum: 0 }),
+    ...(row.orders_fbs_count == null ? {} : { orders_fbs_count: 0, orders_fbs_sum: 0, orders_fbw_count: 0, orders_fbw_sum: 0 }),
     ...(row.buyouts_gross_sum == null ? {} : { buyouts_gross_sum: 0, buyouts_finished_sum: 0 }),
     ...(row.cohort_orders == null ? {} : { cohort_orders: 0, cohort_cancelled: 0, cohort_kept: 0, cohort_kept_open: 0, cohort_returned: 0 }),
   } as Row));
@@ -431,6 +437,9 @@ export function applyRnpSourceCutoffs<Row extends DailyRow>(
       ...(isAfter(date, cutoffs.orders) && row.cancels_count != null ? { cancels_count: 0, cancels_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.orders) && row.orders_gross_sum != null ? { orders_gross_sum: 0 } : {}),
       ...(isAfter(date, cutoffs.orders) && row.orders_stat_sum != null ? { orders_stat_sum: 0 } : {}),
+      ...(isAfter(date, cutoffs.orders) && row.orders_fbs_count != null
+        ? { orders_fbs_count: 0, orders_fbs_sum: 0, orders_fbw_count: 0, orders_fbw_sum: 0 }
+        : {}),
       // Когорте нужны оба источника: отмены из заказов, выкупы и возвраты из
       // продаж. Застрявшие продажи при свежих заказах давали бы 0% выкупа.
       ...((isAfter(date, cutoffs.orders) || isAfter(date, cutoffs.sales)) && row.cohort_orders != null
@@ -1418,10 +1427,18 @@ export function buildMetrics(
     : blank;
   // Схема известна, только если её отдал путь первичных строк И колонка есть в базе.
   const schemeFacts = primaryFacts && options.schemeFacts !== false;
-  const ordersFbsCount = schemeFacts ? pick("orders_fbs_count", cutoffs.orders) : blank;
-  const ordersFbsSum = schemeFacts ? pick("orders_fbs_sum", cutoffs.orders) : blank;
-  const ordersFbwCount = schemeFacts ? pick("orders_fbw_count", cutoffs.orders) : blank;
-  const ordersFbwSum = schemeFacts ? pick("orders_fbw_sum", cutoffs.orders) : blank;
+  // День со схемой: граница синка сборочных заданий (или сами строки дня, если
+  // граница не передана). Без схемы FBS/FBW молчат, а не показывают ноль.
+  const schemeDay = days.map((day, index) => schemeFacts && !ordersFallback[index] && (cutoffs.scheme !== undefined
+    ? cutoffs.scheme != null && day <= cutoffs.scheme
+    : byDate.get(day)?.orders_fbs_count !== undefined));
+  // Разбивку по схемам строки получают в applyFbsSchemeSplit: FBS — по сборочным
+  // заданиям, FBW — заказы минус FBS.
+  const schemePick = (key: keyof DailyRow) => pick(key, cutoffs.orders).map((value, index) => schemeDay[index] ? value : null);
+  const ordersFbsCount = schemePick("orders_fbs_count");
+  const ordersFbsSum = schemePick("orders_fbs_sum");
+  const ordersFbwCount = schemePick("orders_fbw_count");
+  const ordersFbwSum = schemePick("orders_fbw_sum");
   // Доля считается от заказов с ИЗВЕСТНОЙ схемой, а не от всех: иначе заказы без
   // типа склада молча занижали бы долю FBS.
   const fbsSharePct = days.map((_, index) => {
@@ -1436,13 +1453,21 @@ export function buildMetrics(
     sum[index] != null && count[index] != null && count[index] > 0 ? Math.round(sum[index] / count[index]) : null);
   const avgOrderParts = { ...matchedParts(ordersSum, ordersCount, ordersFallback), scale: 1 as const };
   const avgOrderPrice = days.map((_, index) => ratioFromParts(avgOrderParts.numerator[index], avgOrderParts.denominator[index], 1));
-  const avgBuyoutPrice = perUnit(buyoutsSum, buyoutsCount);
   // Брутто-выкупы = нетто + возвраты: R-строка приходит в свою дату, и нетто-выкупы
   // уже уменьшены на неё, поэтому сумма восстанавливает исходное число S-строк.
   const grossBuyoutsCount = days.map((_, index) => buyoutsCount[index] != null && returnsCount[index] != null
     ? buyoutsCount[index] + returnsCount[index]
     : null);
   const finalPrice = perUnit(buyoutsFinishedSum, grossBuyoutsCount);
+  // Средняя цена выкупа — по валовым выкупам: «Выкуплено, ₽» (= выкупы нетто +
+  // возвраты) / «Выкуплено, шт». Нетто-выкупы уменьшены возвратами других дат по
+  // их цене, и частное было не ценой: 175 ₽ за день, где реально платили 261 ₽,
+  // и ниже цены покупателя после СПП.
+  const buyoutsBeforeReturnsSum = days.map((_, index) => buyoutsSum[index] != null && returnsSum[index] != null
+    ? buyoutsSum[index] + returnsSum[index]
+    : null);
+  const avgBuyoutParts = { ...matchedParts(buyoutsBeforeReturnsSum, grossBuyoutsCount), scale: 1 as const };
+  const avgBuyoutPrice = days.map((_, index) => ratioFromParts(avgBuyoutParts.numerator[index], avgBuyoutParts.denominator[index], 1));
   // Части цены покупателя и СПП — чтобы неделя и сводка под фильтром считали их
   // из сумм, а не брали последний день недели. Без первичных строк частей нет:
   // такой SKU пропускается, а не гасит день у всех.
@@ -1601,8 +1626,8 @@ export function buildMetrics(
       daily: ordersFbsCount,
       total: knownSum(ordersFbsCount),
       forecast: null,
-      source: "WB Статистика заказов",
-      note: "По сборочным заданиям Marketplace API (существуют только у FBS-заказов, сопоставление по srid). warehouseType из статистики не используется — он метит «Складом продавца» и FBO-отгрузки из СЦ.",
+      source: "Сборочные задания Marketplace",
+      note: "Сборочные задания Marketplace API за день заказа (по Москве) — они есть только у FBS-заказов и не ждут WB Статистику. warehouseType из статистики не используется — он метит «Складом продавца» и FBO-отгрузки из СЦ. У кабинета без воронки — по строкам WB Статистики: FBS — заказы с найденным сборочным заданием (по srid), рубли — фактические цены заказов.",
       qualityReason: schemeQualityReason,
       group_start: true,
     },
@@ -1613,7 +1638,8 @@ export function buildMetrics(
       daily: ordersFbsSum,
       total: totalFbsSum == null ? null : Math.round(totalFbsSum),
       forecast: null,
-      source: "WB Статистика заказов",
+      source: "Сборочные задания Marketplace + WB Воронка",
+      note: "Штуки × средняя цена заказа этого артикула за день: у одного артикула FBS- и FBW-заказ стоят одинаково, а цены у сборочного задания нет. Если заданий за день больше заказов (сутки у воронки и у задания считаются по-разному), рубли не превышают сумму заказов. У кабинета без воронки — по строкам WB Статистики: FBS — заказы с найденным сборочным заданием (по srid), рубли — фактические цены заказов.",
       qualityReason: schemeQualityReason,
     },
     {
@@ -1623,8 +1649,8 @@ export function buildMetrics(
       daily: ordersFbwCount,
       total: knownSum(ordersFbwCount),
       forecast: null,
-      source: "WB Статистика заказов",
-      note: "Заказы без сборочного задания Marketplace в пределах покрытого синком периода. Дни после границы покрытия не классифицируются.",
+      source: "WB Воронка/Статистика − сборочные задания",
+      note: "Заказы минус FBS: всё, что не прошло через сборочные задания Marketplace, отгружено со складов WB. Считается от «Заказов» (воронка WB), а не от строк WB Статистики — она догружает заказы днями позже. Дни после последнего дня воронки и после границы синка сборочных заданий схему не показывают. У кабинета без воронки — по строкам WB Статистики.",
       qualityReason: schemeQualityReason,
     },
     {
@@ -1634,7 +1660,8 @@ export function buildMetrics(
       daily: ordersFbwSum,
       total: totalFbwSum == null ? null : Math.round(totalFbwSum),
       forecast: null,
-      source: "WB Статистика заказов",
+      source: "WB Воронка/Статистика − сборочные задания",
+      note: "Штуки × средняя цена заказа этого артикула за день: у одного артикула FBS- и FBW-заказ стоят одинаково, а цены у сборочного задания нет. Если заданий за день больше заказов (сутки у воронки и у задания считаются по-разному), рубли не превышают сумму заказов. У кабинета без воронки — по строкам WB Статистики: FBS — заказы с найденным сборочным заданием (по srid), рубли — фактические цены заказов.",
       qualityReason: schemeQualityReason,
     },
     {
@@ -1646,8 +1673,8 @@ export function buildMetrics(
         ? r1((totalFbsSum / totalKnownScheme) * 100)
         : null,
       forecast: null,
-      source: "WB Статистика заказов",
-      note: "FBS / (FBS + FBW) по сумме заказов. Считается только по заказам с известным типом склада, поэтому знаменатель может быть меньше общей суммы заказов.",
+      source: "Сборочные задания Marketplace + WB Воронка",
+      note: "FBS / (FBS + FBW) по сумме заказов — то есть доля FBS в «Заказах, ₽» за дни с известной схемой.",
       qualityReason: schemeQualityReason,
     },
     {
@@ -1658,7 +1685,7 @@ export function buildMetrics(
       total: totalCancelsCount,
       forecast: null,
       source: "WB Статистика заказов",
-      note: "Заказы с признаком отмены. В поток заказов они не входят.",
+      note: "Заказы с признаком отмены по строкам WB Статистики. В поток заказов они не входят. Статистика догружает заказы днями позже воронки, поэтому за свежие дни отмен может оказаться больше, чем сейчас.",
       qualityReason: primaryQualityReason,
       group_start: true,
     },
@@ -1756,20 +1783,20 @@ export function buildMetrics(
       forecast: null,
       source: "WB Статистика заказов + продаж (по srid)",
       note: cohortFacts
-        ? "Как у WB: из заказов дня — выкуплено и не возвращено / заказы с известным итогом (выкуп, возврат, отмена или отказ на ПВЗ). Заказы в пути не учитываются. День показывается, когда итог известен хотя бы у половины его заказов: в первые дни известны почти одни быстрые отмены. Пока окно возврата (21 день) не закрылось, часть выкупов ещё может вернуться — насколько период дозрел, видно в «Заказы с итогом»." + cohortSinceLabel
+        ? "Как у WB: из заказов дня — выкуплено и не возвращено / заказы с известным исходом (выкуп, возврат, отмена или отказ на ПВЗ). Заказы в пути не учитываются. День показывается, когда исход известен хотя бы у половины его заказов: в первые дни известны почти одни быстрые отмены. Исход известен — не значит окончателен: выкуп с открытым 21-дневным окном возврата уже считается выкупом, но ещё может вернуться. Сколько исходов окончательны, видно в «Окончательный итог»." + cohortSinceLabel
         : "Когорта заказов ещё не посчитана: нужна миграция 202609170001 (rnp_buyout_cohort_daily_sku) или у выбранного набора нет id кабинета.",
       qualityReason: cohortQualityReason,
       parts: { numerator: matureKept, denominator: matureResolved, scale: 100 },
     },
     {
       field: "cohort_resolved_pct",
-      label: "Заказы с итогом, %",
+      label: "Окончательный итог, %",
       kind: "pct",
       daily: cohortResolvedPct,
       total: ratioFromParts(knownSum(cohortFinal), knownSum(cohortOrders), 100),
       forecast: null,
       source: "WB Статистика заказов + продаж (по srid)",
-      note: "Доля заказов дня с окончательным итогом: отмена или отказ, возврат, либо выкуп, у которого закрылось 21-дневное окно возврата. Остальные ещё в пути или могут вернуться. Чем ниже, тем меньше можно доверять «Фактическому % выкупа»." + cohortSinceLabel,
+      note: "Доля заказов дня, чей исход уже не изменится: отмена или отказ, возврат, либо выкуп с закрытым 21-дневным окном возврата. Остальные ещё в пути или могут вернуться. Чем ниже, тем сильнее «Фактический % выкупа» ещё может сдвинуться." + cohortSinceLabel,
       qualityReason: cohortQualityReason,
       parts: { numerator: cohortFinal, denominator: cohortOrders, scale: 100 },
     },
@@ -1807,7 +1834,7 @@ export function buildMetrics(
         : null,
       forecast: null,
       source: "WB Статистика заказов",
-      note: "Насколько цена заказа ниже цены до скидки продавца — обе цены из одних и тех же неотменённых заказов WB Статистики. Скидка WB (СПП) сюда не входит.",
+      note: "Насколько цена заказа ниже цены до скидки продавца — обе цены из одних и тех же неотменённых заказов WB Статистики. Скидка WB (СПП) сюда не входит. Статистика догружает заказы днями позже воронки: за свежие дни это выборка, а не все заказы.",
       qualityReason: primaryQualityReason,
       ...(sellerDiscountParts ? { parts: sellerDiscountParts } : {}),
     },
@@ -1816,10 +1843,11 @@ export function buildMetrics(
       label: "Средняя цена выкупа, ₽",
       kind: "money",
       daily: avgBuyoutPrice,
-      total: perUnitTotal(totalBuyoutsSum, totalBuyoutsCount),
+      total: ratioFromParts(knownSum(avgBuyoutParts.numerator), knownSum(avgBuyoutParts.denominator), 1),
       forecast: null,
       source: "WB Статистика",
-      note: "Выкупы, ₽ / выкупы, шт — обе величины нетто, возвраты уже вычтены.",
+      note: "Выкуплено, ₽ / выкуплено, шт — по строкам продаж до вычета возвратов, цена продавца до СПП. Возвраты не вычитаются: они приходят в свою дату по цене другой продажи.",
+      parts: avgBuyoutParts,
     },
     {
       field: "final_price",
@@ -2003,7 +2031,7 @@ export function buildMetrics(
   applyDerivedRatioCoverage(withForecasts, "avg_order_price", ["orders_sum", "orders_count"]);
   // Скидка продавца — целиком из статистики заказов, запасной день ей не помеха.
   applyDerivedRatioCoverage(withForecasts, "seller_discount_pct", ["cancels_count"]);
-  applyDerivedRatioCoverage(withForecasts, "avg_buyout_price", ["buyouts_sum", "buyouts_count"]);
+  applyDerivedRatioCoverage(withForecasts, "avg_buyout_price", ["buyouts_sum", "buyouts_count", "returns_count"]);
   applyDerivedRatioCoverage(withForecasts, "final_price", ["buyouts_count", "returns_count"]);
   applyDerivedRatioCoverage(withForecasts, "spp_pct", ["buyouts_sum"]);
   return withForecasts;
@@ -2112,6 +2140,65 @@ function orderPriceBeforeSpp(order: ScopedOrderSourceRow): number {
   const stored = Number(order.price_with_disc);
   if (Number.isFinite(stored)) return stored;
   return Number(order.total_price ?? 0) * (1 - Number(order.discount_percent ?? 0) / 100);
+}
+
+/** Сборочные задания кабинета по артикулу и дню заказа (по Москве). */
+export interface FbsTaskFacts {
+  /** До какого дня синк сборочных заданий догнан. Null — схема неизвестна. */
+  cutoff: string | null;
+  /** «nm_id|YYYY-MM-DD» → число заданий. */
+  counts: Map<string, number>;
+}
+
+/**
+ * Разбивка заказов дня по схемам. FBS — сборочные задания Marketplace за день
+ * заказа: они есть только у FBS и не ждут WB Статистику. FBW — заказы минус FBS.
+ * Прежде обе части считались по строкам Статистики, а она догружает заказы
+ * днями позже воронки: на 22–28.09 у Оптимы FBW + FBS давали 379 при 441 заказе,
+ * а FBS-задание без строки Статистики тихо терялось. Рубли — по средней цене
+ * заказа артикула за день: цены у задания нет, а у одного артикула FBS- и
+ * FBW-заказ стоят одинаково. Строки уже с воронкой, поэтому сводка, сложенная
+ * из них, сходится с суммой артикулов. Дни после границы синка заданий схему
+ * не знают — поля убираются, а не обнуляются.
+ */
+export function applyFbsSchemeSplit(
+  rows: SkuDailyRow[],
+  tasks: FbsTaskFacts | null | undefined,
+  ordersPrimary: string | null | undefined,
+): SkuDailyRow[] {
+  if (!tasks || !tasks.cutoff) return rows;
+  // Кабинет без воронки: заказы целиком из Статистики, и прежняя разбивка тех
+  // же строк по srid с ними согласована — её и оставляем.
+  if (!ordersPrimary) return rows;
+  return rows.map((row) => {
+    const day = String(row.d).slice(0, 10);
+    const {
+      orders_fbs_count: _fbsCount,
+      orders_fbs_sum: _fbsSum,
+      orders_fbw_count: _fbwCount,
+      orders_fbw_sum: _fbwSum,
+      ...rest
+    } = row;
+    void _fbsCount; void _fbsSum; void _fbwCount; void _fbwSum;
+    // После границы синка заданий схема неизвестна. После последнего дня
+    // воронки заказы — из отстающей Статистики без отмен, а задания свежие и с
+    // отменами: разность врала бы, поэтому такой день схему не показывает.
+    if (day > tasks.cutoff! || day > ordersPrimary) return rest as SkuDailyRow;
+    const orders = Number(row.orders_count ?? 0);
+    const ordersSum = Number(row.orders_sum ?? 0);
+    const fbs = tasks.counts.get(`${Number(row.nm_id)}|${day}`) ?? 0;
+    // Заданий больше, чем заказов дня (граница суток у воронки и у задания
+    // разная): FBS — факт, FBW не уходит в минус, рубли не превышают заказы.
+    const fbsPriced = Math.min(fbs, orders);
+    const fbsSum = orders > 0 ? (ordersSum / orders) * fbsPriced : 0;
+    return {
+      ...rest,
+      orders_fbs_count: fbs,
+      orders_fbs_sum: fbsSum,
+      orders_fbw_count: Math.max(0, orders - fbs),
+      orders_fbw_sum: ordersSum - fbsSum,
+    } as SkuDailyRow;
+  });
 }
 
 export function applyFunnelOrdersOverlay(rows: SkuDailyRow[], funnelRows: FunnelRow[]): SkuDailyRow[] {
@@ -2625,6 +2712,44 @@ async function loadScopedFbsFacts(
   }
 }
 
+const MSK_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/** Сборочные задания кабинета: число по артикулу и дню заказа по Москве. */
+async function loadScopedFbsTasks(
+  db: SupabaseAdmin,
+  scope: CabinetScope,
+  allowed: number[],
+  from: string,
+  to: string,
+  cutoff: string | null,
+): Promise<FbsTaskFacts | null> {
+  if (!scope.cabinetId || !cutoff) return null;
+  try {
+    // created_at_wb — настоящий момент времени; сутки считаем по Москве (UTC+3).
+    const rows = await loadAllPages<{ nm_id: number; created_at_wb: string }>((start, end) => db
+      .from("wb_fbs_orders")
+      .select("nm_id, created_at_wb")
+      .eq("cabinet_id", scope.cabinetId!)
+      .in("nm_id", allowed)
+      .gte("created_at_wb", new Date(Date.parse(`${from}T00:00:00.000Z`) - MSK_OFFSET_MS).toISOString())
+      .lt("created_at_wb", new Date(Date.parse(`${nextIsoDate(to)}T00:00:00.000Z`) - MSK_OFFSET_MS).toISOString())
+      .order("created_at_wb", { ascending: true })
+      .order("nm_id", { ascending: true })
+      .range(start, end));
+    const counts = new Map<string, number>();
+    for (const row of rows) {
+      const at = Date.parse(String(row.created_at_wb));
+      if (!Number.isFinite(at)) continue;
+      const day = new Date(at + MSK_OFFSET_MS).toISOString().slice(0, 10);
+      const key = `${Number(row.nm_id)}|${day}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return { cutoff, counts };
+  } catch {
+    return null;
+  }
+}
+
 interface ScopedAggregateRow {
   d: string;
   nm_id: number;
@@ -2714,7 +2839,7 @@ async function loadScopedBaseFacts(
   const aggregate = await step("scoped_aggregate", loadScopedAggregate(db, scope, allowed, from, to, fbsCutoffOnly));
   const skipRawFacts = aggregate != null;
 
-  const [orders, sales, advertSpend, stocks, products, fbsFacts] = await Promise.all([
+  const [orders, sales, advertSpend, stocks, products, fbsFacts, fbsTasks] = await Promise.all([
     skipRawFacts ? Promise.resolve([] as ScopedOrderSourceRow[]) : step("scoped_orders", loadScopedOrders(db, scope, allowed, dateFrom, dateTo)),
     skipRawFacts ? Promise.resolve([] as ScopedSaleSourceRow[]) : step("scoped_sales", loadAllPages<ScopedSaleSourceRow>((start, end) => {
       let query = db
@@ -2763,11 +2888,13 @@ async function loadScopedBaseFacts(
       if (scope.cabinetId) query = query.eq("cabinet_id", scope.cabinetId);
       return query;
     })),
-    // Сборочные задания (12 149 строк у Оптимы) нужны только прежнему пути:
-    // агрегат раскладывает схемы сам, ему хватает границы достоверности.
+    // srid сборочных заданий (12 149 строк у Оптимы) нужны только прежнему пути
+    // по сырым строкам. Разбивку по схемам делает applyFbsSchemeSplit по числу
+    // заданий на артикул и день — их грузит loadScopedFbsTasks для обоих путей.
     skipRawFacts
       ? Promise.resolve({ srids: new Set<string>(), cutoff: fbsCutoffOnly })
       : step("scoped_fbs", loadScopedFbsFacts(db, scope, allowed, dateFrom, dateTo)),
+    step("scoped_fbs_tasks", loadScopedFbsTasks(db, scope, allowed, from, to, fbsCutoffOnly)),
   ]);
   const articleSet = new Set<string>();
   for (const product of products) if (product.article) articleSet.add(product.article);
@@ -2784,9 +2911,9 @@ async function loadScopedBaseFacts(
     : [];
 
   if (aggregate) {
-    return buildScopedBaseFactsFromAggregate({ allowedNmIds: allowed, aggregate, stocks, products, costs, fbsCutoff: fbsCutoffOnly });
+    return { ...buildScopedBaseFactsFromAggregate({ allowedNmIds: allowed, aggregate, stocks, products, costs, fbsCutoff: fbsCutoffOnly }), fbsTasks };
   }
-  return buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs, fbsFacts });
+  return { ...buildScopedBaseFactsFromRows({ allowedNmIds: allowed, orders, sales, advertSpend, stocks, products, costs, fbsFacts }), fbsTasks };
 }
 
 async function loadSalesReturns(
@@ -3180,6 +3307,7 @@ export async function buildRnpTable(
             ]).then(([skuRows, stockRows]) => ({
               skuRows,
               totals: buildLightweightProductTotals(skuRows, stockRows),
+              fbsTasks: null as FbsTaskFacts | null,
             })),
           timed("advert_nm_daily", loadAllPages<AdNmRow>((start, end) => {
             let query = db
@@ -3305,6 +3433,7 @@ export async function buildRnpTable(
         return {
           skuRows: baseFacts.skuRows,
           totals: baseFacts.totals,
+          fbsTasks: baseFacts.fbsTasks,
           adRows,
           funnelRows,
           feedbackRows,
@@ -3350,7 +3479,7 @@ export async function buildRnpTable(
       applyCohortAndReportFacts(
         applyAdvertSpendOverlay(
           applySalesReturnsAdjustment(
-            applyFunnelOrdersOverlay(item.skuRows, item.funnelRows),
+            applyFbsSchemeSplit(applyFunnelOrdersOverlay(item.skuRows, item.funnelRows), item.fbsTasks, item.funnelCutoff),
             item.returnRows,
           ),
           item.adRows,
@@ -3384,15 +3513,18 @@ export async function buildRnpTable(
     const cohortSinceByNm = new Map<number, string | null>();
     const reportCoverageByNm = new Map<number, RnpReportCoverage | null>();
     for (const item of scopeData) {
+      // Пустой кабинет схему не «теряет»: терять нечего, поэтому он не гасит метрику.
+      const hasScheme = item.hasPrimaryFacts
+        && (item.skuRows.length === 0 || item.fbsTasks?.cutoff != null);
       const cutoffs: MetricCutoffs = {
         orders: latestKnownDate([item.funnelCutoff, item.ordersCutoff]),
         sales: item.salesCutoff,
         adverts: item.advertsCutoff,
         ordersPrimary: item.funnelCutoff,
+        // Граница — курсор синка сборочных заданий, а не последний день со
+        // строками: тихий кабинет иначе гасил схему у всей сводки.
+        scheme: hasScheme ? item.fbsTasks?.cutoff ?? null : null,
       };
-      // Пустой кабинет схему не «теряет»: терять нечего, поэтому он не гасит метрику.
-      const hasScheme = item.hasPrimaryFacts
-        && (item.skuRows.length === 0 || item.skuRows.some((row) => row.orders_fbs_count !== undefined));
       for (const total of item.totals) {
         cutoffsByNm.set(Number(total.nm_id), cutoffs);
         primaryFactsByNm.set(Number(total.nm_id), item.hasPrimaryFacts);
@@ -3531,7 +3663,13 @@ export async function buildRnpTable(
     // нет — её нет и у сводки: сумма без целого кабинета читалась бы как честная.
     const stockHistory = mergeStockHistories(scopeData.map((item) => item.stockHistory));
     const todayMsk = moscowToday();
-    const metricCutoffs: MetricCutoffs = { orders: ordersCutoff, sales: salesCutoff, adverts: advertsCutoff, ordersPrimary: funnelCutoff };
+    const metricCutoffs: MetricCutoffs = {
+      orders: ordersCutoff,
+      sales: salesCutoff,
+      adverts: advertsCutoff,
+      ordersPrimary: funnelCutoff,
+      scheme: schemeFactsInSummary ? summaryFreshnessCutoff(scopeData.map((item) => item.fbsTasks?.cutoff ?? null)) : null,
+    };
     const funnelCutoffs: FunnelCutoffs = { adverts: advertsCutoff, funnel: funnelCutoff };
     // Сводка складывает кабинеты, поэтому её граница свежести — по САМОМУ
     // отставшему. По максимуму сумма за день, до которого один кабинет ещё не
@@ -3546,6 +3684,7 @@ export async function buildRnpTable(
       adverts: earliestAcross((item) => item.advertsCutoff),
       // Сводка кабинетов: день неполный, если хоть один кабинет берёт его из статистики.
       ordersPrimary: earliestAcross((item) => item.funnelCutoff),
+      scheme: metricCutoffs.scheme,
     } : metricCutoffs;
     const summaryFunnelCutoffs: FunnelCutoffs = scopeData.length > 1 ? {
       adverts: summaryCutoffs.adverts,
@@ -3854,7 +3993,7 @@ export async function buildRnpTable(
     applyDerivedRatioCoverage(summary, "buyouts_gross_count", ["buyouts_count", "returns_count"]);
     applyDerivedRatioCoverage(summary, "avg_order_price", ["orders_sum", "orders_count"]);
     applyDerivedRatioCoverage(summary, "seller_discount_pct", ["cancels_count"]);
-    applyDerivedRatioCoverage(summary, "avg_buyout_price", ["buyouts_sum", "buyouts_count"]);
+    applyDerivedRatioCoverage(summary, "avg_buyout_price", ["buyouts_sum", "buyouts_count", "returns_count"]);
     applyDerivedRatioCoverage(summary, "final_price", ["buyouts_count", "returns_count"]);
     applyDerivedRatioCoverage(summary, "spp_pct", ["buyouts_sum"]);
     if (marginMetric) {

@@ -53,6 +53,23 @@ function perUnit(num: number | null, den: number | null): number | null {
 /** Производные, которые пересчитываются только из своих `parts`. */
 const PARTS_ONLY_FIELDS = new Set(["actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit"]);
 
+/**
+ * Доли, чьи части — суммы строк самой таблицы. Под фильтром их пересчитываем из
+ * строк (sumAt пропускает SKU без факта), а не из `parts`: sumParts гасит день
+ * целиком, если у одного SKU части нет, и кабинет без синка продаж обнулял бы
+ * цену выкупа у всего фильтра, хотя сервер его просто не учитывает.
+ */
+const RECOMPUTED_FROM_ROWS = new Set(["avg_buyout_price"]);
+
+/**
+ * Разбивка заказов по схемам: у артикула она молчит в дни без воронки и после
+ * границы синка сборочных заданий его кабинета. Сумма «по тем, кто знает» дала
+ * бы под фильтром FBS/FBW одного кабинета при заказах двух, а сводка без
+ * фильтра за этот день честно молчит. Поэтому день пуст, если хоть у одного
+ * выбранного артикула заказы известны, а схема — нет.
+ */
+const STRICT_SCHEME_FIELDS = new Set(["orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum"]);
+
 // Производные из СУММ выбранных SKU — формулы buildTable/taxMetrics один в один.
 const RATIO_RULES: Record<string, (g: Get) => number | null> = {
   ctr: (g) => pctOf(g("clicks"), g("views")),
@@ -71,7 +88,7 @@ const RATIO_RULES: Record<string, (g: Get) => number | null> = {
   },
   return_pct: (g) => pctOf(g("returns_count"), g("buyouts_gross_count")),
   // actual_buyout_pct, cohort_resolved_pct и logistics_per_unit пересчитываются
-  // из своих `parts` (когорта заказов, логистика финотчёта) — см. ниже.
+  // только из своих `parts` (когорта заказов, логистика финотчёта) — см. ниже.
   fbs_share_pct: (g) => {
     const fbs = g("orders_fbs_sum");
     const known = (fbs ?? 0) + (g("orders_fbw_sum") ?? 0);
@@ -86,7 +103,12 @@ const RATIO_RULES: Record<string, (g: Get) => number | null> = {
   // gross=null/buyouts=200 (неизвестна) давало бы profit_per_unit=400₽/шт
   // вместо верных 100000/50=2000₽/шт.
   avg_order_price: (g) => perUnit(g("orders_sum"), g("orders_count")),
-  avg_buyout_price: (g) => perUnit(g("buyouts_sum"), g("buyouts_count")),
+  // «Выкуплено, ₽» = выкупы нетто + возвраты; то же, что parts у buildTable.
+  avg_buyout_price: (g) => {
+    const sum = g("buyouts_sum");
+    const returns = g("returns_sum");
+    return sum == null || returns == null ? null : perUnit(sum + returns, g("buyouts_gross_count"));
+  },
 };
 
 /**
@@ -106,7 +128,7 @@ const RATIO_FIELDS: Record<string, string[]> = {
   fbs_share_pct: ["orders_fbs_sum", "orders_fbw_sum"],
   drr: ["ad_spent", "orders_sum"],
   avg_order_price: ["orders_sum", "orders_count"],
-  avg_buyout_price: ["buyouts_sum", "buyouts_count"],
+  avg_buyout_price: ["buyouts_sum", "returns_sum", "buyouts_gross_count"],
 };
 
 /**
@@ -239,6 +261,24 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
   };
 
   const totalAt: At = (metric) => metric.total;
+  const strictSchemeAt = (field: string, index: number): number | null => {
+    let sum = 0;
+    let seen = false;
+    for (const metrics of skusMetrics) {
+      const value = metrics.get(field)?.daily[index];
+      if (value == null || !Number.isFinite(value)) {
+        if (metrics.get("orders_count")?.daily[index] != null) return null;
+        continue;
+      }
+      sum += value;
+      seen = true;
+    }
+    return seen ? sum : null;
+  };
+  // Значение поля за день для пересчёта: схема — строго, остальное — по тем, кто знает.
+  const dayValue = (field: string, index: number) => STRICT_SCHEME_FIELDS.has(field)
+    ? strictSchemeAt(field, index)
+    : sumAt(field, dailyAt(index));
   const dailyAt = (index: number): At => (metric) => metric.daily[index] ?? null;
   const forecastAt: At = (metric) => metric.forecast;
 
@@ -306,6 +346,21 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     return { numerator, denominator, scale };
   };
 
+  // Части цены выкупа из строк выбранных SKU: «Выкуплено, ₽» и «Выкуплено, шт».
+  const buyoutPriceParts = (): MetricParts => {
+    const numerator: (number | null)[] = [];
+    const denominator: (number | null)[] = [];
+    for (let index = 0; index < dayCount; index++) {
+      const sum = sumAt("buyouts_sum", dailyAt(index));
+      const returns = sumAt("returns_sum", dailyAt(index));
+      const count = sumAt("buyouts_gross_count", dailyAt(index));
+      const known = sum != null && returns != null && count != null;
+      numerator.push(known ? sum + returns : null);
+      denominator.push(known ? count : null);
+    }
+    return { numerator, denominator, scale: 1 };
+  };
+
   return template.map((templateMetric) => {
     // weeklyParts шаблона посчитаны по всему набору SKU — под фильтром они чужие.
     const { weeklyParts: _templateWeeklyParts, ...rest } = templateMetric;
@@ -313,7 +368,7 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     const metric = rest as M;
     const scale = metric.parts?.scale
       ?? skusMetrics.map((metrics) => metrics.get(metric.field)?.parts?.scale).find((value) => value != null);
-    if (scale != null) {
+    if (scale != null && !RECOMPUTED_FROM_ROWS.has(metric.field)) {
       const rawNumerator = Array.from({ length: dayCount }, (_, index) => sumParts(metric.field, (parts) => parts.numerator, index));
       const rawDenominator = Array.from({ length: dayCount }, (_, index) => sumParts(metric.field, (parts) => parts.denominator, index));
       const numerator = rawNumerator.map((value, index) => rawDenominator[index] == null ? null : value);
@@ -336,12 +391,12 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
       const fields = RATIO_FIELDS[metric.field] ?? [];
       // Дни, где известны все поля доли: итог — только из них.
       const matchedIndexes = Array.from({ length: dayCount }, (_, index) => index)
-        .filter((index) => fields.every((field) => sumAt(field, dailyAt(index)) != null));
+        .filter((index) => fields.every((field) => dayValue(field, index) != null));
       const matchedTotal = (field: string) => {
         let sum = 0;
         let seen = false;
         for (const index of matchedIndexes) {
-          const value = sumAt(field, dailyAt(index));
+          const value = dayValue(field, index);
           if (value == null) continue;
           sum += value;
           seen = true;
@@ -350,9 +405,11 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
       };
       return {
         ...metric,
-        daily: Array.from({ length: dayCount }, (_, index) => rule((field) => sumAt(field, dailyAt(index)))),
+        daily: Array.from({ length: dayCount }, (_, index) => rule((field) => dayValue(field, index))),
         total: fields.length ? rule(matchedTotal) : rule((field) => sumAt(field, totalAt)),
         forecast: null,
+        // Части шаблона посчитаны по всем SKU — неделя под фильтром взяла бы их.
+        ...(RECOMPUTED_FROM_ROWS.has(metric.field) ? { parts: buyoutPriceParts() } : {}),
       };
     }
     const weighted = weightedTotal[metric.field as keyof ReturnType<typeof weightedRules>];
@@ -391,6 +448,11 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
         total,
         forecast: null,
       };
+    }
+    if (STRICT_SCHEME_FIELDS.has(metric.field)) {
+      const daily = Array.from({ length: dayCount }, (_, index) => strictSchemeAt(metric.field, index));
+      const total = knownTotal(daily);
+      return { ...metric, daily, total: total == null ? null : Math.round(total), forecast: null };
     }
     return {
       ...metric,

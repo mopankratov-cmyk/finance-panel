@@ -194,7 +194,7 @@ const METRIC_FALLBACKS: Record<string, { label: string; kind: string }> = {
   return_pct: { label: "Доля возвратов, %", kind: "pct" },
   buyout_pct: { label: "Выкуп потока, %", kind: "pct" },
   actual_buyout_pct: { label: "Фактический % выкупа, %", kind: "pct" },
-  cohort_resolved_pct: { label: "Заказы с итогом, %", kind: "pct" },
+  cohort_resolved_pct: { label: "Окончательный итог, %", kind: "pct" },
   buyouts_gross_count: { label: "Выкуплено, шт", kind: "int" },
   buyouts_gross_rub: { label: "Выкуплено, ₽", kind: "money" },
   orders_spp_sum: { label: "Заказы с СПП, ₽", kind: "money" },
