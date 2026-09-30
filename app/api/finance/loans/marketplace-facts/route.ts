@@ -64,12 +64,16 @@ export async function GET() {
     const facts = reportRows.flatMap((row) => {
       const fact = wbLoanFactFromRow(row);
       if (!fact) return [];
-      // У старых договоров номер ещё мог не попасть в метку. WB добавляет
-      // дату выдачи в назначение — используем её только для того, чтобы
-      // показать кандидата; автозачёт всё равно потребует точного совпадения.
+      // У действительно старых удержаний номер иногда отсутствует. Тогда WB
+      // добавляет дату выдачи в назначение, и её можно использовать лишь как
+      // кандидата. Если номер есть, но для него пока нет связи, нельзя
+      // подменять его договором с той же датой выдачи: у одного кредитора
+      // бывают несколько договоров одного дня, и очередь начинала предлагать
+      // чужой график для ручного зачёта.
       const issueDate = fact.reason.match(/от\s+(\d{4}-\d{2}-\d{2})/)?.[1];
-      const loan = (fact.contractNumber ? byContract.get(fact.contractNumber) ?? byContract.get(normalizedContractNumber(fact.contractNumber)) : undefined)
-        ?? loans.find((item) => item.creditor.toLowerCase().includes("вб финанс") && item.start_date === issueDate);
+      const loan = fact.contractNumber
+        ? byContract.get(fact.contractNumber) ?? byContract.get(normalizedContractNumber(fact.contractNumber))
+        : loans.find((item) => item.creditor.toLowerCase().includes("вб финанс") && item.start_date === issueDate);
       const candidates = loan && fact.kind !== "unknown"
         ? scheduleRows.filter((row) => row.loanId === loan.id && row.status === "planned" && row.kind === fact.kind
           // Отчёт WB фиксирует дату удержания, а не дату графика. В соседние
