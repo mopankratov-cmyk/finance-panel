@@ -6,6 +6,7 @@ import { LoadingBanner, useElapsedSeconds } from "@/components/ui/LoadingState";
 import { formatRub } from "@/lib/analytics/format";
 import { COMPANY_TAX_SYSTEMS, COMPANY_VAT_MODES, type CompanyTaxSystem, type CompanyVatMode } from "@/lib/finance/companyTax";
 import { calculateTaxPeriod, vatAllowsInputDeduction, type UsnExpenseStatus, type VatDeductionStatus, type VatDocumentStatus } from "@/lib/finance/taxCalculation";
+import { isCashoutPayment } from "@/lib/finance/cashout";
 import { AlertTriangle, Calculator, Check, Download, FileCheck2, Loader2, Plus, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -137,7 +138,7 @@ export function TaxesPage() {
   const advertisingExpense = register?.wbAdvertisingExpense ?? marketplace.advertising;
   const advertisingCoverageIncomplete = Boolean(register?.wbAdvertisingCoverageStart && register.wbAdvertisingCoverageStart > dates.from);
   const automaticMarketplaceExpenses = money(marketplace.serviceExpensesExAdvertising + advertisingExpense);
-  const payments = register?.payments ?? [];
+  const payments = (register?.payments ?? []).filter((payment) => !isCashoutPayment({ amount: -payment.grossAmount, name: payment.name, counterparty: payment.counterparty, comment: payment.note, importSource: payment.source === "Банк" ? "bank-review:cashout" : null }) && (payment.saved || payment.suggestedVatKind !== "unknown"));
   const operatingPayments = payments.filter((payment) => payment.taxPaymentKind === "operating_expense");
   const bankInsurance = money(payments.reduce((sum, payment) => payment.taxPaymentKind === "insurance_contribution" && payment.usnExpenseStatus === "included" ? sum + payment.grossAmount : sum, 0));
   const contributions = money((register?.yearSettings.fixedInsuranceContributions ?? 0) + bankInsurance);

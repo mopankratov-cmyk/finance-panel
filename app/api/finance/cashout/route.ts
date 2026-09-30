@@ -19,6 +19,15 @@ type PaymentRow = {
   comment: string | null;
   import_source: string | null;
 };
+type CashoutReviewRow = {
+  id: string;
+  date: string;
+  amount: number | string;
+  company_id: string | null;
+  counterparty: string | null;
+  purpose: string | null;
+  reasons: unknown;
+};
 
 type Operation = {
   id: string;
@@ -50,17 +59,29 @@ export async function GET(request: NextRequest) {
     const companyIds = companies.map((company) => company.id);
     if (!companyIds.length) return NextResponse.json({ from, to, companies: [] });
 
-    const rows = await loadAllSupabasePages<PaymentRow>((pageFrom, pageTo) => db
-      .from("payments")
-      .select("id,date,name,amount,company_id,counterparty,comment,import_source")
-      .in("company_id", companyIds)
-      .eq("status", "done")
-      .neq("amount", 0)
-      .gte("date", from)
-      .lte("date", to)
-      .order("date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(pageFrom, pageTo), { label: "Операции раздела Обнал", maxPages: 60 });
+    const [rows, reviewRows] = await Promise.all([
+      loadAllSupabasePages<PaymentRow>((pageFrom, pageTo) => db
+        .from("payments")
+        .select("id,date,name,amount,company_id,counterparty,comment,import_source")
+        .in("company_id", companyIds)
+        .eq("status", "done")
+        .neq("amount", 0)
+        .gte("date", from)
+        .lte("date", to)
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(pageFrom, pageTo), { label: "Операции раздела Обнал", maxPages: 60 }),
+      loadAllSupabasePages<CashoutReviewRow>((pageFrom, pageTo) => db
+        .from("bank_review_items")
+        .select("id,date,amount,company_id,counterparty,purpose,reasons")
+        .in("company_id", companyIds)
+        .in("status", ["ready", "needs_info", "waiting_manager"])
+        .gte("date", from)
+        .lte("date", to)
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(pageFrom, pageTo), { label: "Операции Обнала из выписок", maxPages: 60 }),
+    ]);
 
     const byCompany = new Map<string, Operation[]>();
     for (const row of rows) {
@@ -82,6 +103,14 @@ export async function GET(request: NextRequest) {
         amount: round(Math.abs(Number(row.amount))),
         kind,
       };
+      byCompany.set(row.company_id, [...(byCompany.get(row.company_id) ?? []), operation]);
+    }
+    for (const row of reviewRows) {
+      if (!row.company_id || !Array.isArray(row.reasons) || !row.reasons.map(String).includes("__cashout_import")) continue;
+      const candidate = { amount: Number(row.amount), name: row.purpose ?? "", counterparty: row.counterparty ?? "", comment: "", importSource: "bank-review:cashout" };
+      const kind = cashoutKind(candidate);
+      if (!kind) continue;
+      const operation: Operation = { id: row.id, date: row.date, purpose: row.purpose || "Операция по выписке", counterparty: row.counterparty ?? "", amount: round(Math.abs(Number(row.amount))), kind };
       byCompany.set(row.company_id, [...(byCompany.get(row.company_id) ?? []), operation]);
     }
 
