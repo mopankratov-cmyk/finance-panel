@@ -244,6 +244,7 @@ export function LoansPage() {
   const [wbLinkLoanIds, setWbLinkLoanIds] = useState<Record<string, string>>({});
   const [wbReviewRowIds, setWbReviewRowIds] = useState<Record<string, string>>({});
   const [wbLinkingSource, setWbLinkingSource] = useState<string | null>(null);
+  const [wbAllocatingContract, setWbAllocatingContract] = useState<string | null>(null);
   const formPanel = useRef<HTMLDivElement>(null);
   const closeForm = useCallback(() => { setModalOpen(false); setEditing(null); }, []);
   useDialogBehavior(modalOpen, closeForm, formPanel);
@@ -464,6 +465,27 @@ export function LoansPage() {
       setWbLinkingSource(null);
     }
   }, [reconcileWithWb, wbLinkLoanIds]);
+
+  const allocateWbContract = useCallback(async (contractNumber: string) => {
+    if (!window.confirm(`Распределить удержания WB по договору № ${contractNumber}?\n\nСистема закроет только полностью покрытые старые строки того же вида платежа в хронологическом порядке. Непоместившийся остаток не будет списан наугад.`)) return;
+    setWbAllocatingContract(contractNumber);
+    try {
+      const response = await fetch("/api/finance/loans/marketplace-facts", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "allocate-contract", contractNumber }),
+      });
+      const body = await response.json().catch(() => ({})) as { allocatedRows?: number; allocatedAmountRub?: number; unresolvedFacts?: number; error?: string };
+      if (!response.ok) throw new Error(body.error || "Не удалось распределить удержания WB");
+      const [freshFacts, fresh, schedule] = await Promise.all([loadMarketplaceFacts(), loadFinanceState(), loadLoanScheduleRows()]);
+      setMarketplaceFacts(freshFacts);
+      dispatch({ type: "LOAD", payload: fresh });
+      setScheduleRows(schedule.rows);
+      alert(`WB: распределено ${body.allocatedRows ?? 0} строк на ${formatMoney(body.allocatedAmountRub ?? 0)}.${body.unresolvedFacts ? ` Остаток по ${body.unresolvedFacts} удержаниям оставлен на проверке.` : ""}`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось распределить удержания WB");
+    } finally {
+      setWbAllocatingContract(null);
+    }
+  }, [dispatch]);
 
   const manuallyReconcileWbFact = useCallback(async (fact: MarketplaceFact) => {
     const rowId = wbReviewRowIds[fact.source];
@@ -694,7 +716,7 @@ export function LoansPage() {
               <h2 className="font-bold text-amber-950">Удержания WB ждут проверки</h2>
               <p className="mt-1 text-sm text-amber-900">Точное совпадение закрывается автоматически. Для неизвестного номера укажите договор панели один раз — следующие удержания WB найдутся сами.</p>
             </div>
-            <button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">Обновить сверку</button>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-50">Обновить сверку</button>{[...new Set(marketplaceFacts.filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber).map((fact) => fact.contractNumber!))].map((contractNumber) => <button key={contractNumber} type="button" onClick={() => void allocateWbContract(contractNumber)} disabled={wbAllocatingContract !== null} className="min-h-11 shrink-0 rounded-xl bg-amber-700 px-4 text-sm font-semibold text-white hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:opacity-50">{wbAllocatingContract === contractNumber ? "Распределяю…" : `Распределить № ${contractNumber}`}</button>)}</div>
           </div>
           <div className="max-h-80 overflow-y-auto">
             {marketplaceFacts.filter((fact) => fact.state === "review" || fact.state === "unassigned").slice(0, 20).map((fact) => {
