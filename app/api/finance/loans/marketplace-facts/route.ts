@@ -177,7 +177,9 @@ export async function POST(request: Request) {
     let allocatedRows = 0;
     let allocatedAmountRub = 0;
     let unresolvedFacts = 0;
-    const facts = reportRows.flatMap(wbLoanFactFromRow)
+    // flatMap не выкидывает null — только разворачивает массивы: нераспознанная
+    // строка удержания дошла бы до fact.contractNumber и уронила роут.
+    const facts = reportRows.flatMap((row) => wbLoanFactFromRow(row) ?? [])
       .filter((fact) => normalizedContractNumber(fact.contractNumber) === contractNumber && fact.kind !== "unknown")
       .sort((a, b) => a.date.localeCompare(b.date) || a.rrdId.localeCompare(b.rrdId));
     for (const fact of facts) {
