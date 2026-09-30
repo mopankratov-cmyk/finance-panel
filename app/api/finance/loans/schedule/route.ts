@@ -85,6 +85,8 @@ export async function POST(request: Request) {
 
 type PutBody = {
   loanId?: string; accountId?: string; companyId?: string | null; currency?: string; exchangeRate?: number; creditorName?: string; contractFileName?: string;
+  /** План можно заменить только после явного подтверждения удаления прежних строк. */
+  replacePlanned?: boolean;
   /** Новый договор передаётся вместе с графиком: это убирает гонку между двумя API-запросами. */
   loan?: Loan;
   rows?: Array<{ id?: string; dueDate?: string; kind?: string; amountRub?: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null; status?: string }>;
@@ -150,6 +152,17 @@ export async function PUT(request: Request) {
   // Строки, которые в оплаченные/отменённые не входят и в новый набор не попали, — удаляем вместе с их платежами.
   const incomingIds = new Set(incoming.map((row) => row.id));
   const toDelete = removedPlanned.filter((row) => !incomingIds.has(row.id) && !keepIds.has(row.id));
+  // Черновик формы иногда приходит неполным (например, после сбоя разбора
+  // документа). Нельзя без предупреждения принять его за новый полный график:
+  // это тихо удаляло месяцы из действующего договора. Старые клиенты также
+  // защищены сервером, а не только подтверждением в интерфейсе.
+  if (toDelete.length && body?.replacePlanned !== true) {
+    return NextResponse.json({
+      error: `В новом графике отсутствуют ${toDelete.length} плановых строк. Проверьте даты и подтвердите замену, если это намеренное изменение.`,
+      code: "planned_rows_would_be_removed",
+      missingRows: toDelete.map((row) => ({ dueDate: row.dueDate, kind: row.kind, amountRub: row.amountRub })),
+    }, { status: 409 });
+  }
   const paymentsToDelete = toDelete.map((row) => row.calendarPaymentId).filter((id): id is string => Boolean(id));
   if (toDelete.length) {
     const deleted = await client.from("loan_schedule_rows").delete().in("id", toDelete.map((row) => row.id));

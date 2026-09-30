@@ -14,7 +14,7 @@ import { formatDate, formatMoney, generateId, todayISO } from "@/lib/format";
 import type { Loan, Payment } from "@/lib/types";
 import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
-import { closeLoanScheduleRows, closeLoanScheduleRowWithWb, loadLoanScheduleRows, saveLoanScheduleRows } from "./scheduleStore";
+import { closeLoanScheduleRows, closeLoanScheduleRowWithWb, loadLoanScheduleRows, saveLoanScheduleRows, ScheduleReplacementRequiredError } from "./scheduleStore";
 import { loadFinanceState, persistFinanceAction } from "@/lib/db";
 import { financeReducer } from "@/lib/reducer";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
@@ -564,10 +564,18 @@ export function LoansPage() {
       balanceBefore: row.balanceBefore ?? null, balanceAfter: row.balanceAfter ?? null, status: rowStatus(row.status),
     }] : []));
     try {
-      await saveLoanScheduleRows({
+      const scheduleInput: Parameters<typeof saveLoanScheduleRows>[0] = {
         loanId: loan.id, loan, accountId: result.accountId, companyId: result.companyId || null, currency: result.currency, exchangeRate: rate,
         creditorName: loan.creditorName, contractFileName: result.contractFileName || undefined, rows,
-      });
+      };
+      try {
+        await saveLoanScheduleRows(scheduleInput);
+      } catch (error) {
+        if (!(error instanceof ScheduleReplacementRequiredError)) throw error;
+        const detail = error.missingRows === 1 ? "одна плановая строка" : `${error.missingRows} плановых строк`;
+        if (!window.confirm(`В новом графике отсутствуют ${detail}. Их удаление изменит календарь и историю обязательства. Заменить график?`)) return;
+        await saveLoanScheduleRows({ ...scheduleInput, replacePlanned: true });
+      }
       // Старые плановые строки по меткам (до миграции) сервер не знает — убираем их сами.
       for (const payment of existing.filter((payment) => payment.comment?.includes(":schedule:") && payment.status === "planned" && !payment.comment?.includes("[paid-by:"))) {
         dispatch({ type: "DELETE_PAYMENT", payload: payment.id });

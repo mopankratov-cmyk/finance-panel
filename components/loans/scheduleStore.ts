@@ -33,13 +33,31 @@ export interface SaveScheduleInput {
   exchangeRate: number;
   creditorName: string;
   contractFileName?: string;
+  replacePlanned?: boolean;
   rows: Array<{ id?: string; dueDate: string; kind: "principal" | "interest" | "penalty" | "fine" | "fee"; amountRub: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null; status?: "planned" | "paid" | "cancelled" }>;
+}
+
+export class ScheduleReplacementRequiredError extends Error {
+  readonly missingRows: number;
+
+  constructor(message: string, missingRows: number) {
+    super(message);
+    this.name = "ScheduleReplacementRequiredError";
+    this.missingRows = missingRows;
+  }
 }
 
 /** Заменить плановые строки графика; оплаченные и отменённые не трогаются. Возвращает строки и производные платежи. */
 export async function saveLoanScheduleRows(input: SaveScheduleInput): Promise<{ rows: ScheduleRowRecord[]; payments: Payment[] }> {
-  return fetch("/api/finance/loans/schedule", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) })
-    .then((response) => json<{ rows: ScheduleRowRecord[]; payments: Payment[] }>(response));
+  const response = await fetch("/api/finance/loans/schedule", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) });
+  const body = await response.json().catch(() => ({})) as { rows?: ScheduleRowRecord[]; payments?: Payment[]; error?: string; code?: string; missingRows?: unknown[] };
+  if (!response.ok) {
+    if (body.code === "planned_rows_would_be_removed") {
+      throw new ScheduleReplacementRequiredError(body.error || "Неполный график требует подтверждения", body.missingRows?.length ?? 0);
+    }
+    throw new Error(body.error || `Ошибка ${response.status}`);
+  }
+  return { rows: body.rows ?? [], payments: body.payments ?? [] };
 }
 
 /** Закрыть строки одной даты (тело + проценты…) одним фактом ДДС. confirmed=true — сумма отличается, человек подтвердил. */
