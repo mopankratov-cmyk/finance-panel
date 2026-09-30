@@ -528,7 +528,7 @@ export function LoansPage() {
     }] : []));
     try {
       await saveLoanScheduleRows({
-        loanId: loan.id, accountId: result.accountId, companyId: result.companyId || null, currency: result.currency, exchangeRate: rate,
+        loanId: loan.id, loan, accountId: result.accountId, companyId: result.companyId || null, currency: result.currency, exchangeRate: rate,
         creditorName: loan.creditorName, contractFileName: result.contractFileName || undefined, rows,
       });
       // Старые плановые строки по меткам (до миграции) сервер не знает — убираем их сами.

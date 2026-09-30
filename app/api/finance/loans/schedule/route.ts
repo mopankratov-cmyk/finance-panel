@@ -8,7 +8,8 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbLoanFactFromRow } from "@/lib/loans/marketplaceFacts";
 import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
-import type { Payment } from "@/lib/types";
+import { loanToRow } from "@/lib/finance/dbServer";
+import type { Loan, Payment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,8 @@ export async function POST(request: Request) {
 
 type PutBody = {
   loanId?: string; accountId?: string; companyId?: string | null; currency?: string; exchangeRate?: number; creditorName?: string; contractFileName?: string;
+  /** Новый договор передаётся вместе с графиком: это убирает гонку между двумя API-запросами. */
+  loan?: Loan;
   rows?: Array<{ id?: string; dueDate?: string; kind?: string; amountRub?: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null; status?: string }>;
 };
 
@@ -97,6 +100,17 @@ export async function PUT(request: Request) {
   const accountId = text(body?.accountId, 80);
   if (!loanId || !accountId || !Array.isArray(body?.rows)) return NextResponse.json({ error: "Нужны кредит, счёт и строки графика" }, { status: 400 });
   if (body.rows.length > 500) return NextResponse.json({ error: "Слишком много строк графика" }, { status: 413 });
+  if (body.loan && body.loan.id !== loanId) return NextResponse.json({ error: "Договор не соответствует графику" }, { status: 400 });
+  // Даже если старый клиент не дождался отдельной записи договора или повторно
+  // сохраняет черновик после ошибки, этот же серверный запрос гарантирует, что
+  // ссылка loan_schedule_rows.loan_id уже существует до вставки строк графика.
+  if (body.loan) {
+    const savedLoan = await client.from("loans").upsert(loanToRow(body.loan), { onConflict: "id" });
+    if (savedLoan.error) return NextResponse.json({ error: savedLoan.error.message }, { status: 500 });
+  }
+  const loanResult = await client.from("loans").select("id").eq("id", loanId).maybeSingle();
+  if (loanResult.error) return NextResponse.json({ error: loanResult.error.message }, { status: 500 });
+  if (!loanResult.data) return NextResponse.json({ error: "Договор ещё не сохранён. Повторите сохранение." }, { status: 409 });
   const currency = text(body.currency, 3) || "RUB";
   const exchangeRate = Number(body.exchangeRate) > 0 ? Number(body.exchangeRate) : 1;
   const companyId = text(body.companyId, 80) || null;

@@ -2,7 +2,7 @@
 
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import type { LoanTerms, ScheduleRow } from "@/lib/loans/scheduleModel";
-import type { Payment } from "@/lib/types";
+import type { Loan, Payment } from "@/lib/types";
 
 async function json<T>(response: Response): Promise<T> {
   const body = await response.json().catch(() => ({})) as T & { error?: string };
@@ -25,6 +25,8 @@ export async function buildLoanScheduleRows(terms: LoanTerms): Promise<ScheduleR
 
 export interface SaveScheduleInput {
   loanId: string;
+  /** Передаём договор серверу вместе с графиком, чтобы FK не зависел от гонки запросов. */
+  loan?: Loan;
   accountId: string;
   companyId: string | null;
   currency: string;
