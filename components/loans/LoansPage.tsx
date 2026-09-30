@@ -697,6 +697,8 @@ export function LoansPage() {
               const reviewRows = fact.loanId
                 ? scheduleRows.filter((row) => row.loanId === fact.loanId && row.status === "planned")
                 : [];
+              const needsContractReselect = fact.state === "review" && reviewRows.length === 0;
+              const selectableLoans = state.loans.filter((loan) => loan.status === "active" && scheduleRows.some((row) => row.loanId === loan.id && row.status === "planned"));
               return (
                 <div key={fact.source} className="grid grid-cols-[1fr_auto] gap-3 border-b border-amber-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
@@ -717,15 +719,21 @@ export function LoansPage() {
                             </button>
                           </div>
                         </div>
-                      ) : <p className="mt-2 text-xs text-amber-950">В договоре нет плановых строк графика. Откройте договор, сохраните график и обновите сверку.</p>
+                      ) : <p className="mt-2 text-xs text-amber-950">У связанного договора нет плановых строк. Выберите ниже нужный договор с графиком.</p>
                     )}
-                    {fact.state === "unassigned" && fact.contractNumber && (
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <select aria-label={`Договор панели для WB ${fact.contractNumber}`} value={wbLinkLoanIds[fact.contractNumber] ?? ""} onChange={(event) => setWbLinkLoanIds((current) => ({ ...current, [fact.contractNumber!]: event.target.value }))} className="min-h-11 max-w-full rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-800">
-                          <option value="">Выберите договор панели</option>
-                          {state.loans.filter((loan) => loan.status === "active").map((loan) => <option key={loan.id} value={loan.id}>{loan.creditorName} · {contractNumber(state.payments, loan.id) || formatDate(loan.startDate)}</option>)}
-                        </select>
-                        <button type="button" disabled={!wbLinkLoanIds[fact.contractNumber] || wbLinkingSource === fact.source} onClick={() => void linkWbContract(fact)} className="min-h-11 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">Связать договор</button>
+                    {(fact.state === "unassigned" || needsContractReselect) && fact.contractNumber && (
+                      <div className="mt-2 rounded-lg border border-amber-200 bg-white/70 p-2">
+                        {needsContractReselect && <p className="text-xs text-amber-950">Связь WB указывает на дубль без графика. Выберите договор, в котором есть нужный график.</p>}
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          <select aria-label={`Договор панели для WB ${fact.contractNumber}`} value={wbLinkLoanIds[fact.contractNumber] ?? ""} onChange={(event) => setWbLinkLoanIds((current) => ({ ...current, [fact.contractNumber!]: event.target.value }))} className="min-h-11 max-w-full rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-800">
+                            <option value="">Выберите договор панели</option>
+                            {selectableLoans.map((loan) => {
+                              const plannedRows = scheduleRows.filter((row) => row.loanId === loan.id && row.status === "planned").length;
+                              return <option key={loan.id} value={loan.id}>{loan.creditorName} · {contractNumber(state.payments, loan.id) || formatDate(loan.startDate)} · {plannedRows} строк</option>;
+                            })}
+                          </select>
+                          <button type="button" disabled={!wbLinkLoanIds[fact.contractNumber] || wbLinkingSource === fact.source} onClick={() => void linkWbContract(fact)} className="min-h-11 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">{needsContractReselect ? "Переназначить договор" : "Связать договор"}</button>
+                        </div>
                       </div>
                     )}
                   </div>
