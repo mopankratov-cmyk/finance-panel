@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-import { ozonBalanceStockCounts, ozonBalanceStockQuantity } from "../lib/ozon/api";
+import { mergeOzonBalanceStockItems, ozonBalanceStockCounts, ozonBalanceStockQuantity } from "../lib/ozon/api";
 
 test("баланс Ozon складывает все количественные столбцы отчёта", () => {
   const item = {
@@ -42,6 +42,55 @@ test("баланс Ozon складывает все количественные
 
 test("новый статус Ozon автоматически попадает в баланс", () => {
   assert.equal(ozonBalanceStockQuantity({ available_stock_count: 10, future_stock_count: "3" }), 13);
+});
+
+test("остатки Ozon дополняются общим количеством и доставкой из FBO-метода", () => {
+  const rows = mergeOzonBalanceStockItems([
+    {
+      sku: 1871577470,
+      offer_id: "CLR00912",
+      warehouse_id: 10,
+      warehouse_name: "НОГИНСК_РФЦ",
+      available_stock_count: 330,
+      valid_stock_count: 7,
+      other_stock_count: 5,
+      return_from_customer_stock_count: 57,
+      return_to_seller_stock_count: 2,
+    },
+  ], [
+    {
+      sku: 1871577470,
+      offer_id: "CLR00912",
+      warehouse_id: 10,
+      present: 589,
+      reserved: 84,
+    },
+  ]);
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]?.quantity, 1074);
+  assert.deepEqual(rows[0]?.statusCounts, {
+    available_stock_count: 330,
+    valid_stock_count: 7,
+    other_stock_count: 5,
+    return_from_customer_stock_count: 57,
+    return_to_seller_stock_count: 2,
+    total_stock_count: 589,
+    delivering_to_customer_stock_count: 84,
+  });
+});
+
+test("FBO-метод не дублирует столбцы, если Ozon вернёт их в аналитике", () => {
+  const rows = mergeOzonBalanceStockItems([
+    {
+      sku: 1,
+      warehouse_id: 10,
+      total_stock_count: 12,
+      delivering_to_customer_stock_count: 3,
+    },
+  ], [{ sku: 1, warehouse_id: 10, present: 12, reserved: 3 }]);
+
+  assert.equal(rows[0]?.quantity, 15);
 });
 
 test("месячный снимок использует новый отчёт остатков и opening balance Ozon", () => {
