@@ -69,6 +69,7 @@ export function PaymentsPage() {
   const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">("overview");
   const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">(mode);
   const [bankImportOpen, setBankImportOpen] = useState(false);
+  const [cashoutImport, setCashoutImport] = useState(false);
   const [historyImportOpen, setHistoryImportOpen] = useState(false);
   const [opiuAllocationPayment, setOpiuAllocationPayment] = useState<Payment | null>(null);
   const [companiesOpen, setCompaniesOpen] = useState(false);
@@ -90,7 +91,10 @@ export function PaymentsPage() {
 
   useEffect(() => {
     if (shouldOpenCompanySettings(window.location.search)) setCompaniesOpen(true);
-    if (shouldOpenBankImport(window.location.search)) setBankImportOpen(true);
+    if (shouldOpenBankImport(window.location.search)) {
+      setCashoutImport(new URLSearchParams(window.location.search).get("cashoutImport") === "1");
+      setBankImportOpen(true);
+    }
     const filters = paymentLedgerFiltersFromSearch(window.location.search);
     if (filters) {
       setMode("ledger");
@@ -647,11 +651,12 @@ export function PaymentsPage() {
       />
       <BankStatementModal
         open={bankImportOpen}
-        onClose={() => setBankImportOpen(false)}
+        onClose={() => { setBankImportOpen(false); setCashoutImport(false); }}
         accounts={state.accounts}
         companies={companies}
         existingPayments={paymentsWithCompany}
-        onQueued={() => setMode("review")}
+        onQueued={() => { if (cashoutImport) window.location.assign("/pnl/taxes/cashout"); else setMode("review"); }}
+        cashoutOnly={cashoutImport}
       />
       <ImportDdsModal
         open={historyImportOpen}

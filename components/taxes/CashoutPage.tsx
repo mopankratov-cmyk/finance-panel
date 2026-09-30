@@ -58,7 +58,7 @@ export function CashoutPage() {
     <div className="mb-4 flex flex-wrap items-end gap-3">
       <div className="grid h-10 w-10 place-items-center rounded-lg bg-amber-100 text-amber-700"><Banknote className="h-5 w-5" /></div>
       <div className="min-w-[240px] flex-1"><h1 className="text-2xl font-bold text-slate-900">Обнал</h1><p className="text-sm text-slate-500">Снятия в банкомате, переводы физлицам и по СБП, которые собственник должен вернуть на счёт</p></div>
-      <Link href="/payments?bankImport=1" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-50"><Upload className="h-4 w-4" />Загрузить выписки с начала года</Link>
+      <Link href="/payments?bankImport=1&cashoutImport=1" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-50"><Upload className="h-4 w-4" />Загрузить выписки для «Обнала»</Link>
       <label className="text-xs font-semibold text-slate-600">Показать с 1 января по дату<input type="date" min="2025-01-01" max={today} value={asOf} onChange={(event) => setAsOf(event.target.value || today)} className="mt-1 block min-h-11 rounded-lg border border-slate-300 bg-white px-3" /></label>
     </div>
     {loading ? <LoadingBanner seconds={elapsed} hint="банковские выписки Панкратова и РИО" /> : null}

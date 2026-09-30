@@ -17,6 +17,7 @@ import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { importedBankAccountName, importedBankAccountOpeningDate } from "./importedBankAccount";
+import { cashoutKind } from "@/lib/finance/cashout";
 
 // Статьи — из единого справочника; отдельного списка «для выписки» больше нет.
 
@@ -27,12 +28,13 @@ interface Props {
   companies: DdsCompany[];
   existingPayments: Array<Payment & { companyId?: string | null }>;
   onQueued: () => void;
+  cashoutOnly?: boolean;
 }
 
 type ImportResult = { queued: number; approved: number; matchedTransfers: number; duplicatesSkipped: number };
 const emptyImportResult = (): ImportResult => ({ queued: 0, approved: 0, matchedTransfers: 0, duplicatesSkipped: 0 });
 
-export function BankStatementModal({ open, onClose, accounts, companies, existingPayments, onQueued }: Props) {
+export function BankStatementModal({ open, onClose, accounts, companies, existingPayments, onQueued, cashoutOnly = false }: Props) {
   const { state, dispatch } = useFinance();
   const { categories: BANK_CATEGORIES } = useDdsCategories();
   const [statement, setStatement] = useState<BankStatement | null>(null);
@@ -109,9 +111,21 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       const data = await response.json().catch(() => null) as { statement?: BankStatement; suggestions?: BankSuggestion[]; accountNumberKnown?: boolean; error?: string } | null;
       if (!response.ok || !data?.statement || !data.suggestions) throw new Error(data?.error ?? "Не удалось распознать выписку");
       const parsed = data.statement;
-      const suggestions = data.suggestions;
+      const rawSuggestions = data.suggestions;
+      const filteredSuggestions = cashoutOnly
+        ? rawSuggestions.filter((suggestion) => cashoutKind({ amount: Number(suggestion.row?.amount), name: suggestion.row?.purpose ?? "", counterparty: suggestion.row?.counterparty ?? "", comment: suggestion.row?.purpose ?? "", importSource: "bank-review:cashout" }) !== null)
+        : rawSuggestions;
+      if (cashoutOnly && !filteredSuggestions.length) throw new Error("В выписке не найдены снятия, переводы физлицам/СБП или внесения через банкомат");
+      const selectedIds = new Set(filteredSuggestions.map((suggestion) => suggestion.row?.id).filter((id): id is string => Boolean(id)));
+      const rows = cashoutOnly ? parsed.rows.filter((row) => selectedIds.has(row.id)) : parsed.rows;
+      const filteredStatement = cashoutOnly
+        ? { ...parsed, rows, declaredDebit: Math.abs(rows.filter((row) => row.amount < 0).reduce((sum, row) => sum + row.amount, 0)), declaredCredit: rows.filter((row) => row.amount > 0).reduce((sum, row) => sum + row.amount, 0) }
+        : parsed;
+      const suggestions = cashoutOnly
+        ? filteredSuggestions.map((suggestion) => ({ ...suggestion, needsReview: true, reasons: [...(suggestion.reasons ?? []), "__cashout_import"] }))
+        : filteredSuggestions;
       setSuggestions(suggestions);
-      setStatement(parsed);
+      setStatement(filteredStatement);
       setAccountNumberKnown(typeof data.accountNumberKnown === "boolean" ? data.accountNumberKnown : null);
       setNewAccountName("");
       setConfirmedCategories(new Set(
@@ -124,7 +138,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       setCommentOverrides(new Map());
       setFileName(file.name);
       setControlMismatchAccepted(false);
-      setIncluded(new Set(parsed.rows.map((row) => row.id)));
+      setIncluded(new Set(filteredStatement.rows.map((row) => row.id)));
       setCategories(
         new Map(
           suggestions.map((suggestion) => [suggestion.row.id, suggestion.category ?? ""]),
@@ -312,7 +326,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       <button type="button" aria-label="Закрыть" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
       <div ref={panel} role="dialog" aria-modal="true" aria-label="Импорт банковской выписки" className="relative flex max-h-[92dvh] w-full max-w-[1500px] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 sm:px-5 sm:py-4">
-          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Импорт банковской выписки</h2>
+          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">{cashoutOnly ? "Импорт выписки для раздела «Обнал»" : "Импорт банковской выписки"}</h2>
           <button type="button" onClick={close} aria-label="Закрыть" className="tap -mr-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
         <div className="overflow-y-auto overscroll-contain px-4 pb-safe-4 pt-4 sm:px-5">
