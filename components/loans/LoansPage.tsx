@@ -141,6 +141,10 @@ function contractNumber(payments: Payment[], loanId: string): string {
   return linkedRows(payments, loanId).map((payment) => commentValue(payment.comment, "contract-number")).find(Boolean) ?? "";
 }
 
+function normalizedContractNumber(value: string | null | undefined): string {
+  return String(value ?? "").toUpperCase().replace(/[^A-ZА-Я0-9]/g, "");
+}
+
 function addDays(date: string, days: number): string {
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
@@ -698,7 +702,11 @@ export function LoansPage() {
                 ? scheduleRows.filter((row) => row.loanId === fact.loanId && row.status === "planned")
                 : [];
               const needsContractReselect = fact.state === "review" && reviewRows.length === 0;
-              const selectableLoans = state.loans.filter((loan) => loan.status === "active" && scheduleRows.some((row) => row.loanId === loan.id && row.status === "planned"));
+              const loansWithSchedule = state.loans.filter((loan) => loan.status === "active" && scheduleRows.some((row) => row.loanId === loan.id && row.status === "planned"));
+              const sameContractLoans = fact.contractNumber
+                ? loansWithSchedule.filter((loan) => normalizedContractNumber(contractNumber(state.payments, loan.id)) === normalizedContractNumber(fact.contractNumber))
+                : [];
+              const selectableLoans = sameContractLoans.length ? sameContractLoans : loansWithSchedule;
               return (
                 <div key={fact.source} className="grid grid-cols-[1fr_auto] gap-3 border-b border-amber-100 px-4 py-3 last:border-b-0">
                   <div className="min-w-0">
@@ -723,7 +731,7 @@ export function LoansPage() {
                     )}
                     {(fact.state === "unassigned" || needsContractReselect) && fact.contractNumber && (
                       <div className="mt-2 rounded-lg border border-amber-200 bg-white/70 p-2">
-                        {needsContractReselect && <p className="text-xs text-amber-950">Связь WB указывает на дубль без графика. Выберите договор, в котором есть нужный график.</p>}
+                        {needsContractReselect && <p className="text-xs text-amber-950">Связь WB указывает на дубль без графика. Ниже показан договор с тем же номером, в котором есть график.</p>}
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           <select aria-label={`Договор панели для WB ${fact.contractNumber}`} value={wbLinkLoanIds[fact.contractNumber] ?? ""} onChange={(event) => setWbLinkLoanIds((current) => ({ ...current, [fact.contractNumber!]: event.target.value }))} className="min-h-11 max-w-full rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-800">
                             <option value="">Выберите договор панели</option>
