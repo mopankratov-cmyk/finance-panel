@@ -9,7 +9,11 @@ export interface RnpMetricForecast {
   observedDays: number;
   futureDays: number;
   method: string;
+  /** Прогноз опирается на неполный факт незакрытого дня как на нижнюю границу. */
+  partialFloor?: boolean;
 }
+
+export const PARTIAL_FLOOR_METHOD_NOTE = "; незакрытый день — не ниже уже пришедшего";
 
 const WEEKDAY_PRIOR_DAYS = 2;
 
@@ -62,10 +66,21 @@ export function statusForCoverage(coveragePct: number): RnpMetricStatus {
   return "ready";
 }
 
+export interface AdditiveForecastOptions {
+  /**
+   * Значение за день после `asOf` — неполный факт этого дня, а не пустота:
+   * заказы из WB Статистики до прихода воронки. Прогноз дня не опускается ниже
+   * уже пришедшего — иначе 71 заказ за сегодня заменялся проекцией в 49, и
+   * прогноз периода выходил меньше показанного факта.
+   */
+  partialAfterAsOf?: boolean;
+}
+
 export function forecastAdditiveMetric(
   days: string[],
   values: (number | null)[],
   asOf: string,
+  options: AdditiveForecastOptions = {},
 ): RnpMetricForecast | null {
   const observed = days
     .map((day, index) => ({ day, value: values[index] }))
@@ -73,6 +88,11 @@ export function forecastAdditiveMetric(
   if (observed.length === 0) return null;
 
   const future = days.filter((day) => day > asOf);
+  // Выровнено с `future`: неполный факт дня или null.
+  const partials = days
+    .map((day, index) => ({ day, value: values[index] }))
+    .filter((entry) => entry.day > asOf)
+    .map((entry) => (options.partialAfterAsOf && finite(entry.value) && entry.value > 0 ? entry.value : null));
   const actualTotal = observed.reduce((sum, entry) => sum + entry.value, 0);
   const coveragePct = coverageForPeriod(days, values, asOf);
   if (future.length === 0) {
@@ -104,15 +124,15 @@ export function forecastAdditiveMetric(
     ? clamp(recentMean / previousMean, 0.75, 1.25)
     : 1;
 
-  const projected = future.reduce((sum, day) => {
+  const dayProjections = future.map((day) => {
     const samples = weekdayValues.get(weekday(day)) ?? [];
     const weekdayMean = samples.length
       ? (samples.reduce((total, value) => total + value, 0) + overallMean * WEEKDAY_PRIOR_DAYS)
         / (samples.length + WEEKDAY_PRIOR_DAYS)
       : overallMean;
-    return sum + weekdayMean * trend;
-  }, 0);
-  const value = actualTotal + projected;
+    return weekdayMean * trend;
+  });
+  const projected = dayProjections.reduce((sum, value) => sum + value, 0);
 
   const variance = observedValues.reduce((sum, item) => sum + (item - overallMean) ** 2, 0) / observedValues.length;
   const coefficientOfVariation = Math.abs(overallMean) > 0.0001
@@ -124,20 +144,41 @@ export function forecastAdditiveMetric(
     0.15,
     0.75,
   );
-  const projectedLow = projected * (1 - uncertainty);
-  const projectedHigh = projected * (1 + uncertainty);
-  const low = Math.min(actualTotal + projectedLow, actualTotal + projectedHigh);
-  const high = Math.max(actualTotal + projectedLow, actualTotal + projectedHigh);
+  const method = "Факт + профиль дня недели + краткосрочный тренд; календарь акций не подключён";
 
+  if (partials.every((value) => value == null)) {
+    const projectedLow = projected * (1 - uncertainty);
+    const projectedHigh = projected * (1 + uncertainty);
+    return {
+      value: actualTotal + projected,
+      low: Math.min(actualTotal + projectedLow, actualTotal + projectedHigh),
+      high: Math.max(actualTotal + projectedLow, actualTotal + projectedHigh),
+      confidencePct: Math.round((1 - uncertainty) * 100),
+      coveragePct,
+      observedDays: observed.length,
+      futureDays: future.length,
+      method,
+    };
+  }
+
+  // Неполный день: оценка дня — не ниже уже пришедшего факта, вилка — вокруг
+  // этой оценки, и её низ тоже не ниже факта. Верх не схлопывается в факт:
+  // статистика внутри дня отстаёт от воронки, день ещё добирает.
+  const floorAt = (index: number, value: number) => Math.max(value, partials[index] ?? -Infinity);
+  const estimates = dayProjections.map((projection, index) => floorAt(index, projection));
+  const sumDays = (pick: (estimate: number, index: number) => number) =>
+    estimates.reduce((sum, estimate, index) => sum + pick(estimate, index), 0);
   return {
-    value,
-    low,
-    high,
+    value: actualTotal + sumDays((estimate) => estimate),
+    low: actualTotal + sumDays((estimate, index) =>
+      floorAt(index, Math.min(estimate * (1 - uncertainty), estimate * (1 + uncertainty)))),
+    high: actualTotal + sumDays((estimate) => Math.max(estimate * (1 - uncertainty), estimate * (1 + uncertainty))),
     confidencePct: Math.round((1 - uncertainty) * 100),
     coveragePct,
     observedDays: observed.length,
     futureDays: future.length,
-    method: "Факт + профиль дня недели + краткосрочный тренд; календарь акций не подключён",
+    method: `${method}${PARTIAL_FLOOR_METHOD_NOTE}`,
+    partialFloor: true,
   };
 }
 
@@ -152,6 +193,12 @@ export function forecastRatioMetric(
   const candidates = [numerator.low, numerator.high].flatMap((top) =>
     denominatorBounds.map((bottom) => top / bottom * multiplier));
   const value = numerator.value / denominator.value * multiplier;
+  // Метод — от части, которая ещё прогнозируется: реклама за сегодня есть, а
+  // заказы нет — подпись «прогноз равен факту» от числителя была бы неправдой.
+  // Опору на неполный день несёт любая из частей — пометка нужна и доле.
+  const open = numerator.futureDays > 0 || denominator.futureDays === 0 ? numerator : denominator;
+  const partialFloor = Boolean(numerator.partialFloor || denominator.partialFloor);
+  const method = partialFloor && !open.partialFloor ? `${open.method}${PARTIAL_FLOOR_METHOD_NOTE}` : open.method;
   return {
     value,
     low: Math.min(...candidates),
@@ -160,6 +207,7 @@ export function forecastRatioMetric(
     coveragePct: Math.min(numerator.coveragePct, denominator.coveragePct),
     observedDays: Math.min(numerator.observedDays, denominator.observedDays),
     futureDays: Math.max(numerator.futureDays, denominator.futureDays),
-    method: `Производная метрика: ${numerator.method}`,
+    method: `Производная метрика: ${method}`,
+    ...(partialFloor ? { partialFloor } : {}),
   };
 }

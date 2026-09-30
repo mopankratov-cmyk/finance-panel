@@ -562,12 +562,59 @@ function applyPeriodCoverage(metric: Metric, days: string[], asOf: string) {
   metric.status = statusForCoverage(coveragePct);
 }
 
-function applyMetricForecasts(metrics: Metric[], days: string[], asOf: string, metricAsOf: MetricAsOfMap = {}) {
+/**
+ * Поля, у которых день после свежести источника может быть неполным фактом, а не
+ * пустотой: заказы за день без воронки берутся из WB Статистики. Прогноз такого
+ * дня не ниже уже пришедшего. У прочих полей значения после свежести срезаны.
+ */
+const PARTIAL_DAY_FORECAST_FIELDS = new Set(["orders_count", "orders_sum"]);
+
+type ForecastFloor = { value: number; low: number; high: number };
+
+/**
+ * Прогноз сводки по неполному дню — не ниже суммы прогнозов её артикулов.
+ * Опора «не ниже пришедшего» берётся у каждого артикула по его дню, а у сводки —
+ * по суммарному дню, и максимум не складывается: сводка выходила меньше суммы
+ * своих строк, а фильтр по части артикулов — больше всего кабинета.
+ */
+export function skuForecastFloors(skus: { metrics: Metric[] }[]): Partial<Record<string, ForecastFloor>> {
+  const floors: Partial<Record<string, ForecastFloor>> = {};
+  for (const field of PARTIAL_DAY_FORECAST_FIELDS) {
+    let value = 0, low = 0, high = 0, seen = false;
+    for (const sku of skus) {
+      const metric = sku.metrics.find((item) => item.field === field);
+      if (!metric) continue;
+      const fallback = metric.total ?? 0;
+      value += metric.forecast ?? fallback;
+      low += metric.forecastLow ?? metric.forecast ?? fallback;
+      high += metric.forecastHigh ?? metric.forecast ?? fallback;
+      seen = true;
+    }
+    if (seen) floors[field] = { value, low, high };
+  }
+  return floors;
+}
+
+export function applyMetricForecasts(
+  metrics: Metric[],
+  days: string[],
+  asOf: string,
+  metricAsOf: MetricAsOfMap = {},
+  partialDayFloors: Partial<Record<string, ForecastFloor>> = {},
+) {
   const results = new Map<string, RnpMetricForecast | null>();
   for (const metric of metrics) {
     if (!ADDITIVE_FORECAST_FIELDS.has(metric.field)) continue;
     const sourceAsOf = metricAsOf[metric.field] ?? asOf;
-    const result = forecastAdditiveMetric(days, metric.daily, sourceAsOf);
+    const own = forecastAdditiveMetric(days, metric.daily, sourceAsOf, {
+      partialAfterAsOf: PARTIAL_DAY_FORECAST_FIELDS.has(metric.field),
+    });
+    // Поднимаем до суммы артикулов до расчёта долей: прогноз ДРР и выкупа
+    // должен делиться на те же заказы, что стоят в строке.
+    const floor = partialDayFloors[metric.field];
+    const result = own?.partialFloor && floor
+      ? { ...own, value: Math.max(own.value, floor.value), low: Math.max(own.low, floor.low), high: Math.max(own.high, floor.high) }
+      : own;
     results.set(metric.field, result);
     applyForecast(metric, result, days, sourceAsOf);
     applyPeriodCoverage(metric, days, asOf);
@@ -3789,7 +3836,7 @@ export async function buildRnpTable(
       returns_sum: cutoffAsOf(summaryCutoffs.sales, asOf),
       ad_spent: cutoffAsOf(summaryCutoffs.adverts, asOf),
       gross: summaryEconomyAsOf,
-    });
+    }, skuForecastFloors(skus));
     applyOrdersFallbackCoverage(summary, days, asOf, summaryCutoffs.ordersPrimary);
     // Повторный проход прогнозов сбросил бы покрытие производных долей на 100%.
     applyDerivedRatioCoverage(summary, "drr", ["ad_spent", "orders_sum"]);
