@@ -467,7 +467,9 @@ export async function POST(request: Request) {
     const selectedExternalIds=new Set(rows.map(row=>row.external_id));
     const ledgerStatement: BankStatement = {
       documentHash,
-      bank: bankNameFromWalletName(sourceAccountName, text(body.statement.bank, 255) || "Банк не определён"),
+      // БИК из имени файла имеет приоритет над вручную названным кошельком.
+      // Иначе ошибочное имя кошелька закрепляет неверный банк в реестре.
+      bank: bankNameFromWalletName(`${text(body.sourceFileName, 255)} ${sourceAccountName}`, text(body.statement.bank, 255) || "Банк не определён"),
       owner: text(body.statement.owner, 500),
       ownerInn,
       accountNumber: bankAccountNumber,
