@@ -50,7 +50,7 @@ test('cash wallets are autofilled for the real Pankratov to Filippov chain and c
  assert.deepEqual(chainCashAccounts(realAccounts).map(account=>account.id),['shared','illumey','pankratov']);
  assert.equal(preferredChainCashAccount(realCompanies[0],realAccounts,realCompanies)?.id,'pankratov');
  assert.equal(preferredChainCashAccount(realCompanies[1],realAccounts,realCompanies)?.id,'shared');
- const auto=autofillPaymentChainCash({id:'chain',revision:0,label:'Дивиденды Андрея',sourceDate:'2026-09-17',sourceAmount:10000,sourceAccountId:'bank',sourceCompanyId:'pankratov',cashAccountId:'',throughCash:false,bankReviewId:'review',originPaymentIds:[],allocations:[{id:'part',amount:10000,date:'2026-09-17',name:'Дивиденды Андрея',category:'Дивиденды',companyId:'filippov',accountId:'bank',counterparty:'Андрей Коровкин',excluded:false}]},realCompanies,realAccounts);
+ const auto=autofillPaymentChainCash({id:'chain',revision:0,label:'Оплата по счёту',sourceDate:'2026-09-23',sourceAmount:999685,sourceAccountId:'bank',sourceCompanyId:'pankratov',cashAccountId:'',throughCash:false,bankReviewId:'review',originPaymentIds:[],allocations:[{id:'part',amount:999685,date:'2026-09-23',name:'Оплата по счёту',category:'Закуп товара',companyId:'filippov',accountId:'bank',counterparty:'ИП Доан Ха Ли',excluded:false}]},realCompanies,realAccounts);
  assert.equal(auto.throughCash,true);
  assert.equal(auto.cashAccountId,'pankratov');
  assert.equal(auto.allocations[0].accountId,'shared');
