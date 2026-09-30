@@ -9,6 +9,7 @@ import { calculateTaxPeriod, vatAllowsInputDeduction, type UsnExpenseStatus, typ
 import { AlertTriangle, Calculator, Check, Download, FileCheck2, Loader2, Plus, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { TaxSectionTabs } from "./TaxSectionTabs";
 
 type TaxPaymentKind = "operating_expense" | "insurance_contribution" | "usn_tax_payment" | "vat_tax_payment" | "other_tax";
 type Company = { id: string; name: string; groupName: string; taxSystem: CompanyTaxSystem | null; vatMode: CompanyVatMode | null; taxRate: number | null; taxAdditionalRate: number | null };
@@ -213,6 +214,7 @@ export function TaxesPage() {
 
   return <div className="mx-auto max-w-[1600px] px-3 py-4 sm:px-4 lg:py-5">
     <FinanceTabs />
+    <TaxSectionTabs active="taxes" />
     <div className="mb-4 flex flex-wrap items-end gap-2.5"><div className="grid h-10 w-10 place-items-center rounded-lg bg-violet-100 text-violet-700"><Calculator className="h-5 w-5" /></div><div className="min-w-[220px] flex-1"><h1 className="text-2xl font-bold text-slate-900">Налоги на текущую дату</h1><p className="text-sm text-slate-500">Нарастающим итогом с 1 января</p></div><label className="text-xs font-semibold text-slate-600">Рассчитать на дату<input type="date" min="2025-01-01" max={today} value={asOf} onChange={(event) => setAsOf(event.target.value || today)} className={`mt-1 block ${fieldClass}`} /></label><label className="min-w-56 text-xs font-semibold text-slate-600">Компания<select value={companyId} onChange={(event) => setCompanyId(event.target.value)} className={`mt-1 block w-full ${fieldClass}`}><option value="">Выберите компанию</option>{register?.companies.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label></div>
     {loading ? <LoadingBanner seconds={elapsed} hint="отчёты маркетплейсов и налоговый регистр" /> : null}
     {error ? <ActionableError message={error} label="Налоги" onRetry={() => setReload((value) => value + 1)} tone="rose" className="mb-3" /> : null}
