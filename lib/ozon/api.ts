@@ -890,6 +890,14 @@ export interface OzonBalanceStockRow {
   statusCounts: Record<string, number>;
 }
 
+type OzonFboWarehouseStock = {
+  sku?: number;
+  offer_id?: string;
+  warehouse_id?: number;
+  present?: number;
+  reserved?: number;
+};
+
 /**
  * Ozon «FBO → Управление остатками» отдаёт каждый количественный столбец как
  * отдельное поле `*_stock_count`. Для баланса владелец учитывает сумму ВСЕХ
@@ -908,6 +916,76 @@ export function ozonBalanceStockCounts(item: Record<string, unknown>): Record<st
 
 export function ozonBalanceStockQuantity(item: Record<string, unknown>): number {
   return Object.values(ozonBalanceStockCounts(item)).reduce((sum, value) => sum + value, 0);
+}
+
+/**
+ * `/v1/analytics/stocks` больше не возвращает два столбца кабинета:
+ * «Всего товаров» и «Доставляем покупателям». Новый FBO-метод отдаёт их как
+ * `present` и `reserved`. Объединяем ответы по SKU и складу, сохраняя остальные
+ * `*_stock_count` из аналитики, чтобы итог совпадал с XLSX «Управление
+ * остатками» и автоматически подхватывал новые статусы.
+ */
+export function mergeOzonBalanceStockItems(
+  analyticsItems: readonly Record<string, unknown>[],
+  fboStocks: readonly OzonFboWarehouseStock[],
+): OzonBalanceStockRow[] {
+  const rows = new Map<string, OzonBalanceStockRow>();
+  const warehouseNames = new Map<string, string>();
+  const keyOf = (sku: number, warehouseId: unknown) => `${sku}:${String(warehouseId ?? "")}`;
+
+  for (const item of analyticsItems) {
+    const sku = Number(item.sku ?? 0);
+    const warehouseId = item.warehouse_id ?? item.warehouse_name ?? item.cluster_name ?? "Ozon";
+    const key = keyOf(sku, warehouseId);
+    const warehouse = String(item.warehouse_name ?? item.cluster_name ?? "Ozon");
+    warehouseNames.set(String(warehouseId), warehouse);
+    const existing = rows.get(key);
+    const counts = ozonBalanceStockCounts(item);
+    if (existing) {
+      for (const [status, quantity] of Object.entries(counts)) {
+        existing.statusCounts[status] = (existing.statusCounts[status] ?? 0) + quantity;
+        existing.quantity += quantity;
+      }
+      continue;
+    }
+    rows.set(key, {
+      sku,
+      article: String(item.offer_id ?? ""),
+      name: String(item.name ?? ""),
+      warehouse,
+      quantity: Object.values(counts).reduce((sum, value) => sum + value, 0),
+      statusCounts: counts,
+    });
+  }
+
+  for (const stock of fboStocks) {
+    const sku = Number(stock.sku ?? 0);
+    const warehouseId = stock.warehouse_id ?? "Ozon";
+    const key = keyOf(sku, warehouseId);
+    const row = rows.get(key) ?? {
+      sku,
+      article: String(stock.offer_id ?? ""),
+      name: "",
+      warehouse: warehouseNames.get(String(warehouseId)) ?? `Склад Ozon ${warehouseId}`,
+      quantity: 0,
+      statusCounts: {},
+    };
+    if (!row.article && stock.offer_id) row.article = String(stock.offer_id);
+
+    const additions: Record<string, number> = {
+      total_stock_count: Number(stock.present ?? 0),
+      delivering_to_customer_stock_count: Number(stock.reserved ?? 0),
+    };
+    for (const [status, rawQuantity] of Object.entries(additions)) {
+      const quantity = Number.isFinite(rawQuantity) && rawQuantity > 0 ? rawQuantity : 0;
+      if (quantity <= 0 || row.statusCounts[status] !== undefined) continue;
+      row.statusCounts[status] = quantity;
+      row.quantity += quantity;
+    }
+    rows.set(key, row);
+  }
+
+  return [...rows.values()].filter((row) => row.quantity > 0);
 }
 
 /** Подпись собственного склада продавца в разрезе складов. */
@@ -1039,7 +1117,7 @@ export async function ozonBalanceStocks(
       }
     }
 
-    const rows: OzonBalanceStockRow[] = [];
+    const analyticsItems: Record<string, unknown>[] = [];
     const allSkus = [...skus];
     for (let index = 0; index < allSkus.length; index += 100) {
       const res = await tfetch(c, `${BASE}/v1/analytics/stocks`, {
@@ -1050,20 +1128,29 @@ export async function ozonBalanceStocks(
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 160)}` };
       const json = (await res.json()) as { items?: Record<string, unknown>[] };
-      for (const item of json.items ?? []) {
-        const quantity = ozonBalanceStockQuantity(item);
-        if (quantity <= 0) continue;
-        rows.push({
-          sku: Number(item.sku ?? 0),
-          article: String(item.offer_id ?? ""),
-          name: String(item.name ?? ""),
-          warehouse: String(item.warehouse_name ?? item.cluster_name ?? "Ozon"),
-          quantity,
-          statusCounts: ozonBalanceStockCounts(item),
+      analyticsItems.push(...(json.items ?? []));
+    }
+
+    const fboStocks: OzonFboWarehouseStock[] = [];
+    for (let index = 0; index < allSkus.length; index += 1000) {
+      let cursor = "";
+      for (let page = 0; page < 20; page++) {
+        const res = await tfetch(c, `${BASE}/v1/product/info/stocks-by-warehouse/fbo`, {
+          method: "POST",
+          headers: headers(c),
+          body: JSON.stringify({ skus: allSkus.slice(index, index + 1000), limit: 1000, cursor }),
+          ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
         });
+        if (!res.ok) return { ok: false, error: `Ozon FBO ${res.status}: ${(await res.text()).slice(0, 160)}` };
+        const json = (await res.json()) as { cursor?: string; has_next?: boolean; products?: OzonFboWarehouseStock[] };
+        fboStocks.push(...(json.products ?? []));
+        const nextCursor = String(json.cursor ?? "");
+        if (!json.has_next || !nextCursor || nextCursor === cursor) break;
+        cursor = nextCursor;
       }
     }
-    return { ok: true, rows };
+
+    return { ok: true, rows: mergeOzonBalanceStockItems(analyticsItems, fboStocks) };
   } catch (error) {
     return { ok: false, error: String(error).slice(0, 160) };
   }
