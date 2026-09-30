@@ -15,7 +15,8 @@ import type { Loan, Payment } from "@/lib/types";
 import { originalLoanPaymentAmount, roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { useDailyLoanCurrencyRefresh } from "./currencyRefresh";
 import { closeLoanScheduleRows, closeLoanScheduleRowWithWb, loadLoanScheduleRows, saveLoanScheduleRows } from "./scheduleStore";
-import { loadFinanceState } from "@/lib/db";
+import { loadFinanceState, persistFinanceAction } from "@/lib/db";
+import { financeReducer } from "@/lib/reducer";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalanceAt, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
@@ -467,13 +468,26 @@ export function LoansPage() {
 
   const handleSubmit = async (result: LoanFormResult) => {
     const loan: Loan = editing ? { ...editing, ...result.loan, terms: result.terms ?? editing.terms } : { id: generateId("loan"), ...result.loan, terms: result.terms };
+    const loanAction = editing
+      ? { type: "UPDATE_LOAN" as const, payload: loan }
+      : { type: "ADD_LOAN" as const, payload: loan };
+    // График ссылается на loans.id внешним ключом. dispatch сохраняет данные
+    // асинхронно, и для нового договора запрос графика мог обогнать вставку
+    // самого договора. Сначала подтверждаем договор в БД, затем пишем строки.
+    try {
+      const stateWithLoan = financeReducer(state, loanAction);
+      await persistFinanceAction(loanAction, state, stateWithLoan);
+      dispatch({ type: "LOAD", payload: stateWithLoan });
+      if (!editing) setEditing(loan);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось сохранить договор перед записью графика");
+      return;
+    }
     if (result.contractFile) {
       await saveLoanDocument(loan.id, result.contractFile, result.companyId);
     }
     const tranches = result.disbursements.map((item) => `${item.date}=${item.amount}`).join(";");
     const currencyMeta = ` [currency:${result.currency}] [principal-original:${result.originalPrincipal}] [fx-rate:${result.exchangeRate}] [annual-rate:${result.annualRate}] [interest-frequency:${result.interestFrequency}] [monthly-rate:${result.monthlyRate}]${result.terms?.paymentDay ? ` [payment-day:${result.terms.paymentDay}]` : ""}${result.paymentDays ? ` [payment-days:${result.paymentDays.join(",")}]` : ""}${tranches ? ` [tranches:${tranches}]` : ""} [origination-fee:${result.originationFee}] [fee-months:${result.feeAmortizationMonths}]${result.contractNumber ? ` [contract-number:${result.contractNumber.replace(/\]/g, "")}]` : ""}`;
-    if (editing) dispatch({ type: "UPDATE_LOAN", payload: loan });
-    else dispatch({ type: "ADD_LOAN", payload: loan });
     const existing = linkedRows(state.payments, loan.id);
     const desired: Payment[] = [{
       id: existing.find((payment) => payment.comment?.includes(receiptMarker(loan.id)))?.id ?? generateId("loan-receipt"),
