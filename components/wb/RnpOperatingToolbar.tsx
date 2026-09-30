@@ -139,6 +139,9 @@ const UNITS: Partial<Record<RnpMetricField, string>> = {
   ...Object.fromEntries(PERCENT_FIELDS.map((field) => [field, "%"])),
   ...Object.fromEntries(RUBLE_FIELDS.map((field) => [field, "₽"])),
   turnover: "дн.",
+  // Оценки — в звёздах, как в таблице (metricUnit), а не «шт.» по умолчанию.
+  reviews_rating: "★",
+  reviews_text_rating: "★",
 };
 
 // Высота полей: 44px пальцем, 36px мышью. Порог lg, а не md, — планшет в
@@ -844,7 +847,7 @@ export function RnpOperatingToolbar(props: Props) {
                           <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300" />
                           <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
                             <input type="checkbox" checked={selected} onChange={() => toggleMetric(field)} className="h-5 w-5 accent-violet-600 lg:h-3.5 lg:w-3.5" />
-                            <span className={`truncate text-[10px] ${selected ? "font-medium text-slate-700" : "text-slate-500"}`}>{metric.label.replace(/, (₽|%|дней|шт)$/u, "")}</span>
+                            <span className={`truncate text-[10px] ${selected ? "font-medium text-slate-700" : "text-slate-500"}`}>{metric.label.replace(/, (₽|%|дней|шт\.?)$/u, "")}</span>
                             <span className="ml-auto shrink-0 text-[9px] text-slate-400">{UNITS[field] ?? "шт."}</span>
                           </label>
                           {selected ? (

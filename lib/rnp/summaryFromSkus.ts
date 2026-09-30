@@ -35,6 +35,14 @@ interface BaseMetric {
   weeklyParts?: MetricParts;
 }
 
+/** Метаданные строки, которые пересборка иногда берёт у артикулов, а не у шаблона. */
+interface MetricMeta {
+  status?: string;
+  coveragePct?: number;
+  qualityReason?: string;
+  note?: string;
+}
+
 /** Прибыльные доли: числитель есть только у SKU с себестоимостью (см. costedRatio). */
 const COSTED_RATIOS: Record<string, { profit: string; denominator: string; scale: 100 | 1 }> = {
   margin_pct: { profit: "gross", denominator: "buyouts_sum", scale: 100 },
@@ -397,6 +405,7 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     return { numerator, denominator, scale: 1 };
   };
 
+  const EXPECTED_FIELDS = new Set(["expected_buyouts_count", "expected_buyouts_sum", "expected_returns_count", "expected_buyout_pct", "expected_net_buyout_pct"]);
   const REVIEW_FIELDS = new Set(["reviews_count", "reviews_rating", "reviews_bad_share_pct", "reviews_text_count", "reviews_text_rating", "reviews_text_bad_share_pct"]);
   const readFailed = (field: string) => skusMetrics.some((metrics) => (metrics.get(field) as { qualityReason?: string } | undefined)?.qualityReason === "api_error");
 
@@ -408,6 +417,16 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     // Отзывы кабинета не прочитались: сумма по остальным выдала бы часть за целое
     // — как и сводка без фильтра, молчим. Выбраны только SKU здоровых кабинетов —
     // статус сводки «ошибка чтения» к ним не относится.
+    // Прогноз в сводке нескольких кабинетов молчит, если хоть у одного нет
+    // ставки. Под фильтром только по артикулам со ставкой числа возвращаются —
+    // и пояснение со статусом тоже берутся у них, а не «прогноза нет» шаблона.
+    if (EXPECTED_FIELDS.has(metric.field) && (metric as MetricMeta).qualityReason === "unsupported_source") {
+      const rows = skusMetrics.map((metrics) => metrics.get(metric.field) as (BaseMetric & MetricMeta) | undefined).filter((row) => row != null);
+      if (rows.length && rows.every((row) => row.qualityReason !== "unsupported_source")) {
+        const worst = rows.reduce((a, b) => ((b.coveragePct ?? 100) < (a.coveragePct ?? 100) ? b : a));
+        metric = { ...metric, status: worst.status, coveragePct: worst.coveragePct, qualityReason: worst.qualityReason, note: worst.note ?? (metric as MetricMeta).note } as M;
+      }
+    }
     if (REVIEW_FIELDS.has(metric.field)) {
       if (readFailed(metric.field)) {
         return { ...metric, daily: Array.from({ length: dayCount }, () => null), total: null, forecast: null, coveragePct: 0, status: "unavailable", qualityReason: "api_error" } as M;

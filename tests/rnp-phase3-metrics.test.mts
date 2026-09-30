@@ -6,6 +6,7 @@ import {
   appendAdEfficiencyMetrics,
   appendCartOrderConversion,
   appendOrderConversion,
+  applyEconomyMetricCoverage,
   applyExpectedBuyouts,
   buildAdTypeMetrics,
   buildMetrics,
@@ -21,7 +22,8 @@ import {
   type BuyoutCohortRow,
   type Metric,
 } from "../lib/rnp/buildTable";
-import { aggregateRnpWeekly, metricDelta } from "../lib/rnp/operatingMatrix";
+import { aggregateRnpWeekly, anomalyDirection, metricDelta, RNP_VIEW_PRESETS, rnpPresetForFields, sanitizeMetricFields } from "../lib/rnp/operatingMatrix";
+import { RNP_LEGACY_PRESET_FIELDS } from "../lib/rnp/legacyPresets";
 import { composeRnpSummaryFromSkus, RNP_REVIEWS_READ_FAILED_NOTE } from "../lib/rnp/summaryFromSkus";
 import { appendTaxMetrics } from "../lib/rnp/taxMetrics";
 import type { WbSyncState } from "../lib/wb/syncState";
@@ -272,8 +274,7 @@ test("ставка прогноза не зависит от периода: о�
 test("сбой чтения отзывов — «ошибка источника», по кабинету", () => {
   const list = buildReviewMetrics(DAYS, "2026-09-24", new Map(), { unavailable: true });
   assert.equal(find(list, "reviews_count").qualityReason, "api_error");
-  const source = read("../lib/rnp/buildTable.ts");
-  assert.match(source, /unavailable: reviewsFailedNm\.has\(t\.nm_id\)/);
+  // Проводка по кабинетам — в tests/rnp-build-e2e.test.mts на настоящем buildRnpTable.
 });
 
 test("пояснение прогноза у SKU совпадает со сводкой — компактная передача его убирает", () => {
@@ -330,7 +331,6 @@ test("прогноз не пропадает от 429 в синке продаж
   assert.equal(salesLoadedThrough(rateLimited, "2026-09-30"), "2026-09-30", "21:30 UTC — уже 30-е по Москве");
   const source = read("../lib/rnp/buildTable.ts");
   assert.match(source, /const salesFresh = salesLoadedThrough\(salesState, today\);/);
-  assert.match(source, /loadCohortPrimaryRows\(db, cabinetId, allowed, lo, hi, nowMs\)\.catch\(\(\) => null\)/);
 });
 
 // ── Живая проверка на проде ──────────────────────────────────────────────────
@@ -340,8 +340,9 @@ test("прогноз не пропадает от 429 в синке продаж
 // 1000 строк — как у настоящего. Плюс учёт вызовов: проверяем путь, а не текст.
 type FakeRow = Record<string, unknown>;
 interface FakePage { table: string; filters: string[]; order: string[]; ids: unknown[] }
-function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: string, filters: string[]) => boolean; srid?: string | null; salesState?: FakeRow | null; delayMs?: number } = {}) {
-  const calls: { rpc: string[]; pages: FakePage[]; issued: number } = { rpc: [], pages: [], issued: 0 };
+function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: string, filters: string[]) => boolean; srid?: string | null; salesState?: FakeRow | null; delayMs?: number; delay?: (table: string, filters: string[]) => number } = {}) {
+  // started — каждый отправленный запрос, даже оборванный до ответа; pages — отвеченные.
+  const calls: { rpc: string[]; pages: FakePage[]; issued: number; started: Array<{ table: string; filters: string[] }> } = { rpc: [], pages: [], issued: 0, started: [] };
   let seed = 7;
   const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
   const query = (table: string) => {
@@ -374,9 +375,10 @@ function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: str
       then: (resolve: (value: unknown) => unknown, reject?: (error: unknown) => unknown) => {
         const abortedResult = { data: null, error: { message: "AbortError: This operation was aborted" } };
         if (signal?.aborted) return Promise.resolve(abortedResult).then(resolve, reject);
-        if (options.delayMs) {
+        const delayed = options.delay?.(table, filters) ?? options.delayMs ?? 0;
+        calls.started.push({ table, filters: [...filters] });
+        if (delayed) {
           calls.issued += 1;
-          const delayed = options.delayMs;
           const settle = (builder as unknown as { answer: () => unknown }).answer;
           return new Promise((done) => {
             const timer = setTimeout(() => done(settle()), delayed);
@@ -765,4 +767,126 @@ test("отзывы под фильтром по здоровым SKU — поя�
     assert.ok(!row.note?.includes("строка молчит"), field);
     assert.ok(row.note?.includes("По дате создания отзыва"), `${field}: остальное пояснение на месте`);
   }
+});
+
+// ── Итоговое ревью всей цепочки ──────────────────────────────────────────────
+
+test("прогноз под фильтром: дробные прогнозы артикулов не теряются при сложении", () => {
+  // 50 артикулов по 0,03 возврата в день: округление дня артикула до 0,1 давало 0.
+  const makeRows = (returns: number, count: number) => new Map(DAYS.map((d) => [d, {
+    d, orders_count: count * 1, orders_sum: count * 1_000, buyouts_count: 0, buyouts_sum: 0, ad_spent: 0,
+    expected_buyouts_count: count * 0.3, expected_buyouts_sum: count * 300, expected_returns_count: returns, expected_orders_base: count * 1,
+  }])) as unknown as Parameters<typeof buildMetrics>[2];
+  const option = { expectedBuyouts: { note: "Прогноз, не факт" } };
+  const skuMetrics = Array.from({ length: 50 }, () => ({ metrics: buildMetrics(DAYS, "2026-09-24", makeRows(0.03, 1), 0, 0, CUTOFFS, 0, null, 7, option) }));
+  const summary = buildMetrics(DAYS, "2026-09-24", makeRows(1.5, 50), 0, 0, CUTOFFS, 0, null, 7, option);
+  const composed = composeRnpSummaryFromSkus(summary, skuMetrics, 7);
+  const returnsDaily = find(composed, "expected_returns_count").daily;
+  for (const value of returnsDaily) assert.ok(Math.abs((value ?? 0) - 1.5) < 0.01, `день ${value} ≈ 1,5`);
+  assert.equal(find(summary, "expected_returns_count").total, 5, "сервер: округление итога — один раз");
+  assert.equal(find(composed, "expected_returns_count").total, find(summary, "expected_returns_count").total, "под фильтром «все» = без фильтра");
+});
+
+test("строки прогноза не дают сигналов роста и риска: они лишь повторяют заказы", () => {
+  const up = metricDelta(15, 10)!;
+  for (const field of ["expected_buyouts_count", "expected_buyouts_sum", "expected_returns_count"]) {
+    assert.equal(anomalyDirection(field, up), null, field);
+  }
+  assert.equal(anomalyDirection("orders_count", up), "positive", "а заказы сигналят, как раньше");
+});
+
+test("прежний вариант пресета узнаётся и заменяется текущим; прочее — «Свой вариант»", () => {
+  const salesNow = RNP_VIEW_PRESETS.find((view) => view.id === "sales")!.fields;
+  assert.deepEqual(rnpPresetForFields(salesNow), { id: "sales", legacy: false });
+  for (const [id, lists] of Object.entries(RNP_LEGACY_PRESET_FIELDS)) {
+    for (const list of lists) {
+      assert.deepEqual(rnpPresetForFields(sanitizeMetricFields(list, [])), { id, legacy: true }, `${id}: ${list.length} полей`);
+    }
+  }
+  assert.deepEqual(rnpPresetForFields(["orders_count", "cart"]), { id: "custom", legacy: false });
+  // Версия «Рекламы» до фазы 3 — без CPC и TACoS: узнаётся как «Реклама».
+  assert.ok((RNP_LEGACY_PRESET_FIELDS.ads ?? []).some((list) => !list.includes("ad_cpc")));
+  // Пресеты не должны совпадать друг с другом и с чужими прежними версиями.
+  for (const view of RNP_VIEW_PRESETS) assert.equal(rnpPresetForFields(view.fields).id, view.id);
+  const page = read("../components/wb/WbRnpPage.tsx");
+  assert.match(page, /const preset = rnpPresetForFields\(preferences\.metricFields\);/);
+  assert.match(page, /if \(presetFields\) setMetricFields\(\[\.\.\.presetFields\]\);/);
+});
+
+test("единицы: оценки — в звёздах, «шт.» с точкой не задваивается", () => {
+  const toolbar = read("../components/wb/RnpOperatingToolbar.tsx");
+  assert.match(toolbar, /reviews_rating: "★"/);
+  assert.match(toolbar, /reviews_text_rating: "★"/);
+  for (const source of [toolbar, read("../components/wb/WbRnpPage.tsx")]) {
+    assert.doesNotMatch(source, /replace\(\/, \(₽\|%\|дней\|шт\)\$\/u/);
+    const strip = (label: string) => label.replace(/, (₽|%|дней|шт\.?)$/u, "");
+    assert.equal(strip("Оценки, шт."), "Оценки");
+    assert.equal(strip("Продажи (прогноз), шт"), "Продажи (прогноз)");
+  }
+});
+
+test("полная себестоимость — у прибыли сводки нет причины «нет себестоимости»; свежесть остаётся", () => {
+  const full = metric("gross_profit", [100], "money", { total: 100, qualityReason: "missing_cost" });
+  applyEconomyMetricCoverage(full, 100, "Себестоимость известна для 2 из 2 SKU.", undefined);
+  assert.equal(full.qualityReason, undefined);
+  const stale = metric("gross_profit", [100], "money", { total: 100, qualityReason: "stale_source" });
+  applyEconomyMetricCoverage(stale, 100, "…", undefined);
+  assert.equal(stale.qualityReason, "stale_source");
+  const partial = metric("gross_profit", [100], "money", { total: 100 });
+  applyEconomyMetricCoverage(partial, 50, "…", "missing_cost");
+  assert.equal(partial.qualityReason, "missing_cost");
+});
+
+test("«Все кабинеты» под фильтром только по артикулам со ставкой: пояснение и статус — их, а не «прогноза нет»", () => {
+  const noRateNote = "Ставки выкупа нет — прогноз молчит, а не показывает ноль.";
+  const template = [
+    metric("orders_count", [10, 10, 10]),
+    metric("expected_buyouts_count", [null, null, null], "int", { status: "unavailable", coveragePct: 0, qualityReason: "unsupported_source", note: noRateNote }),
+  ];
+  const sku = (value: number, reason?: "unsupported_source") => ({ metrics: [
+    metric("orders_count", [10, 10, 10]),
+    metric("expected_buyouts_count", reason ? [null, null, null] : [value, value, value], "int", reason ? { status: "unavailable", coveragePct: 0, qualityReason: reason, note: noRateNote } : { status: "partial", coveragePct: 85.7, qualityReason: "stale_source", note: "Прогноз, не факт: сумма прогнозов артикулов" }),
+  ] });
+  const rated = composeRnpSummaryFromSkus(template, [sku(3), sku(4)], 7);
+  const row = find(rated, "expected_buyouts_count");
+  assert.deepEqual(row.daily, [7, 7, 7]);
+  assert.equal(row.status, "partial");
+  assert.equal(row.qualityReason, "stale_source");
+  assert.match(row.note ?? "", /Прогноз, не факт/);
+  const mixed = composeRnpSummaryFromSkus(template, [sku(3), sku(0, "unsupported_source")], 7);
+  assert.equal(find(mixed, "expected_buyouts_count").qualityReason, "unsupported_source", "есть артикул без ставки — строка молчит");
+  assert.deepEqual(find(mixed, "expected_buyouts_count").daily, [null, null, null]);
+});
+
+test("общее чтение упёрлось в бюджет — период перечитывается, якорь нет (он упёрся бы снова)", async () => {
+  const anchorStart = `date>=${shiftDays(today, -35)}T00:00:00.000Z`;
+  const { db, calls } = fakeDb(cohortTables(40, 5), { salesState: caughtUp, delay: (table, filters) => filters.includes(anchorStart) ? 400 : 1 });
+  const { cohort, anchor } = await loadBuyoutCohort(db, scope([7]), [7], shiftDays(today, -6), today, { ...clock, budgetMs: 150 });
+  assert.equal(anchor, null);
+  assert.equal(days(cohort!.rows).length, 7, "«% выкупа» недели спасён отдельным чтением");
+  const anchorReads = calls.started.filter((page) => page.table === "wb_orders" && page.filters.includes(anchorStart));
+  assert.equal(anchorReads.length, 1, "окно с начала якоря читалось один раз — общим чтением, без повтора якоря");
+  // Сбой данных (не бюджет) — якорь перечитывается, как раньше.
+  const failing = fakeDb(cohortTables(40, 5), { salesState: caughtUp, fail: (table, filters) => table === "wb_orders" && filters.includes(anchorStart) && filters.some((filter) => filter === `date<${shiftDays(today, -28)}T00:00:00.000Z`) });
+  await loadBuyoutCohort(failing.db, scope([7]), [7], shiftDays(today, -6), today, clock);
+  assert.ok(failing.calls.pages.filter((page) => page.table === "wb_orders" && page.filters.includes(anchorStart)).length >= 2, "после сбоя данных якорь читается заново");
+});
+
+test("под фильтром оценка отзывов с текстом взвешена их числом, а не средняя по артикулам", () => {
+  const skuA = { metrics: buildReviewMetrics(DAYS, "2026-09-24", new Map([["2026-09-22", { count: 2, ratingSum: 10, bad: 0, textCount: 1, textRatingSum: 5, textBad: 0 }]])) };
+  const skuB = { metrics: buildReviewMetrics(DAYS, "2026-09-24", new Map([["2026-09-22", { count: 3, ratingSum: 6, bad: 3, textCount: 3, textRatingSum: 6, textBad: 3 }]])) };
+  const template = buildReviewMetrics(DAYS, "2026-09-24", new Map([["2026-09-22", { count: 5, ratingSum: 16, bad: 3, textCount: 4, textRatingSum: 11, textBad: 3 }]]));
+  const composed = composeRnpSummaryFromSkus(template, [skuA, skuB], 7);
+  assert.equal(find(composed, "reviews_text_rating").daily[0], 2.75, "(5 + 6) / 4, а не (5 + 2) / 2");
+  assert.equal(find(composed, "reviews_rating").daily[0], 3.2);
+});
+
+test("неделя у артикула: валовая маржа = Σ валовой прибыли / Σ выкупов, а не среднее дней", () => {
+  const skuMetrics = [
+    metric("buyouts_sum", [1_000, 3_000, null], "money"),
+    metric("gross_profit", [100, 900, null], "money"),
+    metric("gross_margin_pct", [10, 30, null], "pct"),
+  ];
+  const week = aggregateRnpWeekly({ period, summary: skuMetrics, skus: [{ nm: 1, metrics: skuMetrics }] } as never, "2026-09-22", "2026-09-28") as unknown as { skus: Array<{ metrics: Metric[] }> };
+  assert.deepEqual(find(week.skus[0].metrics, "gross_margin_pct").daily, [25], "1000 / 4000, а не (10 + 30) / 2");
 });

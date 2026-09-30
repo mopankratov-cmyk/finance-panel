@@ -1,3 +1,5 @@
+import { RNP_LEGACY_PRESET_FIELDS } from "./legacyPresets";
+
 export const RNP_METRIC_FIELDS = [
   "views",
   "clicks",
@@ -233,9 +235,6 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     gross_margin_pct: 5,
     profit_before_ads: 30,
     profit_after_agent: 30,
-    expected_buyouts_count: 30,
-    expected_buyouts_sum: 30,
-    expected_returns_count: 30,
   },
   stockCoverageDays: 7,
   streakDays: 3,
@@ -337,8 +336,6 @@ const POSITIVE_WHEN_UP = new Set([
   "profit_before_ads",
   "profit_after_agent",
   "reviews_text_rating",
-  "expected_buyouts_count",
-  "expected_buyouts_sum",
 ]);
 // Рост отмен, возвратов и собственной скидки — плохая новость, направление обратное.
 const POSITIVE_WHEN_DOWN = new Set([
@@ -361,7 +358,6 @@ const POSITIVE_WHEN_DOWN = new Set([
   "ad_cpo",
   "ad_acos_pct",
   "reviews_text_bad_share_pct",
-  "expected_returns_count",
 ]);
 
 const METRIC_LABELS: Record<string, string> = {
@@ -606,6 +602,24 @@ export function previousEqualRange(from: string, to: string) {
   return { from: isoDate(previousStart), to: isoDate(previousEnd) };
 }
 
+/**
+ * Пресет, которому соответствует сохранённый список полей: текущий — как есть,
+ * прежняя версия пресета — с пометкой `legacy`: такой выбор надо заменить
+ * текущим списком, иначе новые строки пресета так и не появятся.
+ */
+export function rnpPresetForFields(fields: readonly string[]): { id: RnpViewId; legacy: boolean } {
+  const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((field, index) => field === b[index]);
+  const current = RNP_VIEW_PRESETS.find((view) => same(view.fields, fields));
+  if (current) return { id: current.id, legacy: false };
+  for (const view of RNP_VIEW_PRESETS) {
+    const legacy = RNP_LEGACY_PRESET_FIELDS[view.id] ?? [];
+    // Прежний список чистится так же, как сохранённый: поля, которых больше нет,
+    // из сохранённого выбора уже выброшены.
+    if (legacy.some((list) => same(sanitizeMetricFields(list, []), fields))) return { id: view.id, legacy: true };
+  }
+  return { id: "custom", legacy: false };
+}
+
 export function sanitizeMetricFields(value: unknown, fallback: readonly string[] = RNP_VIEW_PRESETS[0].fields): RnpMetricField[] {
   if (!Array.isArray(value)) return [...fallback] as RnpMetricField[];
   const allowed = new Set<string>(RNP_METRIC_FIELDS);
@@ -707,6 +721,12 @@ const VOLUME_SCALED_FIELDS = new Set([
   "agent_commission_rub",
   // Отзывы растут вместе с продажами; сигналы — рейтинг и доля плохих.
   "reviews_count",
+  // Прогноз продаж = заказы × ставка якоря, а якорь от периода не зависит: у
+  // прошлого периода та же ставка, и дельта прогноза лишь повторяет дельту
+  // заказов — с обратным знаком у возвратов («рост» у падающего артикула).
+  "expected_buyouts_count",
+  "expected_buyouts_sum",
+  "expected_returns_count",
   // Разрез рекламы по видам кампаний — объёмные ряды, аномалии ловит общий ДРР.
   "ads_manual_spent",
   "ads_manual_views",

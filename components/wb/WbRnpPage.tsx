@@ -24,6 +24,7 @@ import {
 import {
   RNP_METRIC_FIELDS,
   RNP_VIEW_PRESETS,
+  rnpPresetForFields,
   aggregateRnpWeekly,
   anomalyDirection,
   dropLegacyPartsOnlyMetrics,
@@ -862,10 +863,12 @@ export function WbRnpPage() {
     setAnomalyThreshold(preferences.anomalyThreshold);
     setTurnoverWindowDays(preferences.turnoverWindowDays);
     setTaxPct(preferences.taxPct);
-    const preset = RNP_VIEW_PRESETS.find((view) =>
-      view.fields.length === preferences.metricFields.length
-      && view.fields.every((field, index) => field === preferences.metricFields[index]));
-    setMetricViewId(preset?.id ?? "custom");
+    // Сохранён прежний вариант пресета — показываем текущий: иначе выбор
+    // превращался в «Свой вариант», а новые строки пресета не появлялись.
+    const preset = rnpPresetForFields(preferences.metricFields);
+    const presetFields = preset.legacy ? RNP_VIEW_PRESETS.find((view) => view.id === preset.id)?.fields : undefined;
+    if (presetFields) setMetricFields([...presetFields]);
+    setMetricViewId(preset.id);
     setMatrixReady(true);
   }, []);
 
@@ -2881,7 +2884,7 @@ function OptimaMetricRow({
             <span className="block h-3 w-3 translate-x-3 rounded-full bg-white shadow-sm" />
           </button>
           <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${qualityTone}`} />
-          <span className="min-w-0 truncate text-[11px] font-medium text-slate-700" title={metric.label}>{metric.label.replace(/, (₽|%|дней|шт)$/u, "")}</span>
+          <span className="min-w-0 truncate text-[11px] font-medium text-slate-700" title={metric.label}>{metric.label.replace(/, (₽|%|дней|шт\.?)$/u, "")}</span>
           <span className="ml-auto shrink-0 text-[9px] text-slate-400">{metricUnit(metric)}</span>
         </div>
       </td>

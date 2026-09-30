@@ -767,7 +767,10 @@ export function applyEconomyMetricCoverage(
     : (metric.coveragePct ?? (metric.total == null ? 0 : 100));
   metric.coveragePct = metric.total == null ? 0 : Math.min(sourceCoverage, economyCoveragePct);
   metric.status = statusForCoverage(metric.coveragePct);
-  metric.qualityReason = economyCoveragePct < 100 ? qualityReason : metric.qualityReason;
+  // Экономика известна целиком — причина «нет себестоимости/ставок» от сводки,
+  // собранной без себестоимости, уже неверна; прочие причины (свежесть) остаются.
+  const economyReason = metric.qualityReason === "missing_cost" || metric.qualityReason === "missing_rates";
+  metric.qualityReason = economyCoveragePct < 100 ? qualityReason : economyReason ? undefined : metric.qualityReason;
   metric.note = [metric.note, note].filter(Boolean).join(" ");
   if (metric.forecastConfidencePct != null) {
     metric.forecastConfidencePct = Math.min(metric.forecastConfidencePct, Math.round(economyCoveragePct));
@@ -1808,12 +1811,16 @@ export function buildMetrics(
   const expectedReason: Metric["qualityReason"] = expected ? undefined : "unsupported_source";
   const expectedNote = expected?.note
     ?? "Ставки выкупа нет — прогноз молчит, а не показывает ноль. Возможные причины: у кабинета нет списка артикулов или сопоставления продаж с заказами по srid; синк продаж ещё ни разу не прошёл или отстал больше чем на месяц; в окне меньше 5 зрелых дней или 50 исходов; в сводке несколько кабинетов, и у одного ставки нет.";
-  const round1 = (values: (number | null)[]) => values.map((value) => value == null ? null : Math.round(value * 10) / 10);
+  // Дробные прогнозы дня хранятся почти без округления: под фильтром сводка
+  // складывает дни артикулов, и 0,03 возврата у каждого из сотен артикулов,
+  // округлённые до 0,0, теряли до трети итога. На экране — до целого (fmt).
+  const fine = (digits: number) => (values: (number | null)[]) => values.map((value) => value == null ? null : Math.round(value * 10 ** digits) / 10 ** digits);
+  const units3 = fine(3);
   const roundTotal = (values: (number | null)[]) => { const total = knownSum(values); return total == null ? null : Math.round(total); };
   const expectedMetrics: Metric[] = [
-    { field: "expected_buyouts_count", label: "Продажи (прогноз), шт", kind: "int", daily: round1(expectedCount), total: roundTotal(expectedCount), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: expectedNote, qualityReason: expectedReason, group_start: true },
-    { field: "expected_buyouts_sum", label: "Продажи (прогноз), ₽", kind: "money", daily: expectedSum.map((value) => value == null ? null : Math.round(value)), total: roundTotal(expectedSum), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: `Заказы, ₽ × % выкупа артикула — дорогие артикулы с низким выкупом тянут сумму вниз сильнее штук. ${expectedNote}`, qualityReason: expectedReason },
-    { field: "expected_returns_count", label: "Возвраты (прогноз), шт", kind: "int", daily: round1(expectedReturns), total: roundTotal(expectedReturns), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: `Продажи (прогноз) × доля возвратов артикула. ${expectedNote}`, qualityReason: expectedReason },
+    { field: "expected_buyouts_count", label: "Продажи (прогноз), шт", kind: "int", daily: units3(expectedCount), total: roundTotal(expectedCount), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: expectedNote, qualityReason: expectedReason, group_start: true },
+    { field: "expected_buyouts_sum", label: "Продажи (прогноз), ₽", kind: "money", daily: fine(2)(expectedSum), total: roundTotal(expectedSum), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: `Заказы, ₽ × % выкупа артикула — дорогие артикулы с низким выкупом тянут сумму вниз сильнее штук. ${expectedNote}`, qualityReason: expectedReason },
+    { field: "expected_returns_count", label: "Возвраты (прогноз), шт", kind: "int", daily: units3(expectedReturns), total: roundTotal(expectedReturns), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: `Продажи (прогноз) × доля возвратов артикула. ${expectedNote}`, qualityReason: expectedReason },
     { field: "expected_buyout_pct", label: "% выкупа (прогноз), %", kind: "pct", daily: expectedPctParts.numerator.map((value, index) => ratioFromParts(value, expectedPctParts.denominator[index], 100)), total: ratioFromParts(knownSum(expectedPctParts.numerator), knownSum(expectedPctParts.denominator), 100), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: `Продажи (прогноз) / заказы с отменами — ставка, взвешенная по заказам выбранных артикулов. ${expectedNote}`, qualityReason: expectedReason, parts: expectedPctParts },
     { field: "expected_net_buyout_pct", label: "% выкупа с возвратами (прогноз), %", kind: "pct", daily: expectedNetParts.numerator.map((value, index) => ratioFromParts(value, expectedNetParts.denominator[index], 100)), total: ratioFromParts(knownSum(expectedNetParts.numerator), knownSum(expectedNetParts.denominator), 100), forecast: null, source: "WB Статистика заказов + продаж (по srid)", note: `(Продажи (прогноз) − возвраты (прогноз)) / заказы с отменами. ${expectedNote}`, qualityReason: expectedReason, parts: expectedNetParts },
   ];
@@ -3506,6 +3513,14 @@ const COHORT_SLICE_CONCURRENCY = 2;
  */
 const COHORT_BUDGET_MS = 20_000;
 
+/** Чтение когорты не уложилось в бюджет — в отличие от сбоя данных, повтор того же окна бесполезен. */
+export class CohortBudgetError extends Error {
+  constructor() {
+    super("RNP: чтение когорты не уложилось в бюджет");
+    this.name = "CohortBudgetError";
+  }
+}
+
 /** Куски окна по неделе: [from, to) каждого; у последнего `to` = null — без верхней границы. */
 export function cohortSlices(from: string, lastDay: string, openEnded: boolean): Array<{ from: string; to: string | null }> {
   const slices: Array<{ from: string; to: string | null }> = [];
@@ -3555,7 +3570,8 @@ export async function loadCohortPrimaryRows(
   // запросы в полёте, и ещё не начатые куски обеих таблиц — когорта всё равно
   // уже «—», дочитывать её незачем.
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), budgetMs);
+  let overBudget = false;
+  const timer = setTimeout(() => { overBudget = true; controller.abort(); }, budgetMs);
   const aborted = () => controller.signal.aborted;
   const loadSlices = async <Row>(slices: Array<{ from: string; to: string | null }>, read: (slice: { from: string; to: string | null }, start: number, end: number) => PromiseLike<PageResult<Row>>) => {
     try {
@@ -3570,7 +3586,7 @@ export async function loadCohortPrimaryRows(
   // Продажи — до сегодня по UTC плюс день запаса; последний кусок без верхней
   // границы, чтобы ни одна продажа не выпала из-за часового пояса.
   const salesLastDay = new Date(nowMs + 86_400_000).toISOString().slice(0, 10);
-  const [orders, sales] = await Promise.all([
+  const read = Promise.all([
     loadSlices<CohortOrderRow>(cohortSlices(from, to, false), (slice, start, end) => {
       let query = db
         .from("wb_orders")
@@ -3601,8 +3617,15 @@ export async function loadCohortPrimaryRows(
         .abortSignal(controller.signal) as unknown as PromiseLike<PageResult<CohortSaleRow>>;
     }),
   ]).finally(() => clearTimeout(timer));
+  let orders: CohortOrderRow[];
+  let sales: CohortSaleRow[];
+  try {
+    [orders, sales] = await read;
+  } catch (error) {
+    throw overBudget ? new CohortBudgetError() : error;
+  }
   // Бюджет истёк на последней странице — ответ мог прийти неполным.
-  if (aborted()) throw new Error("RNP: чтение когорты не уложилось в бюджет");
+  if (aborted()) throw overBudget ? new CohortBudgetError() : new Error("RNP: чтение когорты прервано");
   return cohortRowsFromPrimary(orders, sales, nowMs);
 }
 
@@ -3618,7 +3641,7 @@ export async function loadBuyoutCohort(
   allowed: number[] | null,
   from: string,
   to: string,
-  clock: { today?: string; nowMs?: number } = {},
+  clock: { today?: string; nowMs?: number; budgetMs?: number } = {},
 ): Promise<{ cohort: BuyoutCohortFacts | null; anchor: BuyoutAnchor | null }> {
   const none = { cohort: null, anchor: null };
   const cabinetId = scope.cabinetId;
@@ -3639,7 +3662,11 @@ export async function loadBuyoutCohort(
     const periodFrom = from < since ? since : from;
     const wantPeriod = periodFrom <= to;
     const nowMs = clock.nowMs ?? Date.now();
-    const primary = (lo: string, hi: string) => loadCohortPrimaryRows(db, cabinetId, allowed, lo, hi, nowMs).catch(() => null);
+    let mergedOverBudget = false;
+    const primary = (lo: string, hi: string, onBudget?: () => void) => loadCohortPrimaryRows(db, cabinetId, allowed, lo, hi, nowMs, clock.budgetMs).catch((error) => {
+      if (error instanceof CohortBudgetError) onBudget?.();
+      return null;
+    });
     if (!allowed) {
       // Кабинет без списка артикулов: якоря у него нет — прогнозу нужны отмены,
       // а их знают только первичные строки кабинетов со списком.
@@ -3668,14 +3695,16 @@ export async function loadBuyoutCohort(
     // Период рядом с якорем — одно чтение на оба: исход заказа ищется среди
     // продаж не раньше самого заказа, поэтому общее начало ничего не меняет.
     if (wantAnchor && wantPeriod && periodFrom <= nextIsoDate(anchorTo) && anchorFrom <= nextIsoDate(to)) {
-      const rows = await primary(periodFrom < anchorFrom ? periodFrom : anchorFrom, to > anchorTo ? to : anchorTo);
+      const rows = await primary(periodFrom < anchorFrom ? periodFrom : anchorFrom, to > anchorTo ? to : anchorTo, () => { mergedOverBudget = true; });
       if (rows) return { cohort: { rows: inRange(rows, periodFrom, to), since }, anchor: anchorOf(rows) };
       // Общее чтение не удалось — каждое окно отдельно: сбой расширенного
       // чтения ради якоря не должен гасить «% выкупа» периода, и наоборот.
+      // Не уложилось в бюджет — якорь не перечитываем: его продажи те же, что
+      // у общего чтения, и он упёрся бы в бюджет снова; период короче и успеет.
     }
     const [periodRows, anchorRows] = await Promise.all([
       wantPeriod ? primary(periodFrom, to) : Promise.resolve([] as BuyoutCohortRow[]),
-      wantAnchor ? primary(anchorFrom, anchorTo) : Promise.resolve(null),
+      wantAnchor && !mergedOverBudget ? primary(anchorFrom, anchorTo) : Promise.resolve(null),
     ]);
     return { cohort: periodRows ? { rows: periodRows, since } : null, anchor: anchorOf(anchorRows) };
   } catch {
@@ -4510,7 +4539,11 @@ export async function buildRnpTable(
         appendCartOrderConversion(metrics, { days, ordersPrimary: (cutoffsByNm.get(t.nm_id) ?? metricCutoffs).ordersPrimary, funnelPending: funnelPendingNm.has(t.nm_id) });
         appendAdEfficiencyMetrics(metrics);
         appendOrganicMetrics(metrics, { days, ordersPrimary: (cutoffsByNm.get(t.nm_id) ?? metricCutoffs).ordersPrimary });
-        metrics.push(...buildReviewMetrics(days, asOf, reviewsByNm.get(t.nm_id) ?? new Map(), { unavailable: reviewsFailedNm.has(t.nm_id) }));
+        // Артикул только из каталога карточек (фактов за период нет) кабинета не
+        // знает — как и прочие карты этого цикла, он наследует состояние сводки:
+        // отзывы хоть одного кабинета не прочитались — «—», а не «0 оценок».
+        const reviewsUnavailable = reviewsFailedNm.has(t.nm_id) || (!cutoffsByNm.has(t.nm_id) && reviewsFailedCabinets.size > 0);
+        metrics.push(...buildReviewMetrics(days, asOf, reviewsByNm.get(t.nm_id) ?? new Map(), { unavailable: reviewsUnavailable }));
         const orders = metrics.find((m) => m.field === "orders_count")?.total ?? 0;
         return {
           nm: t.nm_id,
