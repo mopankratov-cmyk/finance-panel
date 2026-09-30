@@ -83,6 +83,18 @@ export function appendTaxMetrics(
     (sum, value, index) => (value == null || netDaily[index] == null ? sum : (sum ?? 0) + value),
     null,
   );
+  // Прибыль после комиссии кабинета — ступень между прибылью после МП и рекламы
+  // и налогом. Комиссия — с выкупов тех же SKU и дней, что у прибыли: у сводки
+  // это SKU с себестоимостью, поэтому сводка равна сумме строк SKU. Строка
+  // «Комиссия кабинета» — со всех выкупов, и на сводке она может быть больше.
+  const afterAgentDaily = gross.daily.map((value, index) => {
+    if (value == null) return null;
+    if (extraRate === 0) return value;
+    const revenue = revenueDaily[index];
+    return revenue == null ? null : value - Math.round(Number(revenue) * extraRate / 100);
+  });
+  const knownAfterAgent = afterAgentDaily.filter((value): value is number => value != null);
+  const afterAgentTotal = knownAfterAgent.length ? knownAfterAgent.reduce((sum, value) => sum + value, 0) : null;
   const netMarginDaily = netDaily.map((value, index) => {
     const revenue = revenueDaily[index];
     return value == null || revenue == null || revenue <= 0 ? null : Math.round((value / revenue) * 1000) / 10;
@@ -105,6 +117,17 @@ export function appendTaxMetrics(
       note: `Ставка ${extraRate}% с цены продавца — настройка кабинета (посредник/агент).`,
       ...shared,
     } as Metric] : []),
+    {
+      field: "profit_after_agent",
+      label: "Прибыль после комиссии кабинета, ₽",
+      kind: "money",
+      daily: afterAgentDaily,
+      total: afterAgentTotal,
+      note: extraRate > 0
+        ? `Прибыль после МП и рекламы − комиссия кабинета ${extraRate}% с выкупов тех же SKU и дней, где прибыль известна${marginMetric?.weeklyParts ? " (на сводке — только SKU с себестоимостью; строка «Комиссия кабинета» — со всех выкупов)" : ""}. До налога.`
+        : "Комиссия кабинета не задана — совпадает с прибылью после МП и рекламы. До налога.",
+      ...shared,
+    } as Metric,
     { field: "tax_rub", label: "Налог, ₽", kind: "money", daily: taxDaily, total: taxTotal, note, ...shared },
     {
       field: "net_profit",

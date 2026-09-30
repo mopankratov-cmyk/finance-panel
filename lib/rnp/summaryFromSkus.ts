@@ -8,10 +8,15 @@ import { aggregateRnpWeekly } from "./operatingMatrix";
 // исказило бы агрегат). Формулы сверены с lib/rnp/buildTable.ts и
 // lib/rnp/taxMetrics.ts — расхождение сторожит тест rnp-summary-from-skus.
 
+/** Хвост пояснения у строк отзывов, когда отзывы кабинета не прочитались. */
+export const RNP_REVIEWS_READ_FAILED_NOTE = " Отзывы не прочитались из базы — строка молчит, а не показывает ноль.";
+
 interface MetricParts {
   numerator: (number | null)[];
   denominator: (number | null)[];
   scale: 100 | 1;
+  /** Знаки после запятой (CPC в копейках) — см. RnpMetricParts.decimals. */
+  decimals?: 2;
 }
 
 interface BaseMetric {
@@ -36,6 +41,7 @@ const COSTED_RATIOS: Record<string, { profit: string; denominator: string; scale
   net_margin_pct: { profit: "net_profit", denominator: "buyouts_sum", scale: 100 },
   profit_per_unit: { profit: "gross", denominator: "buyouts_count", scale: 1 },
   romi: { profit: "gross", denominator: "ad_spent", scale: 100 },
+  gross_margin_pct: { profit: "gross_profit", denominator: "buyouts_sum", scale: 100 },
 };
 
 type Get = (field: string) => number | null;
@@ -51,7 +57,26 @@ function perUnit(num: number | null, den: number | null): number | null {
 }
 
 /** Производные, которые пересчитываются только из своих `parts`. */
-const PARTS_ONLY_FIELDS = new Set(["actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit"]);
+const PARTS_ONLY_FIELDS = new Set([
+  "actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit",
+  "cart_order_cr",
+  "tacos_pct",
+  "ad_cpc",
+  "ad_cpm",
+  "ad_cpo",
+  "ad_acos_pct",
+  "reviews_text_bad_share_pct",
+  "expected_buyout_pct",
+  "expected_net_buyout_pct",
+  "ads_manual_cpc",
+  "ads_manual_cpm",
+  "ads_manual_cpo",
+  "ads_manual_acos_pct",
+  "ads_unified_cpc",
+  "ads_unified_cpm",
+  "ads_unified_cpo",
+  "ads_unified_acos_pct",
+]);
 
 /**
  * Доли, чьи части — суммы строк самой таблицы. Под фильтром их пересчитываем из
@@ -68,7 +93,12 @@ const RECOMPUTED_FROM_ROWS = new Set(["avg_buyout_price"]);
  * фильтра за этот день честно молчит. Поэтому день пуст, если хоть у одного
  * выбранного артикула заказы известны, а схема — нет.
  */
-const STRICT_SCHEME_FIELDS = new Set(["orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum"]);
+const STRICT_SCHEME_FIELDS = new Set([
+  "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum",
+  // Прогноз продаж: у артикула кабинета без ставки выкупа он молчит — сумма «по
+  // тем, у кого есть» выдала бы прогноз части заказов за прогноз всех.
+  "expected_buyouts_count", "expected_buyouts_sum", "expected_returns_count",
+]);
 
 // Производные из СУММ выбранных SKU — формулы buildTable/taxMetrics один в один.
 const RATIO_RULES: Record<string, (g: Get) => number | null> = {
@@ -189,6 +219,7 @@ function weightedRules(skusMetrics: Map<string, BaseMetric>[], at: At): Record<s
     net_margin_pct: costedRatio(COSTED_RATIOS.net_margin_pct.profit, COSTED_RATIOS.net_margin_pct.denominator, COSTED_RATIOS.net_margin_pct.scale),
     profit_per_unit: costedRatio(COSTED_RATIOS.profit_per_unit.profit, COSTED_RATIOS.profit_per_unit.denominator, COSTED_RATIOS.profit_per_unit.scale),
     romi: costedRatio(COSTED_RATIOS.romi.profit, COSTED_RATIOS.romi.denominator, COSTED_RATIOS.romi.scale),
+    gross_margin_pct: costedRatio(COSTED_RATIOS.gross_margin_pct.profit, COSTED_RATIOS.gross_margin_pct.denominator, COSTED_RATIOS.gross_margin_pct.scale),
     // Цена покупателя = Σ(цена_i × выкупы_gross_i) / Σвыкупов — точная сумма оплат.
     final_price: () => {
       const value = collect("final_price", "buyouts_gross_count");
@@ -201,6 +232,10 @@ function weightedRules(skusMetrics: Map<string, BaseMetric>[], at: At): Record<s
     reviews_bad_share_pct: () => {
       const value = collect("reviews_bad_share_pct", "reviews_count");
       return value == null ? null : r1(value);
+    },
+    reviews_text_rating: () => {
+      const value = collect("reviews_text_rating", "reviews_text_count");
+      return value == null ? null : Math.round(value * 100) / 100;
     },
     // СПП: восстанавливаем сумму оплат покупателя из gross-выручки и ставки SKU.
     spp_pct: () => {
@@ -298,9 +333,10 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     stock != null && averageDailyBuyouts != null && averageDailyBuyouts > 0 ? Math.round(stock / averageDailyBuyouts) : null;
   const turnoverTotal = turnoverFor(sumAt("stock", totalAt));
 
-  const ratio = (num: number | null, den: number | null, scale: 100 | 1) => {
+  const ratio = (num: number | null, den: number | null, scale: 100 | 1, decimals?: 2) => {
     if (num == null || den == null || !(den > 0)) return null;
     const value = (num / den) * scale;
+    if (decimals === 2) return Math.round(value * 100) / 100;
     return scale === 100 ? r1(value) : Math.round(value);
   };
   // Сумма ряда частей по выбранным SKU. null в частях значит «факт неизвестен»
@@ -361,11 +397,32 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     return { numerator, denominator, scale: 1 };
   };
 
+  const REVIEW_FIELDS = new Set(["reviews_count", "reviews_rating", "reviews_bad_share_pct", "reviews_text_count", "reviews_text_rating", "reviews_text_bad_share_pct"]);
+  const readFailed = (field: string) => skusMetrics.some((metrics) => (metrics.get(field) as { qualityReason?: string } | undefined)?.qualityReason === "api_error");
+
   return template.map((templateMetric) => {
     // weeklyParts шаблона посчитаны по всему набору SKU — под фильтром они чужие.
     const { weeklyParts: _templateWeeklyParts, ...rest } = templateMetric;
     void _templateWeeklyParts;
-    const metric = rest as M;
+    let metric = rest as M;
+    // Отзывы кабинета не прочитались: сумма по остальным выдала бы часть за целое
+    // — как и сводка без фильтра, молчим. Выбраны только SKU здоровых кабинетов —
+    // статус сводки «ошибка чтения» к ним не относится.
+    if (REVIEW_FIELDS.has(metric.field)) {
+      if (readFailed(metric.field)) {
+        return { ...metric, daily: Array.from({ length: dayCount }, () => null), total: null, forecast: null, coveragePct: 0, status: "unavailable", qualityReason: "api_error" } as M;
+      }
+      if ((metric as { qualityReason?: string }).qualityReason === "api_error") {
+        const note = (metric as { note?: string }).note;
+        metric = {
+          ...metric,
+          coveragePct: 100,
+          status: "ready",
+          qualityReason: undefined,
+          ...(note ? { note: note.replace(RNP_REVIEWS_READ_FAILED_NOTE, "") } : {}),
+        } as M;
+      }
+    }
     const scale = metric.parts?.scale
       ?? skusMetrics.map((metrics) => metrics.get(metric.field)?.parts?.scale).find((value) => value != null);
     if (scale != null && !RECOMPUTED_FROM_ROWS.has(metric.field)) {
@@ -373,12 +430,14 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
       const rawDenominator = Array.from({ length: dayCount }, (_, index) => sumParts(metric.field, (parts) => parts.denominator, index));
       const numerator = rawNumerator.map((value, index) => rawDenominator[index] == null ? null : value);
       const denominator = rawDenominator.map((value, index) => rawNumerator[index] == null ? null : value);
+      const decimals = metric.parts?.decimals
+        ?? skusMetrics.map((metrics) => metrics.get(metric.field)?.parts?.decimals).find((value) => value != null);
       return {
         ...metric,
-        daily: numerator.map((num, index) => ratio(num, denominator[index], scale)),
-        total: ratio(knownTotal(numerator), knownTotal(denominator), scale),
+        daily: numerator.map((num, index) => ratio(num, denominator[index], scale, decimals)),
+        total: ratio(knownTotal(numerator), knownTotal(denominator), scale, decimals),
         forecast: null,
-        parts: { numerator, denominator, scale },
+        parts: { numerator, denominator, scale, ...(decimals ? { decimals } : {}) },
       };
     }
     // Снимок, собранный до появления `parts`: долю из процентов SKU не сложить,
