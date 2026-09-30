@@ -76,9 +76,9 @@ interface DailyRow {
   buyouts_finished_sum?: number;
   /**
    * Когорта заказов дня — по дате ЗАКАЗА, судьба сопоставлена с продажами по
-   * srid (`rnp_buyout_cohort_daily_sku`): всего заказов, отменено/отказ,
-   * выкуплено и не возвращено, возвращено. Остальные ещё в пути.
-   * `undefined` — агрегата нет (миграция не применена или нет id кабинета).
+   * srid (первичные строки wb_orders/wb_sales, правила rnp_buyout_cohort_daily_sku):
+   * всего заказов, отменено/отказ, выкуплено и не возвращено, возвращено.
+   * Остальные ещё в пути. `undefined` — когорты нет (см. loadBuyoutCohort).
    */
   cohort_orders?: number;
   cohort_cancelled?: number;
@@ -1985,7 +1985,7 @@ export function buildMetrics(
       source: "WB Статистика заказов + продаж (по srid)",
       note: cohortFacts
         ? "Как у WB: из заказов дня — выкуплено и не возвращено / заказы с известным исходом (выкуп, возврат, отмена или отказ на ПВЗ). Заказы в пути не учитываются. День показывается, когда исход известен хотя бы у половины его заказов: в первые дни известны почти одни быстрые отмены. Исход известен — не значит окончателен: выкуп с открытым 21-дневным окном возврата уже считается выкупом, но ещё может вернуться. Сколько исходов окончательны, видно в «Окончательный итог»." + cohortSinceLabel
-        : "Когорта заказов ещё не посчитана: нужна миграция 202609170001 (rnp_buyout_cohort_daily_sku) или у выбранного набора нет id кабинета.",
+        : "Когорта заказов не посчитана: нет функции rnp_sales_srid_since (миграция 202609170001), у продаж кабинета ещё нет srid, заказы или продажи не прочитались за отведённое время, у набора нет id кабинета, либо в сводке когорты нет хотя бы у одного кабинета.",
       qualityReason: cohortQualityReason,
       parts: { numerator: matureKept, denominator: matureResolved, scale: 100 },
     },
@@ -3495,46 +3495,114 @@ export interface ReportLogisticsFacts {
   coverage: RnpReportCoverage;
 }
 
+/** Длина куска окна: неделя крупного кабинета (СЛОЁНО, ~24 тыс. заказов) — до ~25 страниц. */
+const COHORT_SLICE_DAYS = 7;
+/** Сколько кусков читается разом: внутри куска страницы и так идут по две. */
+const COHORT_SLICE_CONCURRENCY = 2;
 /**
- * Когорта из первичных строк: заказы [from, to] и продажи с srid от from.
- * Страницы — по (date, id): в этом порядке строки отдают индексы по кабинету и
- * дате, а id не даёт одинаковым датам потеряться или задвоиться на границе
- * страниц. Каждая страница — простой индексный запрос, а не пересчёт всей
- * когорты, как у rnp_buyout_cohort_daily_sku.
+ * Бюджет на чтение когорты. Функция раньше обрывалась statement timeout и
+ * метрика молчала; постраничное чтение без предела при деградации базы могло
+ * бы уронить роут целиком (maxDuration 60 с) — лучше «—» в двух строках.
+ */
+const COHORT_BUDGET_MS = 20_000;
+
+/** Куски окна по неделе: [from, to) каждого; у последнего `to` = null — без верхней границы. */
+export function cohortSlices(from: string, lastDay: string, openEnded: boolean): Array<{ from: string; to: string | null }> {
+  const slices: Array<{ from: string; to: string | null }> = [];
+  for (let start = from; start <= lastDay; start = shiftIsoDays(start, COHORT_SLICE_DAYS)) {
+    const end = shiftIsoDays(start, COHORT_SLICE_DAYS);
+    slices.push({ from: start, to: end > lastDay ? nextIsoDate(lastDay) : end });
+  }
+  if (openEnded && slices.length) slices[slices.length - 1].to = null;
+  return slices;
+}
+
+async function mapWithConcurrency<T, R>(items: T[], limit: number, run: (item: T) => Promise<R>, stopped: () => boolean = () => false): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (!stopped() && next < items.length) {
+      const index = next++;
+      results[index] = await run(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+/**
+ * Когорта из первичных строк: заказы [from, to] и продажи с srid от from до
+ * сегодня. Окно читается кусками по неделе: у крупного кабинета (СЛОЁНО —
+ * 3–4 тыс. заказов в день) смещение страниц в одном окне на месяц росло бы до
+ * 100 тыс. строк, и каждая следующая страница стоила бы дороже предыдущей.
+ * Внутри куска страницы — по (date, id): в этом порядке строки отдают индексы
+ * по кабинету и дате, а id не даёт одинаковым датам потеряться или задвоиться
+ * на границе страниц. `allowed = null` — кабинет без списка артикулов: все его
+ * строки.
  */
 export async function loadCohortPrimaryRows(
   db: SupabaseAdmin,
   cabinetId: string,
-  allowed: number[],
+  allowed: number[] | null,
   from: string,
   to: string,
   nowMs = Date.now(),
+  budgetMs = COHORT_BUDGET_MS,
 ): Promise<BuyoutCohortRow[]> {
-  const dateFrom = `${from}T00:00:00.000Z`;
-  const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
+  const bound = (day: string) => `${day}T00:00:00.000Z`;
   const options = { maxPages: 300 };
+  // Один сигнал на всё чтение: первый сбой или исчерпанный бюджет обрывают и
+  // запросы в полёте, и ещё не начатые куски обеих таблиц — когорта всё равно
+  // уже «—», дочитывать её незачем.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), budgetMs);
+  const aborted = () => controller.signal.aborted;
+  const loadSlices = async <Row>(slices: Array<{ from: string; to: string | null }>, read: (slice: { from: string; to: string | null }, start: number, end: number) => PromiseLike<PageResult<Row>>) => {
+    try {
+      return (await mapWithConcurrency(slices, COHORT_SLICE_CONCURRENCY, (slice) => loadAllPages<Row>((start, end) => aborted()
+        ? Promise.resolve({ data: null, error: { message: "RNP: чтение когорты прервано" } })
+        : read(slice, start, end), options), aborted)).flat();
+    } catch (error) {
+      controller.abort();
+      throw error;
+    }
+  };
+  // Продажи — до сегодня по UTC плюс день запаса; последний кусок без верхней
+  // границы, чтобы ни одна продажа не выпала из-за часового пояса.
+  const salesLastDay = new Date(nowMs + 86_400_000).toISOString().slice(0, 10);
   const [orders, sales] = await Promise.all([
-    loadAllPages<CohortOrderRow>((start, end) => db
-      .from("wb_orders")
-      .select("id, srid, nm_id, date, is_cancel")
-      .eq("cabinet_id", cabinetId)
-      .in("nm_id", allowed)
-      .gte("date", dateFrom)
-      .lt("date", dateTo)
-      .order("date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(start, end) as unknown as PromiseLike<PageResult<CohortOrderRow>>, options),
-    loadAllPages<CohortSaleRow>((start, end) => db
-      .from("wb_sales")
-      .select("srid, sale_id, date")
-      .eq("cabinet_id", cabinetId)
-      .in("nm_id", allowed)
-      .gte("date", dateFrom)
-      .not("srid", "is", null)
-      .order("date", { ascending: true })
-      .order("id", { ascending: true })
-      .range(start, end) as unknown as PromiseLike<PageResult<CohortSaleRow>>, options),
-  ]);
+    loadSlices<CohortOrderRow>(cohortSlices(from, to, false), (slice, start, end) => {
+      let query = db
+        .from("wb_orders")
+        .select("id, srid, nm_id, date, is_cancel")
+        .eq("cabinet_id", cabinetId);
+      if (allowed) query = query.in("nm_id", allowed);
+      return query
+        .gte("date", bound(slice.from))
+        .lt("date", bound(slice.to!))
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(start, end)
+        .abortSignal(controller.signal) as unknown as PromiseLike<PageResult<CohortOrderRow>>;
+    }),
+    loadSlices<CohortSaleRow>(cohortSlices(from, salesLastDay > to ? salesLastDay : to, true), (slice, start, end) => {
+      let query = db
+        .from("wb_sales")
+        .select("srid, sale_id, date")
+        .eq("cabinet_id", cabinetId);
+      if (allowed) query = query.in("nm_id", allowed);
+      query = query.gte("date", bound(slice.from));
+      if (slice.to) query = query.lt("date", bound(slice.to));
+      return query
+        .not("srid", "is", null)
+        .order("date", { ascending: true })
+        .order("id", { ascending: true })
+        .range(start, end)
+        .abortSignal(controller.signal) as unknown as PromiseLike<PageResult<CohortSaleRow>>;
+    }),
+  ]).finally(() => clearTimeout(timer));
+  // Бюджет истёк на последней странице — ответ мог прийти неполным.
+  if (aborted()) throw new Error("RNP: чтение когорты не уложилось в бюджет");
   return cohortRowsFromPrimary(orders, sales, nowMs);
 }
 
@@ -3562,27 +3630,22 @@ export async function loadBuyoutCohort(
     // День запаса: srid стали писать синком с перекрытием в 48 часов, и
     // строки самого первого дня могли остаться без него.
     const since = nextIsoDate(sridDay);
+    // Когорта — из первичных строк, а не функцией rnp_buyout_cohort_daily_sku:
+    // она сканирует все продажи от p_from до сегодня и на крупных кабинетах
+    // упиралась в statement timeout трижды подряд (Оптима — уже с месяца,
+    // СЛОЁНО — даже за неделю): «% выкупа» и прогноз молчали, а сборка теряла
+    // ~25 с на каждый вызов.
+    // Дни до since когорта всё равно не показывает — их и не читаем.
+    const periodFrom = from < since ? since : from;
+    const wantPeriod = periodFrom <= to;
+    const nowMs = clock.nowMs ?? Date.now();
+    const primary = (lo: string, hi: string) => loadCohortPrimaryRows(db, cabinetId, allowed, lo, hi, nowMs).catch(() => null);
     if (!allowed) {
-      // Кабинет без списка артикулов — функцией, как раньше; якоря у него нет:
-      // прогноз требует первичных строк.
-      if (since > to) return { cohort: { rows: [], since }, anchor: null };
-      const rows = await loadAllSupabasePages<BuyoutCohortRow>((rangeFrom, rangeTo) => db
-        .rpc("rnp_buyout_cohort_daily_sku", {
-          p_from: from,
-          p_to: to,
-          p_cabinet: cabinetId,
-          p_nm_ids: null,
-        })
-        .order("d", { ascending: true })
-        .order("nm_id", { ascending: true })
-        .range(rangeFrom, rangeTo), { label: "RNP: когорта выкупа", maxPages: 100 });
-      return { cohort: { rows, since }, anchor: null };
+      // Кабинет без списка артикулов: якоря у него нет — прогнозу нужны отмены,
+      // а их знают только первичные строки кабинетов со списком.
+      const rows = wantPeriod ? await primary(periodFrom, to) : [];
+      return { cohort: rows ? { rows, since } : null, anchor: null };
     }
-    // Кабинет со списком артикулов — из первичных строк. Функция сканирует все
-    // продажи от p_from до сегодня и на крупном кабинете (Оптима) уже с месяца
-    // упиралась в statement timeout трижды подряд: «% выкупа» и прогноз молчали,
-    // а сборка теряла ~25 с на каждый вызов.
-    //
     // Якорь ставки прогноза: окно сегодня−35…сегодня−6, от выбранного периода не
     // зависит. Правый край — ещё и «синк продаж − 6 дней»: у заказов перед
     // застрявшим синком отмены уже есть, а выкупов ещё нет, и ставка занижалась бы.
@@ -3595,11 +3658,6 @@ export async function loadBuyoutCohort(
     const anchorFromRaw = shiftIsoDays(today, -ANCHOR_FROM_DAYS);
     const anchorFrom = anchorFromRaw < since ? since : anchorFromRaw;
     const wantAnchor = !!salesFresh && anchorTo >= anchorFrom;
-    // Дни до since когорта всё равно не показывает — их и не читаем.
-    const periodFrom = from < since ? since : from;
-    const wantPeriod = periodFrom <= to;
-    const nowMs = clock.nowMs ?? Date.now();
-    const primary = (lo: string, hi: string) => loadCohortPrimaryRows(db, cabinetId, allowed, lo, hi, nowMs).catch(() => null);
     const inRange = (rows: BuyoutCohortRow[], lo: string, hi: string) => rows.filter((row) => {
       const day = String(row.d).slice(0, 10);
       return day >= lo && day <= hi;

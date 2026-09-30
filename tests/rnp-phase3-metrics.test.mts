@@ -11,6 +11,7 @@ import {
   buildMetrics,
   buildReviewMetrics,
   cohortRowsFromPrimary,
+  cohortSlices,
   computeAnchorBuyoutRates,
   loadBuyoutCohort,
   loadCohortPrimaryRows,
@@ -339,8 +340,8 @@ test("прогноз не пропадает от 429 в синке продаж
 // 1000 строк — как у настоящего. Плюс учёт вызовов: проверяем путь, а не текст.
 type FakeRow = Record<string, unknown>;
 interface FakePage { table: string; filters: string[]; order: string[]; ids: unknown[] }
-function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: string, filters: string[]) => boolean; srid?: string | null; salesState?: FakeRow | null } = {}) {
-  const calls: { rpc: string[]; pages: FakePage[] } = { rpc: [], pages: [] };
+function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: string, filters: string[]) => boolean; srid?: string | null; salesState?: FakeRow | null; delayMs?: number } = {}) {
+  const calls: { rpc: string[]; pages: FakePage[]; issued: number } = { rpc: [], pages: [], issued: 0 };
   let seed = 7;
   const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
   const query = (table: string) => {
@@ -354,6 +355,7 @@ function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: str
     let columns: string[] | null = null;
     const order: Array<{ field: string; ascending: boolean }> = [];
     let range: [number, number] = [0, 999];
+    let signal: AbortSignal | null = null;
     const at = (value: unknown) => Date.parse(String(value));
     const builder = {
       select: (list: string) => { columns = list.split(",").map((column) => column.trim()); return builder; },
@@ -367,11 +369,27 @@ function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: str
       },
       order: (field: string, spec: { ascending: boolean }) => { order.push({ field, ascending: spec.ascending }); return builder; },
       range: (from: number, to: number) => { range = [from, Math.min(to, from + 999)]; return builder; },
+      abortSignal: (value: AbortSignal) => { signal = value; return builder; },
       maybeSingle: () => Promise.resolve({ data: table === "wb_sync_state" ? options.salesState ?? null : null, error: null }),
       then: (resolve: (value: unknown) => unknown, reject?: (error: unknown) => unknown) => {
+        const abortedResult = { data: null, error: { message: "AbortError: This operation was aborted" } };
+        if (signal?.aborted) return Promise.resolve(abortedResult).then(resolve, reject);
+        if (options.delayMs) {
+          calls.issued += 1;
+          const delayed = options.delayMs;
+          const settle = (builder as unknown as { answer: () => unknown }).answer;
+          return new Promise((done) => {
+            const timer = setTimeout(() => done(settle()), delayed);
+            signal?.addEventListener("abort", () => { clearTimeout(timer); done(abortedResult); });
+          }).then(resolve, reject);
+        }
+        calls.issued += 1;
+        return Promise.resolve((builder as unknown as { answer: () => unknown }).answer()).then(resolve, reject);
+      },
+      answer: () => {
         if (options.fail?.(table, filters)) {
           calls.pages.push({ table, filters, order: order.map((item) => item.field), ids: [] });
-          return Promise.resolve({ data: null, error: { message: "permission denied" } }).then(resolve, reject);
+          return { data: null, error: { message: "permission denied" } };
         }
         const sorted = [...rows].sort((a, b) => {
           for (const { field, ascending } of order) {
@@ -384,7 +402,7 @@ function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: str
         const page = sorted.slice(range[0], range[1] + 1);
         calls.pages.push({ table, filters, order: order.map((item) => item.field), ids: page.map((row) => row.id) });
         const projected = columns ? page.map((row) => Object.fromEntries(columns!.map((column) => [column, row[column]]))) : page;
-        return Promise.resolve({ data: projected, error: null }).then(resolve, reject);
+        return { data: projected, error: null };
       },
     };
     return builder;
@@ -439,6 +457,26 @@ function cohortTables(daysBack: number, perDay: number) {
   }
   return { wb_orders: orders, wb_sales: sales };
 }
+// Границы кусков, которыми читалась таблица: [from, to), to = null — без верхней границы.
+const sliceBounds = (pages: FakePage[], table: string) => {
+  const bounds = new Map<string, string | null>();
+  for (const page of pages.filter((item) => item.table === table)) {
+    const from = page.filters.find((filter) => filter.startsWith("date>="))!.slice(6, 16);
+    const to = page.filters.find((filter) => filter.startsWith("date<"))?.slice(5, 15) ?? null;
+    bounds.set(from, to);
+  }
+  return [...bounds].sort(([a], [b]) => a.localeCompare(b));
+};
+/** Куски идут встык, не длиннее недели, и покрывают [from, to). */
+const assertCovers = (bounds: Array<[string, string | null]>, from: string, to: string | null) => {
+  assert.equal(bounds[0][0], from, "первый кусок — с начала окна");
+  for (let index = 0; index < bounds.length; index++) {
+    const [start, end] = bounds[index];
+    if (index < bounds.length - 1) assert.equal(end, bounds[index + 1][0], "куски встык");
+    if (end) assert.ok(shiftDays(start, 7) >= end, `кусок ${start}…${end} не длиннее недели`);
+  }
+  assert.equal(bounds.at(-1)![1], to, "последний кусок — до конца окна");
+};
 const sum = <Row extends object>(rows: Row[], field: keyof Row) => rows.reduce((total, row) => total + Number(row[field] ?? 0), 0);
 const days = (rows: Array<{ d: string }>) => [...new Set(rows.map((row) => row.d))].sort();
 
@@ -458,9 +496,10 @@ test("якорь и период — из первичных строк: без 
   assert.ok(cohort.rows.every((row) => row.nm_id === 7), "чужой кабинет и чужой артикул отсечены");
   assert.equal(sum(cohort.rows, "cohort_orders"), 7 * 30);
   // Одно чтение на оба: окно заказов — от начала якоря до конца периода.
-  const orderReads = calls.pages.filter((page) => page.table === "wb_orders");
-  assert.ok(orderReads.length > 1, "окно больше страницы — читается страницами");
-  assert.ok(orderReads.every((page) => page.filters.includes(`date>=${shiftDays(today, -35)}T00:00:00.000Z`) && page.filters.includes(`date<${shiftDays(today, 1)}T00:00:00.000Z`)));
+  assert.ok(calls.pages.filter((page) => page.table === "wb_orders").length > 1, "окно больше страницы — читается страницами");
+  assertCovers(sliceBounds(calls.pages, "wb_orders"), shiftDays(today, -35), shiftDays(today, 1));
+  // Продажи — с начала окна и без верхней границы в последнем куске.
+  assertCovers(sliceBounds(calls.pages, "wb_sales"), shiftDays(today, -35), null);
 });
 
 test("склейка окон: квартал и период внутри якоря читаются по своим границам", async () => {
@@ -469,7 +508,7 @@ test("склейка окон: квартал и период внутри як�
   const q = await loadBuyoutCohort(quarter.db, scope([7]), [7], shiftDays(today, -89), today, clock);
   assert.equal(days(q.cohort!.rows).length, 90);
   assert.equal(days(q.anchor!.rows).length, 30);
-  assert.ok(quarter.calls.pages.filter((page) => page.table === "wb_orders").every((page) => page.filters.includes(`date>=${shiftDays(today, -89)}T00:00:00.000Z`)));
+  assertCovers(sliceBounds(quarter.calls.pages, "wb_orders"), shiftDays(today, -89), shiftDays(today, 1));
   const inside = fakeDb(tables, { salesState: caughtUp });
   const i = await loadBuyoutCohort(inside.db, scope([7]), [7], shiftDays(today, -40), shiftDays(today, -20), clock);
   assert.deepEqual(days(i.cohort!.rows), Array.from({ length: 21 }, (_, index) => shiftDays(today, -40 + index)));
@@ -507,13 +546,84 @@ test("якорь режется свежестью синка продаж и м
   assert.equal(days(noSync.cohort!.rows).length, 7);
 });
 
-test("кабинет без списка артикулов — функцией, как раньше, и без якоря", async () => {
-  const { db, calls } = fakeDb(cohortTables(10, 3), { salesState: caughtUp });
+test("кабинет без списка артикулов — тоже из первичных строк, все его артикулы, без якоря", async () => {
+  const { db, calls } = fakeDb(cohortTables(40, 3), { salesState: caughtUp });
   const { cohort, anchor } = await loadBuyoutCohort(db, scope(null), null, shiftDays(today, -6), today, clock);
-  assert.deepEqual(calls.rpc, ["rnp_sales_srid_since", "rnp_buyout_cohort_daily_sku"]);
-  assert.deepEqual(cohort?.rows, []);
-  assert.equal(anchor, null);
-  assert.equal(calls.pages.length, 0);
+  assert.deepEqual(calls.rpc, ["rnp_sales_srid_since"], "функция когорты не вызывается");
+  assert.equal(anchor, null, "прогнозу нужны отмены — их знают только кабинеты со списком");
+  assert.ok(calls.pages.every((page) => !page.filters.some((filter) => filter.startsWith("nm_id in"))), "без фильтра по артикулам");
+  assert.deepEqual([...new Set(cohort!.rows.map((row) => row.nm_id))].sort(), [7, 8], "чужой кабинет отсечён, свои артикулы — все");
+  assert.equal(sum(cohort!.rows.filter((row) => row.nm_id === 8), "cohort_kept"), 7);
+  assertCovers(sliceBounds(calls.pages, "wb_orders"), shiftDays(today, -6), shiftDays(today, 1));
+});
+
+test("крупный кабинет (СЛОЁНО, ~3,5 тыс. заказов в день): месяц — недельными кусками, смещения малые", async () => {
+  const tables = cohortTables(30, 1_200);
+  const { db, calls } = fakeDb(tables, { salesState: caughtUp });
+  const { cohort } = await loadBuyoutCohort(db, scope(null), null, shiftDays(today, -29), today, clock);
+  assert.equal(sum(cohort!.rows.filter((row) => row.nm_id === 7), "cohort_orders"), 30 * 1_200);
+  assertCovers(sliceBounds(calls.pages, "wb_orders"), shiftDays(today, -29), shiftDays(today, 1));
+  const orderPages = calls.pages.filter((page) => page.table === "wb_orders");
+  const served = orderPages.flatMap((page) => page.ids);
+  assert.equal(new Set(served).size, served.length, "без дублей");
+  assert.equal(served.length, tables.wb_orders.filter((row) => row.cabinet_id === CAB && Date.parse(String(row.date)) >= Date.parse(`${shiftDays(today, -29)}T00:00:00Z`)).length, "без потерь");
+  // Куски по неделе: страниц в куске не больше, чем влезает недельный объём.
+  const pagesPerSlice = new Map<string, number>();
+  for (const page of orderPages) {
+    const from = page.filters.find((filter) => filter.startsWith("date>="))!;
+    pagesPerSlice.set(from, (pagesPerSlice.get(from) ?? 0) + 1);
+  }
+  assert.ok(Math.max(...pagesPerSlice.values()) <= Math.ceil((7 * 1_202) / 1_000) + 1);
+});
+
+test("прошлый период: продажи — неделями до сегодня, а не одним куском; дни до srid не читаются", async () => {
+  const tables = cohortTables(70, 40);
+  const past = fakeDb(tables, { salesState: caughtUp });
+  await loadBuyoutCohort(past.db, scope(null), null, shiftDays(today, -60), shiftDays(today, -55), clock);
+  const sales = sliceBounds(past.calls.pages, "wb_sales");
+  assertCovers(sales, shiftDays(today, -60), null);
+  assert.ok(sales.at(-1)![0] >= shiftDays(today, -6), "открытый кусок — только последняя неделя");
+  const since = shiftDays(today, -10);
+  const beforeSrid = fakeDb(tables, { salesState: caughtUp, srid: shiftDays(since, -1) });
+  const result = await loadBuyoutCohort(beforeSrid.db, scope(null), null, shiftDays(today, -30), shiftDays(today, -20), clock);
+  assert.deepEqual(result.cohort?.rows, []);
+  assert.equal(beforeSrid.calls.pages.length, 0, "период целиком до since — ничего не читаем");
+});
+
+test("первый сбой обрывает остальные чтения: ни одного нового запроса после отказа", async () => {
+  const tables = cohortTables(30, 1_200);
+  const { db, calls } = fakeDb(tables, { delayMs: 3, fail: (table, filters) => table === "wb_orders" && filters.includes(`date>=${shiftDays(today, -22)}T00:00:00.000Z`) });
+  await assert.rejects(loadCohortPrimaryRows(db, CAB, null, shiftDays(today, -29), today, NOW));
+  const atFailure = calls.issued;
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  assert.equal(calls.issued, atFailure, "после отказа запросов не прибавилось");
+  assert.ok(atFailure < 60, `прочитано ${atFailure} страниц из ~150`);
+});
+
+test("бюджет времени: медленная база даёт «—», а не таймаут роута", async () => {
+  const { db, calls } = fakeDb(cohortTables(30, 1_200), { delayMs: 25 });
+  const started = Date.now();
+  await assert.rejects(loadCohortPrimaryRows(db, CAB, null, shiftDays(today, -29), today, NOW, 120), /бюджет|прервано|AbortError/);
+  assert.ok(Date.now() - started < 1_000, "обрыв по бюджету, а не после всех страниц");
+  const atAbort = calls.issued;
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.equal(calls.issued, atAbort);
+});
+
+test("куски окна: встык, по неделе, последний кусок продаж — без верхней границы", () => {
+  assert.deepEqual(cohortSlices("2026-09-01", "2026-09-30", false), [
+    { from: "2026-09-01", to: "2026-09-08" },
+    { from: "2026-09-08", to: "2026-09-15" },
+    { from: "2026-09-15", to: "2026-09-22" },
+    { from: "2026-09-22", to: "2026-09-29" },
+    { from: "2026-09-29", to: "2026-10-01" },
+  ]);
+  assert.deepEqual(cohortSlices("2026-09-23", "2026-09-30", true), [
+    { from: "2026-09-23", to: "2026-09-30" },
+    { from: "2026-09-30", to: null },
+  ]);
+  assert.deepEqual(cohortSlices("2026-09-30", "2026-09-30", false), [{ from: "2026-09-30", to: "2026-10-01" }]);
+  assert.deepEqual(cohortSlices("2026-10-01", "2026-09-30", false), []);
 });
 
 test("дни до появления srid не читаются; нет srid вовсе — когорты нет", async () => {
@@ -522,7 +632,7 @@ test("дни до появления srid не читаются; нет srid в�
   const { cohort, anchor } = await loadBuyoutCohort(db, scope([7]), [7], shiftDays(today, -30), shiftDays(today, -20), clock);
   assert.equal(cohort?.since, since);
   assert.deepEqual(cohort?.rows, [], "период целиком до since");
-  assert.ok(calls.pages.filter((page) => page.table === "wb_orders").every((page) => page.filters.includes(`date>=${since}T00:00:00.000Z`)), "якорь режется по since");
+  assert.equal(sliceBounds(calls.pages, "wb_orders")[0][0], since, "якорь режется по since");
   assert.equal(anchor?.from, since);
   const none = await loadBuyoutCohort(fakeDb({}, { srid: null }).db, scope([7]), [7], today, today, clock);
   assert.deepEqual(none, { cohort: null, anchor: null });
