@@ -1,5 +1,5 @@
 import type { Account, Payment } from "@/lib/types";
-import { companyAliasKeys } from "./companyAliases";
+import { companyAliasKeys, preferredAliasCompany, sameCompanyAlias } from "./companyAliases";
 import { INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES, TRANSFER_CATEGORIES } from "./categories";
 
 export interface ChainCompany { id: string; name: string; groupName: string }
@@ -28,6 +28,55 @@ export interface BankReviewChainSplit {
 }
 const cents = (n: number) => Math.round(n * 100);
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
+const accountNorm = (s: string) => norm(s).replace(/[^а-яa-z0-9]+/g, " ").trim();
+
+/** Кассы фактического ДДС. PANKSTER GROUP используется только календарём. */
+export function chainCashAccounts(accounts: readonly Account[]) {
+  return accounts.filter((account) => account.type === "cash" && account.currency === "RUB" && !/pankster\s+group/i.test(account.name));
+}
+
+/**
+ * Выбирает кассу юрлица без ручного перебора технических кошельков.
+ * Сначала берём кассу с названием компании, затем единственную общую «Наличку».
+ */
+export function preferredChainCashAccount(company: ChainCompany | undefined, accounts: readonly Account[], companies: readonly ChainCompany[]) {
+  if (!company) return null;
+  const cash = chainCashAccounts(accounts);
+  const companyName = accountNorm(company.name);
+  const named = cash.filter((account) => {
+    const name = accountNorm(account.name);
+    return name.includes(companyName) || sameCompanyAlias(account.name, company.name);
+  });
+  if (named.length === 1) return named[0];
+  const companyNames = companies.map((candidate) => accountNorm(candidate.name)).filter(Boolean);
+  const generic = cash.filter((account) => {
+    const name = accountNorm(account.name);
+    return /^(?:наличка|наличные|касса)$/.test(name) && !companyNames.some((candidate) => name.includes(candidate));
+  });
+  return generic.length === 1 ? generic[0] : null;
+}
+
+/** Заполняет известную цепочку кассами и каноническим получателем до показа формы. */
+export function autofillPaymentChainCash(draft: PaymentChainDraft, companies: readonly ChainCompany[], accounts: readonly Account[]) {
+  const next: PaymentChainDraft = {...draft, allocations:draft.allocations.map(allocation=>({...allocation}))};
+  const source=companies.find(company=>company.id===next.sourceCompanyId);
+  for(const allocation of next.allocations) {
+    const recipient=preferredAliasCompany(`${allocation.name} ${allocation.counterparty}`,companies);
+    if(recipient&&requiresFilippovLoan(source,recipient))allocation.companyId=recipient.id;
+  }
+  if(!next.allocations.some(allocation=>requiresFilippovLoan(source,companies.find(company=>company.id===allocation.companyId))))return next;
+  next.throughCash=true;
+  const sourceCash=preferredChainCashAccount(source,accounts,companies);
+  if(!next.cashAccountId&&sourceCash)next.cashAccountId=sourceCash.id;
+  for(const allocation of next.allocations) {
+    const recipient=companies.find(company=>company.id===allocation.companyId);
+    if(!requiresFilippovLoan(source,recipient))continue;
+    const current=accounts.find(account=>account.id===allocation.accountId);
+    const recipientCash=preferredChainCashAccount(recipient,accounts,companies);
+    if((!current||current.type!=="cash"||current.currency!=="RUB"||current.id===next.cashAccountId)&&recipientCash)allocation.accountId=recipientCash.id;
+  }
+  return next;
+}
 export function isMainGroup(company: ChainCompany | undefined) {
   return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко|глобалкос|иллюмей/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);
 }

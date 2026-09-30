@@ -5,7 +5,7 @@ import { CounterpartySelect } from "./CounterpartySelect";
 import { MoreHorizontal, Plus, Trash2 } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import { balanceLast, splitEvenly } from "@/lib/finance/paymentSplitAmounts";
-import { allocationTotal, chainRemainder, requiresFilippovLoan, type ChainAllocation, type PaymentChainBankTarget, type PaymentChainDraft } from "@/lib/finance/paymentChains";
+import { allocationTotal, chainCashAccounts, chainRemainder, preferredChainCashAccount, requiresFilippovLoan, type ChainAllocation, type PaymentChainBankTarget, type PaymentChainDraft } from "@/lib/finance/paymentChains";
 import { TRANSFER_CATEGORIES } from "@/lib/finance/categories";
 import type { Account } from "@/lib/types";
 import { companyIdForAccountName, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
@@ -22,7 +22,7 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
   const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
   const remainder = chainRemainder(draft);
   const source = companies.find(c => c.id === draft.sourceCompanyId);
-  const cashAccounts = accounts.filter(a => a.type === "cash" && a.currency === "RUB");
+  const cashAccounts = chainCashAccounts(accounts);
   const accountsForCompany = (companyId: string, type?: Account["type"]) => accounts.filter(account =>
     account.currency === "RUB" && (!type || account.type === type) && companyIdForAccountName(account.name, companies) === companyId);
   const sourceCashAccounts = cashAccounts.filter(account => {
@@ -42,9 +42,8 @@ export function PaymentSplitEditor({ draft, accounts, companies, categories, cou
   const changeCompany = (a: ChainAllocation, companyId: string) => {
     const loan = requiresFilippovLoan(source, companies.find(c => c.id === companyId));
     if (loan) {
-      const namedRecipientCash = accountsForCompany(companyId, "cash");
-      const recipientCash = namedRecipientCash.length ? namedRecipientCash : cashAccounts.filter(acc => acc.id !== draft.cashAccountId);
-      patch({ throughCash: true, allocations: draft.allocations.map(p => p.id === a.id ? { ...p, companyId, accountId: recipientCash.length === 1 ? recipientCash[0].id : "" } : { ...p, accountId: requiresFilippovLoan(source, companies.find(c => c.id === p.companyId)) ? p.accountId : draft.cashAccountId }) });
+      const recipientCash = preferredChainCashAccount(companies.find(c => c.id === companyId), accounts, companies);
+      patch({ throughCash: true, allocations: draft.allocations.map(p => p.id === a.id ? { ...p, companyId, accountId: recipientCash?.id ?? "" } : { ...p, accountId: requiresFilippovLoan(source, companies.find(c => c.id === p.companyId)) ? p.accountId : draft.cashAccountId }) });
       setExpanded(a.id);
     } else change(a.id, { companyId, accountId: draft.throughCash ? draft.cashAccountId : draft.sourceAccountId, targetAccountId: undefined, targetReviewId: undefined });
   };

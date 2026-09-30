@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {allocationTotal,bankReviewSpendingSplits,buildChainEntries,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,isMainGroup,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
+import {allocationTotal,autofillPaymentChainCash,bankReviewSpendingSplits,buildChainEntries,chainCashAccounts,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,isMainGroup,preferredChainCashAccount,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
 import {DDS_CATEGORIES} from "./categories.ts";
 import type {Account} from "../types.ts";
 const companies=[{id:'main',name:'ИП Митриченко',groupName:'Основная группа'},{id:'kor',name:'ИП Коровкин',groupName:'Коровкин'},{id:'fil',name:'ИП Филиппов',groupName:'Коровкин'},{id:'other',name:'ООО Другая',groupName:'Отдельная'}];
@@ -38,6 +38,23 @@ test('Filippov uses the Korovkin alias; other groups do not acquire this rule',(
  assert.equal(requiresFilippovLoan(companies[0],companies[2]),true);
  assert.equal(requiresFilippovLoan(companies[3],companies[1]),false);
  assert.equal(requiresFilippovLoan(companies[1],companies[1]),false);
+});
+test('cash wallets are autofilled for the real Pankratov to Filippov chain and calendar wallet is ignored',()=>{
+ const realAccounts=[
+  {id:'plan',name:'PANKSTER GROUP',type:'cash',currency:'RUB',balance:0},
+  {id:'shared',name:'Наличка',type:'cash',currency:'RUB',balance:0},
+  {id:'illumey',name:'Наличка Иллюмей',type:'cash',currency:'RUB',balance:0},
+  {id:'pankratov',name:'Наличка ИП Панкратов',type:'cash',currency:'RUB',balance:0},
+ ] as Account[];
+ const realCompanies=[{id:'pankratov',name:'ИП Панкратов',groupName:'Основная группа'},{id:'filippov',name:'ИП Филиппов',groupName:'ИП Филиппов'},{id:'illumey',name:'ООО Иллюмей',groupName:'Основная группа'}];
+ assert.deepEqual(chainCashAccounts(realAccounts).map(account=>account.id),['shared','illumey','pankratov']);
+ assert.equal(preferredChainCashAccount(realCompanies[0],realAccounts,realCompanies)?.id,'pankratov');
+ assert.equal(preferredChainCashAccount(realCompanies[1],realAccounts,realCompanies)?.id,'shared');
+ const auto=autofillPaymentChainCash({id:'chain',revision:0,label:'Дивиденды Андрея',sourceDate:'2026-09-17',sourceAmount:10000,sourceAccountId:'bank',sourceCompanyId:'pankratov',cashAccountId:'',throughCash:false,bankReviewId:'review',originPaymentIds:[],allocations:[{id:'part',amount:10000,date:'2026-09-17',name:'Дивиденды Андрея',category:'Дивиденды',companyId:'filippov',accountId:'bank',counterparty:'Андрей Коровкин',excluded:false}]},realCompanies,realAccounts);
+ assert.equal(auto.throughCash,true);
+ assert.equal(auto.cashAccountId,'pankratov');
+ assert.equal(auto.allocations[0].accountId,'shared');
+ assert.deepEqual(validateChain(auto,[{id:'bank',name:'ИП Панкратов ОЗОН банк',type:'bank',currency:'RUB',balance:0},...realAccounts],realCompanies,DDS_CATEGORIES),[]);
 });
 test('all legal entities of the main contour stay inside one group without loans',()=>{
  const names=['ООО РИО','ИП Кучеренко','ИП Панкратов','ООО ГЛОБАЛКОС','ИП Митриченко','ООО Иллюмей'];
