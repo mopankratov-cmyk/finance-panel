@@ -3261,11 +3261,17 @@ export interface BuyoutCohortFacts {
   rows: BuyoutCohortRow[];
   /** Первый день заказов, у которых итог можно сопоставить по srid. */
   since: string;
-  /**
-   * Якорное окно для ставки выкупа прогноза: сегодня−35…сегодня−6. От выбранного
-   * периода не зависит — ставка по свежим заказам ещё не дозрела.
-   */
-  anchor?: { rows: BuyoutCohortRow[]; from: string; to: string } | null;
+}
+
+/**
+ * Якорное окно для ставки выкупа прогноза: сегодня−35…сегодня−6. От выбранного
+ * периода не зависит — ставка по свежим заказам ещё не дозрела. Живёт отдельно
+ * от когорты периода: сбой одного не гасит другое.
+ */
+export interface BuyoutAnchor {
+  rows: BuyoutCohortRow[];
+  from: string;
+  to: string;
 }
 
 /** Ставка выкупа прогноза: доля выкупленных (до возвратов) и доля возвратов среди выкупленных. */
@@ -3303,7 +3309,7 @@ function shiftIsoDays(value: string, days: number) {
  * записали бы невыкупленными заказы, которые просто ещё не пришли.
  */
 export function computeAnchorBuyoutRates(
-  anchor: BuyoutCohortFacts["anchor"],
+  anchor: BuyoutAnchor | null | undefined,
   until: string | null,
 ): AnchorBuyoutRates | null {
   if (!anchor) return null;
@@ -3356,6 +3362,70 @@ export function computeAnchorBuyoutRates(
     });
   }
   return { from: anchor.from, to, cabinet, byNm };
+}
+
+export interface CohortOrderRow {
+  /** id строки: страницы — отдельные запросы, и строка, сдвинутая синком между ними, может прийти дважды. */
+  id?: number | string | null;
+  srid: string | null;
+  nm_id: number | string;
+  date: string;
+  is_cancel: boolean | null;
+}
+
+export interface CohortSaleRow {
+  srid: string | null;
+  sale_id: string | null;
+  date?: string | null;
+}
+
+/** Окно возврата WB: выкуп моложе него ещё может вернуться («Окончательный итог»). */
+const RETURN_WINDOW_MS = 21 * 86_400_000;
+
+/**
+ * Когорта из первичных строк — по правилам rnp_buyout_cohort_daily_sku: исход
+ * заказа ищется по его srid среди продаж с начала окна, «S…» — выкуп, «R…» —
+ * возврат; отменённый заказ — отмена, что бы ни пришло потом. День — дата
+ * заказа как её хранит база. «Ещё в окне возврата» — выкуп, чья первая продажа
+ * моложе 21 дня на момент `nowMs`.
+ */
+export function cohortRowsFromPrimary(orders: CohortOrderRow[], sales: CohortSaleRow[], nowMs = Date.now()): BuyoutCohortRow[] {
+  const fates = new Map<string, { sold: boolean; returned: boolean; soldAt: number | null }>();
+  for (const sale of sales) {
+    if (!sale.srid) continue;
+    const saleId = String(sale.sale_id ?? "");
+    const fate = fates.get(sale.srid) ?? { sold: false, returned: false, soldAt: null };
+    if (saleId.startsWith("S")) {
+      fate.sold = true;
+      const at = Date.parse(String(sale.date ?? ""));
+      if (Number.isFinite(at) && (fate.soldAt == null || at < fate.soldAt)) fate.soldAt = at;
+    }
+    if (saleId.startsWith("R")) fate.returned = true;
+    fates.set(sale.srid, fate);
+  }
+  const byDayNm = new Map<string, BuyoutCohortRow>();
+  const seen = new Set<string>();
+  for (const order of orders) {
+    if (order.id != null) {
+      const id = String(order.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+    }
+    const d = String(order.date).slice(0, 10);
+    const nm = Number(order.nm_id);
+    const key = `${d}:${nm}`;
+    const row = byDayNm.get(key) ?? { d, nm_id: nm, cohort_orders: 0, cohort_cancelled: 0, cohort_kept: 0, cohort_kept_open: 0, cohort_returned: 0 };
+    const fate = order.srid ? fates.get(order.srid) : undefined;
+    row.cohort_orders += 1;
+    if (order.is_cancel) row.cohort_cancelled += 1;
+    else if (fate?.returned) row.cohort_returned += 1;
+    else if (fate?.sold) {
+      row.cohort_kept += 1;
+      if (fate.soldAt != null && fate.soldAt > nowMs - RETURN_WINDOW_MS) row.cohort_kept_open += 1;
+    }
+    byDayNm.set(key, row);
+  }
+  return [...byDayNm.values()];
 }
 
 /** Прогноз продаж доступен: ставка есть. null — ставки нет, строки прогноза молчат. */
@@ -3426,76 +3496,132 @@ export interface ReportLogisticsFacts {
 }
 
 /**
- * Когорта заказов периода с их итогом. null — функции нет (миграция не
- * применена), у продаж кабинета нет srid вовсе или нет id кабинета: метрика
- * молчит, а не рисует ноль.
+ * Когорта из первичных строк: заказы [from, to] и продажи с srid от from.
+ * Страницы — по (date, id): в этом порядке строки отдают индексы по кабинету и
+ * дате, а id не даёт одинаковым датам потеряться или задвоиться на границе
+ * страниц. Каждая страница — простой индексный запрос, а не пересчёт всей
+ * когорты, как у rnp_buyout_cohort_daily_sku.
  */
-async function loadBuyoutCohort(
+export async function loadCohortPrimaryRows(
+  db: SupabaseAdmin,
+  cabinetId: string,
+  allowed: number[],
+  from: string,
+  to: string,
+  nowMs = Date.now(),
+): Promise<BuyoutCohortRow[]> {
+  const dateFrom = `${from}T00:00:00.000Z`;
+  const dateTo = `${nextIsoDate(to)}T00:00:00.000Z`;
+  const options = { maxPages: 300 };
+  const [orders, sales] = await Promise.all([
+    loadAllPages<CohortOrderRow>((start, end) => db
+      .from("wb_orders")
+      .select("id, srid, nm_id, date, is_cancel")
+      .eq("cabinet_id", cabinetId)
+      .in("nm_id", allowed)
+      .gte("date", dateFrom)
+      .lt("date", dateTo)
+      .order("date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(start, end) as unknown as PromiseLike<PageResult<CohortOrderRow>>, options),
+    loadAllPages<CohortSaleRow>((start, end) => db
+      .from("wb_sales")
+      .select("srid, sale_id, date")
+      .eq("cabinet_id", cabinetId)
+      .in("nm_id", allowed)
+      .gte("date", dateFrom)
+      .not("srid", "is", null)
+      .order("date", { ascending: true })
+      .order("id", { ascending: true })
+      .range(start, end) as unknown as PromiseLike<PageResult<CohortSaleRow>>, options),
+  ]);
+  return cohortRowsFromPrimary(orders, sales, nowMs);
+}
+
+/**
+ * Когорта заказов периода с их итогом и отдельно — якорь ставки прогноза.
+ * cohort = null — функции нет (миграция не применена), у продаж кабинета нет
+ * srid вовсе, нет id кабинета или чтение не удалось: метрика молчит, а не
+ * рисует ноль. Сбой периода не гасит якорь, и наоборот.
+ */
+export async function loadBuyoutCohort(
   db: SupabaseAdmin,
   scope: CabinetScope,
   allowed: number[] | null,
   from: string,
   to: string,
-): Promise<BuyoutCohortFacts | null> {
-  if (!scope.cabinetId) return null;
+  clock: { today?: string; nowMs?: number } = {},
+): Promise<{ cohort: BuyoutCohortFacts | null; anchor: BuyoutAnchor | null }> {
+  const none = { cohort: null, anchor: null };
+  const cabinetId = scope.cabinetId;
+  if (!cabinetId) return none;
   try {
-    const { data: sridSince, error } = await db.rpc("rnp_sales_srid_since", { p_cabinet: scope.cabinetId });
+    const { data: sridSince, error } = await db.rpc("rnp_sales_srid_since", { p_cabinet: cabinetId });
     const sridDay = error ? null : dateOnly(Array.isArray(sridSince) ? sridSince[0] : sridSince);
-    if (!sridDay) return null;
+    if (!sridDay) return none;
     // День запаса: srid стали писать синком с перекрытием в 48 часов, и
     // строки самого первого дня могли остаться без него.
     const since = nextIsoDate(sridDay);
-    // Якорь ставки прогноза — только у кабинетов со списком артикулов: у прочих
-    // нет первичных строк, и прогноз у них молчит. Окно не зависит от выбранного
-    // периода: сегодня−35…сегодня−6. Правый край — ещё и «синк продаж − 6 дней»:
-    // у заказов перед застрявшим синком отмены уже есть, а выкупов ещё нет, и
-    // ставка занижалась бы.
-    const today = currentMoscowDate();
-    const salesState = allowed ? await readWbSyncState(db, scope.cabinetId, "sales").catch(() => null) : null;
+    if (!allowed) {
+      // Кабинет без списка артикулов — функцией, как раньше; якоря у него нет:
+      // прогноз требует первичных строк.
+      if (since > to) return { cohort: { rows: [], since }, anchor: null };
+      const rows = await loadAllSupabasePages<BuyoutCohortRow>((rangeFrom, rangeTo) => db
+        .rpc("rnp_buyout_cohort_daily_sku", {
+          p_from: from,
+          p_to: to,
+          p_cabinet: cabinetId,
+          p_nm_ids: null,
+        })
+        .order("d", { ascending: true })
+        .order("nm_id", { ascending: true })
+        .range(rangeFrom, rangeTo), { label: "RNP: когорта выкупа", maxPages: 100 });
+      return { cohort: { rows, since }, anchor: null };
+    }
+    // Кабинет со списком артикулов — из первичных строк. Функция сканирует все
+    // продажи от p_from до сегодня и на крупном кабинете (Оптима) уже с месяца
+    // упиралась в statement timeout трижды подряд: «% выкупа» и прогноз молчали,
+    // а сборка теряла ~25 с на каждый вызов.
+    //
+    // Якорь ставки прогноза: окно сегодня−35…сегодня−6, от выбранного периода не
+    // зависит. Правый край — ещё и «синк продаж − 6 дней»: у заказов перед
+    // застрявшим синком отмены уже есть, а выкупов ещё нет, и ставка занижалась бы.
+    const today = clock.today ?? currentMoscowDate();
+    const salesState = await readWbSyncState(db, cabinetId, "sales").catch(() => null);
     const salesFresh = salesLoadedThrough(salesState, today);
     const anchorToRaw = shiftIsoDays(today, -ANCHOR_TO_DAYS);
     const salesBound = salesFresh ? shiftIsoDays(salesFresh, -ANCHOR_TO_DAYS) : null;
     const anchorTo = salesBound && salesBound < anchorToRaw ? salesBound : anchorToRaw;
     const anchorFromRaw = shiftIsoDays(today, -ANCHOR_FROM_DAYS);
     const anchorFrom = anchorFromRaw < since ? since : anchorFromRaw;
-    const wantAnchor = !!allowed && !!salesFresh && anchorTo >= anchorFrom;
-    const load = (pFrom: string, pTo: string) => loadAllSupabasePages<BuyoutCohortRow>((rangeFrom, rangeTo) => db
-      .rpc("rnp_buyout_cohort_daily_sku", {
-        p_from: pFrom,
-        p_to: pTo,
-        p_cabinet: scope.cabinetId,
-        p_nm_ids: allowed,
-      })
-      .order("d", { ascending: true })
-      .order("nm_id", { ascending: true })
-      .range(rangeFrom, rangeTo), { label: "RNP: когорта выкупа", maxPages: 100 });
+    const wantAnchor = !!salesFresh && anchorTo >= anchorFrom;
+    // Дни до since когорта всё равно не показывает — их и не читаем.
+    const periodFrom = from < since ? since : from;
+    const wantPeriod = periodFrom <= to;
+    const nowMs = clock.nowMs ?? Date.now();
+    const primary = (lo: string, hi: string) => loadCohortPrimaryRows(db, cabinetId, allowed, lo, hi, nowMs).catch(() => null);
     const inRange = (rows: BuyoutCohortRow[], lo: string, hi: string) => rows.filter((row) => {
       const day = String(row.d).slice(0, 10);
       return day >= lo && day <= hi;
     });
-    if (!wantAnchor) {
-      if (since > to) return { rows: [], since, anchor: null };
-      return { rows: await load(from, to), since, anchor: null };
+    const anchorOf = (rows: BuyoutCohortRow[] | null): BuyoutAnchor | null => rows
+      ? { rows: inRange(rows, anchorFrom, anchorTo), from: anchorFrom, to: anchorTo }
+      : null;
+    // Период рядом с якорем — одно чтение на оба: исход заказа ищется среди
+    // продаж не раньше самого заказа, поэтому общее начало ничего не меняет.
+    if (wantAnchor && wantPeriod && periodFrom <= nextIsoDate(anchorTo) && anchorFrom <= nextIsoDate(to)) {
+      const rows = await primary(periodFrom < anchorFrom ? periodFrom : anchorFrom, to > anchorTo ? to : anchorTo);
+      if (rows) return { cohort: { rows: inRange(rows, periodFrom, to), since }, anchor: anchorOf(rows) };
+      // Общее чтение не удалось — каждое окно отдельно: сбой расширенного
+      // чтения ради якоря не должен гасить «% выкупа» периода, и наоборот.
     }
-    // Период и якорь рядом — один вызов: функция сканирует продажи от p_from до
-    // сегодня, и второй вызов прошёл бы тот же путь ещё раз.
-    const touching = from <= nextIsoDate(anchorTo) && anchorFrom <= nextIsoDate(to);
-    // Якорь — только для прогноза: его сбой не должен стирать когорту периода.
-    if (touching) {
-      try {
-        const rows = await load(from < anchorFrom ? from : anchorFrom, to > anchorTo ? to : anchorTo);
-        return { rows: since > to ? [] : inRange(rows, from, to), since, anchor: { rows: inRange(rows, anchorFrom, anchorTo), from: anchorFrom, to: anchorTo } };
-      } catch {
-        return { rows: since > to ? [] : await load(from, to), since, anchor: null };
-      }
-    }
-    const [rows, anchorRows] = await Promise.all([
-      since > to ? Promise.resolve([] as BuyoutCohortRow[]) : load(from, to),
-      load(anchorFrom, anchorTo).catch(() => null),
+    const [periodRows, anchorRows] = await Promise.all([
+      wantPeriod ? primary(periodFrom, to) : Promise.resolve([] as BuyoutCohortRow[]),
+      wantAnchor ? primary(anchorFrom, anchorTo) : Promise.resolve(null),
     ]);
-    return { rows, since, anchor: anchorRows ? { rows: anchorRows, from: anchorFrom, to: anchorTo } : null };
+    return { cohort: periodRows ? { rows: periodRows, since } : null, anchor: anchorOf(anchorRows) };
   } catch {
-    return null;
+    return none;
   }
 }
 
@@ -3764,6 +3890,7 @@ export async function buildRnpTable(
             funnelAlive: false,
             hasPrimaryFacts: true,
             cohort: null as BuyoutCohortFacts | null,
+            anchor: null as BuyoutAnchor | null,
             reportFacts: null as ReportLogisticsFacts | null,
             // Пустая история, а не null: null погасил бы историю остатков всей сводки.
             stockHistory: emptyStockHistory() as StockHistory | null,
@@ -3787,7 +3914,7 @@ export async function buildRnpTable(
           salesSyncCutoff,
           advertsSyncCutoff,
           funnelSync,
-          cohort,
+          cohortFacts,
           reportFacts,
           stockHistory,
         ] = await Promise.all([
@@ -3958,7 +4085,8 @@ export async function buildRnpTable(
           // Отмены и цены знает только путь по первичным строкам заказов и продаж.
           // RPC-агрегат rnp_daily их не отдаёт, и подменять их нулём нельзя.
           hasPrimaryFacts: !!allowed,
-          cohort,
+          cohort: cohortFacts.cohort,
+          anchor: cohortFacts.anchor,
           reportFacts,
           stockHistory,
           emptyScope: false,
@@ -3990,7 +4118,7 @@ export async function buildRnpTable(
     // свежестью заказов и продаж Статистики.
     // Окно якоря уже обрезано свежестью продаж при загрузке (loadBuyoutCohort) —
     // не границами выбранного периода, иначе ставка менялась бы от периода.
-    const expectedRatesByScope = new Map(scopeData.map((item) => [item, computeAnchorBuyoutRates(item.cohort?.anchor ?? null, null)]));
+    const expectedRatesByScope = new Map(scopeData.map((item) => [item, computeAnchorBuyoutRates(item.anchor, null)]));
     const skuDailyRows = scopeData.flatMap((item) => applyExpectedBuyouts(applyRnpSourceCutoffs(
       applyCohortAndReportFacts(
         applyAdvertSpendOverlay(

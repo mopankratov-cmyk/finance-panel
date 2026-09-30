@@ -10,7 +10,10 @@ import {
   buildAdTypeMetrics,
   buildMetrics,
   buildReviewMetrics,
+  cohortRowsFromPrimary,
   computeAnchorBuyoutRates,
+  loadBuyoutCohort,
+  loadCohortPrimaryRows,
   expectedOption,
   funnelAliveFromSyncState,
   salesLoadedThrough,
@@ -260,7 +263,7 @@ test("прибыль до рекламы не пропадает, когда р�
 
 test("ставка прогноза не зависит от периода: окно режет только свежесть продаж", () => {
   const source = read("../lib/rnp/buildTable.ts");
-  assert.match(source, /computeAnchorBuyoutRates\(item\.cohort\?\.anchor \?\? null, null\)/);
+  assert.match(source, /computeAnchorBuyoutRates\(item\.anchor, null\)/);
   assert.match(source, /const salesBound = salesFresh \? shiftIsoDays\(salesFresh, -ANCHOR_TO_DAYS\) : null;/);
   assert.doesNotMatch(source, /label: "RNP: когорта выкупа", maxPages: 100, concurrency/, "страница RPC — целый пересчёт, параллель тут втрое дороже");
 });
@@ -326,7 +329,287 @@ test("прогноз не пропадает от 429 в синке продаж
   assert.equal(salesLoadedThrough(rateLimited, "2026-09-30"), "2026-09-30", "21:30 UTC — уже 30-е по Москве");
   const source = read("../lib/rnp/buildTable.ts");
   assert.match(source, /const salesFresh = salesLoadedThrough\(salesState, today\);/);
-  assert.match(source, /load\(anchorFrom, anchorTo\)\.catch\(\(\) => null\)/);
+  assert.match(source, /loadCohortPrimaryRows\(db, cabinetId, allowed, lo, hi, nowMs\)\.catch\(\(\) => null\)/);
+});
+
+// ── Живая проверка на проде ──────────────────────────────────────────────────
+
+// Поддельный PostgREST над строками в памяти: фильтры, проекция колонок,
+// порядок (строки перемешаны — порядок даёт только order) и страницы не больше
+// 1000 строк — как у настоящего. Плюс учёт вызовов: проверяем путь, а не текст.
+type FakeRow = Record<string, unknown>;
+interface FakePage { table: string; filters: string[]; order: string[]; ids: unknown[] }
+function fakeDb(tables: Record<string, FakeRow[]>, options: { fail?: (table: string, filters: string[]) => boolean; srid?: string | null; salesState?: FakeRow | null } = {}) {
+  const calls: { rpc: string[]; pages: FakePage[] } = { rpc: [], pages: [] };
+  let seed = 7;
+  const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+  const query = (table: string) => {
+    const filters: string[] = [];
+    const shuffled = [...(tables[table] ?? [])];
+    for (let index = shuffled.length - 1; index > 0; index--) {
+      const other = Math.floor(random() * (index + 1));
+      [shuffled[index], shuffled[other]] = [shuffled[other], shuffled[index]];
+    }
+    let rows = shuffled;
+    let columns: string[] | null = null;
+    const order: Array<{ field: string; ascending: boolean }> = [];
+    let range: [number, number] = [0, 999];
+    const at = (value: unknown) => Date.parse(String(value));
+    const builder = {
+      select: (list: string) => { columns = list.split(",").map((column) => column.trim()); return builder; },
+      eq: (field: string, value: unknown) => { filters.push(`${field}=${value}`); rows = rows.filter((row) => row[field] === value); return builder; },
+      in: (field: string, values: unknown[]) => { filters.push(`${field} in ${values.join("|")}`); rows = rows.filter((row) => values.includes(row[field])); return builder; },
+      gte: (field: string, value: string) => { filters.push(`${field}>=${value}`); rows = rows.filter((row) => at(row[field]) >= at(value)); return builder; },
+      lt: (field: string, value: string) => { filters.push(`${field}<${value}`); rows = rows.filter((row) => at(row[field]) < at(value)); return builder; },
+      not: (field: string, op: string, value: unknown) => {
+        assert.equal(op, "is"); assert.equal(value, null);
+        filters.push(`${field} not null`); rows = rows.filter((row) => row[field] != null); return builder;
+      },
+      order: (field: string, spec: { ascending: boolean }) => { order.push({ field, ascending: spec.ascending }); return builder; },
+      range: (from: number, to: number) => { range = [from, Math.min(to, from + 999)]; return builder; },
+      maybeSingle: () => Promise.resolve({ data: table === "wb_sync_state" ? options.salesState ?? null : null, error: null }),
+      then: (resolve: (value: unknown) => unknown, reject?: (error: unknown) => unknown) => {
+        if (options.fail?.(table, filters)) {
+          calls.pages.push({ table, filters, order: order.map((item) => item.field), ids: [] });
+          return Promise.resolve({ data: null, error: { message: "permission denied" } }).then(resolve, reject);
+        }
+        const sorted = [...rows].sort((a, b) => {
+          for (const { field, ascending } of order) {
+            const x = field === "date" ? at(a[field]) : Number(a[field]);
+            const y = field === "date" ? at(b[field]) : Number(b[field]);
+            if (x !== y) return ascending ? x - y : y - x;
+          }
+          return 0;
+        });
+        const page = sorted.slice(range[0], range[1] + 1);
+        calls.pages.push({ table, filters, order: order.map((item) => item.field), ids: page.map((row) => row.id) });
+        const projected = columns ? page.map((row) => Object.fromEntries(columns!.map((column) => [column, row[column]]))) : page;
+        return Promise.resolve({ data: projected, error: null }).then(resolve, reject);
+      },
+    };
+    return builder;
+  };
+  const db = {
+    from: (table: string) => query(table),
+    rpc: (name: string) => {
+      calls.rpc.push(name);
+      if (name === "rnp_sales_srid_since") return Promise.resolve({ data: options.srid === undefined ? "2026-01-01" : options.srid, error: null });
+      const chain = { order: () => chain, range: () => Promise.resolve({ data: [], error: null }) };
+      return chain;
+    },
+  };
+  return { db: db as unknown as Parameters<typeof loadBuyoutCohort>[0], calls };
+}
+
+// Часы тестов фиксированы: иначе сборка около полуночи по Москве разъезжалась бы
+// между «сегодня» теста и «сегодня» загрузчика.
+const today = "2026-09-30";
+const NOW = Date.parse("2026-09-30T12:00:00Z");
+const clock = { today, nowMs: NOW };
+function shiftDays(day: string, days: number) {
+  const date = new Date(`${day}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+const ago = (days: number, hour = 12) => `${shiftDays(today, -days)}T${String(hour).padStart(2, "0")}:00:00+00:00`;
+const CAB = "cab-1";
+const scope = (allowed: number[] | null) => ({ cabinetId: CAB, label: "тест", allowedNmIds: allowed ? new Set(allowed) : null }) as Parameters<typeof loadBuyoutCohort>[1];
+const syncedState = (lastSyncedAt: string) => ({ cursor: null, status: "caught_up", attempts: 0, last_error: null, state: { caughtUp: true, lastSyncedAt }, updated_at: lastSyncedAt });
+const caughtUp = syncedState("2026-09-30T11:00:00Z");
+// Заказы на каждый день окна: каждый четвёртый отменён, нечётные выкуплены
+// (через два дня), прочие в пути. Плюс строки-приманки: тот же артикул в чужом
+// кабинете и чужой артикул в своём — фильтры должны их отсечь.
+function cohortTables(daysBack: number, perDay: number) {
+  const orders: FakeRow[] = [];
+  const sales: FakeRow[] = [];
+  let id = 0;
+  for (let back = daysBack; back >= 0; back--) {
+    for (let index = 0; index < perDay; index++) {
+      id += 1;
+      const srid = `o${id}`;
+      const cancel = index % 4 === 0;
+      orders.push({ id, cabinet_id: CAB, nm_id: 7, srid, date: ago(back, index % 24), is_cancel: cancel });
+      if (!cancel && index % 2 === 1) sales.push({ id, cabinet_id: CAB, nm_id: 7, srid, sale_id: `S${id}`, date: ago(Math.max(0, back - 2)) });
+    }
+    for (const [cabinet, nm] of [["cab-2", 7], [CAB, 8]] as const) {
+      id += 1;
+      orders.push({ id, cabinet_id: cabinet, nm_id: nm, srid: `x${id}`, date: ago(back), is_cancel: false });
+      sales.push({ id, cabinet_id: cabinet, nm_id: nm, srid: `x${id}`, sale_id: `S${id}`, date: ago(back) });
+    }
+  }
+  return { wb_orders: orders, wb_sales: sales };
+}
+const sum = <Row extends object>(rows: Row[], field: keyof Row) => rows.reduce((total, row) => total + Number(row[field] ?? 0), 0);
+const days = (rows: Array<{ d: string }>) => [...new Set(rows.map((row) => row.d))].sort();
+
+test("якорь и период — из первичных строк: без функции когорты, одним чтением, когда рядом", async () => {
+  const { db, calls } = fakeDb(cohortTables(40, 30), { salesState: caughtUp });
+  const { cohort, anchor } = await loadBuyoutCohort(db, scope([7]), [7], shiftDays(today, -6), today, clock);
+  assert.deepEqual(calls.rpc, ["rnp_sales_srid_since"], "функция когорты не вызывается");
+  assert.ok(anchor, "якорь есть");
+  assert.equal(anchor.from, shiftDays(today, -35));
+  assert.equal(anchor.to, shiftDays(today, -6));
+  assert.deepEqual(days(anchor.rows), Array.from({ length: 30 }, (_, index) => shiftDays(today, -35 + index)));
+  const rates = computeAnchorBuyoutRates(anchor, null)!;
+  // За день: 8 отмен, 15 выкупов, 7 в пути — ставка 15 / (15 + 8), заказы в пути не в счёт.
+  assert.equal(rates.cabinet.gross, 15 / 23);
+  assert.ok(cohort);
+  assert.deepEqual(days(cohort.rows), Array.from({ length: 7 }, (_, index) => shiftDays(today, -6 + index)));
+  assert.ok(cohort.rows.every((row) => row.nm_id === 7), "чужой кабинет и чужой артикул отсечены");
+  assert.equal(sum(cohort.rows, "cohort_orders"), 7 * 30);
+  // Одно чтение на оба: окно заказов — от начала якоря до конца периода.
+  const orderReads = calls.pages.filter((page) => page.table === "wb_orders");
+  assert.ok(orderReads.length > 1, "окно больше страницы — читается страницами");
+  assert.ok(orderReads.every((page) => page.filters.includes(`date>=${shiftDays(today, -35)}T00:00:00.000Z`) && page.filters.includes(`date<${shiftDays(today, 1)}T00:00:00.000Z`)));
+});
+
+test("склейка окон: квартал и период внутри якоря читаются по своим границам", async () => {
+  const tables = cohortTables(95, 4);
+  const quarter = fakeDb(tables, { salesState: caughtUp });
+  const q = await loadBuyoutCohort(quarter.db, scope([7]), [7], shiftDays(today, -89), today, clock);
+  assert.equal(days(q.cohort!.rows).length, 90);
+  assert.equal(days(q.anchor!.rows).length, 30);
+  assert.ok(quarter.calls.pages.filter((page) => page.table === "wb_orders").every((page) => page.filters.includes(`date>=${shiftDays(today, -89)}T00:00:00.000Z`)));
+  const inside = fakeDb(tables, { salesState: caughtUp });
+  const i = await loadBuyoutCohort(inside.db, scope([7]), [7], shiftDays(today, -40), shiftDays(today, -20), clock);
+  assert.deepEqual(days(i.cohort!.rows), Array.from({ length: 21 }, (_, index) => shiftDays(today, -40 + index)));
+  assert.equal(days(i.anchor!.rows).at(-1), shiftDays(today, -6));
+});
+
+test("сбой чтения периода не гасит якорь, сбой якоря — период", async () => {
+  const periodFrom = shiftDays(today, -60);
+  const tables = cohortTables(70, 5);
+  const periodFails = fakeDb(tables, { salesState: caughtUp, fail: (table, filters) => table === "wb_orders" && filters.includes(`date>=${periodFrom}T00:00:00.000Z`) });
+  const a = await loadBuyoutCohort(periodFails.db, scope([7]), [7], periodFrom, shiftDays(today, -55), clock);
+  assert.equal(a.cohort, null, "период молчит, а не рисует ноль");
+  assert.ok(a.anchor && a.anchor.rows.length > 0, "якорь на месте");
+  const anchorFails = fakeDb(tables, { salesState: caughtUp, fail: (table, filters) => table === "wb_sales" && filters.includes(`date>=${shiftDays(today, -35)}T00:00:00.000Z`) });
+  const b = await loadBuyoutCohort(anchorFails.db, scope([7]), [7], periodFrom, shiftDays(today, -55), clock);
+  assert.equal(b.anchor, null);
+  assert.equal(days(b.cohort!.rows).length, 6);
+});
+
+test("общее чтение соседних окон упало — период и якорь читаются по отдельности", async () => {
+  // Падает всё, что начинается с якоря (в том числе общее чтение), — неделя выживает.
+  const { db, calls } = fakeDb(cohortTables(40, 5), { salesState: caughtUp, fail: (table, filters) => table === "wb_orders" && filters.includes(`date>=${shiftDays(today, -35)}T00:00:00.000Z`) });
+  const { cohort, anchor } = await loadBuyoutCohort(db, scope([7]), [7], shiftDays(today, -6), today, clock);
+  assert.equal(anchor, null);
+  assert.equal(days(cohort!.rows).length, 7, "«% выкупа» недели не гаснет из-за якоря");
+  assert.ok(calls.pages.some((page) => page.table === "wb_orders" && page.filters.includes(`date>=${shiftDays(today, -6)}T00:00:00.000Z`)));
+});
+
+test("якорь режется свежестью синка продаж и молчит без него", async () => {
+  const tables = cohortTables(40, 5);
+  const stale = await loadBuyoutCohort(fakeDb(tables, { salesState: syncedState("2026-09-25T08:00:00Z") }).db, scope([7]), [7], shiftDays(today, -6), today, clock);
+  assert.equal(stale.anchor?.to, shiftDays("2026-09-25", -6));
+  const noSync = await loadBuyoutCohort(fakeDb(tables, { salesState: null }).db, scope([7]), [7], shiftDays(today, -6), today, clock);
+  assert.equal(noSync.anchor, null);
+  assert.equal(days(noSync.cohort!.rows).length, 7);
+});
+
+test("кабинет без списка артикулов — функцией, как раньше, и без якоря", async () => {
+  const { db, calls } = fakeDb(cohortTables(10, 3), { salesState: caughtUp });
+  const { cohort, anchor } = await loadBuyoutCohort(db, scope(null), null, shiftDays(today, -6), today, clock);
+  assert.deepEqual(calls.rpc, ["rnp_sales_srid_since", "rnp_buyout_cohort_daily_sku"]);
+  assert.deepEqual(cohort?.rows, []);
+  assert.equal(anchor, null);
+  assert.equal(calls.pages.length, 0);
+});
+
+test("дни до появления srid не читаются; нет srid вовсе — когорты нет", async () => {
+  const since = shiftDays(today, -10);
+  const { db, calls } = fakeDb(cohortTables(40, 3), { salesState: caughtUp, srid: shiftDays(since, -1) });
+  const { cohort, anchor } = await loadBuyoutCohort(db, scope([7]), [7], shiftDays(today, -30), shiftDays(today, -20), clock);
+  assert.equal(cohort?.since, since);
+  assert.deepEqual(cohort?.rows, [], "период целиком до since");
+  assert.ok(calls.pages.filter((page) => page.table === "wb_orders").every((page) => page.filters.includes(`date>=${since}T00:00:00.000Z`)), "якорь режется по since");
+  assert.equal(anchor?.from, since);
+  const none = await loadBuyoutCohort(fakeDb({}, { srid: null }).db, scope([7]), [7], today, today, clock);
+  assert.deepEqual(none, { cohort: null, anchor: null });
+});
+
+test("страницы — по дате и id: каждая строка ровно один раз", async () => {
+  const tables = cohortTables(3, 900);
+  const { db, calls } = fakeDb(tables);
+  const rows = await loadCohortPrimaryRows(db, CAB, [7], shiftDays(today, -3), today, NOW);
+  assert.equal(sum(rows, "cohort_orders"), 3_600);
+  assert.equal(sum(rows, "cohort_cancelled"), 900);
+  assert.equal(sum(rows, "cohort_kept"), 1_800);
+  for (const table of ["wb_orders", "wb_sales"]) {
+    const pages = calls.pages.filter((page) => page.table === table);
+    assert.ok(pages.length > 1, `${table}: несколько страниц`);
+    assert.ok(pages.every((page) => page.order.join(",") === "date,id"), `${table}: порядок индекса (date, id)`);
+    const served = pages.flatMap((page) => page.ids);
+    assert.equal(new Set(served).size, served.length, `${table}: без дублей`);
+  }
+  const expectedOrders = tables.wb_orders.filter((row) => row.cabinet_id === CAB && row.nm_id === 7).length;
+  assert.equal(calls.pages.filter((page) => page.table === "wb_orders").flatMap((page) => page.ids).length, expectedOrders, "без потерь");
+});
+
+test("строка, пришедшая дважды на стыке страниц, считается один раз", () => {
+  const order = { id: 1, srid: "a", nm_id: 1, date: "2026-09-01T10:00:00+00:00", is_cancel: false };
+  const rows = cohortRowsFromPrimary([order, { ...order }, { ...order, id: 2, srid: "b" }], [{ srid: "a", sale_id: "S1", date: "2026-09-03T10:00:00+00:00" }], NOW);
+  assert.equal(rows[0].cohort_orders, 2);
+  assert.equal(rows[0].cohort_kept, 1);
+});
+
+test("«ещё в окне возврата» — первая продажа моложе 21 дня, строго", () => {
+  const day = 86_400_000;
+  const stamp = (msAgo: number) => new Date(NOW - msAgo).toISOString();
+  const orders = ["a", "b", "c", "d", "e"].map((srid, index) => ({ id: index, srid, nm_id: 1, date: "2026-08-01T10:00:00+00:00", is_cancel: false }));
+  const rows = cohortRowsFromPrimary(orders, [
+    { srid: "a", sale_id: "S1", date: stamp(20 * day) }, // открыт
+    { srid: "b", sale_id: "S2", date: stamp(22 * day) }, // закрыт
+    { srid: "c", sale_id: "S3", date: stamp(21 * day) }, // ровно 21 день — закрыт (в SQL строго >)
+    { srid: "d", sale_id: "S4", date: stamp(25 * day) }, // первая продажа старая — закрыт
+    { srid: "d", sale_id: "S5", date: stamp(2 * day) },
+    { srid: "e", sale_id: "S6", date: stamp(1 * day) }, // выкуп и возврат — возврат
+    { srid: "e", sale_id: "R6", date: stamp(0) },
+  ], NOW);
+  assert.deepEqual({ kept: rows[0].cohort_kept, open: rows[0].cohort_kept_open, returned: rows[0].cohort_returned }, { kept: 4, open: 1, returned: 1 });
+});
+
+test("свежие дни: все выкупы ещё в окне возврата, старые — уже нет", async () => {
+  const { db } = fakeDb(cohortTables(40, 6), { salesState: caughtUp });
+  const { cohort, anchor } = await loadBuyoutCohort(db, scope([7]), [7], shiftDays(today, -6), today, clock);
+  assert.ok(sum(cohort!.rows, "cohort_kept") > 0);
+  assert.equal(sum(cohort!.rows, "cohort_kept_open"), sum(cohort!.rows, "cohort_kept"));
+  const old = anchor!.rows.filter((row) => row.d <= shiftDays(today, -25));
+  assert.ok(sum(old, "cohort_kept") > 0);
+  assert.equal(sum(old, "cohort_kept_open"), 0);
+});
+
+test("когорта из первичных строк — те же правила, что у rnp_buyout_cohort_daily_sku", () => {
+  const orders = [
+    { srid: "a", nm_id: 1, date: "2026-09-01T10:00:00+00:00", is_cancel: false }, // выкуп
+    { srid: "b", nm_id: 1, date: "2026-09-01T23:30:00+00:00", is_cancel: false }, // выкуп и возврат → возврат
+    { srid: "c", nm_id: 1, date: "2026-09-01T12:00:00+00:00", is_cancel: true }, // отмена, хоть продажа и пришла
+    { srid: "d", nm_id: 1, date: "2026-09-01T12:00:00+00:00", is_cancel: null }, // в пути
+    { srid: null, nm_id: 1, date: "2026-09-01T12:00:00+00:00", is_cancel: false }, // без srid — исход неизвестен
+    { srid: "e", nm_id: "2", date: "2026-09-02T00:00:00+00:00", is_cancel: false }, // только возврат
+  ];
+  const sales = [
+    { srid: "a", sale_id: "S1" },
+    { srid: "b", sale_id: "S2" },
+    { srid: "b", sale_id: "R2" },
+    { srid: "c", sale_id: "S3" },
+    { srid: "e", sale_id: "R4" },
+    { srid: "x", sale_id: "S9" }, // продажа чужого заказа — не в когорте
+    { srid: "d", sale_id: "D5" }, // не выкуп и не возврат
+  ];
+  const rows = cohortRowsFromPrimary(orders, sales);
+  assert.deepEqual(rows.find((row) => row.d === "2026-09-01" && row.nm_id === 1), {
+    d: "2026-09-01", nm_id: 1, cohort_orders: 5, cohort_cancelled: 1, cohort_kept: 1, cohort_kept_open: 0, cohort_returned: 1,
+  });
+  assert.deepEqual(rows.find((row) => row.nm_id === 2), {
+    d: "2026-09-02", nm_id: 2, cohort_orders: 1, cohort_cancelled: 0, cohort_kept: 0, cohort_kept_open: 0, cohort_returned: 1,
+  });
+  assert.equal(rows.length, 2);
+  // Ставка из этих строк считается тем же computeAnchorBuyoutRates.
+  const sql = read("../supabase/migrations/202609170001_rnp_buyout_cohort_and_report_logistics.sql");
+  assert.match(sql, /bool_or\(s\.sale_id like 'S%'\) as sold/);
+  assert.match(sql, /bool_or\(s\.sale_id like 'R%'\) as returned/);
+  assert.match(sql, /where not o\.is_cancel and coalesce\(f\.returned, false\)/);
 });
 
 // ── Третий раунд ревью ───────────────────────────────────────────────────────
