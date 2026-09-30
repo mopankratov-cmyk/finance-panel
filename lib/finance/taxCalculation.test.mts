@@ -109,3 +109,14 @@ test("дата начала НДС ограничивает только баз�
   assert.equal(result.usnIncome, 200_000);
   assert.equal(result.usnCalculated, 30_000);
 });
+
+test("входящий НДС до даты постановки на учёт не принимается к вычету", () => {
+  const result = calculateTaxPeriod({
+    taxSystem: "usn_income_expense", taxRate: 15, vatMode: "22",
+    marketplaceIncomeGross: 100_000, vatTaxableIncomeGross: 100_000,
+    marketplaceExpensesGross: 0,
+    bankExpenses: [{ grossAmount: 12_200, vatAmount: 2_200, vatApplicable: false, vatDocumentStatus: "received", vatDeductionStatus: "eligible", usnExpenseStatus: "included" }],
+  });
+  assert.equal(result.confirmedInputVat, 0);
+  assert.equal(result.usnExpenses, 12_200);
+});
