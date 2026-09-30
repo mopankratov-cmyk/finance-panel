@@ -207,8 +207,11 @@ export async function PATCH(request: Request) {
     if (wbRow.error) return NextResponse.json({ error: wbRow.error.message }, { status: 500 });
     const source = wbRow.data ? wbLoanFactFromRow(wbRow.data) : null;
     if (!source) return NextResponse.json({ error: "Удержание WB не найдено или не относится к кредиту" }, { status: 404 });
-    if (rows.length !== 1 || rows[0].kind !== source.kind || Math.abs(rows[0].amountRub - source.amountRub) > 0.01) {
-      return NextResponse.json({ error: "Удержание WB не совпадает с одной строкой графика" }, { status: 409 });
+    const exactMatch = rows.length === 1 && rows[0].kind === source.kind && Math.abs(rows[0].amountRub - source.amountRub) <= 0.01;
+    // Автосверка закрывает только полное совпадение. Человек может зачесть
+    // удержание вручную в одну плановую строку после явного подтверждения.
+    if (!exactMatch && (!body?.confirmed || rows.length !== 1)) {
+      return NextResponse.json({ error: "Удержание WB не совпадает с одной строкой графика. Выберите одну строку и подтвердите ручной зачёт." }, { status: 409 });
     }
     const now = new Date().toISOString();
     const updated = await client.from("loan_schedule_rows").update({ status: "paid", paid_by_marketplace_source: source.source, updated_at: now })
@@ -216,7 +219,8 @@ export async function PATCH(request: Request) {
     if (updated.error || (updated.data ?? []).length !== 1) return NextResponse.json({ error: updated.error?.message ?? "Строка уже закрыта" }, { status: 409 });
     if (rows[0].calendarPaymentId) {
       const planned = await client.from("payments").select("comment").eq("id", rows[0].calendarPaymentId).maybeSingle();
-      const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by-marketplace:[^\]]+\]/g, "").trim()} [paid-by-marketplace:${source.source}]`.trim();
+      const manualMarker = exactMatch ? "" : " [manual-marketplace-match]";
+      const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by-marketplace:[^\]]+\]|\s*\[manual-marketplace-match\]/g, "").trim()} [paid-by-marketplace:${source.source}]${manualMarker}`.trim();
       await client.from("payments").update({ status: "cancelled", comment }).eq("id", rows[0].calendarPaymentId);
     }
     return NextResponse.json({ ok: true, rows: [{ ...rows[0], status: "paid", paidByMarketplaceSource: source.source }] });

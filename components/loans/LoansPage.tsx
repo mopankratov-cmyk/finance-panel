@@ -30,6 +30,15 @@ type MarketplaceFact = {
   loanId: string | null; loanName: string | null; scheduleRowId: string | null; state: "recorded" | "ready" | "review" | "unassigned";
 };
 
+const marketplaceKindLabel: Record<MarketplaceFact["kind"], string> = {
+  principal: "тело",
+  interest: "проценты",
+  penalty: "пени",
+  fine: "штраф",
+  fee: "комиссия",
+  unknown: "вид платежа не определён",
+};
+
 type PaymentTrace =
   | { source: "dds"; payment: Payment }
   | { source: "marketplace"; fact?: MarketplaceFact; marketplaceSource: string }
@@ -229,6 +238,7 @@ export function LoansPage() {
   const [marketplaceFacts, setMarketplaceFacts] = useState<MarketplaceFact[]>([]);
   const [marketplaceLoading, setMarketplaceLoading] = useState(false);
   const [wbLinkLoanIds, setWbLinkLoanIds] = useState<Record<string, string>>({});
+  const [wbReviewRowIds, setWbReviewRowIds] = useState<Record<string, string>>({});
   const [wbLinkingSource, setWbLinkingSource] = useState<string | null>(null);
   const formPanel = useRef<HTMLDivElement>(null);
   const closeForm = useCallback(() => { setModalOpen(false); setEditing(null); }, []);
@@ -451,6 +461,29 @@ export function LoansPage() {
     }
   }, [wbLinkLoanIds]);
 
+  const manuallyReconcileWbFact = useCallback(async (fact: MarketplaceFact) => {
+    const rowId = wbReviewRowIds[fact.source];
+    const row = scheduleRows.find((item) => item.id === rowId);
+    if (!row) return;
+    const differs = row.kind !== fact.kind || Math.abs(row.amountRub - fact.amountRub) > 0.01;
+    const warning = differs
+      ? `\n\nУдержание WB: ${marketplaceKindLabel[fact.kind]}, ${formatMoney(fact.amountRub)}.\nСтрока графика: ${marketplaceKindLabel[row.kind]}, ${formatMoney(row.amountRub)}.\n\nСумма или вид платежа отличаются. Продолжить только если вы проверили это вручную.`
+      : "";
+    if (!window.confirm(`Зачесть удержание WB в строку графика от ${formatDate(row.dueDate)}?${warning}`)) return;
+    setWbLinkingSource(fact.source);
+    try {
+      await closeLoanScheduleRowWithWb(row.id, fact.cabinetId, fact.rrdId, true);
+      const [freshFacts, fresh, schedule] = await Promise.all([loadMarketplaceFacts(), loadFinanceState(), loadLoanScheduleRows()]);
+      setMarketplaceFacts(freshFacts);
+      dispatch({ type: "LOAD", payload: fresh });
+      setScheduleRows(schedule.rows);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось зачесть удержание WB в график");
+    } finally {
+      setWbLinkingSource(null);
+    }
+  }, [dispatch, scheduleRows, wbReviewRowIds]);
+
   // Сверка с ДДС пишет в базу (закрывает строки графика и платежи), поэтому
   // не запускается сама при открытии экрана — только по кнопке «Сверить с ДДС».
   useEffect(() => {
@@ -650,7 +683,60 @@ export function LoansPage() {
 
       {overdue.length > 0 && <button type="button" aria-expanded={expandedSummary === "overdue"} onClick={() => setExpandedSummary((value) => value === "overdue" ? null : "overdue")} className="w-full cursor-pointer rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-left text-sm text-red-800 transition hover:border-red-300 hover:bg-red-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"><span className="block font-bold">Требуют внимания: {overdue.length} просроченных платежей</span><span className="mt-1 block">Нажмите, чтобы увидеть договоры и суммы без поиска по разделу.</span></button>}
 
-      {marketplaceFacts.some((fact) => fact.state === "review" || fact.state === "unassigned") && <section className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/70 shadow-sm"><div className="flex flex-col gap-3 border-b border-amber-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="font-bold text-amber-950">Удержания WB ждут проверки</h2><p className="mt-1 text-sm text-amber-900">Точное совпадение закрывается автоматически. Для неизвестного номера укажите договор панели один раз — следующие удержания WB найдутся сами.</p></div><button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">Обновить сверку</button></div><div className="max-h-80 overflow-y-auto">{marketplaceFacts.filter((fact) => fact.state === "review" || fact.state === "unassigned").slice(0, 20).map((fact) => <div key={fact.source} className="grid grid-cols-[1fr_auto] gap-3 border-b border-amber-100 px-4 py-3 last:border-b-0"><div className="min-w-0"><p className="font-semibold text-slate-950">{fact.loanName ?? `Договор WB № ${fact.contractNumber ?? "не определён"}`}</p><p className="mt-1 text-xs font-semibold text-amber-950">Кабинет WB: {fact.cabinetName ?? "не найден среди подключённых"}</p><p className="mt-1 truncate text-xs text-slate-600">{formatDate(fact.date)} · {fact.kind === "unknown" ? "вид платежа не определён" : fact.kind} · {fact.reason}</p>{fact.state === "unassigned" && fact.contractNumber && <div className="mt-2 flex flex-wrap items-center gap-2"><select value={wbLinkLoanIds[fact.contractNumber] ?? ""} onChange={(event) => setWbLinkLoanIds((current) => ({ ...current, [fact.contractNumber!]: event.target.value }))} className="min-h-10 max-w-full rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-800"><option value="">Выберите договор панели</option>{state.loans.filter((loan) => loan.status === "active").map((loan) => <option key={loan.id} value={loan.id}>{loan.creditorName} · {contractNumber(state.payments, loan.id) || formatDate(loan.startDate)}</option>)}</select><button type="button" disabled={!wbLinkLoanIds[fact.contractNumber] || wbLinkingSource === fact.source} onClick={() => void linkWbContract(fact)} className="min-h-10 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">Связать договор</button></div>}</div><span className="self-center whitespace-nowrap font-bold tabular-nums text-slate-950">{formatMoney(fact.amountRub)}</span></div>)}</div><p className="px-4 py-3 text-xs text-amber-900">Если деньги перечислялись вручную, внесите платёж в ДДС и нажмите «Сверить с ДДС» — удержание WB при этом не создаёт второй расход.</p></section>}
+      {marketplaceFacts.some((fact) => fact.state === "review" || fact.state === "unassigned") && (
+        <section className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/70 shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-amber-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-bold text-amber-950">Удержания WB ждут проверки</h2>
+              <p className="mt-1 text-sm text-amber-900">Точное совпадение закрывается автоматически. Для неизвестного номера укажите договор панели один раз — следующие удержания WB найдутся сами.</p>
+            </div>
+            <button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">Обновить сверку</button>
+          </div>
+          <div className="max-h-80 overflow-y-auto">
+            {marketplaceFacts.filter((fact) => fact.state === "review" || fact.state === "unassigned").slice(0, 20).map((fact) => {
+              const reviewRows = fact.loanId
+                ? scheduleRows.filter((row) => row.loanId === fact.loanId && row.status === "planned")
+                : [];
+              return (
+                <div key={fact.source} className="grid grid-cols-[1fr_auto] gap-3 border-b border-amber-100 px-4 py-3 last:border-b-0">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-950">{fact.loanName ?? `Договор WB № ${fact.contractNumber ?? "не определён"}`}</p>
+                    <p className="mt-1 text-xs font-semibold text-amber-950">Кабинет WB: {fact.cabinetName ?? "не найден среди подключённых"}</p>
+                    <p className="mt-1 truncate text-xs text-slate-600">{formatDate(fact.date)} · {marketplaceKindLabel[fact.kind]} · {fact.reason}</p>
+                    {fact.state === "review" && (
+                      reviewRows.length ? (
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-white/70 p-2">
+                          <p className="text-xs text-amber-950">Автосверка не нашла точное совпадение. Выберите строку графика и подтвердите зачёт.</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <select aria-label={`Строка графика для удержания WB ${fact.contractNumber ?? fact.rrdId}`} value={wbReviewRowIds[fact.source] ?? ""} onChange={(event) => setWbReviewRowIds((current) => ({ ...current, [fact.source]: event.target.value }))} className="min-h-11 max-w-full rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-800">
+                              <option value="">Выберите строку графика</option>
+                              {reviewRows.map((row) => <option key={row.id} value={row.id}>{formatDate(row.dueDate)} · {marketplaceKindLabel[row.kind]} · {formatMoney(row.amountRub)}</option>)}
+                            </select>
+                            <button type="button" disabled={!wbReviewRowIds[fact.source] || wbLinkingSource === fact.source} onClick={() => void manuallyReconcileWbFact(fact)} className="min-h-11 rounded-lg bg-amber-700 px-3 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50">
+                              {wbLinkingSource === fact.source ? "Зачитываю…" : "Зачесть в график"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : <p className="mt-2 text-xs text-amber-950">В договоре нет плановых строк графика. Откройте договор, сохраните график и обновите сверку.</p>
+                    )}
+                    {fact.state === "unassigned" && fact.contractNumber && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <select aria-label={`Договор панели для WB ${fact.contractNumber}`} value={wbLinkLoanIds[fact.contractNumber] ?? ""} onChange={(event) => setWbLinkLoanIds((current) => ({ ...current, [fact.contractNumber!]: event.target.value }))} className="min-h-11 max-w-full rounded-lg border border-amber-300 bg-white px-2 text-sm text-slate-800">
+                          <option value="">Выберите договор панели</option>
+                          {state.loans.filter((loan) => loan.status === "active").map((loan) => <option key={loan.id} value={loan.id}>{loan.creditorName} · {contractNumber(state.payments, loan.id) || formatDate(loan.startDate)}</option>)}
+                        </select>
+                        <button type="button" disabled={!wbLinkLoanIds[fact.contractNumber] || wbLinkingSource === fact.source} onClick={() => void linkWbContract(fact)} className="min-h-11 rounded-lg border border-violet-300 bg-white px-3 text-sm font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50">Связать договор</button>
+                      </div>
+                    )}
+                  </div>
+                  <span className="self-center whitespace-nowrap font-bold tabular-nums text-slate-950">{formatMoney(fact.amountRub)}</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="px-4 py-3 text-xs text-amber-900">Если деньги перечислялись вручную, внесите платёж в ДДС и нажмите «Сверить с ДДС» — удержание WB при этом не создаёт второй расход.</p>
+        </section>
+      )}
 
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3"><h2 className="font-bold text-slate-950">Помесячный свод по кредитам</h2><p className="mt-1 text-xs text-slate-500">Начисления по графику, фактические выплаты и остаток тела на конец месяца.</p></div>
