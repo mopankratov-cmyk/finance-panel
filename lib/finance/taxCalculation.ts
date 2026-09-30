@@ -13,6 +13,8 @@ export interface ParsedPaymentVat {
 export interface TaxExpenseInput {
   grossAmount: number;
   vatAmount: number;
+  /** НДС относится к периоду, в котором компания уже является плательщиком НДС. */
+  vatApplicable?: boolean;
   vatDocumentStatus: VatDocumentStatus;
   vatDeductionStatus: VatDeductionStatus;
   usnExpenseStatus: UsnExpenseStatus;
@@ -120,7 +122,8 @@ export function calculateTaxPeriod(input: TaxPeriodInput): TaxPeriodResult {
   const deductionAllowed = vatAllowsInputDeduction(input.vatMode);
   const bankConfirmedInputVat = deductionAllowed
     ? input.bankExpenses.reduce((sum, expense) => (
-      expense.vatDocumentStatus === "received" && expense.vatDeductionStatus === "eligible"
+      expense.vatApplicable !== false
+      && expense.vatDocumentStatus === "received" && expense.vatDeductionStatus === "eligible"
         ? sum + Math.min(Math.abs(expense.grossAmount), Math.max(0, expense.vatAmount))
         : sum
     ), 0)
@@ -130,6 +133,7 @@ export function calculateTaxPeriod(input: TaxPeriodInput): TaxPeriodResult {
   const includedBankExpenses = input.bankExpenses.reduce((sum, expense) => {
     if (expense.usnExpenseStatus !== "included") return sum;
     const deductibleVat = deductionAllowed
+      && expense.vatApplicable !== false
       && expense.vatDocumentStatus === "received"
       && expense.vatDeductionStatus === "eligible"
       ? Math.min(Math.abs(expense.grossAmount), Math.max(0, expense.vatAmount))
