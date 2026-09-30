@@ -29,6 +29,9 @@ interface Props {
   onQueued: () => void;
 }
 
+type ImportResult = { queued: number; approved: number; matchedTransfers: number; duplicatesSkipped: number };
+const emptyImportResult = (): ImportResult => ({ queued: 0, approved: 0, matchedTransfers: 0, duplicatesSkipped: 0 });
+
 export function BankStatementModal({ open, onClose, accounts, companies, existingPayments, onQueued }: Props) {
   const { state, dispatch } = useFinance();
   const { categories: BANK_CATEGORIES } = useDdsCategories();
@@ -48,7 +51,11 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<BankSuggestion[]>([]);
-  const [done, setDone] = useState<{ queued: number; approved: number; matchedTransfers: number; duplicatesSkipped: number } | null>(null);
+  const [done, setDone] = useState<ImportResult | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchProcessed, setBatchProcessed] = useState(0);
+  const [batchResult, setBatchResult] = useState<ImportResult>(emptyImportResult);
   const [controlMismatchAccepted, setControlMismatchAccepted] = useState(false);
   const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
 
@@ -74,6 +81,10 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setBulkCategory("");
     setSuggestions([]);
     setDone(null);
+    setPendingFiles([]);
+    setBatchTotal(0);
+    setBatchProcessed(0);
+    setBatchResult(emptyImportResult());
     setControlMismatchAccepted(false);
     setError(null);
     onClose();
@@ -132,6 +143,38 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFiles = (files: File[]) => {
+    if (!files.length) return;
+    setPendingFiles(files.slice(1));
+    setBatchTotal(files.length);
+    setBatchProcessed(0);
+    setBatchResult(emptyImportResult());
+    setDone(null);
+    void handleFile(files[0]);
+  };
+
+  const openNextFile = () => {
+    const [next, ...rest] = pendingFiles;
+    if (!next) return;
+    setPendingFiles(rest);
+    setStatement(null);
+    setFileName("");
+    setCompanyId("");
+    setAccountId("");
+    setAccountNumberKnown(null);
+    setNewAccountName("");
+    setCategories(new Map());
+    setConfirmedCategories(new Set());
+    setCounterpartyOverrides(new Map());
+    setPurposeOverrides(new Map());
+    setCommentOverrides(new Map());
+    setIncluded(new Set());
+    setSuggestions([]);
+    setDone(null);
+    setError(null);
+    void handleFile(next);
   };
 
   const selectedRows = useMemo(
@@ -248,6 +291,13 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       }
       dispatch({type:"LOAD",payload:await loadFinanceState()});
       setDone(result);
+      setBatchProcessed((value) => value + 1);
+      setBatchResult((current) => ({
+        queued: current.queued + result.queued,
+        approved: current.approved + result.approved,
+        matchedTransfers: current.matchedTransfers + result.matchedTransfers,
+        duplicatesSkipped: current.duplicatesSkipped + result.duplicatesSkipped,
+      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось отправить операции на проверку");
     } finally {
@@ -271,19 +321,19 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
             Добавлено в ДДС: <b>{done.approved}</b>. Требуют проверки: <b>{done.queued}</b>. Пропущено дублей: <b>{done.duplicatesSkipped}</b>. Связано переводов между выписками: <b>{done.matchedTransfers}</b>.
           </div>
-          <button onClick={() => { close(); onQueued(); }} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">
-            Вернуться к операциям
-          </button>
+          {pendingFiles.length ? <button onClick={openNextFile} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">Следующая выписка ({pendingFiles.length} осталось)</button> : <>
+            {batchTotal > 1 ? <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-violet-900">Обработано файлов: <b>{batchProcessed} из {batchTotal}</b>. Всего добавлено: <b>{batchResult.approved}</b>, требуют проверки: <b>{batchResult.queued}</b>, дублей пропущено: <b>{batchResult.duplicatesSkipped}</b>.</div> : null}
+            <button onClick={() => { close(); onQueued(); }} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">Вернуться к операциям</button>
+          </>}
         </div>
       ) : (
         <div className="space-y-4 text-sm">
           <label className="flex min-h-24 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 p-4 text-slate-500 hover:border-violet-400 hover:text-violet-700">
-            <FileSpreadsheet className="h-5 w-5" /> {fileName || "Выбрать выписку XLSX или PDF"}
-            <input type="file" accept=".xlsx,.pdf" className="hidden" onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleFile(file);
-            }} />
+            <FileSpreadsheet className="h-5 w-5" /> {fileName || "Выбрать одну или несколько выписок XLSX/PDF"}
+            <input type="file" accept=".xlsx,.pdf" multiple className="hidden" onChange={(e) => handleFiles(Array.from(e.target.files ?? []))} />
           </label>
+
+          {batchTotal > 1 ? <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sky-800">Пакет: файл {Math.min(batchProcessed + 1, batchTotal)} из {batchTotal}. Каждая выписка проверяется отдельно; дубли система пропустит.</div> : null}
 
           {loading && <div className="flex items-center gap-2 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Читаю выписку…</div>}
 
