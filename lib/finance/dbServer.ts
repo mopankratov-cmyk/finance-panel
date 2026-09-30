@@ -42,7 +42,7 @@ const paymentToRow = (payment: Payment) => ({
   ...(payment.settledByPaymentId !== undefined ? { settled_by_payment_id: payment.settledByPaymentId } : {}),
 });
 
-const loanToRow = (loan: Loan) => ({
+export const loanToRow = (loan: Loan) => ({
   id: loan.id,
   creditor: loan.creditorName,
   principal: loan.principalAmount,
