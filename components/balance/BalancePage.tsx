@@ -34,8 +34,20 @@ type MarketplaceCashCategory = { complete: boolean; amount: number | null; rows:
 type CashSnapshot = { amount: number | null; complete: boolean; bank: { amount: number | null; complete: boolean; accounts: BankCashAccount[] }; marketplaces: { wb: MarketplaceCashCategory; ozon: MarketplaceCashCategory } };
 type CashDetailKind = "bank" | "wb" | "ozon";
 type BalanceCompany = { id: string; name: string; companyIds: string[] };
+type StockSourceTestSummary = {
+  sourceKey: string;
+  sourceKind: InventoryKind;
+  sourceLabel: string;
+  status: string;
+  rows: number;
+  quantity: number;
+  totalValue: number | null;
+  missingCostCount: number;
+  provisional: boolean;
+};
 type CashSourceTest = {
   capturedAt: string;
+  summaries: StockSourceTestSummary[];
   cashSummaries: Array<{ sourceKey: string; marketplace: "wb" | "ozon"; cabinetName: string; amount: number | null; availableAmount: number | null; currency: string; status: string; error: string | null }>;
   errors: string[];
 };
@@ -48,6 +60,7 @@ const INVENTORY_LABELS: Record<InventoryKind, string> = {
 };
 
 const money = (value: number | null) => value === null ? "—" : formatMoney(value);
+const quantity = (value: number) => new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 2 }).format(value);
 const percent = (value: number | null) => value === null
   ? "—"
   : new Intl.NumberFormat("ru-RU", { style: "percent", maximumFractionDigits: 1 }).format(value);
@@ -323,6 +336,16 @@ export function BalancePage() {
         <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${sourceTestError || sourceTest?.errors.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
           <p className="font-semibold">Тест без записи{sourceTest?.capturedAt ? ` · ${new Date(sourceTest.capturedAt).toLocaleString("ru-RU")}` : ""}</p>
           {sourceTestError ? <p className="mt-1">{sourceTestError}</p> : null}
+          {sourceTest?.summaries.length ? <p className="mt-2 font-semibold">Товарные остатки</p> : null}
+          {sourceTest?.summaries.map((item) => (
+            <p key={item.sourceKey} className="mt-1">
+              {INVENTORY_LABELS[item.sourceKind]} · {item.sourceLabel}: {quantity(item.quantity)} шт. · {item.rows} позиций · {money(item.totalValue)}
+              {item.missingCostCount ? ` · без себестоимости: ${item.missingCostCount}` : ""}
+              {item.provisional ? " · предварительно" : ""}
+              {item.status !== "ok" ? ` · статус: ${item.status}` : ""}
+            </p>
+          ))}
+          {sourceTest?.cashSummaries.length ? <p className="mt-2 font-semibold">Денежные средства маркетплейсов</p> : null}
           {sourceTest?.cashSummaries.map((item) => <p key={item.sourceKey} className="mt-1">{item.marketplace.toUpperCase()} · {item.cabinetName}: {money(item.amount)}{item.availableAmount !== null ? ` · доступно к выводу ${money(item.availableAmount)}` : ""}{item.error ? ` · ${item.error}` : ""}</p>)}
           {sourceTest?.errors.map((error, index) => <p key={`${error}-${index}`} className="mt-1">Ошибка: {error}</p>)}
         </div>

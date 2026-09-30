@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-import { mergeOzonBalanceStockItems, ozonBalanceStockCounts, ozonBalanceStockQuantity } from "../lib/ozon/api";
+import { collectOzonBalanceSkus, mergeOzonBalanceStockItems, ozonBalanceStockCounts, ozonBalanceStockQuantity } from "../lib/ozon/api";
+
+test("баланс Ozon не теряет SKU, которые есть только в product/list или FBO", () => {
+  assert.deepEqual(collectOzonBalanceSkus(
+    [{ product_id: 1, sku: 101 }, { product_id: 2 }],
+    [{ sku: 102, sources: [{ sku: 103 }, { sku: 101 }] }],
+    [{ sku: 104, offer_id: "OZ-104", warehouse_id: 10, present: 1, reserved: 0 }],
+  ), ["101", "102", "103", "104"]);
+});
 
 test("баланс Ozon складывает все количественные столбцы отчёта", () => {
   const item = {
@@ -95,7 +103,10 @@ test("FBO-метод не дублирует столбцы, если Ozon ве�
 
 test("месячный снимок использует новый отчёт остатков и opening balance Ozon", () => {
   const route = readFileSync(new URL("../app/api/sync/balance-monthly-stock/route.ts", import.meta.url), "utf8");
+  const api = readFileSync(new URL("../lib/ozon/api.ts", import.meta.url), "utf8");
   assert.match(route, /ozonBalanceStocks/);
   assert.match(route, /amount: balance\.balance\.opening/);
   assert.doesNotMatch(route, /amount: balance\.balance\.closing/);
+  assert.match(api, /JSON\.stringify\(\{ limit: 1000, cursor: fboCursor \}\)/);
+  assert.match(api, /collectOzonBalanceSkus\(productListItems, productInfoItems, fboStocks\)/);
 });
