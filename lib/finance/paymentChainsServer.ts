@@ -2,10 +2,10 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadDdsExpenseCategories } from "./expenseCategoriesServer";
-import { companyAliasKeys, preferredAliasCompany, sameCompanyAlias } from "./companyAliases";
+import { preferredAliasCompany } from "./companyAliases";
 import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
-import { bankReviewSpendingSplits, buildChainEntries, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainBankTarget, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
+import { autofillPaymentChainCash, bankReviewSpendingSplits, buildChainEntries, chainCashAccounts, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainBankTarget, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
 import { paymentTransferBalances } from "./paymentTransferBalance";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -40,26 +40,6 @@ async function loadBankTargets(sourceDate: string, chainId: string): Promise<Pay
   accountId:String(row.account_id),companyId:String(row.company_id),sourceFileName:String(row.source_file_name??""),status:String(row.status??""),
  }]:[]);
 }
-function applyAliasRecipients(draft: PaymentChainDraft, companies: ChainCompany[], accounts: Account[]) {
- const source=companies.find(c=>c.id===draft.sourceCompanyId);
- for(const allocation of draft.allocations) {
-  const recipient=preferredAliasCompany(`${allocation.name} ${allocation.counterparty}`,companies);
-  if(recipient && requiresFilippovLoan(source,recipient)) allocation.companyId=recipient.id;
- }
- const needsCash=draft.allocations.some(a=>requiresFilippovLoan(source,companies.find(c=>c.id===a.companyId)));
- if(needsCash) {
-  const cash=accounts.filter(a=>a.type==='cash'&&a.currency==='RUB');
-  const sourceCash=cash.filter(account=>!companyAliasKeys(account.name).length);
-  draft.throughCash=true;
-  if(!draft.cashAccountId&&(sourceCash.length===1||cash.length===1))draft.cashAccountId=(sourceCash[0]??cash[0]).id;
-  for(const allocation of draft.allocations) if(requiresFilippovLoan(source,companies.find(c=>c.id===allocation.companyId))) {
-   const recipient=companies.find(c=>c.id===allocation.companyId);
-   const recipientCash=cash.filter(account=>recipient&&sameCompanyAlias(account.name,recipient.name));
-   if(recipientCash.length===1)allocation.accountId=recipientCash[0].id;
-  }
- }
- return draft;
-}
 export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string;chainId?:string}): Promise<PaymentChainDetail> {
  const db=dbRequired();
  for(const value of Object.values(seed)) if(value && !UUID.test(value)) throw fail("Некорректный идентификатор операции");
@@ -78,7 +58,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
   const payments: Payment[]=[];
   for(let i=0;i<links.length;i+=300) {const rows=await db.from("payments").select("*").in("id",links.slice(i,i+300).map(l=>l.payment_id));if(rows.error)throw fail(rows.error.message,500);payments.push(...(rows.data??[]).map(paymentFromRow));}
   const byId=new Map(payments.map(p=>[p.id,p]));
-  const draft=applyAliasRecipients({...head.data.draft,revision:head.data.revision},reg.companies,reg.accounts);
+   const draft=autofillPaymentChainCash({...head.data.draft,revision:head.data.revision},reg.companies,reg.accounts);
   return {draft,status:head.data.status,migrationAvailable:true,bankTargets:await loadBankTargets(draft.sourceDate,id),history:revisions.map(r=>({revision:r.revision,reason:r.reason,createdAt:r.created_at,entries:links.filter(l=>l.revision===r.revision).flatMap(l=>byId.has(l.payment_id)?[{payment:byId.get(l.payment_id)!,role:l.role==='legacy'?'source':l.role as ChainEntry['role'],allocationId:l.allocation_id}]:[])}))};
  }
  const canonicalId=seed.reviewId??(selected?chainIdForPayment(selected)??selected.id:null);
@@ -101,7 +81,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  let raw: Array<{id?:string;amount:number;description:string;category:string|null;companyId:string|null;accountId?:string|null;excluded?:boolean;countsTowardBank?:boolean;isRemainder?:boolean}> = [];
  if(review && typeof review.manager_answer==='string' && review.manager_answer.startsWith('__bank_split_v1:')) {try{const decoded=JSON.parse(review.manager_answer.slice('__bank_split_v1:'.length));if(Array.isArray(decoded))raw=decoded;}catch{}}
  const costs=origins.filter(p=>p.amount<0 && sectionForCategory(p.category)!==TECHNICAL_SECTION && p.category!==INTERCOMPANY_LOAN_CATEGORIES.issued);
- const cash=reg.accounts.filter(a=>a.type==='cash' && a.currency==='RUB');
+ const cash=chainCashAccounts(reg.accounts);
  const allocations=costs.length?costs.map(p=>({id:crypto.randomUUID(),amount:Math.abs(p.amount),date:p.date,name:p.name,category:p.category,companyId:p.companyId??sourceCompanyId,accountId:p.accountId,counterparty:p.counterparty,excluded:false})):
   bankReviewSpendingSplits(raw).map(a=>({id:crypto.randomUUID(),amount:a.amount,date:sourceDate,name:a.description,category:a.category??"",companyId:a.companyId??sourceCompanyId,accountId:a.accountId??sourceAccountId,counterparty:/зарплат/i.test(a.category??"")?a.description.replace(/(?:^|[^а-я])зп(?:$|[^а-я])|зарплата/gi," ").trim():reviewCounterparty,excluded:Boolean(a.excluded)}));
  const rawHasAutomaticLoan = raw.some(a=>a.category===INTERCOMPANY_LOAN_CATEGORIES.issued || a.category===LOAN_CATEGORIES.receipt);
@@ -112,7 +92,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  }
  const throughCash=allocations.some(a=>requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),reg.companies.find(c=>c.id===a.companyId))) || origins.some(p=>sectionForCategory(p.category)===TECHNICAL_SECTION) || sectionForCategory(String(review?.category??""))===TECHNICAL_SECTION;
  if(throughCash) for(const a of allocations) a.accountId=cash.length===1?cash[0].id:"";
- const draft=applyAliasRecipients({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},reg.companies,reg.accounts);
+ const draft=autofillPaymentChainCash({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},reg.companies,reg.accounts);
  return {draft,status:"active",migrationAvailable:!head.error,bankTargets:await loadBankTargets(sourceDate,id),history:[]};
 }
 function parseDraft(value: unknown): PaymentChainDraft {
