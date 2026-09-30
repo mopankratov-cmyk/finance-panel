@@ -29,8 +29,8 @@ function headers(c: OzonCreds): HeadersInit {
 // fetch с таймаутом 20с — чтобы при стопоре сети/прокси не висеть минуту, а падать быстро.
 // Через ворота кабинета: Ozon считает лимит по Client-Id целиком, и пачка запросов
 // подряд получает 429 независимо от того, какие это эндпоинты.
-function tfetch(c: OzonCreds, url: string, opts: RequestInit = {}): Promise<Response> {
-  const timeoutSignal = AbortSignal.timeout(20000);
+function tfetch(c: OzonCreds, url: string, opts: RequestInit = {}, timeoutMs = 20_000): Promise<Response> {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const signal = opts.signal
     ? AbortSignal.any([opts.signal, timeoutSignal])
     : timeoutSignal;
@@ -898,6 +898,28 @@ type OzonFboWarehouseStock = {
   reserved?: number;
 };
 
+type OzonProductListItem = { product_id?: number; sku?: number };
+type OzonProductInfoItem = { sku?: number; sources?: { sku?: number }[] };
+
+export function collectOzonBalanceSkus(
+  productListItems: readonly OzonProductListItem[],
+  productInfoItems: readonly OzonProductInfoItem[],
+  fboStocks: readonly OzonFboWarehouseStock[],
+): string[] {
+  const skus = new Set<string>();
+  const add = (raw: unknown) => {
+    const sku = Number(raw ?? 0);
+    if (Number.isFinite(sku) && sku > 0) skus.add(String(sku));
+  };
+  for (const item of productListItems) add(item.sku);
+  for (const item of productInfoItems) {
+    add(item.sku);
+    for (const source of item.sources ?? []) add(source.sku);
+  }
+  for (const stock of fboStocks) add(stock.sku);
+  return [...skus];
+}
+
 /**
  * Ozon «FBO → Управление остатками» отдаёт каждый количественный столбец как
  * отдельное поле `*_stock_count`. Для баланса владелец учитывает сумму ВСЕХ
@@ -1082,6 +1104,7 @@ export async function ozonBalanceStocks(
 ): Promise<{ ok: true; rows: OzonBalanceStockRow[] } | { ok: false; error: string }> {
   try {
     const productIds: number[] = [];
+    const productListItems: OzonProductListItem[] = [];
     let lastId = "";
     for (let page = 0; page < 20; page++) {
       const res = await tfetch(c, `${BASE}/v3/product/list`, {
@@ -1091,9 +1114,10 @@ export async function ozonBalanceStocks(
         ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
-      const json = (await res.json()) as { result?: { items?: { product_id?: number }[]; last_id?: string } };
+      const json = (await res.json()) as { result?: { items?: OzonProductListItem[]; last_id?: string } };
       const items = json.result?.items ?? [];
       for (const item of items) {
+        productListItems.push(item);
         const productId = Number(item.product_id ?? 0);
         if (productId > 0) productIds.push(productId);
       }
@@ -1101,7 +1125,7 @@ export async function ozonBalanceStocks(
       if (items.length < 1000 || !lastId) break;
     }
 
-    const skus = new Set<string>();
+    const productInfoItems: OzonProductInfoItem[] = [];
     for (let index = 0; index < productIds.length; index += 1000) {
       const res = await tfetch(c, `${BASE}/v3/product/info/list`, {
         method: "POST",
@@ -1110,44 +1134,42 @@ export async function ozonBalanceStocks(
         ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
       });
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}` };
-      const json = (await res.json()) as { items?: { sku?: number; sources?: { sku?: number }[] }[] };
-      for (const item of json.items ?? []) {
-        if (Number(item.sku ?? 0) > 0) skus.add(String(item.sku));
-        for (const source of item.sources ?? []) if (Number(source.sku ?? 0) > 0) skus.add(String(source.sku));
-      }
+      const json = (await res.json()) as { items?: OzonProductInfoItem[] };
+      productInfoItems.push(...(json.items ?? []));
+    }
+
+    // Новый FBO-метод умеет вернуть весь кабинет без фильтра по SKU. Это
+    // надёжнее, чем строить выборку только через product/info/list: у части
+    // реальных карточек SKU присутствует уже в product/list или только в FBO.
+    const fboStocks: OzonFboWarehouseStock[] = [];
+    let fboCursor = "";
+    for (let page = 0; page < 100; page++) {
+      const res = await tfetch(c, `${BASE}/v1/product/info/stocks-by-warehouse/fbo`, {
+        method: "POST",
+        headers: headers(c),
+        body: JSON.stringify({ limit: 1000, cursor: fboCursor }),
+        ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
+      }, 45_000);
+      if (!res.ok) return { ok: false, error: `Ozon FBO ${res.status}: ${(await res.text()).slice(0, 160)}` };
+      const json = (await res.json()) as { cursor?: string; has_next?: boolean; products?: OzonFboWarehouseStock[] };
+      fboStocks.push(...(json.products ?? []));
+      const nextCursor = String(json.cursor ?? "");
+      if (!json.has_next || !nextCursor || nextCursor === fboCursor) break;
+      fboCursor = nextCursor;
     }
 
     const analyticsItems: Record<string, unknown>[] = [];
-    const allSkus = [...skus];
+    const allSkus = collectOzonBalanceSkus(productListItems, productInfoItems, fboStocks);
     for (let index = 0; index < allSkus.length; index += 100) {
       const res = await tfetch(c, `${BASE}/v1/analytics/stocks`, {
         method: "POST",
         headers: headers(c),
         body: JSON.stringify({ skus: allSkus.slice(index, index + 100) }),
         ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
-      });
+      }, 45_000);
       if (!res.ok) return { ok: false, error: `Ozon ${res.status}: ${(await res.text()).slice(0, 160)}` };
       const json = (await res.json()) as { items?: Record<string, unknown>[] };
       analyticsItems.push(...(json.items ?? []));
-    }
-
-    const fboStocks: OzonFboWarehouseStock[] = [];
-    for (let index = 0; index < allSkus.length; index += 1000) {
-      let cursor = "";
-      for (let page = 0; page < 20; page++) {
-        const res = await tfetch(c, `${BASE}/v1/product/info/stocks-by-warehouse/fbo`, {
-          method: "POST",
-          headers: headers(c),
-          body: JSON.stringify({ skus: allSkus.slice(index, index + 1000), limit: 1000, cursor }),
-          ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
-        });
-        if (!res.ok) return { ok: false, error: `Ozon FBO ${res.status}: ${(await res.text()).slice(0, 160)}` };
-        const json = (await res.json()) as { cursor?: string; has_next?: boolean; products?: OzonFboWarehouseStock[] };
-        fboStocks.push(...(json.products ?? []));
-        const nextCursor = String(json.cursor ?? "");
-        if (!json.has_next || !nextCursor || nextCursor === cursor) break;
-        cursor = nextCursor;
-      }
     }
 
     return { ok: true, rows: mergeOzonBalanceStockItems(analyticsItems, fboStocks) };
