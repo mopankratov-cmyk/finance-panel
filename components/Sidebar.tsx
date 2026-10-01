@@ -88,7 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Финрезультат",
     items: [
       { href: "/pnl", label: "ОПиУ", icon: LineChart },
-      { href: "/pnl/taxes", label: "Налоги", icon: Calculator },
+      
       { href: "/pnl/balance", label: "Баланс", icon: Scale },
       { href: "/opiu", label: "Финансовый отчёт WB", icon: Table2 },
       { href: "/losses", label: "Где теряем", icon: TrendingDown },
@@ -103,6 +103,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
       { href: "/payroll", label: "Зарплатная ведомость", icon: UserRoundCog },
+      { href: "/pnl/taxes", label: "Налоги", icon: Calculator },
     ],
   },
   {
@@ -136,7 +137,7 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
     label: "Финрезультат",
     items: [
       { href: "/pnl", label: "ОПиУ", icon: LineChart },
-      { href: "/pnl/taxes", label: "Налоги", icon: Calculator },
+      
       { href: "/pnl/balance", label: "Баланс", icon: Scale },
       { href: "/opiu", label: "Финансовый отчёт WB", icon: Table2 },
       { href: "/opiu/margin", label: "Маржа по артикулам", icon: PieChart },
@@ -153,6 +154,7 @@ const FINANCE_NAV_GROUPS: NavGroup[] = [
       { href: "/accounts", label: "Счета", icon: Wallet },
       { href: "/loans", label: "Кредиты", icon: Landmark },
       { href: "/payroll", label: "Зарплатная ведомость", icon: UserRoundCog },
+      { href: "/pnl/taxes", label: "Налоги", icon: Calculator },
     ],
   },
   {
