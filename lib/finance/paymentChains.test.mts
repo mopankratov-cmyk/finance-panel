@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {allocationTotal,autofillPaymentChainCash,bankReviewSpendingSplits,buildChainEntries,chainCashAccounts,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,isMainGroup,preferredChainCashAccount,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
+import {allocateWalletFunding,allocationTotal,autofillPaymentChainCash,bankReviewSpendingSplits,buildChainEntries,chainCashAccounts,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,isMainGroup,preferredChainCashAccount,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
 import {DDS_CATEGORIES} from "./categories.ts";
 import type {Account} from "../types.ts";
 const companies=[{id:'main',name:'ИП Митриченко',groupName:'Основная группа'},{id:'kor',name:'ИП Коровкин',groupName:'Коровкин'},{id:'fil',name:'ИП Филиппов',groupName:'Коровкин'},{id:'other',name:'ООО Другая',groupName:'Отдельная'}];
@@ -36,8 +36,29 @@ test('changing the recipient to the main group removes the automatic loan from t
 });
 test('Filippov uses the Korovkin alias; other groups do not acquire this rule',()=>{
  assert.equal(requiresFilippovLoan(companies[0],companies[2]),true);
+ assert.equal(requiresFilippovLoan(companies[2],companies[0]),true);
  assert.equal(requiresFilippovLoan(companies[3],companies[1]),false);
  assert.equal(requiresFilippovLoan(companies[1],companies[1]),false);
+});
+test('Filippov account paying an expense of the main group creates the reverse loan automatically',()=>{
+ const d=draft();d.sourceCompanyId='fil';d.sourceAccountId='filbank';d.cashAccountId='korcash';d.sourceAmount=1976.55;
+ d.allocations=[{...d.allocations[0],id:'main-expense',amount:1976.55,companyId:'main',accountId:'cash',category:'Дивиденды'}];
+ assert.deepEqual(validateChain(d,accounts,companies,DDS_CATEGORIES),[]);
+ const rows=entries(d);
+ assert.deepEqual(rows.map(row=>row.role),['source','cash-in','loan-out','loan-in','spending']);
+ assert.equal(rows[2].payment.companyId,'fil');
+ assert.equal(rows[3].payment.companyId,'main');
+});
+test('personal wallet expense consumes several partial top-ups from the same economic owner',()=>{
+ const links=allocateWalletFunding([
+  {chainId:'a',allocationId:'one',companyId:'main',amount:1000,date:'2026-09-01'},
+  {chainId:'b',allocationId:'two',companyId:'main',amount:1500,date:'2026-09-02'},
+ ],1976.55);
+ assert.deepEqual(links?.map(link=>link.amount),[1000,976.55]);
+ assert.equal(allocateWalletFunding([
+  {chainId:'a',allocationId:'one',companyId:'main',amount:1000,date:'2026-09-01'},
+  {chainId:'b',allocationId:'two',companyId:'fil',amount:1500,date:'2026-09-02'},
+ ],1976.55),null,'mixed owners require an explicit review instead of guessing');
 });
 test('cash wallets are autofilled for the real Pankratov to Filippov chain and calendar wallet is ignored',()=>{
  const realAccounts=[
@@ -135,7 +156,7 @@ test('transfer to a card has its matching incoming entry and does not masquerade
  d.allocations[2].targetAccountId='';assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/кошелёк поступления/);
 });
 
-test('bank-review chain requires the exact incoming statement row for a transfer to Filippov bank',()=>{
+test('bank-review chain requires an incoming statement row for a transfer to Filippov bank',()=>{
  const d=draft();d.bankReviewId='source-review';d.sourceAmount=300000;d.allocations=[{...d.allocations[2],amount:300000,category:'Выбытие — Перевод между счетами',targetAccountId:'filbank'}];
  assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/встречное поступление из выписки/);
  d.allocations[0].targetReviewId='incoming-review';

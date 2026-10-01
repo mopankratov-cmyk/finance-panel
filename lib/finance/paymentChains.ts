@@ -7,11 +7,17 @@ export interface ChainAllocation {
   id: string; amount: number; date: string; name: string; category: string;
   companyId: string; accountId: string; targetAccountId?: string; targetReviewId?: string; counterparty: string; excluded: boolean;
 }
+export interface PaymentChainFundingLink {
+  chainId: string; allocationId: string; companyId: string; amount: number;
+}
+export interface PaymentChainFundingLot extends PaymentChainFundingLink { date: string }
 export interface PaymentChainDraft {
   id: string; revision: number; label: string; sourceDate: string; sourceAmount: number;
   sourceAccountId: string; sourceCompanyId: string; cashAccountId: string;
   throughCash: boolean; allocations: ChainAllocation[]; originPaymentIds: string[];
   bankReviewId: string | null;
+  /** Конкретные пополнения транзитного/личного кошелька, из которых оплачен расход. */
+  sourceFundingLinks?: PaymentChainFundingLink[];
 }
 export type ChainRole = "source" | "cash-in" | "loan-out" | "loan-in" | "transfer-in" | "spending";
 export interface ChainEntry { payment: Payment; role: ChainRole; allocationId: string | null }
@@ -19,7 +25,7 @@ export interface ChainMetadata { id: string; revision: number; amount: number; d
 export interface ChainHistory { revision: number; createdAt: string; reason: string; entries: ChainEntry[] }
 export interface PaymentChainBankTarget {
   id: string; date: string; amount: number; purpose: string; accountId: string;
-  companyId: string; sourceFileName: string; status: string;
+  companyId: string; sourceFileName: string; status: string; allocatedAmount: number; availableAmount: number;
 }
 export interface PaymentChainDetail { draft: PaymentChainDraft; status: "active" | "cancelled"; migrationAvailable: boolean; history: ChainHistory[]; bankTargets: PaymentChainBankTarget[] }
 export interface BankReviewChainSplit {
@@ -29,6 +35,15 @@ export interface BankReviewChainSplit {
 const cents = (n: number) => Math.round(n * 100);
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
 const accountNorm = (s: string) => norm(s).replace(/[^а-яa-z0-9]+/g, " ").trim();
+
+/** FIFO attribution for money kept on a personal/transit wallet. */
+export function allocateWalletFunding(lots: readonly PaymentChainFundingLot[], amount: number): PaymentChainFundingLink[] | null {
+  const links: PaymentChainFundingLink[]=[];let remainder=cents(amount);
+  for(const lot of [...lots].sort((left,right)=>left.date.localeCompare(right.date)||left.chainId.localeCompare(right.chainId))){
+    if(remainder<=0)break;const used=Math.min(cents(lot.amount),remainder);if(used>0)links.push({chainId:lot.chainId,allocationId:lot.allocationId,companyId:lot.companyId,amount:used/100});remainder-=used;
+  }
+  return remainder===0&&links.length>0&&new Set(links.map(link=>link.companyId)).size===1?links:null;
+}
 
 /** Кассы фактического ДДС. PANKSTER GROUP используется только календарём. */
 export function chainCashAccounts(accounts: readonly Account[]) {
@@ -81,7 +96,10 @@ export function isMainGroup(company: ChainCompany | undefined) {
   return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко|глобалкос|иллюмей/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);
 }
 export function requiresFilippovLoan(source: ChainCompany | undefined, recipient: ChainCompany | undefined) {
-  return Boolean(source && recipient && source.id !== recipient.id && isMainGroup(source) && companyAliasKeys(recipient.name).includes("филиппов"));
+  if (!source || !recipient || source.id === recipient.id || sameCompanyAlias(source.name, recipient.name)) return false;
+  const sourceIsFilippov = companyAliasKeys(source.name).includes("филиппов");
+  const recipientIsFilippov = companyAliasKeys(recipient.name).includes("филиппов");
+  return (isMainGroup(source) && recipientIsFilippov) || (sourceIsFilippov && isMainGroup(recipient));
 }
 
 /** Technical loan and wallet-transfer entries are generated from one allocation. */
@@ -150,7 +168,7 @@ export function validateChain(d: PaymentChainDraft, accounts: Account[], compani
     }
     if (/Поступление|Получение кредитов|Продажи на МП/.test(a.category)) errors.push("У части расхода выбрана статья поступления");
     if (/зарплат/i.test(a.category) && !a.counterparty.trim()) errors.push("Для зарплаты укажите получателя в каждой части");
-    if (requiresFilippovLoan(source, recipient) && (!d.throughCash || account?.type !== "cash")) errors.push("Расход основной группы на ИП Филиппова оформляется займом через наличные: выберите наличные группы и получателя");
+    if (requiresFilippovLoan(source, recipient) && (!d.throughCash || account?.type !== "cash")) errors.push("Расход между основной группой и контуром ИП Филиппова оформляется займом через наличные: выберите наличные источника и получателя");
     if (d.throughCash && !requiresFilippovLoan(source, recipient) && a.accountId !== d.cashAccountId) errors.push("Обычный расход этой суммы должен идти из её наличного кошелька");
     if (!d.throughCash && a.accountId !== d.sourceAccountId) errors.push("Для расхода с другого кошелька включите перевод через наличные");
   }

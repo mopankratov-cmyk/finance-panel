@@ -5,14 +5,15 @@ import { loadDdsExpenseCategories } from "./expenseCategoriesServer";
 import { preferredAliasCompany } from "./companyAliases";
 import { readCompaniesCompat } from "./companySchema";
 import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES } from "./categories";
-import { autofillPaymentChainCash, bankReviewSpendingSplits, buildChainEntries, chainCashAccounts, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainBankTarget, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type ChainEntry, type ChainCompany } from "./paymentChains";
+import { allocateWalletFunding, autofillPaymentChainCash, bankReviewSpendingSplits, buildChainEntries, chainCashAccounts, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainBankTarget, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type PaymentChainFundingLink, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
 import { paymentTransferBalances } from "./paymentTransferBalance";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const fail = (message: string, status=400) => Object.assign(new Error(message), {status});
 function dbRequired() { const db=getSupabaseAdmin(); if(!db) throw fail("Supabase не настроен",503); return db; }
 const missing = (e: {code?:string;message?:string} | null) => Boolean(e && (["42P01","42883","PGRST202","PGRST205"].includes(e.code??"") || /finance_payment_chain|save_dds_payment_chain/.test(e.message??"") && /does not exist|Could not find/.test(e.message??"")));
-export const CHAIN_MIGRATION_MESSAGE = "Для сохранения цепочек владелец должен применить миграцию 202609140002_dds_payment_chains.sql. Старые платежи не изменены.";
+export const CHAIN_MIGRATION_MESSAGE = "Для частичных связей и источников денег владелец должен применить миграцию 202610010002_dds_partial_wallet_provenance.sql. Старые платежи не изменены.";
+async function chainMigrationAvailable(){const result=await dbRequired().rpc("dds_partial_wallet_provenance_version");return !result.error&&Number(result.data)>=1;}
 function paymentFromRow(r: Record<string, unknown>): Payment {return {id:String(r.id),date:String(r.date).slice(0,10),name:String(r.name??""),amount:Number(r.amount),category:String(r.category),companyId:r.company_id?String(r.company_id):null,accountId:String(r.account_id),counterparty:String(r.counterparty??""),comment:r.comment?String(r.comment):undefined,status:r.status as Payment["status"],importSource:r.import_source?String(r.import_source):null};}
 async function registry() {
  const db=dbRequired();
@@ -34,11 +35,41 @@ async function loadBankTargets(sourceDate: string, chainId: string): Promise<Pay
   .order("date").order("id").range(from,to),{label:"Встречные поступления для цепочки"});
  const heads=await loadAllSupabasePages<{id:string;draft:PaymentChainDraft}>((from,to)=>db.from("finance_payment_chains")
   .select("id,draft").eq("status","active").range(from,to),{label:"Связанные поступления цепочек"}).catch(()=>[]);
- const used=new Set(heads.filter(head=>head.id!==chainId).flatMap(head=>head.draft.allocations.map(allocation=>allocation.targetReviewId).filter(Boolean) as string[]));
- return rows.filter(row=>!used.has(String(row.id))).flatMap(row=>row.account_id&&row.company_id?[{
-  id:String(row.id),date:String(row.date).slice(0,10),amount:Number(row.amount),purpose:String(row.purpose??""),
-  accountId:String(row.account_id),companyId:String(row.company_id),sourceFileName:String(row.source_file_name??""),status:String(row.status??""),
- }]:[]);
+ const allocated=new Map<string,number>();
+ for(const head of heads) if(head.id!==chainId) for(const allocation of head.draft.allocations) if(!allocation.excluded&&allocation.targetReviewId)
+  allocated.set(allocation.targetReviewId,(allocated.get(allocation.targetReviewId)??0)+allocation.amount);
+ return rows.flatMap(row=>{
+  const allocatedAmount=Math.round((allocated.get(String(row.id))??0)*100)/100;
+  const availableAmount=Math.round((Number(row.amount)-allocatedAmount)*100)/100;
+  return availableAmount>0&&row.account_id&&row.company_id?[{
+   id:String(row.id),date:String(row.date).slice(0,10),amount:Number(row.amount),purpose:String(row.purpose??""),
+   accountId:String(row.account_id),companyId:String(row.company_id),sourceFileName:String(row.source_file_name??""),status:String(row.status??""),allocatedAmount,availableAmount,
+  }]:[];
+ });
+}
+
+async function inferWalletFunding(sourceAccountId:string,sourceDate:string,sourceAmount:number,chainId:string):Promise<{companyId:string;links:PaymentChainFundingLink[]}|null>{
+ const db=dbRequired();
+ const heads=await loadAllSupabasePages<{id:string;draft:PaymentChainDraft}>((from,to)=>db.from("finance_payment_chains").select("id,draft").eq("status","active").range(from,to),{label:"Источники денег кошелька"}).catch(()=>[]);
+ const consumed=new Map<string,number>();
+ for(const head of heads) if(head.id!==chainId) for(const link of head.draft.sourceFundingLinks??[]){const key=`${link.chainId}:${link.allocationId}`;consumed.set(key,(consumed.get(key)??0)+link.amount);}
+ const lots=heads.flatMap(head=>head.id===chainId?[]:head.draft.allocations.flatMap(allocation=>{
+  if(allocation.excluded||allocation.category!=="Выбытие — Перевод между счетами"||allocation.targetAccountId!==sourceAccountId||allocation.date>sourceDate)return [];
+  const key=`${head.id}:${allocation.id}`;const amount=Math.round((allocation.amount-(consumed.get(key)??0))*100)/100;
+  return amount>0?[{chainId:head.id,allocationId:allocation.id,companyId:head.draft.sourceCompanyId,amount,date:allocation.date}]:[];
+ }));
+ const links=allocateWalletFunding(lots,sourceAmount);if(!links)return null;
+ return {companyId:links[0].companyId,links};
+}
+async function validateWalletFunding(d:PaymentChainDraft){
+ const links=d.sourceFundingLinks??[];if(!links.length)return;
+ if(Math.round(links.reduce((sum,link)=>sum+link.amount,0)*100)!==Math.round(d.sourceAmount*100)||new Set(links.map(link=>link.companyId)).size!==1||links[0].companyId!==d.sourceCompanyId)throw fail("Источник денег личного кошелька изменился. Откройте операцию заново.",409);
+ const heads=await loadAllSupabasePages<{id:string;draft:PaymentChainDraft}>((from,to)=>dbRequired().from("finance_payment_chains").select("id,draft").eq("status","active").range(from,to),{label:"Проверка источников денег"});
+ const byId=new Map(heads.map(head=>[head.id,head.draft]));const used=new Map<string,number>();
+ for(const head of heads)if(head.id!==d.id)for(const link of head.draft.sourceFundingLinks??[]){const key=`${link.chainId}:${link.allocationId}`;used.set(key,(used.get(key)??0)+link.amount);}
+ const requested=new Map<string,number>();
+ for(const link of links){const key=`${link.chainId}:${link.allocationId}`;requested.set(key,(requested.get(key)??0)+link.amount);const source=byId.get(link.chainId);const allocation=source?.allocations.find(item=>item.id===link.allocationId);if(!source||!allocation||allocation.excluded||allocation.targetAccountId!==d.sourceAccountId||source.sourceCompanyId!==link.companyId)throw fail("Связанное пополнение личного кошелька изменилось. Откройте операцию заново.",409);}
+ for(const link of links){const key=`${link.chainId}:${link.allocationId}`;const allocation=byId.get(link.chainId)!.allocations.find(item=>item.id===link.allocationId)!;if(Math.round(((used.get(key)??0)+(requested.get(key)??0))*100)>Math.round(allocation.amount*100))throw fail("Деньги из связанного пополнения уже использованы другой операцией.",409);}
 }
 export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string;chainId?:string}): Promise<PaymentChainDetail> {
  const db=dbRequired();
@@ -59,7 +90,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
   for(let i=0;i<links.length;i+=300) {const rows=await db.from("payments").select("*").in("id",links.slice(i,i+300).map(l=>l.payment_id));if(rows.error)throw fail(rows.error.message,500);payments.push(...(rows.data??[]).map(paymentFromRow));}
   const byId=new Map(payments.map(p=>[p.id,p]));
    const draft=autofillPaymentChainCash({...head.data.draft,revision:head.data.revision},reg.companies,reg.accounts);
-  return {draft,status:head.data.status,migrationAvailable:true,bankTargets:await loadBankTargets(draft.sourceDate,id),history:revisions.map(r=>({revision:r.revision,reason:r.reason,createdAt:r.created_at,entries:links.filter(l=>l.revision===r.revision).flatMap(l=>byId.has(l.payment_id)?[{payment:byId.get(l.payment_id)!,role:l.role==='legacy'?'source':l.role as ChainEntry['role'],allocationId:l.allocation_id}]:[])}))};
+  return {draft,status:head.data.status,migrationAvailable:await chainMigrationAvailable(),bankTargets:await loadBankTargets(draft.sourceDate,id),history:revisions.map(r=>({revision:r.revision,reason:r.reason,createdAt:r.created_at,entries:links.filter(l=>l.revision===r.revision).flatMap(l=>byId.has(l.payment_id)?[{payment:byId.get(l.payment_id)!,role:l.role==='legacy'?'source':l.role as ChainEntry['role'],allocationId:l.allocation_id}]:[])}))};
  }
  const canonicalId=seed.reviewId??(selected?chainIdForPayment(selected)??selected.id:null);
  if(!canonicalId || id!==canonicalId)throw fail("Укажите исходную операцию этой цепочки",404);
@@ -75,7 +106,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  const reg=await registry();
  const sourceAmount=Math.abs(Number(review?.amount??selected!.amount));
  const sourceDate=String(review?.date??selected!.date).slice(0,10);
- const sourceCompanyId=String(review?.company_id??selected?.companyId??"");
+ let sourceCompanyId=String(review?.company_id??selected?.companyId??"");
  const sourceAccountId=String(review?.account_id??selected?.accountId??"");
  const reviewCounterparty=String(review?.counterparty??selected?.counterparty??"");
  let raw: Array<{id?:string;amount:number;description:string;category:string|null;companyId:string|null;accountId?:string|null;excluded?:boolean;countsTowardBank?:boolean;isRemainder?:boolean}> = [];
@@ -86,14 +117,16 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
   bankReviewSpendingSplits(raw).map(a=>({id:crypto.randomUUID(),amount:a.amount,date:sourceDate,name:a.description,category:a.category??"",companyId:a.companyId??sourceCompanyId,accountId:a.accountId??sourceAccountId,counterparty:/зарплат/i.test(a.category??"")?a.description.replace(/(?:^|[^а-я])зп(?:$|[^а-я])|зарплата/gi," ").trim():reviewCounterparty,excluded:Boolean(a.excluded)}));
  const rawHasAutomaticLoan = raw.some(a=>a.category===INTERCOMPANY_LOAN_CATEGORIES.issued || a.category===LOAN_CATEGORIES.receipt);
  if(!allocations.length && (!raw.length || rawHasAutomaticLoan) && (origins.length || review?.category) && sectionForCategory(selected?.category??String(review?.category??""))!==TECHNICAL_SECTION) allocations.push({id:crypto.randomUUID(),amount:sourceAmount,date:sourceDate,name:selected?.name??String(review?.purpose??""),category:selected?.category??String(review?.category??""),companyId:selected?.companyId??sourceCompanyId,accountId:sourceAccountId,counterparty:selected?.counterparty??String(review?.counterparty??""),excluded:false});
+ const funding=await inferWalletFunding(sourceAccountId,sourceDate,sourceAmount,id);
+ if(funding)sourceCompanyId=funding.companyId;
  for(const a of allocations) {
   const recipient=preferredAliasCompany(`${a.name} ${a.counterparty} ${review?.purpose??""} ${reviewCounterparty}`,reg.companies);
   if(recipient && requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),recipient)) a.companyId=recipient.id;
  }
  const throughCash=allocations.some(a=>requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),reg.companies.find(c=>c.id===a.companyId))) || origins.some(p=>sectionForCategory(p.category)===TECHNICAL_SECTION) || sectionForCategory(String(review?.category??""))===TECHNICAL_SECTION;
  if(throughCash) for(const a of allocations) a.accountId=cash.length===1?cash[0].id:"";
- const draft=autofillPaymentChainCash({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null},reg.companies,reg.accounts);
- return {draft,status:"active",migrationAvailable:!head.error,bankTargets:await loadBankTargets(sourceDate,id),history:[]};
+ const draft=autofillPaymentChainCash({id,revision:0,label:String(review?.purpose??selected?.name??"Исходная сумма"),sourceDate,sourceAmount,sourceAccountId,sourceCompanyId,cashAccountId:cash.length===1?cash[0].id:"",throughCash,allocations,originPaymentIds:origins.map(p=>p.id),bankReviewId:bankId??null,...(funding?{sourceFundingLinks:funding.links}:{})},reg.companies,reg.accounts);
+ return {draft,status:"active",migrationAvailable:!head.error&&await chainMigrationAvailable(),bankTargets:await loadBankTargets(sourceDate,id),history:[]};
 }
 function parseDraft(value: unknown): PaymentChainDraft {
  if(!value || typeof value!=="object")throw fail("Некорректная цепочка");
@@ -101,6 +134,8 @@ function parseDraft(value: unknown): PaymentChainDraft {
  if(!UUID.test(d.id??"") || !Number.isInteger(d.revision) || d.revision<0 || !Array.isArray(d.allocations) || d.allocations.length>100 || typeof d.throughCash!=="boolean")throw fail("Некорректная цепочка");
  for(const key of ['label','sourceDate','sourceAccountId','sourceCompanyId','cashAccountId'] as const) if(typeof d[key]!=='string'||d[key].length>2000)throw fail("Некорректные поля цепочки");
  for(const a of d.allocations) {if(!a||!UUID.test(a.id??"")||typeof a.excluded!=='boolean')throw fail("Некорректная часть");for(const key of ['date','name','category','companyId','accountId','counterparty'] as const)if(typeof a[key]!=='string'||a[key].length>2000)throw fail("Некорректные поля части");if(a.targetReviewId&&!UUID.test(a.targetReviewId))throw fail("Некорректное встречное поступление");}
+ if(d.sourceFundingLinks&&!Array.isArray(d.sourceFundingLinks))throw fail("Некорректные источники денег");
+ for(const link of d.sourceFundingLinks??[])if(!UUID.test(link.chainId)||!UUID.test(link.allocationId)||!UUID.test(link.companyId)||!Number.isFinite(link.amount)||link.amount<=0)throw fail("Некорректный источник денег");
  return d;
 }
 export async function savePaymentChain(body: Record<string,unknown>) {
@@ -114,26 +149,26 @@ export async function savePaymentChain(body: Record<string,unknown>) {
  const cancel=body.cancel===true;
  const reg=await registry();
  if(!cancel) {const errors=validateChain(d,reg.accounts,reg.companies,reg.categories);if(errors.length)throw fail(errors.join(". "));}
+ if(!cancel)await validateWalletFunding(d);
  const targetAllocations=d.allocations.filter(a=>!a.excluded&&a.targetReviewId);
- const targetIds=targetAllocations.map(a=>a.targetReviewId!);
- if(new Set(targetIds).size!==targetIds.length)throw fail("Одно поступление из выписки нельзя использовать для нескольких частей");
+ const targetIds=[...new Set(targetAllocations.map(a=>a.targetReviewId!))];
  if(!cancel&&targetIds.length) {
   const targets=await dbRequired().from("bank_review_items").select("id,date,amount,account_id,company_id,status,matched_transfer_id").in("id",targetIds);
   if(targets.error)throw fail(targets.error.message,500);
   const byId=new Map((targets.data??[]).map(row=>[String(row.id),row]));
+  const requested=new Map<string,number>();
   for(const allocation of targetAllocations) {
    const target=byId.get(allocation.targetReviewId!);
-   if(!target||target.status==='rejected'||target.matched_transfer_id||Number(target.amount)!==allocation.amount||String(target.date).slice(0,10)!==allocation.date||String(target.account_id??'')!==allocation.targetAccountId||String(target.company_id??'')!==allocation.companyId)
-    throw fail("Встречное поступление изменилось или не соответствует сумме, дате, компании и банковскому счёту");
+   if(!target||target.status==='rejected'||target.matched_transfer_id||String(target.date).slice(0,10)!==allocation.date||String(target.account_id??'')!==allocation.targetAccountId||String(target.company_id??'')!==allocation.companyId)
+    throw fail("Встречное поступление изменилось или не соответствует дате, компании и банковскому счёту");
+   requested.set(allocation.targetReviewId!,Math.round(((requested.get(allocation.targetReviewId!)??0)+allocation.amount)*100)/100);
   }
   const otherHeads=await dbRequired().from("finance_payment_chains").select("id,draft").eq("status","active").neq("id",d.id);
   if(otherHeads.error&&!missing(otherHeads.error))throw fail(otherHeads.error.message,500);
-  if((otherHeads.data??[]).some(head=>(head.draft as PaymentChainDraft).allocations.some(a=>a.targetReviewId&&targetIds.includes(a.targetReviewId))))throw fail("Встречное поступление уже входит в другую цепочку",409);
-  if(d.revision===0) {
-   const facts=await dbRequired().from("payments").select("id,import_source").in("import_source",targetIds.map(id=>`bank-review:${id}`)).eq("status","done");
-   if(facts.error)throw fail(facts.error.message,500);
-   d.originPaymentIds=[...new Set([...d.originPaymentIds,...(facts.data??[]).map(row=>String(row.id))])];
-  }
+  const already=new Map<string,number>();
+  for(const head of otherHeads.data??[])for(const allocation of (head.draft as PaymentChainDraft).allocations)if(!allocation.excluded&&allocation.targetReviewId)
+   already.set(allocation.targetReviewId,(already.get(allocation.targetReviewId)??0)+allocation.amount);
+  for(const id of targetIds)if(Math.round(((already.get(id)??0)+(requested.get(id)??0))*100)>Math.round(Number(byId.get(id)?.amount??0)*100))throw fail("Связанные части превышают сумму встречного поступления",409);
  }
  const entries=cancel?[]:buildChainEntries(d,reg.companies);
  const imbalance=paymentTransferBalances(entries).find(group=>!group.balanced);
