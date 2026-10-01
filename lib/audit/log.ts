@@ -49,7 +49,12 @@ export type AuditAction =
   | "data.export"
   | "bank_review.clear"
   | "finance_import.commit"
-  | "finance_import.clear";
+  | "finance_import.clear"
+  // «Разработка ассортимента»: находки, правки, решения и выгрузка задания.
+  | "assortment.import"
+  | "assortment.update"
+  | "assortment.decision"
+  | "assortment.export";
 
 export interface AuditEvent {
   action: AuditAction;

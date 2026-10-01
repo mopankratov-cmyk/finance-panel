@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { Plus } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ASSORTMENT_BASE_PATH,
   ASSORTMENT_LAST_SECTION_KEY,
@@ -10,17 +11,34 @@ import {
   type AssortmentDirection,
 } from "@/lib/assortment/constants";
 import { summarizeCoverage } from "@/lib/assortment/coverage";
+import type { FeedCard, FeedView } from "@/lib/assortment/feed";
+import { AddFindingModal } from "./AddFindingModal";
+import { FeedGrid } from "./FeedGrid";
 import { useAssortmentSources } from "./useAssortmentSources";
 
+type FeedState =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; cards: FeedCard[] };
+
 /**
- * Раздел модуля «Разработка ассортимента»: лента находок.
- *
- * Этап 1, первая часть: покрытие источников и пустая лента. Добавление
- * находок и галерея — следующий шаг; кнопку «Добавить находку» до него не
- * показываем вовсе, а не делаем неактивной.
+ * Показываем только те виды ленты, у которых уже есть данные. «Распространяется»
+ * и «Растёт спрос на WB» появятся вместе с автосбором и MPSTATS — до этого
+ * вкладок нет вовсе, а не пустые.
  */
+const VIEWS: Array<{ id: FeedView; label: string; empty: string }> = [
+  { id: "new", label: "Новинки", empty: "Добавьте первую находку: ссылку на товар, публикацию или пин, либо фото." },
+  { id: "retail", label: "Отмечено ритейлером", empty: "Пока ни один сайт не пометил находки как новинку или бестселлер." },
+];
+
+/** Раздел модуля «Разработка ассортимента»: лента находок. */
 export function AssortmentSection({ direction }: { direction: AssortmentDirection }) {
-  const state = useAssortmentSources(direction);
+  const sources = useAssortmentSources(direction);
+  const [view, setView] = useState<FeedView>("new");
+  const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
+  const [adding, setAdding] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const reload = useCallback(() => setReloadKey((k) => k + 1), []);
 
   useEffect(() => {
     try {
@@ -30,18 +48,49 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
     }
   }, [direction]);
 
-  const coverage = state.kind === "ready" ? summarizeCoverage(state.sources) : null;
+  useEffect(() => {
+    let cancelled = false;
+    setFeed((prev) => (prev.kind === "ready" ? prev : { kind: "loading" }));
+    fetch(`/api/assortment-development/references?direction=${direction}&view=${view}`)
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) {
+          setFeed({ kind: "error", message: body?.error || `Лента не загрузилась (${response.status})` });
+          return;
+        }
+        setFeed({ kind: "ready", cards: Array.isArray(body?.cards) ? body.cards : [] });
+      })
+      .catch(() => {
+        if (!cancelled) setFeed({ kind: "error", message: "Нет связи с сервером" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [direction, view, reloadKey]);
+
+  const coverage = sources.kind === "ready" ? summarizeCoverage(sources.sources) : null;
+  const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
 
   return (
     <div className="px-3 pb-16 pt-4 sm:px-6 md:pb-6">
       <div className="mx-auto flex max-w-6xl flex-col gap-5">
-        <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold text-slate-900">{DIRECTION_LABEL[direction]}</h1>
-          <div className="text-sm text-slate-500">{DIRECTION_BRANDS[direction]}</div>
+        <header className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <h1 className="text-2xl font-semibold text-slate-900">{DIRECTION_LABEL[direction]}</h1>
+            <div className="text-sm text-slate-500">{DIRECTION_BRANDS[direction]}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-medium text-white hover:bg-violet-800"
+          >
+            <Plus className="h-4 w-4" /> Добавить находку
+          </button>
         </header>
 
-        {state.kind === "error" && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>
+        {sources.kind === "error" && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{sources.message}</div>
         )}
         {coverage && (
           <p className="text-sm leading-6 text-slate-600">
@@ -53,14 +102,35 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
           </p>
         )}
 
-        <section className="flex min-h-[260px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
-          <div className="text-base font-semibold text-slate-900">Находок пока нет</div>
-          <p className="max-w-xl text-sm leading-6 text-slate-600">
-            Лента появится, когда в раздел начнут попадать модели: добавление ссылок и фото — в следующем обновлении модуля,
-            автоматический обход каталогов — после него.
-          </p>
-        </section>
+        <div role="tablist" aria-label="Вид ленты" className="-mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              role="tab"
+              aria-selected={v.id === view}
+              onClick={() => setView(v.id)}
+              className={`h-10 shrink-0 rounded-full px-4 text-sm ${v.id === view ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+            >
+              {v.label}
+            </button>
+          ))}
+        </div>
+
+        {feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
+        {feed.kind === "error" && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{feed.message}</div>
+        )}
+        {feed.kind === "ready" && feed.cards.length > 0 && <FeedGrid cards={feed.cards} />}
+        {feed.kind === "ready" && feed.cards.length === 0 && (
+          <section className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
+            <div className="text-base font-semibold text-slate-900">Находок пока нет</div>
+            <p className="max-w-xl text-sm leading-6 text-slate-600">{current.empty}</p>
+          </section>
+        )}
       </div>
+
+      <AddFindingModal open={adding} direction={direction} onClose={() => setAdding(false)} onImported={reload} />
     </div>
   );
 }

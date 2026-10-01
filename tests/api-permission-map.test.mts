@@ -107,7 +107,14 @@ test("мутации не отдаются под правом на чтение
     "/api/ozon/losses", "/api/ozon/ad-journal", "/api/ozon/ad-sku", "/api/ozon/analytics",
     "/api/ozon/campaigns", "/api/ozon/cockpit", "/api/ozon/rnp", "/api/ozon/stocks", "/api/ozon/unit",
   ]);
-  const unexpected = suspicious.filter((line) => !ALLOWED.has(line.split(" ")[1]));
+  // «Разработка ассортимента» пишет под analytics.view сознательно (у закупщика
+  // нет catalog.edit), а круг ролей держит каждый роут модуля — это проверяет
+  // tests/assortment-development.test.mts.
+  const ALLOWED_PREFIXES = ["/api/assortment-development/"];
+  const unexpected = suspicious.filter((line) => {
+    const url = line.split(" ")[1];
+    return !ALLOWED.has(url) && !ALLOWED_PREFIXES.some((prefix) => url.startsWith(prefix));
+  });
   assert.deepEqual(unexpected, [], `мутация под правом на чтение:\n  ${unexpected.join("\n  ")}`);
 });
 
