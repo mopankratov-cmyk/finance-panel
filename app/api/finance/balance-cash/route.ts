@@ -7,6 +7,7 @@ import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
 import { loadFinanceStateServer } from "@/lib/finance/dbServer";
 import { loadBalanceCompanyScopes, selectBalanceCompanyScope } from "@/lib/finance/balanceScopes";
 import { requiresScopedWbCash } from "@/lib/finance/balanceWbCash";
+import { isLateDirectWbSnapshot, marketplaceCashAmount } from "@/lib/finance/balanceMarketplaceCash";
 import { getOzonCabinetScope } from "@/lib/ozon/cabinet";
 import { getWbSyncTargets, groupWbStatisticsTargets } from "@/lib/sync/cabinets";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -138,24 +139,35 @@ export async function GET(request: NextRequest) {
     const snapshotRows = (snapshotsResult.data ?? []).filter((row) => {
       const configured = expected.get(String(row.source_key));
       return configured?.marketplace === row.marketplace;
-    }).map((row) => ({
-      sourceKey: String(row.source_key), marketplace: row.marketplace as "wb" | "ozon",
-      label: String(row.cabinet_name ?? expected.get(String(row.source_key))?.label ?? row.marketplace),
-      amount: row.amount == null ? null : Number(row.amount),
-      availableAmount: row.available_amount == null ? null : Number(row.available_amount),
-      currency: String(row.currency ?? "RUB"), status: String(row.status),
-      error: row.error ? String(row.error) : null, capturedAt: String(row.captured_at),
-      calculationMethod: String(row.calculation_method ?? "provider_balance"),
-      calculationDetails: row.calculation_details && typeof row.calculation_details === "object" ? row.calculation_details : null,
-    }));
+    }).map((row) => {
+      const marketplace = row.marketplace as "wb" | "ozon";
+      const calculationMethod = String(row.calculation_method ?? "provider_balance");
+      const storedAmount = row.amount == null ? null : Number(row.amount);
+      const availableAmount = row.available_amount == null ? null : Number(row.available_amount);
+      const capturedAt = String(row.captured_at);
+      const provisional = isLateDirectWbSnapshot({ marketplace, calculationMethod, snapshotMonth: month, capturedAt });
+      return {
+        sourceKey: String(row.source_key), marketplace,
+        label: String(row.cabinet_name ?? expected.get(String(row.source_key))?.label ?? row.marketplace),
+        amount: marketplaceCashAmount({ marketplace, amount: storedAmount, availableAmount, calculationMethod }),
+        availableAmount,
+        currency: String(row.currency ?? "RUB"), status: String(row.status),
+        error: row.error ? String(row.error) : provisional ? "Поздний восстановительный снимок WB: сумма предварительная и не подтверждает состояние на 00:01" : null,
+        capturedAt,
+        provisional,
+        calculationMethod,
+        calculationDetails: row.calculation_details && typeof row.calculation_details === "object" ? row.calculation_details : null,
+      };
+    });
     const byMarketplace = (["wb", "ozon"] as const).map((marketplace) => {
       const rows = snapshotRows.filter((row) => row.marketplace === marketplace);
       const missing = [...expected].filter(([, item]) => item.marketplace === marketplace).filter(([key]) => !rows.some((row) => row.sourceKey === key)).map(([, item]) => item);
-      const complete = missing.length === 0 && rows.length > 0 && rows.every((row) => row.status === "ok" && row.amount !== null && row.currency === "RUB");
+      const amountReady = missing.length === 0 && rows.length > 0 && rows.every((row) => row.status === "ok" && row.amount !== null && row.currency === "RUB");
+      const complete = amountReady && rows.every((row) => !row.provisional);
       return {
         marketplace,
         complete,
-        amount: complete ? round2(rows.reduce((sum, row) => sum + (row.amount ?? 0), 0)) : null,
+        amount: amountReady ? round2(rows.reduce((sum, row) => sum + (row.amount ?? 0), 0)) : null,
         rows,
         errors: [...rows.map((row) => row.error).filter(Boolean), ...missing.map((item) => `Нет снимка: ${item.label}`)],
       };

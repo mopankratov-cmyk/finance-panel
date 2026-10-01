@@ -14,6 +14,7 @@ import { balanceWbProductScope, buildBalanceWbCatalogIndex, type BalanceWbCatalo
 import { calculateScopedWbCash, requiresScopedWbCash, scopedWbCashArticlePrefixes, scopedWbCashReportDates, type ScopedWbReportRow } from "@/lib/finance/balanceWbCash";
 import { fetchWbAccountBalance, fetchWbFinanceReportSummaries } from "@/lib/wb/financeApi";
 import { loadBalanceCompanyScopes } from "@/lib/finance/balanceScopes";
+import { marketplaceCashAmount } from "@/lib/finance/balanceMarketplaceCash";
 
 export const maxDuration = 300;
 
@@ -57,16 +58,22 @@ async function saveCashSnapshot(input: {
   persist?: boolean;
   preserveExisting?: boolean;
 }) {
+  const calculationMethod = input.calculationMethod ?? "provider_balance";
   const summary = {
     sourceKey: input.sourceKey,
     marketplace: input.marketplace,
     cabinetName: input.cabinetName ?? input.cabinet.name,
-    amount: input.amount,
+    amount: marketplaceCashAmount({
+      marketplace: input.marketplace,
+      amount: input.amount,
+      availableAmount: input.availableAmount ?? null,
+      calculationMethod,
+    }),
     availableAmount: input.availableAmount ?? null,
     currency: input.currency ?? "RUB",
     status: input.error || input.amount === null ? "error" : "ok",
     error: input.error ?? null,
-    calculationMethod: input.calculationMethod ?? "provider_balance",
+    calculationMethod,
     calculationDetails: input.calculationDetails ?? null,
   };
   if (input.persist === false) return summary;
@@ -374,6 +381,7 @@ export async function GET(request: NextRequest) {
   const reconcileFulfillment = request.nextUrl.searchParams.get("reconcile") === "fulfillment";
   const reconciliation = fulfillmentReconciliation(startedAt);
   const repairAllowed = repair && window.date === window.month;
+  const lateRepair = repair && !window.allowed;
   if (!dryRun && !reconcileFulfillment && !window.allowed && !repairAllowed) {
     return NextResponse.json({ ok: true, skipped: true, reason: `Снимок и его восстановление доступны только 1-го числа; сейчас ${window.date} ${window.time}` });
   }
@@ -497,6 +505,8 @@ export async function GET(request: NextRequest) {
           const summary = await saveSource({
             month: window.month, capturedAt, sourceKind: "wb", sourceLabel: `Склад WB · ${cabinet?.name ?? target.name}`,
             marketplace: "wb", cabinet: cabinet ?? { id: target.cabinetId ?? "", name: target.name, organization_id: null }, lines, persist: !dryRun, preserveExisting: repair,
+            provisional: lateRepair,
+            warning: lateRepair ? `Поздний восстановительный снимок ${new Date(capturedAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })}; не является точным срезом 00:01` : null,
           });
           summaries.push(summary);
           affected += summary.rows;
@@ -613,6 +623,8 @@ export async function GET(request: NextRequest) {
             const summary = await saveSource({
               month: window.month, capturedAt, sourceKind: "ozon", sourceLabel: `Склад Ozon · ${cabinet.name}`,
               marketplace: "ozon", cabinet: meta, lines, persist: !dryRun, preserveExisting: repair,
+              provisional: lateRepair,
+              warning: lateRepair ? `Поздний восстановительный снимок ${new Date(capturedAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow" })}; не является точным срезом 00:01` : null,
             });
             summaries.push(summary);
             affected += summary.rows;
