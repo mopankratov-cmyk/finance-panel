@@ -82,6 +82,22 @@ function scheduleSourceAmount(row: LoanScheduleDraft, kind: "principal" | "inter
 
 const DEFAULT_TERMS: LoanTermsStored = { annualRate: null, monthlyRate: null, interestFrequency: null, rateMode: "actual_days", dayCountBasis: 365, interestPayout: "paid", paymentDay: null, reinvestEveryPeriods: null, extraContributions: [], tranches: [] };
 
+/**
+ * При обновлении уже созданного займа документ меняет только хвост графика.
+ * Это защищает подтверждённую историю: первая дата из нового файла — граница,
+ * до неё оставляем прежние строки, включая их статусы и остатки.
+ */
+export function replaceScheduleFromImportedDate(current: LoanScheduleDraft[], imported: LoanScheduleDraft[]): { schedule: LoanScheduleDraft[]; from: string } {
+  const dates = imported.map((row) => row.date).filter(Boolean).sort();
+  const from = dates[0] ?? "";
+  if (!from) return { schedule: current, from: "" };
+  return {
+    schedule: [...current.filter((row) => row.date && row.date < from), ...imported]
+      .sort((left, right) => left.date.localeCompare(right.date)),
+    from,
+  };
+}
+
 export function LoanForm({ loan, accounts, companies, companyId, accountId, contractFileName, contractNumber = "", schedule: initialSchedule, currency = "RUB", originalPrincipal, exchangeRate: initialExchangeRate = 1, annualRate, originationFee = 0, feeAmortizationMonths = 36, interestFrequency, monthlyRate = 0, disbursements = [], paymentDays, terms: initialTerms, onSubmit, onCancel }: LoanFormProps) {
   const editing = Boolean(loan);
   const [stage, setStage] = useState<"source" | "review">(editing ? "review" : "source");
@@ -216,17 +232,25 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       }
       const result = await response.json().catch(() => null) as (LoanRecognitionOutcome & { error?: string }) | null;
       if (!response.ok || !result?.recognized) throw new Error(result?.error || "Не удалось прочитать документ");
-      setData(result.recognized);
-      setSchedule(result.schedule.map(normalizeScheduleMoney));
-      setExchangeRate(result.exchangeRate || 1);
-      setRateDate(result.rateDate ?? "");
-      setCorrectionNotice(result.actions.join(". "));
-      if (result.terms) {
-        setTerms(result.terms);
-        setShowTerms(true);
+      const imported = result.schedule.map(normalizeScheduleMoney);
+      if (editing) {
+        const replacement = replaceScheduleFromImportedDate(schedule, imported);
+        if (!replacement.from) throw new Error("В файле не найдены строки графика с датами.");
+        setSchedule(replacement.schedule);
+        setCorrectionNotice(`График из файла заменит строки с ${new Date(`${replacement.from}T12:00:00`).toLocaleDateString("ru-RU")}. История до этой даты сохранена.`);
+      } else {
+        setData(result.recognized);
+        setSchedule(imported);
+        setExchangeRate(result.exchangeRate || 1);
+        setRateDate(result.rateDate ?? "");
+        setCorrectionNotice(result.actions.join(". "));
+        if (result.terms) {
+          setTerms(result.terms);
+          setShowTerms(true);
+        }
+        if (result.suggestedCompanyId) setSelectedCompany(result.suggestedCompanyId);
+        if (result.suggestedAccountId) setSelectedAccount(result.suggestedAccountId);
       }
-      if (result.suggestedCompanyId) setSelectedCompany(result.suggestedCompanyId);
-      if (result.suggestedAccountId) setSelectedAccount(result.suggestedAccountId);
       setStage("review");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Не удалось прочитать документ");
@@ -363,17 +387,17 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
   if (stage === "source") return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-white p-5">
-        <div className="flex items-start gap-3"><div className="rounded-xl bg-violet-600 p-2 text-white"><Sparkles className="h-5 w-5" /></div><div><h3 className="font-bold text-slate-950">Добавьте договор — поля заранее заполнять не нужно</h3><p className="mt-1 text-sm text-slate-600">Система прочитает документ, предложит компанию, счёт, кредитора и условия. Сохранение произойдёт только после вашей проверки.</p></div></div>
+        <div className="flex items-start gap-3"><div className="rounded-xl bg-violet-600 p-2 text-white"><Sparkles className="h-5 w-5" /></div><div><h3 className="font-bold text-slate-950">{editing ? "Загрузите новый график или дополнение" : "Добавьте договор — поля заранее заполнять не нужно"}</h3><p className="mt-1 text-sm text-slate-600">{editing ? "Строки до первой даты из файла останутся как в базе. Сам файл будет прикреплён к истории договора после сохранения." : "Система прочитает документ, предложит компанию, счёт, кредитора и условия. Сохранение произойдёт только после вашей проверки."}</p></div></div>
       </section>
       <input ref={fileRef} type="file" accept=".pdf,.docx,.xlsx,.xls,.csv,.jpg,.jpeg,.png,.webp,.gif" className="hidden" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
       <button type="button" onClick={() => fileRef.current?.click()} className="flex min-h-28 w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50/40 p-5 text-violet-700 hover:bg-violet-50">
-        <Upload className="h-6 w-6" /><span className="font-bold">{file ? file.name : "Выбрать договор или график"}</span><span className="text-xs text-slate-500">PDF, DOCX, Excel, CSV или изображение JPG/PNG/WEBP</span>
+        <Upload className="h-6 w-6" /><span className="font-bold">{file ? file.name : editing ? "Выбрать новый график или документ" : "Выбрать договор или график"}</span><span className="text-xs text-slate-500">PDF, DOCX, Excel, CSV или изображение JPG/PNG/WEBP</span>
       </button>
-      <label className="block text-sm font-semibold text-slate-700">Или опишите займ обычным текстом
+      <label className="block text-sm font-semibold text-slate-700">{editing ? "Комментарий к новому файлу" : "Или опишите займ обычным текстом"}
         <textarea value={description} onChange={(event) => setDescription(event.target.value)} rows={5} className={`${fieldClass} resize-y py-3`} />
       </label>
       {message && <p className="flex gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700"><AlertCircle className="h-5 w-5 shrink-0" />{message}</p>}
-      <div className="flex justify-end gap-3"><button type="button" onClick={onCancel} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Отмена</button><button type="button" disabled={busy} onClick={() => void analyze()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-5 font-bold text-white disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Обработать и проверить</button></div>
+      <div className="flex justify-end gap-3"><button type="button" onClick={onCancel} className="min-h-11 rounded-xl px-4 font-semibold text-slate-600">Отмена</button><button type="button" disabled={busy} onClick={() => void analyze()} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-5 font-bold text-white disabled:opacity-60">{busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}{editing ? "Обработать и заменить график" : "Обработать и проверить"}</button></div>
     </div>
   );
 

@@ -74,13 +74,13 @@ function decodeXml(value: string): string {
 }
 
 function textNodes(xml: string): string {
-  return [...xml.matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/g)].map((match) => decodeXml(match[1])).join("");
+  return [...xml.matchAll(/<(?:[\w.-]+:)?t\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?t>/g)].map((match) => decodeXml(match[1])).join("");
 }
 
 function sharedStrings(entries: Map<string, Buffer>): string[] {
   const xml = entries.get("xl/sharedStrings.xml")?.toString("utf8");
   if (!xml) return [];
-  return [...xml.matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/g)].map((match) => textNodes(match[1]));
+  return [...xml.matchAll(/<(?:[\w.-]+:)?si\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?si>/g)].map((match) => textNodes(match[1]));
 }
 
 /** Путь первого листа по порядку в workbook.xml; если книга неполная — sheet1.xml. */
@@ -112,17 +112,20 @@ export function xlsxGridFromEntries(entries: Map<string, Buffer>): string[][] {
   if (!sheetXml) throw new Error("В XLSX не найден первый лист");
   const strings = sharedStrings(entries);
   const grid: string[][] = [];
-  for (const rowMatch of sheetXml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)) {
+  // Excel иногда пишет namespace-префикс (`x:row`, `x:c`) вместо default
+  // namespace. Это тот же XLSX, но прежние регулярки молча отдавали пустую
+  // сетку, из-за чего график нельзя было загрузить вовсе.
+  for (const rowMatch of sheetXml.matchAll(/<(?:[\w.-]+:)?row\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?row>/g)) {
     const values = new Map<number, string>();
     let maxColumn = -1;
-    for (const cell of rowMatch[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+    for (const cell of rowMatch[1].matchAll(/<(?:[\w.-]+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:[\w.-]+:)?c>)/g)) {
       const attributes = cell[1];
       const reference = attributes.match(/\br="([A-Z]+)\d*"/)?.[1] ?? "";
       const type = attributes.match(/\bt="([^"]+)"/)?.[1] ?? "";
       const body = cell[2] ?? "";
       const column = reference ? columnIndex(reference) : maxColumn + 1;
       maxColumn = Math.max(maxColumn, column);
-      const raw = decodeXml(body.match(/<v\b[^>]*>([\s\S]*?)<\/v>/)?.[1] ?? "");
+      const raw = decodeXml(body.match(/<(?:[\w.-]+:)?v\b[^>]*>([\s\S]*?)<\/(?:[\w.-]+:)?v>/)?.[1] ?? "");
       const value = type === "s" ? strings[Number(raw)] ?? "" : type === "inlineStr" ? textNodes(body) : raw;
       values.set(column, value);
     }
