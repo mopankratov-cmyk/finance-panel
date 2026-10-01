@@ -25,15 +25,38 @@ export const PRIORITY_META: Record<PaymentPriority, { label: string; description
 
 export function suggestPaymentPriority(category = "", name = ""): PaymentPriority {
   const text = `${category} ${name}`.toLowerCase().replace(/ё/g, "е");
-  if (/(налог|ндфл|усн|фнс|зарплат|аванс сотруд|кредит|процент|погашен|обязатель|тамож|аренд)/.test(text)) return "A";
+  if (/(налог|ндфл|усн|фнс|зарплат|(?:^|\s)зп(?:\s|$)|аванс сотруд|кредит|процент|погашен|обязатель|тамож|аренд)/.test(text)) return "A";
   if (/(товар|закуп|поставщик|логист|достав|склад|хранен|комисси|маркетплейс|рко|банк|сервис|подряд)/.test(text)) return "B";
   return "C";
 }
 
 export function getPaymentPriority(payment: Pick<Payment, "comment" | "category" | "name">): PaymentPriority {
   const match = payment.comment?.match(/\[priority:([ABC])\]/i);
-  return (match?.[1]?.toUpperCase() as PaymentPriority | undefined) ??
-    suggestPaymentPriority(payment.category, payment.name);
+  const explicit = match?.[1]?.toUpperCase() as PaymentPriority | undefined;
+  const suggested = suggestPaymentPriority(payment.category, payment.name);
+
+  // Критичные обязательства нельзя случайно оставить переносимыми. Такое
+  // происходило у строк, созданных с приоритетом C до выбора статьи: после
+  // выбора процентов, кредита, налогов или зарплаты старый маркер побеждал
+  // корректную классификацию статьи.
+  if (suggested === "A") return "A";
+  return explicit ?? suggested;
+}
+
+export function plannedExpensePrioritySummary(payments: readonly Pick<Payment, "status" | "amount" | "date" | "comment" | "category" | "name">[], today: string) {
+  return (["A", "B", "C"] as PaymentPriority[]).map((priority) => {
+    const matching = payments.filter((payment) =>
+      payment.status === "planned"
+      && payment.amount < 0
+      && getPaymentPriority(payment) === priority,
+    );
+    return {
+      priority,
+      count: matching.length,
+      plannedExpense: matching.reduce((sum, payment) => sum - payment.amount, 0),
+      overdue: matching.filter((payment) => payment.date < today).length,
+    };
+  });
 }
 
 export function cleanPaymentComment(comment?: string): string {
