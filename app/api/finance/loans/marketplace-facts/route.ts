@@ -16,6 +16,7 @@ type PaymentRow = { comment: string | null };
 type ContractLinkRow = { marketplace: string; contract_number: string; loan_id: string };
 type CabinetRow = { id: string; name: string | null };
 type MarketplaceAllocationRow = { schedule_row_id: string; marketplace_source: string; amount_rub: number };
+type IgnoredContractRow = { marketplace: string; contract_number: string };
 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
@@ -25,7 +26,7 @@ export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   try {
-    const [loansResult, paymentRows, reportRows, linksResult, cabinetsResult, allocationRows] = await Promise.all([
+    const [loansResult, paymentRows, reportRows, linksResult, cabinetsResult, allocationRows, ignoredResult] = await Promise.all([
       db.from("loans").select("id,creditor,start_date").eq("status", "active"),
       loadAllSupabasePages<PaymentRow>((from, to) => db.from("payments").select("comment").not("comment", "is", null).like("comment", "%[loan:%").order("id").range(from, to), { label: "Метки договоров", maxPages: 50 }),
       loadAllSupabasePages<Record<string, unknown>>((from, to) => db.from("wb_report_rows")
@@ -39,10 +40,12 @@ export async function GET() {
       db.from("wb_cabinets").select("id,name").eq("marketplace", "wb"),
       loadAllSupabasePages<MarketplaceAllocationRow>((from, to) => db.from("loan_schedule_marketplace_allocations")
         .select("schedule_row_id,marketplace_source,amount_rub").order("id").range(from, to), { label: "Распределения удержаний WB", maxPages: 50 }),
+      db.from("loan_marketplace_ignored_contracts").select("marketplace,contract_number").eq("marketplace", "wb"),
     ]);
     if (loansResult.error) throw loansResult.error;
     if (linksResult.error && !/does not exist|schema cache/i.test(linksResult.error.message)) throw linksResult.error;
     if (cabinetsResult.error) throw cabinetsResult.error;
+    if (ignoredResult.error && !/does not exist|schema cache/i.test(ignoredResult.error.message)) throw ignoredResult.error;
     const loans = (loansResult.data ?? []) as LoanRow[];
     const cabinetNames = new Map(((cabinetsResult.data ?? []) as CabinetRow[]).map((cabinet) => [cabinet.id, cabinet.name?.trim() || null]));
     const byContract = new Map<string, LoanRow>();
@@ -72,9 +75,12 @@ export async function GET() {
       allocatedBySource.set(allocation.marketplace_source, roundMoney((allocatedBySource.get(allocation.marketplace_source) ?? 0) + Number(allocation.amount_rub)));
       allocationSources.add(allocation.marketplace_source);
     }
+    const ignoredContracts = new Set(((ignoredResult.data ?? []) as IgnoredContractRow[])
+      .map((row) => normalizedContractNumber(row.contract_number)).filter(Boolean));
     const facts = reportRows.flatMap((row) => {
       const fact = wbLoanFactFromRow(row);
       if (!fact) return [];
+      if (fact.contractNumber && ignoredContracts.has(normalizedContractNumber(fact.contractNumber))) return [];
       // У действительно старых удержаний номер иногда отсутствует. Тогда WB
       // добавляет дату выдачи в назначение, и её можно использовать лишь как
       // кандидата. Если номер есть, но для него пока нет связи, нельзя
@@ -144,8 +150,16 @@ export async function POST(request: Request) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const body = await request.json().catch(() => null) as { action?: unknown; contractNumber?: unknown } | null;
   const contractNumber = normalizedContractNumber(typeof body?.contractNumber === "string" ? body.contractNumber : "");
-  if (body?.action !== "allocate-contract" || contractNumber.length < 6) return NextResponse.json({ error: "Укажите номер договора WB" }, { status: 400 });
+  if (contractNumber.length < 6) return NextResponse.json({ error: "Укажите номер договора WB" }, { status: 400 });
   try {
+    if (body?.action === "ignore-contract") {
+      const ignored = await db.from("loan_marketplace_ignored_contracts")
+        .upsert({ marketplace: "wb", contract_number: contractNumber, reason: "Закрытый договор без документов", updated_at: new Date().toISOString() }, { onConflict: "marketplace,contract_number" })
+        .select("marketplace,contract_number").single();
+      if (ignored.error) throw ignored.error;
+      return NextResponse.json({ ignored: ignored.data });
+    }
+    if (body?.action !== "allocate-contract") return NextResponse.json({ error: "Неизвестное действие сверки WB" }, { status: 400 });
     const linkResult = await db.from("loan_marketplace_contract_links").select("loan_id").eq("marketplace", "wb").eq("contract_number", contractNumber).maybeSingle();
     if (linkResult.error) throw linkResult.error;
     if (!linkResult.data) return NextResponse.json({ error: "Сначала свяжите номер WB с договором панели" }, { status: 409 });
@@ -177,6 +191,34 @@ export async function POST(request: Request) {
     let allocatedRows = 0;
     let allocatedAmountRub = 0;
     let unresolvedFacts = 0;
+    const addPaidPenalty = async (fact: { date: string; source: string }, amountRub: number) => {
+      const amount = roundMoney(amountRub);
+      const now = new Date().toISOString();
+      // В выгрузке WB пени могут существовать без плановой строки: это
+      // фактическое начисление, а не повод менять тело или будущий график.
+      const created = await db.from("loan_schedule_rows").insert({
+        loan_id: loanId,
+        due_date: fact.date,
+        original_due_date: fact.date,
+        kind: "penalty",
+        amount_rub: amount,
+        amount_original: amount,
+        currency: "RUB",
+        status: "paid",
+        paid_by_marketplace_source: fact.source,
+        updated_at: now,
+      }).select("*").single();
+      if (created.error || !created.data) throw new Error(created.error?.message ?? "Не удалось добавить пени в график");
+      const row = scheduleRowFromDb(created.data as Record<string, unknown>);
+      const allocation = await db.from("loan_schedule_marketplace_allocations")
+        .insert({ schedule_row_id: row.id, marketplace_source: fact.source, amount_rub: amount });
+      if (allocation.error) throw allocation.error;
+      rows.push(row);
+      allocatedRowIds.add(row.id);
+      allocatedBySource.set(fact.source, roundMoney((allocatedBySource.get(fact.source) ?? 0) + amount));
+      allocatedRows++;
+      allocatedAmountRub = roundMoney(allocatedAmountRub + amount);
+    };
     // flatMap не выкидывает null — только разворачивает массивы: нераспознанная
     // строка удержания дошла бы до fact.contractNumber и уронила роут.
     const facts = reportRows.flatMap((row) => wbLoanFactFromRow(row) ?? [])
@@ -205,6 +247,10 @@ export async function POST(request: Request) {
         remaining = roundMoney(remaining - row.amountRub);
         allocatedRows++;
         allocatedAmountRub = roundMoney(allocatedAmountRub + row.amountRub);
+      }
+      if (fact.kind === "penalty" && remaining > 0.01) {
+        await addPaidPenalty(fact, remaining);
+        remaining = 0;
       }
       if (remaining > 0.01) unresolvedFacts++;
     }
