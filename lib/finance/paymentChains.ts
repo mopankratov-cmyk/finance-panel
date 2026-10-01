@@ -54,7 +54,9 @@ export function chainCashAccounts(accounts: readonly Account[]) {
 
 /**
  * Выбирает кассу юрлица без ручного перебора технических кошельков.
- * Сначала берём кассу с названием компании, затем единственную общую «Наличку».
+ * Сначала берём кассу с названием компании. Для контура Филиппова общая
+ * «Наличка» — его историческая касса; «Наличные» остаются запасной общей
+ * кассой. Это устраняет ручной выбор при наличии обеих старых касс.
  */
 export function preferredChainCashAccount(company: ChainCompany | undefined, accounts: readonly Account[], companies: readonly ChainCompany[]) {
   if (!company) return null;
@@ -70,7 +72,13 @@ export function preferredChainCashAccount(company: ChainCompany | undefined, acc
     const name = accountNorm(account.name);
     return /^(?:наличка|наличные|касса)$/.test(name) && !companyNames.some((candidate) => name.includes(candidate));
   });
-  return generic.length === 1 ? generic[0] : null;
+  if (generic.length === 1) return generic[0];
+  if (companyAliasKeys(company.name).includes("филиппов")) {
+    return generic.find((account) => accountNorm(account.name) === "наличка")
+      ?? generic.find((account) => accountNorm(account.name) === "наличные")
+      ?? null;
+  }
+  return null;
 }
 
 /** Заполняет известную цепочку кассами и каноническим получателем до показа формы. */
@@ -155,7 +163,7 @@ export function validateChain(d: PaymentChainDraft, accounts: Account[], compani
   if (!validDate(d.sourceDate) || !d.label.trim() || !Number.isFinite(d.sourceAmount) || cents(d.sourceAmount) <= 0 || d.sourceAmount !== cents(d.sourceAmount)/100) errors.push("Укажите дату, название и положительную исходную сумму до копеек");
   if (d.allocations.length > 100 || new Set(d.allocations.map(a => a.id)).size !== d.allocations.length) errors.push("Не больше 100 частей с разными идентификаторами");
   const cash = accounts.find(a => a.id === d.cashAccountId);
-  if (d.throughCash && (!cash || cash.type !== "cash" || cash.currency !== "RUB")) errors.push("Выберите рублёвый кошелёк наличных основной группы");
+  if (d.throughCash && (!cash || cash.type !== "cash" || cash.currency !== "RUB")) errors.push("Выберите рублёвый кошелёк наличных компании-источника");
   if (d.throughCash && d.sourceAccountId === d.cashAccountId) errors.push("Кошелёк источника и кошелёк пополнения наличных должны отличаться");
   for (const a of d.allocations) {
     if (!Number.isFinite(a.amount) || cents(a.amount) <= 0 || a.amount !== cents(a.amount)/100 || !validDate(a.date) || a.date < d.sourceDate) errors.push("Каждой части нужны сумма до копеек и дата не раньше исходного перевода");
