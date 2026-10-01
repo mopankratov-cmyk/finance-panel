@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
+import { uniqueCounterpartyOptions } from "./counterpartyOptions";
 
 /** Native chooser works with a mouse, keyboard and touch; new names are committed once. */
 export function CounterpartySelect({ value, options, onChange, label = "Контрагент", ariaLabel = label, compact = false, disabled = false }: {
@@ -10,7 +11,7 @@ export function CounterpartySelect({ value, options, onChange, label = "Конт
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const cancelled = useRef(false);
-  const names = [...new Set([...options, value].map(name => name.trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ru"));
+  const names = uniqueCounterpartyOptions(options, value);
   const field = "min-h-11 w-full min-w-0 rounded-lg border border-slate-300 bg-white px-2 py-2 text-base sm:text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400 disabled:bg-slate-100";
   const commit = () => {
     if (cancelled.current) return;

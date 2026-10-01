@@ -48,7 +48,7 @@ export function BankReconciliationPanel({
             <p className={`mt-1 text-sm ${ledgerHasErrors ? "text-red-800" : "text-emerald-800"}`}>
               {ledgerHasErrors
                 ? `Есть расхождения: не перенесено ${ledgerControl.unprojectedCount}, выписок с неверным итогом ${ledgerControl.statementMismatchCount}, проведённых строк без суммы ${ledgerControl.missingApprovedCount}, несовпадающих сумм ${ledgerControl.mismatchCount} (${formatMoney(ledgerControl.mismatchAmount)}).`
-                : `Сверено ${ledgerControl.transactionCount} банковских операций на ${formatMoney(ledgerControl.transactionAmount)}. Исходные строки, выписки и проведённые суммы совпадают.`}
+                : `Сверено ${ledgerControl.transactionCount} банковских операций. Чистое движение: ${formatMoney(ledgerControl.transactionAmount)}. Исходные строки, выписки и проведённые суммы совпадают.`}
             </p>
           </div>
         </div>
