@@ -4,7 +4,7 @@ import {
   Boxes,
   BarChart3, Bot, Coins, LineChart, Megaphone, Table2, Search, Layers, Sigma,
   FlaskConical,
-  Package, TrendingDown, Wallet, Building2, ArrowUpRight, ChevronDown,
+  Package, TrendingDown, Wallet, Building2, ArrowUpRight, ChevronDown, Shirt,
   LogOut, AlertTriangle, Info, XCircle, type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -34,6 +34,7 @@ const PRIMARY_MODULES: ModuleCard[] = [
   { title: "Финансы", description: "Календарь ДДС, платежи, счета и кредиты", href: "/calendar", icon: Wallet, agent: "Нано", zone: "Финансы", color: ["bg-emerald-100", "text-emerald-700"] },
   { title: "Склад", description: "Товары и себестоимость, приёмка, остатки и отгрузка на кабинеты", href: "/warehouse", icon: Boxes, agent: "Саму", zone: "Операции", color: ["bg-teal-100", "text-teal-700"] },
   { title: "Кабинеты", description: "Подключение WB и Ozon аккаунтов", href: "/cabinets", icon: Building2, zone: "Операции", color: ["bg-slate-100", "text-slate-700"] },
+  { title: "Разработка ассортимента", description: "Новые модели курток и сумок за рубежом: находки, подборки и задания на образец", href: "/assortment-development", icon: Shirt, zone: "Операции", color: ["bg-rose-100", "text-rose-700"] },
 ];
 
 // v2 сбрасывает старое сохранённое раскрытие: после упрощения главная должна

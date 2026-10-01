@@ -24,7 +24,8 @@ function AppShell({ children }: { children: React.ReactNode }) {
   // Кокпиты WB, Ozon и «Склад» имеют собственные shell и кабинетные контексты и не
   // должны ждать гидрацию финансового провайдера. Общий сайдбар им тоже не нужен:
   // модуль показывает слева свои разделы, а не навигацию всей панели.
-  if (pathname.startsWith("/wb") || pathname.startsWith("/ozon") || pathname.startsWith("/warehouse")) {
+  // «Разработка ассортимента» устроена так же: своё светлое меню модуля.
+  if (pathname.startsWith("/wb") || pathname.startsWith("/ozon") || pathname.startsWith("/warehouse") || pathname.startsWith("/assortment-development")) {
     return <div className="min-h-dvh bg-gray-50">{children}</div>;
   }
   // Главная — полноэкранная, без финансового сайдбара.

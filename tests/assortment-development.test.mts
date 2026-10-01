@@ -96,3 +96,17 @@ test("покрытие показывает, что реально отслеж�
   assert.deepEqual(sorted.map((s) => s.name), ["Polène", "Zara", "Mango", "Кандидат"]);
   assert.deepEqual(summarizeCoverage(sorted), { auto: ["Polène"], partial: ["Zara"], manual: ["Mango"] });
 });
+
+test("вход в модуль — плитка на главной, внутри — своё меню модуля без навигации всей панели", () => {
+  const home = readFileSync(join(root, "components/dashboard/ModulesHome.tsx"), "utf8");
+  assert.match(home, /title: "Разработка ассортимента"[^}]*href: "\/assortment-development"/);
+  const layout = readFileSync(join(root, "components/AppLayout.tsx"), "utf8");
+  assert.match(layout, /pathname\.startsWith\("\/assortment-development"\)/, "общий сайдбар модулю не нужен");
+  const shell = readFileSync(join(root, "components/assortment/AssortmentShell.tsx"), "utf8");
+  for (const section of ["jackets", "bags", "sources"]) assert.match(shell, new RegExp(`ASSORTMENT_BASE_PATH\\}/${section}`), section);
+  // «Подборки» появятся вместе с экраном: пункт, ведущий в пустоту, не показываем.
+  assert.doesNotMatch(shell, /label: "Подборки"/);
+  for (const section of ["jackets", "bags", "sources"]) {
+    assert.ok(statSync(join(root, `app/assortment-development/${section}/page.tsx`)).isFile(), section);
+  }
+});
