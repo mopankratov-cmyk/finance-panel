@@ -30,14 +30,23 @@ const row = (loanId: string, dueDate: string, amountRub: number, status: Schedul
   balanceAfter: null,
 });
 
-test("обязательство уменьшается только на оплаченное тело к выбранной дате", () => {
+test("обязательство равно договорному остатку тела на выбранную дату", () => {
   const snapshot = loanLiabilitySnapshot(
     [loan("a", 1_000_000)],
     [row("a", "2026-02-01", 250_000, "paid"), row("a", "2026-10-01", 750_000, "planned")],
-    "2026-09-24",
+    "2026-10-01",
   );
-  assert.equal(snapshot.amount, 750_000);
+  assert.equal(snapshot.amount, 0);
   assert.equal(snapshot.estimatedCount, 0);
+});
+
+test("будущий платёж тела не уменьшает остаток раньше срока", () => {
+  const snapshot = loanLiabilitySnapshot(
+    [loan("future", 1_000_000)],
+    [row("future", "2026-10-02", 750_000, "planned")],
+    "2026-10-01",
+  );
+  assert.equal(snapshot.amount, 1_000_000);
 });
 
 test("договор без графика не пропадает и отмечается оценкой", () => {

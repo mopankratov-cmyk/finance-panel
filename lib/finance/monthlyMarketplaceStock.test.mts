@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { fulfillmentReconciliation, moscowMonthSnapshot, valueMarketplaceStocks } from "./monthlyMarketplaceStock.ts";
 
-test("месячный снимок разрешён только 1-го числа в 00:01 по Москве", () => {
+test("месячный снимок допускает резервные попытки до 00:20 первого числа по Москве", () => {
   assert.deepEqual(moscowMonthSnapshot(new Date("2026-09-30T21:01:30Z")), {
     allowed: true,
     month: "2026-10-01",
@@ -10,7 +10,9 @@ test("месячный снимок разрешён только 1-го чис�
     time: "00:01",
   });
   assert.equal(moscowMonthSnapshot(new Date("2026-09-30T21:00:59Z")).allowed, false);
-  assert.equal(moscowMonthSnapshot(new Date("2026-09-30T21:02:00Z")).allowed, false);
+  assert.equal(moscowMonthSnapshot(new Date("2026-09-30T21:06:00Z")).allowed, true);
+  assert.equal(moscowMonthSnapshot(new Date("2026-09-30T21:20:59Z")).allowed, true);
+  assert.equal(moscowMonthSnapshot(new Date("2026-09-30T21:21:00Z")).allowed, false);
 });
 
 test("фулфилмент всегда пересчитывается по одной границе месяца до закрытия периода", () => {

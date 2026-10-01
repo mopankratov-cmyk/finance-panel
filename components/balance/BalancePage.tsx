@@ -202,6 +202,8 @@ export function BalancePage() {
   const [detailKind, setDetailKind] = useState<InventoryKind | null>(null);
   const [cashDetailKind, setCashDetailKind] = useState<CashDetailKind | null>(null);
   const [testingSources, setTestingSources] = useState(false);
+  const [repairingSnapshot, setRepairingSnapshot] = useState(false);
+  const [sourceResultLabel, setSourceResultLabel] = useState("Тест без записи");
   const [sourceTest, setSourceTest] = useState<CashSourceTest | null>(null);
   const [sourceTestError, setSourceTestError] = useState<string | null>(null);
 
@@ -255,6 +257,7 @@ export function BalancePage() {
     setTestingSources(true);
     setSourceTestError(null);
     try {
+      setSourceResultLabel("Тест без записи");
       const response = await fetch("/api/sync/trigger?job=balance-monthly-stock&dryRun=1", { method: "POST" });
       const body = await response.json().catch(() => ({})) as { error?: string; result?: CashSourceTest } & Partial<CashSourceTest>;
       const result = body.result ?? (body.cashSummaries ? body as CashSourceTest : null);
@@ -268,6 +271,27 @@ export function BalancePage() {
       setTestingSources(false);
     }
   }, []);
+
+  const repairSnapshot = useCallback(async () => {
+    setRepairingSnapshot(true);
+    setSourceTestError(null);
+    try {
+      const response = await fetch("/api/sync/trigger?job=balance-monthly-stock&repair=1", { method: "POST" });
+      const body = await response.json().catch(() => ({})) as { error?: string; result?: CashSourceTest } & Partial<CashSourceTest>;
+      const result = body.result ?? (body.cashSummaries ? body as CashSourceTest : null);
+      if (!result) throw new Error(body.error || `Восстановление вернуло ошибку ${response.status}`);
+      setSourceResultLabel("Восстановление снимка");
+      setSourceTest(result);
+      if (!response.ok && !result.summaries?.length && !result.cashSummaries?.length) {
+        throw new Error(body.error || `Восстановление вернуло ошибку ${response.status}`);
+      }
+      await refreshExternal();
+    } catch (error) {
+      setSourceTestError(error instanceof Error ? error.message : "Не удалось восстановить снимок");
+    } finally {
+      setRepairingSnapshot(false);
+    }
+  }, [refreshExternal]);
 
   const selectedCompany = companies.find((company) => company.id === companyId) ?? null;
   const cash = cashSnapshot?.amount ?? null;
@@ -327,6 +351,11 @@ export function BalancePage() {
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:opacity-60">
             <RefreshCw className={`h-4 w-4 ${testingSources ? "animate-spin" : ""}`} /> {testingSources ? "Проверяем…" : "Проверить источники"}
           </button>
+          <button type="button" onClick={() => void repairSnapshot()} disabled={repairingSnapshot || todayISO().slice(8, 10) !== "01" || month !== todayISO().slice(0, 7)}
+            title="Дозаписывает только отсутствующие источники снимка текущего первого числа"
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-4 text-sm font-semibold text-violet-800 shadow-sm transition hover:bg-violet-100 disabled:opacity-50">
+            <RefreshCw className={`h-4 w-4 ${repairingSnapshot ? "animate-spin" : ""}`} /> {repairingSnapshot ? "Дособираем…" : "Дособрать снимок"}
+          </button>
         </div>
       </div>
 
@@ -334,7 +363,7 @@ export function BalancePage() {
 
       {(sourceTest || sourceTestError) ? (
         <div className={`mt-4 rounded-xl border px-4 py-3 text-sm ${sourceTestError || sourceTest?.errors.length ? "border-amber-200 bg-amber-50 text-amber-900" : "border-emerald-200 bg-emerald-50 text-emerald-900"}`}>
-          <p className="font-semibold">Тест без записи{sourceTest?.capturedAt ? ` · ${new Date(sourceTest.capturedAt).toLocaleString("ru-RU")}` : ""}</p>
+          <p className="font-semibold">{sourceResultLabel}{sourceTest?.capturedAt ? ` · ${new Date(sourceTest.capturedAt).toLocaleString("ru-RU")}` : ""}</p>
           {sourceTestError ? <p className="mt-1">{sourceTestError}</p> : null}
           {sourceTest?.summaries.length ? <p className="mt-2 font-semibold">Товарные остатки</p> : null}
           {sourceTest?.summaries.map((item) => (

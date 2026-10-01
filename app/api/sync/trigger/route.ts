@@ -43,6 +43,7 @@ async function handlePost(request: NextRequest) {
   const to = searchParams.get("to");
   const cabinet = searchParams.get("cabinet");
   const dryRun = searchParams.get("dryRun") === "1";
+  const repair = searchParams.get("repair") === "1";
   if (cabinet && !(await hasCabinetAccess(cabinet))) {
     return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
   }
@@ -51,6 +52,7 @@ async function handlePost(request: NextRequest) {
   if (to && (job === "sales" || job === "orders")) params.set("to", to);
   if (cabinet && ["sales", "orders", "stocks", "adverts", "advert-stats", "funnel", "feedbacks", "commissions"].includes(job)) params.set("cabinet", cabinet);
   if (dryRun && job === "balance-monthly-stock") params.set("dryRun", "1");
+  if (repair && job === "balance-monthly-stock") params.set("repair", "1");
   const qs = params.toString() ? `?${params.toString()}` : "";
 
   try {

@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     const baseError = mappingsResult.error ?? statementsResult.error ?? snapshotsResult.error;
     if (baseError) {
       const missing = /balance_marketplace_cash_snapshots.*(?:does not exist|schema cache)|could not find.*balance_marketplace_cash_snapshots|calculation_(?:method|details).*(?:does not exist|schema cache|could not find)/i.test(baseError.message);
-      return NextResponse.json({ error: missing ? "Примените миграцию денежных снимков Баланса" : baseError.message }, { status: missing ? 503 : 500 });
+      return NextResponse.json({ error: missing ? "Примените миграции 202609240001_balance_cash_snapshots.sql и 202609270001_balance_scoped_marketplace_cash.sql" : baseError.message }, { status: missing ? 503 : 500 });
     }
 
     const statements = (statementsResult.data ?? []) as StatementRow[];
