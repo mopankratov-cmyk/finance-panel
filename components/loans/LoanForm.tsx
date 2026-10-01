@@ -9,7 +9,7 @@ import type { LoanCurrency, RecognizedLoan } from "./loanRecognition";
 import type { LoanDisbursement } from "./loanInterest";
 import { roundLoanMoney } from "@/lib/opiu/loanCurrency";
 import { formatRub } from "@/lib/analytics/format";
-import { emptyScheduleRow, normalizeScheduleMoney, type LoanScheduleDraft } from "@/lib/loans/schedule";
+import { emptyScheduleRow, normalizeScheduleMoney, recognizedSchedule, type LoanScheduleDraft } from "@/lib/loans/schedule";
 import type { LoanCorrectionsOutcome, LoanRecognitionOutcome } from "@/lib/loans/recognizeLoan";
 import { needsDirectUpload, uploadViaStorage } from "@/components/payments/uploadViaStorage";
 import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
@@ -222,7 +222,9 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
       // где multipart-запрос иногда обрывается до запуска функции.
       if (editing && file && /\.xlsx$/i.test(file.name)) {
         const spreadsheet = recognizeLoanSpreadsheet(await readFirstSheetXlsx(file));
-        const imported = (spreadsheet.schedule ?? []).map(normalizeScheduleMoney);
+        // Строки таблицы — сырые (без id и статуса, суммы в валюте договора):
+        // переводим их в строки графика тем же путём, что и сервер.
+        const imported = recognizedSchedule(spreadsheet.schedule, exchangeRate || 1).map(normalizeScheduleMoney);
         const replacement = replaceScheduleFromImportedDate(schedule, imported);
         if (!replacement.from) throw new Error("В файле не найдены строки графика с датами.");
         setSchedule(replacement.schedule);
