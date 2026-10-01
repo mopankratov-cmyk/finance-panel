@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import type { FinancialIntelligenceResult } from "@/lib/opiu/financialIntelligence";
+import { readApiResponse } from "@/lib/http/readApiResponse";
 import { displayPaymentComment, getPaymentPriority } from "./paymentPriority";
 
 export function FinancialAlertsPanel({
@@ -27,6 +28,16 @@ export function FinancialAlertsPanel({
   const [dates, setDates] = useState<Record<string, string>>({});
   const [busyPaymentId, setBusyPaymentId] = useState<string | null>(null);
   const [rescheduleError, setRescheduleError] = useState("");
+  const dataRevision = useMemo(() => {
+    let hash = 0;
+    for (const value of [
+      ...accounts.map((account) => `${account.id}|${account.balance}`),
+      ...payments.map((payment) => `${payment.id}|${payment.date}|${payment.amount}|${payment.status}|${payment.category}|${payment.accountId}`),
+    ]) {
+      for (let index = 0; index < value.length; index += 1) hash = Math.imul(31, hash) + value.charCodeAt(index) | 0;
+    }
+    return `${accounts.length}-${payments.length}-${hash}`;
+  }, [accounts, payments]);
   const accountNames = useMemo(() => new Map(accounts.map((account) => [account.id, account.name])), [accounts]);
   const overdueCritical = useMemo(
     () => payments
@@ -38,19 +49,15 @@ export function FinancialAlertsPanel({
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch("/api/opiu/intelligence", {
+      const response = await fetch(`/api/opiu/intelligence?today=${encodeURIComponent(today)}&revision=${encodeURIComponent(dataRevision)}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts, payments }),
       });
-      const body = await response.json() as FinancialIntelligenceResult & { error?: string };
+      const body = await readApiResponse<FinancialIntelligenceResult & { error?: string }>(response, "Финансовый контроль");
       if (!response.ok) throw new Error(body.error ?? "Не удалось провести анализ");
       setResult(body);
       setError("");
       const syncResponse = await fetch("/api/opiu/sync", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ accounts, payments }),
       });
       setServerSynced(syncResponse.ok);
     } catch (requestError) {
@@ -58,7 +65,7 @@ export function FinancialAlertsPanel({
     } finally {
       setLoading(false);
     }
-  }, [accounts, payments]);
+  }, [dataRevision, today]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void refresh(); }, 0);
