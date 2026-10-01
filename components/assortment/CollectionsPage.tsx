@@ -9,7 +9,8 @@ import { COLLECTION_STATUS_LABEL, monthPeriod, periodLabel, seasonOptions, type 
 import type { CollectionSummary } from "@/lib/assortment/collectionsStore";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
 
-type State = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; collections: CollectionSummary[] };
+type Learning = Record<AssortmentDirection, { stats: Array<{ reason: string; label: string; count: number }>; highlights: string[] }>;
+type State = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; collections: CollectionSummary[]; learning: Learning | null };
 
 const day = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" });
 
@@ -27,7 +28,7 @@ export function CollectionsPage() {
         const body = await response.json().catch(() => ({}));
         if (cancelled) return;
         if (!response.ok) setState({ kind: "error", message: body?.error || `Подборки не загрузились (${response.status})` });
-        else setState({ kind: "ready", collections: body.collections ?? [] });
+        else setState({ kind: "ready", collections: body.collections ?? [], learning: body.learning ?? null });
       })
       .catch(() => {
         if (!cancelled) setState({ kind: "error", message: "Нет связи с сервером" });
@@ -92,6 +93,22 @@ export function CollectionsPage() {
             ))}
           </ul>
         )}
+        {state.kind === "ready" && state.learning && (["bags", "jackets"] as const).some((d) => state.learning?.[d].stats.length) && (
+          <section className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <h2 className="text-base font-semibold text-slate-900">Чему учимся на отказах</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              {(["bags", "jackets"] as const).filter((d) => state.learning?.[d].stats.length).map((d) => (
+                <div key={d} className="flex flex-col gap-1.5 text-sm">
+                  <div className="font-medium text-slate-800">{DIRECTION_LABEL[d]}</div>
+                  <div className="text-slate-600">{state.learning?.[d].stats.map((s) => `${s.label.toLowerCase()} — ${s.count}`).join(" · ")}</div>
+                  {state.learning?.[d].highlights.map((line) => <div key={line} className="text-xs text-slate-500">{line}</div>)}
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-slate-500">Отказы и замены за полгода. Похожее на отклонённое не прячем, а опускаем среди кандидатов и подписываем почему.</p>
+          </section>
+        )}
+
         {archived > 0 && (
           <button type="button" onClick={() => setShowArchived((v) => !v)} className="h-10 self-start rounded-lg px-2 text-sm text-violet-700 hover:text-violet-900">
             {showArchived ? "Скрыть архив" : `Показать архив (${archived})`}

@@ -6,6 +6,8 @@ import { cleanResponsible, isCollectionKind } from "@/lib/assortment/collections
 import { collectionFailure } from "@/lib/assortment/collectionsApi";
 import { createCollection, listCollections } from "@/lib/assortment/collectionsStore";
 import { ASSORTMENT_ROLES, parseDirection } from "@/lib/assortment/constants";
+import { lessonHighlights } from "@/lib/assortment/learning";
+import { loadLearning } from "@/lib/assortment/learningStore";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +19,11 @@ export async function GET() {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   try {
-    return NextResponse.json({ collections: await listCollections(db) });
+    const [collections, bags, jackets] = await Promise.all([listCollections(db), loadLearning(db, "bags"), loadLearning(db, "jackets")]);
+    const learning = Object.fromEntries(
+      ([["bags", bags], ["jackets", jackets]] as const).map(([direction, ctx]) => [direction, { stats: ctx.stats, highlights: lessonHighlights(ctx.lessons) }]),
+    );
+    return NextResponse.json({ collections, learning });
   } catch (error) {
     return collectionFailure(error);
   }

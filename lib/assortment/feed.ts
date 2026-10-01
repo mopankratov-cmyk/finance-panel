@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssortmentDirection } from "./constants";
 import { isReferenceStatus, STATUS_LABEL } from "./decisions";
+import { formatValue, type Attributes } from "./attributes";
+import { lessonFor } from "./learning";
+import { loadLearning } from "./learningStore";
 import { cardSignal, type CardSignal, type ObservationLite } from "./signals";
 import { signedUrls } from "./storage";
 
@@ -19,6 +22,7 @@ export interface FeedCard {
   coverUrl: string | null;
   colors: number;
   signal: CardSignal;
+  lesson: string | null;
 }
 
 type Observation = ObservationLite & { reference_id: string; method: string };
@@ -41,7 +45,7 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
   if (rows.length === 0) return [];
   const ids = rows.map((r) => String(r.id));
 
-  const [{ data: observations }, { data: media }] = await Promise.all([
+  const [{ data: observations }, { data: media }, learning] = await Promise.all([
     db.from("assortment_observations")
       .select("reference_id,group_kind,metric,value_text,value_num,null_reason,status,method,observed_at")
       .in("reference_id", ids),
@@ -49,6 +53,7 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
       .select("reference_id,storage_path,position")
       .in("reference_id", ids)
       .order("position", { ascending: true }),
+    view === "hidden" ? Promise.resolve(null) : loadLearning(db, direction),
   ]);
 
   const byRef = new Map<string, Observation[]>();
@@ -67,7 +72,7 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
   const cards = rows.map((row): FeedCard => {
     const id = String(row.id);
     const obs = byRef.get(id) ?? [];
-    const attributes = (row.attributes ?? {}) as Record<string, { value?: unknown }>;
+    const attributes = (row.attributes ?? {}) as Attributes;
     const colors = Array.isArray(attributes.colors?.value) ? attributes.colors.value.length : 0;
     const manual = obs.some((o) => o.metric === "first_seen" && o.method === "import_manual") || !row.source_id;
     const path = cover.get(id);
@@ -84,6 +89,15 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
       coverUrl: path ? urls.get(path) ?? null : null,
       colors,
       signal: cardSignal(obs, { manual, colors }),
+      lesson: learning
+        ? lessonFor({
+          referenceId: id,
+          direction,
+          brand: row.brand ? String(row.brand) : null,
+          title: row.title ? String(row.title) : null,
+          attributes: Object.fromEntries(Object.entries(attributes).map(([key, entry]) => [key, formatValue(entry)])),
+        }, learning.lessons, learning.ownIds)?.note ?? null
+        : null,
     };
   });
   const filtered = view === "retail" ? cards.filter((c) => c.signal.tone === "retail") : cards;

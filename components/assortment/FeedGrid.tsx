@@ -79,6 +79,7 @@ export function FeedGrid({
                 {card.status !== "new" && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-700">{card.statusLabel}</span>}
               </div>
               <p className="text-xs leading-5 text-slate-700"><span className="text-slate-500">Почему показали: </span>{card.signal.why}</p>
+              {card.lesson && <p className="rounded-lg bg-amber-50 px-2 py-1.5 text-xs leading-5 text-amber-900">{card.lesson}</p>}
               <div className="mt-auto flex flex-wrap gap-2 pt-1">
                 {card.url && (
                   <a href={card.url} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-700 hover:bg-slate-50">

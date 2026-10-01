@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, FileText, ImageOff, LoaderCircle, Plus } from "lucide-react";
+import { AlertTriangle, ArrowLeft, FileText, ImageOff, LoaderCircle, Plus, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import {
@@ -14,7 +14,7 @@ import {
   REPLACE_REASONS,
   type ReplaceReason,
 } from "@/lib/assortment/collections";
-import type { CandidateCard, CollectionDetail, CollectionItemView } from "@/lib/assortment/collectionsStore";
+import type { CandidateCard, CollectionDetail, CollectionItemView, DraftView } from "@/lib/assortment/collectionsStore";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL } from "@/lib/assortment/constants";
 import { STATUS_LABEL } from "@/lib/assortment/decisions";
 
@@ -35,6 +35,7 @@ export function CollectionEditor({ id }: { id: string }) {
   const [picking, setPicking] = useState<{ asReserve: boolean; slot: number | null } | null>(null);
   const [editing, setEditing] = useState<CollectionItemView | null>(null);
   const [removing, setRemoving] = useState<{ item: CollectionItemView; replace: boolean } | null>(null);
+  const [drafting, setDrafting] = useState(false);
   const base = `/api/assortment-development/collections/${id}`;
 
   const load = useCallback(async () => {
@@ -85,6 +86,7 @@ export function CollectionEditor({ id }: { id: string }) {
   const reserves = c.items.filter((i) => i.isReserve);
   const latest = c.versions[0];
   const canAddReserve = isBags && reserves.length < MAX_RESERVES;
+  const canDraft = isBags && !archived && (main.length < BAGS_MAIN_SLOTS || canAddReserve);
 
   const itemActions = {
     edit: (item: CollectionItemView) => setEditing(item),
@@ -110,6 +112,16 @@ export function CollectionEditor({ id }: { id: string }) {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canDraft && (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => setDrafting(true)}
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-4 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-60"
+              >
+                <Sparkles className="h-4 w-4" /> Собрать черновик
+              </button>
+            )}
             {!archived && c.items.length > 0 && (
               <button
                 type="button"
@@ -245,6 +257,23 @@ export function CollectionEditor({ id }: { id: string }) {
             if (ok) setPicking(null);
           }}
           busy={busy}
+        />
+      )}
+      {drafting && (
+        <DraftModal
+          collectionId={c.id}
+          busy={busy === "draft"}
+          onClose={() => setDrafting(false)}
+          onApply={async (picks) => {
+            const ok = await run("draft", async () => {
+              let latest: CollectionDetail | null = null;
+              for (const pick of picks) {
+                latest = await call(base, { method: "POST", body: JSON.stringify({ referenceId: pick.id, asReserve: pick.place === "reserve" }) });
+              }
+              return latest ?? (await call(base));
+            });
+            if (ok) setDrafting(false);
+          }}
         />
       )}
       {editing && (
@@ -426,6 +455,7 @@ function CandidatePicker({
                 <div className="text-xs text-slate-500">{candidate.brand}{candidate.status !== "new" && ` · ${STATUS_LABEL[candidate.status]}`}</div>
                 <div className="text-xs text-slate-600">{candidate.signal.label}</div>
                 {candidate.duplicateOf && <div className="text-xs text-amber-800">Та же конструкция, что «{candidate.duplicateOf}»</div>}
+                {candidate.lesson && <div className="text-xs text-amber-800">{candidate.lesson}</div>}
                 <button
                   type="button"
                   disabled={busy !== null}
@@ -439,6 +469,96 @@ function CandidatePicker({
             </li>
           ))}
         </ul>
+      )}
+    </Modal>
+  );
+}
+
+function DraftModal({
+  collectionId,
+  busy,
+  onClose,
+  onApply,
+}: {
+  collectionId: string;
+  busy: boolean;
+  onClose: () => void;
+  onApply: (picks: DraftView["picks"]) => void;
+}) {
+  const [state, setState] = useState<{ kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; draft: DraftView }>({ kind: "loading" });
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/assortment-development/collections/${collectionId}/draft`)
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) setState({ kind: "error", message: body?.error || `Черновик не собрался (${response.status})` });
+        else {
+          setState({ kind: "ready", draft: body.draft });
+          setChosen(new Set((body.draft as DraftView).picks.map((p) => p.id)));
+        }
+      })
+      .catch(() => !cancelled && setState({ kind: "error", message: "Нет связи с сервером" }));
+    return () => {
+      cancelled = true;
+    };
+  }, [collectionId]);
+
+  const picks = state.kind === "ready" ? state.draft.picks.filter((p) => chosen.has(p.id)) : [];
+  const footer = (
+    <div className="flex justify-end gap-2">
+      <button type="button" onClick={onClose} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-800">Отмена</button>
+      {picks.length > 0 && (
+        <button type="button" onClick={() => onApply(picks)} disabled={busy} className="inline-flex h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-medium text-white disabled:opacity-60">
+          {busy && <LoaderCircle className="h-4 w-4 animate-spin" />} Добавить выбранные ({picks.length})
+        </button>
+      )}
+    </div>
+  );
+
+  return (
+    <Modal open onClose={onClose} title="Черновик плана" footer={footer} size="lg">
+      {state.kind === "loading" && <div className="text-sm text-slate-500">Подбираем разные конструкции…</div>}
+      {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
+      {state.kind === "ready" && (
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-slate-700">{state.draft.summary}</p>
+          <p className="text-xs text-slate-500">Это предложение: в подборку попадёт только то, что вы отметите.</p>
+          {state.draft.picks.length > 0 && (
+            <ul className="flex flex-col divide-y divide-slate-100 rounded-xl border border-slate-200">
+              {state.draft.picks.map((pick) => {
+                const card = state.draft.cards[pick.id];
+                return (
+                  <li key={pick.id}>
+                    <label className="flex cursor-pointer items-center gap-3 px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        checked={chosen.has(pick.id)}
+                        onChange={() => setChosen((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(pick.id)) next.delete(pick.id);
+                          else next.add(pick.id);
+                          return next;
+                        })}
+                        className="h-4 w-4 shrink-0 accent-violet-700"
+                      />
+                      <div className="h-14 w-11 shrink-0 overflow-hidden rounded-md bg-[#ece9e3]">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        {card?.coverUrl && <img src={card.coverUrl} alt="" className="h-full w-full object-cover" />}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-slate-900">{card?.title ?? pick.id}</div>
+                        <div className="text-xs text-slate-500">{card?.brand} · {pick.place === "main" ? "в основные" : "в резерв"} · {card?.signal.label}</div>
+                        <div className={`text-xs ${pick.why.startsWith("взята за неимением") ? "text-amber-800" : "text-slate-500"}`}>{pick.why}</div>
+                      </div>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       )}
     </Modal>
   );

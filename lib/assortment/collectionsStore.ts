@@ -22,6 +22,8 @@ import type { AssortmentDirection } from "./constants";
 import { isReferenceStatus, type ReferenceStatus } from "./decisions";
 import { isMissingColumnError } from "./errors";
 import { buildEvidence, type EvidenceObservation } from "./evidence";
+import { assembleDraft, lessonFor, type DraftResult } from "./learning";
+import { loadLearning } from "./learningStore";
 import { cardSignal, type CardSignal } from "./signals";
 import { signedUrls } from "./storage";
 
@@ -495,6 +497,8 @@ export interface CandidateCard {
   coverUrl: string | null;
   signal: CardSignal;
   duplicateOf: string | null;
+  lesson: string | null;
+  attributes: Record<string, string | null>;
   score: number;
 }
 
@@ -517,7 +521,7 @@ export async function loadCandidates(db: SupabaseClient, collectionId: string): 
   if (error) throw new Error(error.message);
   const refs = (data ?? []).filter((r) => !inside.has(String(r.id)));
   const ids = refs.map((r) => String(r.id));
-  const [photos, evidence] = await Promise.all([covers(db, ids), evidenceFor(db, ids)]);
+  const [photos, evidence, learning] = await Promise.all([covers(db, ids), evidenceFor(db, ids), loadLearning(db, collection.direction)]);
   return refs.map((r) => {
     const id = String(r.id);
     const obs = evidence.get(id) ?? [];
@@ -527,7 +531,36 @@ export async function loadCandidates(db: SupabaseClient, collectionId: string): 
     const signal = cardSignal(obs, { manual, colors });
     const status = isReferenceStatus(r.status) ? r.status : "new";
     const duplicate = sameConstruction(lites, { brand: r.brand ?? null, title: r.title ?? null, referenceId: id });
-    const score = TONE_SCORE[signal.tone] + (STATUS_SCORE[status] ?? 0) - (duplicate ? 5 : 0);
-    return { id, title: String(r.title ?? ""), brand: r.brand ? String(r.brand) : null, status, coverUrl: photos.get(id)?.[0] ?? null, signal, duplicateOf: duplicate?.title ?? null, score };
+    const plain = attributeMap(attributes);
+    const lesson = lessonFor({ referenceId: id, direction: collection.direction, brand: r.brand ?? null, title: r.title ?? null, attributes: plain }, learning.lessons, learning.ownIds);
+    const score = TONE_SCORE[signal.tone] + (STATUS_SCORE[status] ?? 0) - (duplicate ? 5 : 0) - (lesson?.penalty ?? 0);
+    return {
+      id,
+      title: String(r.title ?? ""),
+      brand: r.brand ? String(r.brand) : null,
+      status,
+      coverUrl: photos.get(id)?.[0] ?? null,
+      signal,
+      duplicateOf: duplicate?.title ?? null,
+      lesson: lesson?.note ?? null,
+      attributes: plain,
+      score,
+    };
   }).sort((a, b) => b.score - a.score);
+}
+
+export interface DraftView extends DraftResult {
+  cards: Record<string, CandidateCard>;
+}
+
+/** Черновик плана сумок: предложение, а не решение — добавляет человек. */
+export async function suggestDraft(db: SupabaseClient, collectionId: string): Promise<DraftView> {
+  const collection = await readCollectionRow(db, collectionId);
+  if (collection.kind !== "bags_month") throw new CollectionInputError("Черновик собирается только для плана сумок.");
+  const { rows: items } = await readItems(db, [collectionId]);
+  const progress = planProgress(collection.kind, items.map((i) => lite(i, undefined)));
+  const candidates = await loadCandidates(db, collectionId);
+  const result = assembleDraft(candidates, progress.freeSlots.length, Math.max(0, 3 - progress.reserves));
+  const picked = new Set(result.picks.map((p) => p.id));
+  return { ...result, cards: Object.fromEntries(candidates.filter((c) => picked.has(c.id)).map((c) => [c.id, c])) };
 }
