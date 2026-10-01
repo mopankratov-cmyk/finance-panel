@@ -467,7 +467,7 @@ export function LoansPage() {
   }, [reconcileWithWb, wbLinkLoanIds]);
 
   const allocateWbContract = useCallback(async (contractNumber: string) => {
-    if (!window.confirm(`Распределить удержания WB по договору № ${contractNumber}?\n\nСистема закроет только полностью покрытые старые строки того же вида платежа в хронологическом порядке. Непоместившийся остаток не будет списан наугад.`)) return;
+    if (!window.confirm(`Распределить удержания WB по договору № ${contractNumber}?\n\nСистема закроет только полностью покрытые старые строки того же вида платежа в хронологическом порядке. Пени, которых нет в графике, будут добавлены отдельными оплаченными строками датой удержания. Непоместившийся остаток не будет списан наугад.`)) return;
     setWbAllocatingContract(contractNumber);
     try {
       const response = await fetch("/api/finance/loans/marketplace-facts", {
