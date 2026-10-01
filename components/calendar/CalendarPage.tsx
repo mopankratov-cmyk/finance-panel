@@ -19,7 +19,7 @@ import { ReplaceCalendarModal } from "./ReplaceCalendarModal";
 import { importedMonths, matchesReplaceScope, plannedPaymentsToReplace } from "./calendarReplace";
 import { OverdueLoanQueue } from "./OverdueLoanQueue";
 import { WeekSummaryCell } from "./WeekSummaryCell";
-import { chronologicalPaymentOrder, displayPaymentComment, getPaymentPriority, PRIORITY_META, type PaymentPriority, type PaymentPriorityScope } from "./paymentPriority";
+import { chronologicalPaymentOrder, displayPaymentComment, getPaymentPriority, plannedExpensePrioritySummary, PRIORITY_META, type PaymentPriorityScope } from "./paymentPriority";
 import { loanScheduleKey, overdueLoanInstallmentsForReview, rescheduleLoanInstallment, rescheduleOverdueLoanInstallment, type OverdueLoanInstallment } from "./loanPaymentReschedule";
 import { useDailyLoanCurrencyRefresh } from "@/components/loans/currencyRefresh";
 import { loadLoanScheduleRows } from "@/components/loans/scheduleStore";
@@ -542,15 +542,10 @@ export function CalendarPage() {
     () => visibleCalendarPayments.filter((payment) => payment.status !== "cancelled").sort(chronologicalPaymentOrder).slice(0, 50),
     [visibleCalendarPayments],
   );
-  const prioritySummary = useMemo(() => (["A", "B", "C"] as PaymentPriority[]).map((priority) => {
-    const payments = allVisibleCalendarPayments.filter((payment) => payment.status !== "cancelled" && getPaymentPriority(payment) === priority);
-    return {
-      priority,
-      count: payments.length,
-      plannedExpense: payments.filter((payment) => payment.status === "planned" && payment.amount < 0).reduce((sum, payment) => sum - payment.amount, 0),
-      overdue: payments.filter((payment) => payment.status === "planned" && payment.amount < 0 && payment.date < today).length,
-    };
-  }), [allVisibleCalendarPayments, today]);
+  const prioritySummary = useMemo(
+    () => plannedExpensePrioritySummary(allVisibleCalendarPayments, today),
+    [allVisibleCalendarPayments, today],
+  );
 
   const dailyMap = useMemo(
     () => getDailyBalancesForMonth(year, month, state.accounts, state.payments, visibleCalendarPayments),
