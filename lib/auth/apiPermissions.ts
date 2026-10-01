@@ -209,6 +209,11 @@ const RULES: readonly ApiRule[] = [
   ["/api/agent", REFRESH],
   ["/api/agent/", REFRESH],
   ["/api/market/", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
+  // «Разработка ассортимента»: закупщику нужно работать с подборками, а права
+  // catalog.edit у него нет, поэтому запись тоже на analytics.view. Круг ролей
+  // держит каждый роут модуля (ASSORTMENT_ROLES в lib/assortment/constants.ts):
+  // внешние роли с analytics.view туда не проходят.
+  ["/api/assortment-development/", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
   ["/api/operational-health", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
   ["/api/rnp/", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
   ["/api/shops", { read: READ_ANALYTICS, write: READ_ANALYTICS }],

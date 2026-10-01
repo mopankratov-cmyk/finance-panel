@@ -43,6 +43,8 @@ import {
   Wallet,
   X,
   ScrollText,
+  Shirt,
+  ShoppingBag,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -114,6 +116,16 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/warehouse", label: "Склад", icon: Boxes },
       { href: "/costs", label: "Себестоимость", icon: Coins },
       { href: "/wb/funnel?view=repricer", label: "Цена и маржа", icon: Tag },
+    ],
+  },
+  {
+    // Модуль «Разработка ассортимента» (ТЗ v3.0, docs/tz/assortment-development-tz-v3.md):
+    // ровно два раздела. Кому виден — решает allowedNav по roles.ts.
+    id: "assortment",
+    label: "Разработка ассортимента",
+    items: [
+      { href: "/assortment-development/jackets", label: "Куртки", icon: Shirt },
+      { href: "/assortment-development/bags", label: "Сумки", icon: ShoppingBag },
     ],
   },
   {
