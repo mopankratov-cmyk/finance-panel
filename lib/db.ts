@@ -12,12 +12,10 @@ export async function loadFinanceState(): Promise<FinanceState> {
 
 export async function persistFinanceAction(
   action: FinanceAction,
-  prevState: FinanceState,
-  nextState: FinanceState,
 ): Promise<void> {
   await fetch("/api/finance/state", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, prevState, nextState }),
+    body: JSON.stringify({ action }),
   }).then(apiJson<{ ok: boolean }>);
 }

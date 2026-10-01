@@ -201,9 +201,6 @@ async function loadBankAllocationReadModel(db: Db): Promise<BankAllocationReadRo
 
 export async function persistFinanceActionServer(
   action: FinanceAction,
-  // Снимки состояния больше не нужны (их читала мёртвая ветка MARK_PAYMENT_DONE); клиент их всё ещё шлёт.
-  _prevState: FinanceState,
-  _nextState: FinanceState,
 ) {
   const db = requireDb();
   let result: { error: { message: string; code?: string } | null } | null = null;

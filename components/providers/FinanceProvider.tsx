@@ -164,7 +164,7 @@ export function FinanceProvider({ children }: { children: ReactNode }) {
       // Интерфейс применяет изменение сразу; если база его не приняла, человек
       // должен это увидеть, а не узнать после перезагрузки. Раньше ошибка уходила
       // только в консоль.
-      void persistFinanceAction(action, prevState, nextState).catch((error) => {
+      void persistFinanceAction(action).catch((error) => {
         console.error("Failed to persist finance action:", action.type, error);
         const reason = error instanceof Error ? error.message : "неизвестная ошибка";
         setPersistError(`Не сохранилось: ${ACTION_LABELS[action.type]} — ${reason}. На экране есть изменения, которых нет в базе: обновите страницу и повторите.`);

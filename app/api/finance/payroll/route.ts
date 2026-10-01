@@ -103,7 +103,7 @@ async function persistFinanceActions(actions: FinanceAction[]): Promise<FinanceS
   for (const action of actions) {
     const nextState = financeReducer(state, action);
     try {
-      await persistFinanceActionServer(action, state, nextState);
+      await persistFinanceActionServer(action);
     } catch (error) {
       // Id платежа теперь детерминированный (deterministicPaymentId): повтор
       // save_period, запущенный, пока предыдущий запрос ещё дописывает эту же
@@ -418,7 +418,7 @@ async function handlePayroll(request: NextRequest) {
       const fact = financeState.payments.find((payment) => payment.id === paymentId);
       if (!fact) throw new Error("Факт ДДС не найден в основном реестре");
       const action: FinanceAction = { type: "UPDATE_PAYMENT", payload: { ...fact, comment: appendPayrollFactMarker(fact.comment, paymentId) } };
-      await persistFinanceActionServer(action, financeState, financeReducer(financeState, action));
+      await persistFinanceActionServer(action);
     } catch (error) {
       await db.from("payroll_payment_allocations").delete().eq("id", result.data.id);
       throw error;
@@ -440,7 +440,7 @@ async function handlePayroll(request: NextRequest) {
       const fact = financeState.payments.find((payment) => payment.id === paymentId);
       if (!fact) return NextResponse.json({ error: "Факт ДДС не найден в основном реестре" }, { status: 404 });
       const financeAction: FinanceAction = { type: "UPDATE_PAYMENT", payload: { ...fact, comment: removePayrollFactMarker(fact.comment, paymentId) } };
-      await persistFinanceActionServer(financeAction, financeState, financeReducer(financeState, financeAction));
+      await persistFinanceActionServer(financeAction);
     }
 
     const deleteResult = await db.from("payroll_payment_allocations").delete().eq("id", allocationId);
