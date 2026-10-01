@@ -11,6 +11,7 @@ import { GROUP_LABEL, ruDate, type EvidenceGroup } from "@/lib/assortment/eviden
 import type { ModelDetail } from "@/lib/assortment/model";
 import { AddToCollectionModal } from "./AddToCollectionModal";
 import type { SignalTone } from "@/lib/assortment/signals";
+import { sampleLinks } from "@/lib/assortment/whereToBuy";
 import { PHOTO_ACCEPT, pickPhotos, uploadPhoto } from "./uploadPhoto";
 
 const TONE: Record<SignalTone, string> = {
@@ -231,6 +232,21 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
               <dt className="text-slate-500">Впервые у нас</dt><dd className="text-slate-900">{ruDate(model.firstSeenAt)}</dd>
               <dt className="text-slate-500">Последнее подтверждение</dt><dd className="text-slate-900">{ruDate(model.lastSeenAt)}</dd>
             </dl>
+
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Где купить образец</div>
+              <ul className="flex flex-col gap-1.5 text-sm">
+                {sampleLinks(model).map((link) => (
+                  <li key={link.label} className="flex flex-wrap items-baseline gap-x-2">
+                    <a href={link.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 font-medium text-violet-700 hover:text-violet-900">
+                      {link.label} <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <span className="text-xs text-slate-500">{link.note}</span>
+                  </li>
+                ))}
+              </ul>
+              <p className="text-xs text-slate-500">Поиск по названию модели. Наличие, доставку в РФ и цену смотрите на сайте — модуль цены не читает.</p>
+            </div>
           </div>
         </section>
 

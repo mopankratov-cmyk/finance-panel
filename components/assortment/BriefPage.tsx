@@ -7,6 +7,7 @@ import { periodLabel } from "@/lib/assortment/collections";
 import type { BriefView } from "@/lib/assortment/collectionsStore";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL } from "@/lib/assortment/constants";
 import { ruDate } from "@/lib/assortment/evidence";
+import { sampleLinks } from "@/lib/assortment/whereToBuy";
 
 type State = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; brief: BriefView };
 
@@ -117,6 +118,12 @@ export function BriefPage({ id, version }: { id: string; version: number | null 
                   <dd className="text-slate-600">{item.missing.length > 0 ? item.missing.join("; ") : "—"}</dd>
                   <dt className="text-slate-500">Следующий шаг</dt>
                   <dd className="font-medium">{item.nextStep || "не указан"}</dd>
+                  <dt className="text-slate-500">Где купить образец</dt>
+                  <dd className="flex flex-wrap gap-x-3 gap-y-1">
+                    {sampleLinks({ brand: item.brand, title: item.title, article: item.article, url: item.sourceUrl }).map((link) => (
+                      <a key={link.label} href={link.url} target="_blank" rel="noopener noreferrer" className="text-violet-700">{link.label}</a>
+                    ))}
+                  </dd>
                 </dl>
               </section>
             );
