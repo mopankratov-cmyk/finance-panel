@@ -50,6 +50,8 @@ export function ImportDdsModal({
     companiesAssigned: number;
     duplicatesSkipped: number;
     suspectedSkipped: number;
+    linkedTransfers: number;
+    linkWarning: string | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [companyMode, setCompanyMode] = useState("");
@@ -204,7 +206,9 @@ export function ImportDdsModal({
             {done.companiesAssigned > 0 && <> Компания назначена существующим платежам: <b>{done.companiesAssigned}</b>.</>}
             {done.duplicatesSkipped > 0 && <> Точных дублей пропущено: <b>{done.duplicatesSkipped}</b>.</>}
             {done.suspectedSkipped > 0 && <> Под вопросом пропущено: <b>{done.suspectedSkipped}</b>.</>}
+            {done.linkedTransfers > 0 && <> Автоматически связано пар переводов: <b>{done.linkedTransfers}</b>.</>}
           </div>
+          {done.linkWarning && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">{done.linkWarning}</div>}
           <p className="text-slate-500">Обновите страницу, чтобы данные подгрузились в реестр и свод.</p>
           <button
             onClick={() => window.location.reload()}
