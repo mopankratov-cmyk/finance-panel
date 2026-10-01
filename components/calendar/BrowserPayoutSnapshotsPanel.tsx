@@ -3,6 +3,7 @@
 import { Loader2, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import { formatMoney } from "@/lib/format";
+import { collectorFreshness, PAYOUT_STALL_HOURS } from "@/lib/collectorFreshness";
 import type { BrowserPayoutMarketplace, BrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
 
 export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, month, onChange }: {
@@ -18,6 +19,23 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
   // о непроверенном, а тут это читается как «выплат нет».
   const [checked, setChecked] = useState(false);
   const [error, setError] = useState("");
+  // Когда агент последний раз присылал снимки — грузится сразу и отдельно от
+  // самих снимков: они меняют предложения календаря только по кнопке.
+  const [lastCapturedAt, setLastCapturedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLastCapturedAt(null);
+    if (!cabinetId) return;
+    const controller = new AbortController();
+    const query = new URLSearchParams({ freshness: "1", marketplace, cabinet: cabinetId });
+    fetch(`/api/opiu/browser-payout-snapshots?${query}`, { cache: "no-store", signal: controller.signal })
+      .then((response) => response.ok ? response.json() as Promise<{ lastCapturedAt?: string | null }> : null)
+      .then((result) => setLastCapturedAt(result?.lastCapturedAt ?? null))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [cabinetId, marketplace]);
+  const agent = collectorFreshness(lastCapturedAt, PAYOUT_STALL_HOURS);
+  const agentAt = agent.lastAt ? new Date(agent.lastAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : null;
 
   useEffect(() => {
     setRows([]);
@@ -31,6 +49,7 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
       <div>
         <h3 className="font-semibold text-indigo-950">Выплаты из кабинета {marketplace === "wb" ? "WB" : "Ozon"}</h3>
         <p className="mt-1 text-xs text-indigo-800">Снимки собирает отдельный видимый браузер на Mac mini. Они не меняют календарь без вашего подтверждения.</p>
+        {agentAt && !agent.stalled ? <p className="mt-1 text-xs text-indigo-700">Последний снимок агента: {agentAt} МСК ({agent.label}).</p> : null}
       </div>
       <button type="button" disabled={loading || !cabinetId} onClick={async () => {
         setLoading(true);
@@ -65,6 +84,7 @@ export function BrowserPayoutSnapshotsPanel({ marketplace, cabinetId, year, mont
     }} className="tap mt-3 rounded-lg border border-rose-300 bg-white px-3 text-sm font-medium text-rose-700 disabled:opacity-50">
       Удалить снимки этого кабинета за месяц
     </button>}
+    {agentAt && agent.stalled ? <p role="alert" className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"><b>Агент не присылал снимки больше суток:</b> последний {agentAt} МСК ({agent.label}). Проверьте Mac mini: машина в сети, выход за границу (VPN) жив, вход в кабинет не истёк.</p> : null}
     {error && <p role="alert" className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
     {!error && checked && rows.length === 0 && <p className="mt-3 text-sm text-indigo-900">Снимков пока нет. Это нормально до первого успешного запуска агента.</p>}
     {!error && !checked && <p className="mt-3 text-sm text-indigo-900">Нажмите «Проверить кабинетные выплаты», чтобы посмотреть снимки агента.</p>}

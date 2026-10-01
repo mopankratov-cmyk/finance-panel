@@ -15,6 +15,7 @@ import { WbProductImage } from "./WbProductImage";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
+import { collectorFreshness, latestIso, SHELF_STALL_HOURS } from "@/lib/collectorFreshness";
 
 interface WatchView {
   id: string;
@@ -514,6 +515,13 @@ export function WbShelfPage() {
   useEffect(() => setActiveTagIds([]), [cabinetId]);
   // Ярлык на модели = все её цвета одной группой: фильтр сужает и список,
   // и сводку над ним — карточки сводки честны к выбранному ярлыку.
+  // Сборщик живёт на Mac mini и об отказах пишет только в свой лог: десять дней
+  // простоя 21.09–01.10.2026 в панели не было видно. Возраст у каждой карточки
+  // есть, но общий застой должен бросаться в глаза сразу.
+  const shelfFreshness = useMemo(
+    () => collectorFreshness(latestIso(items.filter((item) => item.watch.active).map((item) => item.latest?.collectedAt)), SHELF_STALL_HOURS),
+    [items],
+  );
   const taggedItems = useMemo(
     () => items.filter((item) => nmMatchesTags(tagIdsByNm, item.watch.nmId, activeTagIds)),
     [activeTagIds, items, tagIdsByNm],
@@ -655,6 +663,11 @@ export function WbShelfPage() {
           </WbEmptyState>
         ) : (
           <div className="space-y-2">
+            {shelfFreshness.stalled && shelfFreshness.lastAt ? (
+              <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800">
+                <b>Сбор полок встал:</b> последний снимок {new Date(shelfFreshness.lastAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} МСК ({shelfFreshness.label}). Снимки делает сборщик на Mac mini — проверьте, что машина в сети и у неё работает выход за границу (VPN): без него панель на vercel.app из РФ недоступна.
+              </div>
+            ) : null}
             <WbTagFilterChips
               tags={tags}
               activeIds={activeTagIds}

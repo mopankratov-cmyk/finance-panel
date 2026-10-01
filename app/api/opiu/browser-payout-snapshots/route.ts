@@ -6,6 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadPlanningState, writePlanningStateSnapshot } from "@/lib/planning/stateStore";
 import { browserPayoutMonthKey, normalizeBrowserPayoutSnapshot, normalizeBrowserPayoutStore, upsertBrowserPayoutSnapshot } from "@/lib/opiu/browserPayoutSnapshots";
 import { getOzonPayoutMapping } from "@/lib/opiu/ozonPayoutIdentity";
+import { latestIso } from "@/lib/collectorFreshness";
 
 const STORE_KEY = "marketplace_payout_browser_v1";
 
@@ -18,6 +19,7 @@ function machineAuthorized(request: Request) {
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession(["director", "fin_director", "financier"]);
   if (gate) return gate;
+  if (request.nextUrl.searchParams.get("freshness") === "1") return freshness(request);
   const year = Number(request.nextUrl.searchParams.get("year"));
   const marketplace = request.nextUrl.searchParams.get("marketplace");
   const cabinetId = String(request.nextUrl.searchParams.get("cabinet") ?? "");
@@ -37,6 +39,34 @@ export async function GET(request: NextRequest) {
     snapshots: store.snapshots.filter((row) => row.marketplace === marketplace && row.cabinetId === cabinetId
       && browserPayoutMonthKey(row) === `${year}-${String(month).padStart(2, "0")}`),
   });
+}
+
+/**
+ * Когда агент последний раз присылал снимки по кабинету — без самих снимков.
+ *
+ * Панель снимков намеренно ничего не грузит до кнопки «Проверить» (снимки сразу
+ * становятся предложениями календаря), а агент об отказах пишет только в свой
+ * лог на Mac mini: 01.10.2026 часть кабинетов не получала снимков больше суток,
+ * и в панели этого не было видно. Снимки хранятся по году выплаты, поэтому
+ * смотрим текущий год по Москве и соседний на стыке лет.
+ */
+async function freshness(request: NextRequest) {
+  const marketplace = request.nextUrl.searchParams.get("marketplace");
+  const cabinetId = String(request.nextUrl.searchParams.get("cabinet") ?? "");
+  if (!(marketplace === "wb" || marketplace === "ozon") || !cabinetId) {
+    return NextResponse.json({ error: "Некорректный кабинет или маркетплейс" }, { status: 400 });
+  }
+  const session = await getServerSession();
+  if (!sessionHasCabinetAccess(session, cabinetId)) return NextResponse.json({ error: "Нет доступа к кабинету" }, { status: 403 });
+  const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ error: "База данных не настроена" }, { status: 503 });
+  const [year, month] = new Date(Date.now() + 3 * 3_600_000).toISOString().slice(0, 7).split("-").map(Number);
+  const years = [year, ...(month === 12 ? [year + 1] : month === 1 ? [year - 1] : [])];
+  const states = await Promise.all(years.map((item) => loadPlanningState<Record<string, unknown>>(db, item)));
+  const captured = states.flatMap((state) => normalizeBrowserPayoutStore(state.data[STORE_KEY]).snapshots)
+    .filter((row) => row.marketplace === marketplace && row.cabinetId === cabinetId)
+    .map((row) => row.capturedAt);
+  return NextResponse.json({ lastCapturedAt: latestIso(captured) });
 }
 
 export async function POST(request: Request) {
