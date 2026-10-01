@@ -15,6 +15,21 @@ export interface AssortmentSource {
   accessStatus: AccessStatus;
   accessNote: string | null;
   lastSuccessAt: string | null;
+  /** Пульс автообхода (миграция 202610020002); без неё — null. */
+  lastAttemptAt: string | null;
+  lastError: string | null;
+}
+
+/** Строка о состоянии автообхода источника; null — источник не обходится. */
+export function crawlStatus(source: Pick<AssortmentSource, "lastAttemptAt" | "lastSuccessAt" | "lastError">, nowMs = Date.now()): { text: string; failing: boolean } | null {
+  if (!source.lastAttemptAt) return null;
+  const when = (iso: string) => new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" });
+  if (source.lastError) {
+    const since = source.lastSuccessAt ? `последний успешный ${when(source.lastSuccessAt)}` : "успешных обходов ещё не было";
+    return { text: `Автообход не удался ${when(source.lastAttemptAt)}: ${source.lastError}; ${since}`, failing: true };
+  }
+  const stale = nowMs - new Date(source.lastAttemptAt).getTime() > 2 * 24 * 3600 * 1000;
+  return { text: `Автообход ${when(source.lastAttemptAt)}${stale ? " — давно не запускался" : ""}`, failing: stale };
 }
 
 /** Сначала то, что реально работает, затем по приоритету проверки и ID. */

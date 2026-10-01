@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { parseAccessStatus, type AssortmentDirection } from "./constants";
 import { sortSources, type AssortmentSource } from "./coverage";
+import { isMissingColumnError } from "./errors";
 
 export type LoadSourcesResult =
   | { ok: true; sources: AssortmentSource[] }
@@ -26,22 +27,27 @@ function toSource(row: Record<string, unknown>): AssortmentSource {
     accessStatus: parseAccessStatus(row.access_status),
     accessNote: typeof row.access_note === "string" ? row.access_note : null,
     lastSuccessAt: typeof row.last_success_at === "string" ? row.last_success_at : null,
+    lastAttemptAt: typeof row.last_attempt_at === "string" ? row.last_attempt_at : null,
+    lastError: typeof row.last_error === "string" ? row.last_error : null,
   };
 }
 
 export async function loadAssortmentSources(direction: AssortmentDirection | null): Promise<LoadSourcesResult> {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, reason: "not_configured", message: "Supabase не настроен" };
-  let query = db
-    .from("assortment_sources")
-    .select("source_id,name,source_group,categories,region,priority,adapter_type,access_status,access_note,last_success_at");
-  if (direction) query = query.contains("categories", [direction]);
-  const { data, error } = await query;
+  const run = (columns: string) => {
+    const query = db.from("assortment_sources").select(columns);
+    return direction ? query.contains("categories", [direction]) : query;
+  };
+  const base = "source_id,name,source_group,categories,region,priority,adapter_type,access_status,access_note,last_success_at";
+  let { data, error } = await run(`${base},last_attempt_at,last_error`);
+  // Колонки пульса — из миграции 202610020002; без неё показываем паспорт без них.
+  if (error && isMissingColumnError(error)) ({ data, error } = await run(base));
   if (error) {
     if (isMissingTable(error)) {
       return { ok: false, reason: "migration_missing", message: `Таблицы модуля ещё не созданы: нужно применить миграцию ${MIGRATION}.` };
     }
     return { ok: false, reason: "error", message: error.message };
   }
-  return { ok: true, sources: sortSources((data ?? []).map((row) => toSource(row as Record<string, unknown>))) };
+  return { ok: true, sources: sortSources((data ?? []).map((row) => toSource(row as unknown as Record<string, unknown>))) };
 }

@@ -42,6 +42,7 @@ const BADGE_METRICS = new Set(["new_badge", "bestseller_badge"]);
 const METHOD_LABEL: Record<string, string> = {
   import_url: "добавлено по ссылке",
   import_manual: "добавлено по фото",
+  crawl_shopify: "автообход каталога",
   shopify_published_at: "дата публикации из карточки",
   shopify_tags: "теги карточки",
 };

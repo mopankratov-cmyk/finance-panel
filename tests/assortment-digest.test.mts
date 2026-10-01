@@ -10,7 +10,7 @@ import { digestMessage, telegramEscape, topFindings, type DigestDirection, type 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const empty = (): DigestDirection => ({ newCount: 0, retailCount: 0, top: [], selected: 0, sampleNeeded: 0, rejected: 0, topReason: null });
 const facts = (patch: Partial<DigestFacts> = {}): DigestFacts => ({
-  from: "2026-09-27T07:00:00Z", to: "2026-10-04T07:00:00Z", directions: { bags: empty(), jackets: empty() }, collections: [], baseUrl: "https://panel.example/", ...patch,
+  from: "2026-09-27T07:00:00Z", to: "2026-10-04T07:00:00Z", directions: { bags: empty(), jackets: empty() }, collections: [], crawl: null, baseUrl: "https://panel.example/", ...patch,
 });
 
 test("Крон заведён на воскресенье 10:00 МСК, роут отвечает на GET (Vercel зовёт кроны GET)", () => {
@@ -55,4 +55,11 @@ test("Названия моделей экранируются под HTML Teleg
   const text = digestMessage(facts({ directions: { bags, jackets: empty() } }));
   assert.match(text, />A&amp;B · &lt;b&gt;Mini&lt;\/b&gt;<\/a>/);
   assert.match(text, /1 новая находка\./);
+});
+
+test("Пульс автообхода: работающие и отказавшие источники; тихая неделя при живом обходе", () => {
+  const text = digestMessage(facts({ crawl: { ok: ["Polène", "Rains"], failing: [{ name: "JW PEI", error: "HTTP 429" }] } }));
+  assert.match(text, /<b>Автообход каталогов<\/b>\nРаботает: Polène, Rains\.\n⚠️ JW PEI: HTTP 429/);
+  assert.match(text, /новых моделей не появилось ни в каталогах, ни среди ручных находок/);
+  assert.doesNotMatch(text, /пока не подключён/);
 });

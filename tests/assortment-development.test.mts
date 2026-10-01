@@ -86,7 +86,7 @@ test("раздел из адреса: только jackets и bags", () => {
 
 test("покрытие показывает, что реально отслеживается, а рабочие источники идут первыми", () => {
   const source = (sourceId: string, name: string, accessStatus: AssortmentSource["accessStatus"], priority = "P0"): AssortmentSource =>
-    ({ sourceId, name, group: null, categories: ["bags"], region: null, priority, adapterType: null, accessStatus, accessNote: null, lastSuccessAt: null });
+    ({ sourceId, name, group: null, categories: ["bags"], region: null, priority, adapterType: null, accessStatus, accessNote: null, lastSuccessAt: null, lastAttemptAt: null, lastError: null });
   const sorted = sortSources([
     source("S002", "Mango", "manual_only"),
     source("S090", "Кандидат", "untested", "P1"),

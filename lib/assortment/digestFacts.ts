@@ -5,7 +5,27 @@ import { listCollections } from "./collectionsStore";
 import type { AssortmentDirection } from "./constants";
 import { topFindings, type DigestDirection, type DigestFacts, type DigestFinding } from "./digest";
 import { reasonKey, REASON_SHORT, type LessonReason } from "./learning";
+import { isMissingColumnError } from "./errors";
 import { cardSignal, type ObservationLite } from "./signals";
+
+/** Пульс автообхода по источникам; null — колонок пульса нет или обход не запускался. */
+async function loadCrawlHealth(db: SupabaseClient, since: string): Promise<DigestFacts["crawl"]> {
+  const { data, error } = await db.from("assortment_sources").select("name,last_attempt_at,last_error").not("last_attempt_at", "is", null);
+  if (error) {
+    if (isMissingColumnError(error)) return null;
+    throw new Error(error.message);
+  }
+  if (!data || data.length === 0) return null;
+  const ok: string[] = [];
+  const failing: Array<{ name: string; error: string }> = [];
+  for (const row of data) {
+    const name = String(row.name);
+    if (row.last_error) failing.push({ name, error: String(row.last_error) });
+    else if (String(row.last_attempt_at) < since) failing.push({ name, error: "обход не запускался больше недели" });
+    else ok.push(name);
+  }
+  return { ok, failing };
+}
 
 const emptyDirection = (): DigestDirection => ({ newCount: 0, retailCount: 0, top: [], selected: 0, sampleNeeded: 0, rejected: 0, topReason: null });
 
@@ -79,5 +99,5 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
     .filter((c) => c.status !== "archived")
     .map((c) => ({ id: c.id, title: c.title, progress: c.progress.label, status: COLLECTION_STATUS_LABEL[c.status].toLowerCase(), version: c.version }));
 
-  return { from: fromIso, to: toIso, directions, collections, baseUrl };
+  return { from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), baseUrl };
 }

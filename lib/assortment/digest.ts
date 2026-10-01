@@ -33,6 +33,8 @@ export interface DigestFacts {
   to: string;
   directions: Record<AssortmentDirection, DigestDirection>;
   collections: Array<{ id: string; title: string; progress: string; status: string; version: number }>;
+  /** Пульс автообхода; null — обход ещё не запускался или миграции нет. */
+  crawl: { ok: string[]; failing: Array<{ name: string; error: string }> } | null;
   baseUrl: string;
 }
 
@@ -91,7 +93,16 @@ export function digestMessage(facts: DigestFacts): string {
       lines.push(`• <a href="${base}/assortment-development/collections/${c.id}">${telegramEscape(c.title)}</a> — ${telegramEscape(c.progress)}, ${telegramEscape(c.status)}${c.status === "сохранена" ? ` v${c.version}` : ""}`);
     }
   }
-  if (!anything) lines.push("", "За неделю в модуле ничего не происходило. Автообход каталогов пока не подключён — находки добавляются вручную.");
+  if (facts.crawl && (facts.crawl.ok.length > 0 || facts.crawl.failing.length > 0)) {
+    lines.push("", "<b>Автообход каталогов</b>");
+    if (facts.crawl.ok.length > 0) lines.push(`Работает: ${telegramEscape(facts.crawl.ok.join(", "))}.`);
+    for (const f of facts.crawl.failing) lines.push(`⚠️ ${telegramEscape(f.name)}: ${telegramEscape(f.error)}`);
+  }
+  if (!anything) {
+    lines.push("", facts.crawl?.ok.length
+      ? "За неделю новых моделей не появилось ни в каталогах, ни среди ручных находок."
+      : "За неделю в модуле ничего не происходило. Автообход каталогов пока не подключён — находки добавляются вручную.");
+  }
   lines.push("", `<a href="${base}/assortment-development">Открыть модуль</a>`);
   return lines.join("\n");
 }

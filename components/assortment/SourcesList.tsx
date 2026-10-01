@@ -1,7 +1,7 @@
 "use client";
 
 import { ACCESS_STATUS_LABEL, type AccessStatus } from "@/lib/assortment/constants";
-import type { AssortmentSource } from "@/lib/assortment/coverage";
+import { crawlStatus, type AssortmentSource } from "@/lib/assortment/coverage";
 
 const STATUS_STYLE: Record<AccessStatus, string> = {
   auto_verified: "bg-green-100 text-green-800",
@@ -26,6 +26,10 @@ export function SourcesList({ sources }: { sources: AssortmentSource[] }) {
             {ACCESS_STATUS_LABEL[source.accessStatus]}
           </span>
           {source.accessNote && <span className="text-xs leading-5 text-slate-600">{source.accessNote}</span>}
+          {(() => {
+            const status = crawlStatus(source);
+            return status ? <span className={`text-xs leading-5 ${status.failing ? "text-red-700" : "text-green-700"}`}>{status.text}</span> : null;
+          })()}
         </li>
       ))}
     </ul>

@@ -22,6 +22,8 @@ export interface ImportInput {
   title?: string | null;
   note?: string | null;
   uploads?: string[];
+  /** Находку принёс автообход каталога, а не человек. */
+  via?: "crawl";
 }
 
 export interface ImportResult {
@@ -167,6 +169,9 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
       if (error instanceof SafeFetchError) throw new ImportInputError(error.message);
       throw error;
     }
+    // Автообход не создаёт карточку-пустышку без названия и фото: не
+    // прочиталась — останется в очереди до следующего прогона.
+    if (input.via === "crawl" && !product?.title) throw new ImportInputError(warnings[0] ?? "Карточка товара не прочиталась");
   }
 
   const deadline = Date.now() + IMAGE_BUDGET_MS;
@@ -217,7 +222,7 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
     referenceId = String(inserted.id);
     created = true;
 
-    const method = url ? "import_url" : "import_manual";
+    const method = input.via === "crawl" ? "crawl_shopify" : url ? "import_url" : "import_manual";
     const observations: Array<Record<string, unknown>> = [
       { reference_id: referenceId, group_kind: "novelty", metric: "first_seen", value_text: now, method, status: "observed", source_url: url || null, observed_at: now, created_by: actorId },
     ];
