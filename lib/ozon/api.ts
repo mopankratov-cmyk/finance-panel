@@ -1138,24 +1138,28 @@ export async function ozonBalanceStocks(
       productInfoItems.push(...(json.items ?? []));
     }
 
-    // Новый FBO-метод умеет вернуть весь кабинет без фильтра по SKU. Это
-    // надёжнее, чем строить выборку только через product/info/list: у части
-    // реальных карточек SKU присутствует уже в product/list или только в FBO.
+    // Ozon требует skus или offer_ids даже при постраничном обходе FBO.
+    // Берём полный каталог выше и запрашиваем остатки короткими пачками: пустой
+    // фильтр теперь отвечает 400 и оставляет месячный снимок без Ozon целиком.
     const fboStocks: OzonFboWarehouseStock[] = [];
-    let fboCursor = "";
-    for (let page = 0; page < 100; page++) {
-      const res = await tfetch(c, `${BASE}/v1/product/info/stocks-by-warehouse/fbo`, {
-        method: "POST",
-        headers: headers(c),
-        body: JSON.stringify({ limit: 1000, cursor: fboCursor }),
-        ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
-      }, 45_000);
-      if (!res.ok) return { ok: false, error: `Ozon FBO ${res.status}: ${(await res.text()).slice(0, 160)}` };
-      const json = (await res.json()) as { cursor?: string; has_next?: boolean; products?: OzonFboWarehouseStock[] };
-      fboStocks.push(...(json.products ?? []));
-      const nextCursor = String(json.cursor ?? "");
-      if (!json.has_next || !nextCursor || nextCursor === fboCursor) break;
-      fboCursor = nextCursor;
+    const catalogSkus = collectOzonBalanceSkus(productListItems, productInfoItems, []);
+    for (let index = 0; index < catalogSkus.length; index += 100) {
+      const skus = catalogSkus.slice(index, index + 100);
+      let fboCursor = "";
+      for (let page = 0; page < 100; page++) {
+        const res = await tfetch(c, `${BASE}/v1/product/info/stocks-by-warehouse/fbo`, {
+          method: "POST",
+          headers: headers(c),
+          body: JSON.stringify({ skus, limit: 1000, cursor: fboCursor }),
+          ...(options.fresh ? { cache: "no-store" as const } : { next: { revalidate: 1800 } }),
+        }, 45_000);
+        if (!res.ok) return { ok: false, error: `Ozon FBO ${res.status}: ${(await res.text()).slice(0, 160)}` };
+        const json = (await res.json()) as { cursor?: string; has_next?: boolean; products?: OzonFboWarehouseStock[] };
+        fboStocks.push(...(json.products ?? []));
+        const nextCursor = String(json.cursor ?? "");
+        if (!json.has_next || !nextCursor || nextCursor === fboCursor) break;
+        fboCursor = nextCursor;
+      }
     }
 
     const analyticsItems: Record<string, unknown>[] = [];
