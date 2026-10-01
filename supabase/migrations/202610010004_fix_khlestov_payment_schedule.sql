@@ -61,7 +61,7 @@ begin
            category = target.payment_category,
            updated_at = now()
       from target
-     where p.id = v_ids[target.ord];
+     where p.id = v_ids[target.ord]::text;
   end if;
 end $$;
 
