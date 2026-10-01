@@ -535,7 +535,7 @@ export function LoansPage() {
     // самого договора. Сначала подтверждаем договор в БД, затем пишем строки.
     try {
       const stateWithLoan = financeReducer(state, loanAction);
-      await persistFinanceAction(loanAction, state, stateWithLoan);
+      await persistFinanceAction(loanAction);
       dispatch({ type: "LOAD", payload: stateWithLoan });
       if (!editing) setEditing(loan);
     } catch (error) {

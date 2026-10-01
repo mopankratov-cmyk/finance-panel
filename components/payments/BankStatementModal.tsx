@@ -265,8 +265,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
           openingBalance: Number(statement.openingBalance) || 0,
           openingDate: importedBankAccountOpeningDate(statement),
         };
-        const nextState = { ...state, accounts: [...state.accounts, newAccount] };
-        await persistFinanceAction({ type: "ADD_ACCOUNT", payload: newAccount }, state, nextState);
+        await persistFinanceAction({ type: "ADD_ACCOUNT", payload: newAccount });
         resolvedAccountId = newAccount.id;
         setAccountId(newAccount.id);
         setAccountNumberKnown(true);
