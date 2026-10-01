@@ -107,6 +107,7 @@ test("месячный снимок использует новый отчёт �
   assert.match(route, /ozonBalanceStocks/);
   assert.match(route, /amount: balance\.balance\.opening/);
   assert.doesNotMatch(route, /amount: balance\.balance\.closing/);
-  assert.match(api, /JSON\.stringify\(\{ limit: 1000, cursor: fboCursor \}\)/);
+  assert.match(api, /JSON\.stringify\(\{ skus, limit: 1000, cursor: fboCursor \}\)/);
+  assert.match(api, /catalogSkus\.slice\(index, index \+ 100\)/);
   assert.match(api, /collectOzonBalanceSkus\(productListItems, productInfoItems, fboStocks\)/);
 });
