@@ -12,6 +12,8 @@ import { formatRub } from "@/lib/analytics/format";
 import { emptyScheduleRow, normalizeScheduleMoney, type LoanScheduleDraft } from "@/lib/loans/schedule";
 import type { LoanCorrectionsOutcome, LoanRecognitionOutcome } from "@/lib/loans/recognizeLoan";
 import { needsDirectUpload, uploadViaStorage } from "@/components/payments/uploadViaStorage";
+import { readFirstSheetXlsx } from "@/components/payments/bankStatement";
+import { recognizeLoanSpreadsheet } from "./loanRecognition";
 
 // Распознавание и построение графика — на сервере (/api/opiu/loan-recognize).
 // Форма только отправляет файл с описанием и показывает результат: у любого
@@ -215,6 +217,19 @@ export function LoanForm({ loan, accounts, companies, companyId, accountId, cont
     setBusy(true);
     setMessage("");
     try {
+      // При замене графика XLSX не требует сервера или ИИ: это уже
+      // структурированная таблица. Такой путь особенно важен для Vercel,
+      // где multipart-запрос иногда обрывается до запуска функции.
+      if (editing && file && /\.xlsx$/i.test(file.name)) {
+        const spreadsheet = recognizeLoanSpreadsheet(await readFirstSheetXlsx(file));
+        const imported = (spreadsheet.schedule ?? []).map(normalizeScheduleMoney);
+        const replacement = replaceScheduleFromImportedDate(schedule, imported);
+        if (!replacement.from) throw new Error("В файле не найдены строки графика с датами.");
+        setSchedule(replacement.schedule);
+        setCorrectionNotice(`График из файла заменит строки с ${new Date(`${replacement.from}T12:00:00`).toLocaleDateString("ru-RU")}. История до этой даты сохранена.`);
+        setStage("review");
+        return;
+      }
       // Файлы крупнее порога Vercel (4,5 МБ на тело запроса) уходят в хранилище напрямую.
       let response: Response;
       if (file && needsDirectUpload(file)) {
