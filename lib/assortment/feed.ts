@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssortmentDirection } from "./constants";
+import { isReferenceStatus, STATUS_LABEL } from "./decisions";
 import { cardSignal, type CardSignal, type ObservationLite } from "./signals";
 import { signedUrls } from "./storage";
 
-export type FeedView = "new" | "retail";
+export type FeedView = "new" | "retail" | "hidden";
 
 export interface FeedCard {
   id: string;
@@ -13,6 +14,8 @@ export interface FeedCard {
   url: string;
   firstSeenAt: string;
   status: string;
+  statusLabel: string;
+  version: number;
   coverUrl: string | null;
   colors: number;
   signal: CardSignal;
@@ -23,11 +26,14 @@ type Observation = ObservationLite & { reference_id: string; method: string };
 const HIDDEN_STATUSES = ["rejected", "archived"];
 
 export async function loadFeed(db: SupabaseClient, direction: AssortmentDirection, view: FeedView, limit = 60): Promise<FeedCard[]> {
-  const { data: refs, error } = await db
+  let query = db
     .from("assortment_references")
-    .select("id,title,brand,region,url,first_seen_at,status,attributes,source_id")
-    .eq("direction", direction)
-    .not("status", "in", `(${HIDDEN_STATUSES.join(",")})`)
+    .select("id,title,brand,region,url,first_seen_at,status,version,attributes,source_id")
+    .eq("direction", direction);
+  query = view === "hidden"
+    ? query.in("status", HIDDEN_STATUSES)
+    : query.not("status", "in", `(${HIDDEN_STATUSES.join(",")})`);
+  const { data: refs, error } = await query
     .order("first_seen_at", { ascending: false })
     .limit(view === "retail" ? 300 : limit);
   if (error) throw new Error(error.message);
@@ -73,6 +79,8 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
       url: String(row.url ?? ""),
       firstSeenAt: String(row.first_seen_at),
       status: String(row.status),
+      statusLabel: isReferenceStatus(row.status) ? STATUS_LABEL[row.status] : String(row.status),
+      version: Number(row.version ?? 1),
       coverUrl: path ? urls.get(path) ?? null : null,
       colors,
       signal: cardSignal(obs, { manual, colors }),

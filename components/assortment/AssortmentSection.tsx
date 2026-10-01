@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { GitCompare, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import {
   ASSORTMENT_BASE_PATH,
@@ -29,7 +29,10 @@ type FeedState =
 const VIEWS: Array<{ id: FeedView; label: string; empty: string }> = [
   { id: "new", label: "Новинки", empty: "Добавьте первую находку: ссылку на товар, публикацию или пин, либо фото." },
   { id: "retail", label: "Отмечено ритейлером", empty: "Пока ни один сайт не пометил находки как новинку или бестселлер." },
+  { id: "hidden", label: "Скрытые и отклонённые", empty: "Скрытых и отклонённых моделей нет." },
 ];
+
+const MAX_COMPARE = 6;
 
 /** Раздел модуля «Разработка ассортимента»: лента находок. */
 export function AssortmentSection({ direction }: { direction: AssortmentDirection }) {
@@ -38,7 +41,41 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+
+  const toggle = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else if (next.size < MAX_COMPARE) next.add(id);
+    return next;
+  });
+
+  const quickAction = async (card: FeedCard, action: "archived" | "restore") => {
+    setBusyId(card.id);
+    setActionError(null);
+    try {
+      const response = await fetch(`/api/assortment-development/references/${card.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, version: card.version }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || `Не получилось (${response.status})`);
+      setSelected((prev) => {
+        const next = new Set(prev);
+        next.delete(card.id);
+        return next;
+      });
+      reload();
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : "Не получилось");
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -121,12 +158,45 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
         {feed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{feed.message}</div>
         )}
-        {feed.kind === "ready" && feed.cards.length > 0 && <FeedGrid cards={feed.cards} />}
+        {actionError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{actionError}</div>
+        )}
+        {feed.kind === "ready" && feed.cards.length > 0 && (
+          <FeedGrid
+            cards={feed.cards}
+            direction={direction}
+            selected={selected}
+            selectionFull={selected.size >= MAX_COMPARE}
+            busyId={busyId}
+            onToggle={toggle}
+            onQuickAction={quickAction}
+          />
+        )}
         {feed.kind === "ready" && feed.cards.length === 0 && (
           <section className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
             <div className="text-base font-semibold text-slate-900">Находок пока нет</div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">{current.empty}</p>
           </section>
+        )}
+        {selected.size > 0 && (
+          <div className="action-bar -mx-3 flex items-center justify-between gap-3 px-3 pt-3 sm:mx-0 sm:rounded-xl sm:border sm:px-4">
+            <span className="text-sm text-slate-700">
+              Выбрано {selected.size} из {MAX_COMPARE}{selected.size < 2 && " — для сравнения нужно хотя бы две"}
+            </span>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setSelected(new Set())} aria-label="Сбросить выбор" className="grid h-11 w-11 place-items-center rounded-xl border border-slate-300 bg-white text-slate-600 hover:bg-slate-50">
+                <X className="h-4 w-4" />
+              </button>
+              {selected.size >= 2 && (
+                <Link
+                  href={`${ASSORTMENT_BASE_PATH}/${direction}/compare?ids=${[...selected].join(",")}`}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-medium text-white hover:bg-violet-800"
+                >
+                  <GitCompare className="h-4 w-4" /> Сравнить
+                </Link>
+              )}
+            </div>
+          </div>
         )}
       </div>
 

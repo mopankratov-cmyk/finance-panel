@@ -4,10 +4,7 @@ import { ImagePlus, LoaderCircle, X } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
-
-const ACCEPT = ["image/jpeg", "image/png", "image/webp"];
-const MAX_FILES = 6;
-const MAX_BYTES = 10 * 1024 * 1024;
+import { PHOTO_ACCEPT, pickPhotos, uploadPhoto } from "./uploadPhoto";
 
 interface ImportResponse {
   referenceId?: string;
@@ -16,19 +13,6 @@ interface ImportResponse {
   images?: number;
   warnings?: string[];
   error?: string;
-}
-
-async function uploadPhoto(file: File): Promise<string> {
-  const ticketResponse = await fetch("/api/assortment-development/upload-ticket", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mime: file.type, size: file.size }),
-  });
-  const ticket = (await ticketResponse.json().catch(() => null)) as { path?: string; signedUrl?: string; error?: string } | null;
-  if (!ticketResponse.ok || !ticket?.path || !ticket.signedUrl) throw new Error(ticket?.error ?? "Не удалось подготовить загрузку фото");
-  const put = await fetch(ticket.signedUrl, { method: "PUT", headers: { "Content-Type": file.type, "x-upsert": "false" }, body: file });
-  if (!put.ok) throw new Error(`Хранилище не приняло фото (${put.status})`);
-  return ticket.path;
 }
 
 export function AddFindingModal({
@@ -66,16 +50,9 @@ export function AddFindingModal({
   };
 
   const pickFiles = (list: FileList | null) => {
-    if (!list) return;
-    const next = [...files];
-    const rejected: string[] = [];
-    for (const file of Array.from(list)) {
-      if (!ACCEPT.includes(file.type)) rejected.push(`${file.name}: нужен JPEG, PNG или WebP`);
-      else if (file.size > MAX_BYTES) rejected.push(`${file.name}: больше 10 МБ`);
-      else if (next.length < MAX_FILES) next.push(file);
-    }
-    setFiles(next);
-    setError(rejected.length > 0 ? rejected.join("; ") : null);
+    const picked = pickPhotos(files, list);
+    setFiles(picked.files);
+    setError(picked.rejected.length > 0 ? picked.rejected.join("; ") : null);
   };
 
   const submit = async () => {
@@ -149,7 +126,7 @@ export function AddFindingModal({
             <label className="flex min-h-[64px] cursor-pointer items-center gap-3 rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600 hover:bg-slate-50">
               <ImagePlus className="h-6 w-6 shrink-0 text-slate-400" />
               <span>Выбрать файлы</span>
-              <input type="file" accept={ACCEPT.join(",")} multiple className="sr-only" onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }} />
+              <input type="file" accept={PHOTO_ACCEPT.join(",")} multiple className="sr-only" onChange={(e) => { pickFiles(e.target.files); e.target.value = ""; }} />
             </label>
             {files.length > 0 && (
               <ul className="flex flex-wrap gap-2">

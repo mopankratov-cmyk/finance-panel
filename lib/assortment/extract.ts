@@ -16,6 +16,7 @@ export interface ExtractedProduct {
   productType: string | null;
   colors: string[];
   newBadge: string | null;
+  bestsellerBadge: string | null;
 }
 
 const MAX_IMAGES = 6;
@@ -50,16 +51,25 @@ export function dedupKey(sourceId: string | null, region: string, sourceItemId: 
   return [sourceId ?? "manual", region, sourceItemId ?? normalizedUrl].join("|");
 }
 
+const SECOND_LEVEL = new Set(["co.uk", "com.au", "co.jp", "com.cn", "com.tr", "co.kr", "com.hk", "com.br"]);
+
+/** Домен бренда без поддомена витрины: eng.polene-paris.com и eu.polene-paris.com — один сайт. */
+export function baseDomain(host: string): string {
+  const labels = host.toLowerCase().replace(/^www\./, "").split(".").filter(Boolean);
+  const tail = labels.slice(-2).join(".");
+  return SECOND_LEVEL.has(tail) ? labels.slice(-3).join(".") : tail;
+}
+
 /** Источник по домену: сравниваем с сайтами из паспорта (seed_urls). */
 export function detectSourceId(rawUrl: string, sources: Array<{ sourceId: string; seedUrls: string[] }>): string | null {
-  const host = new URL(rawUrl).hostname.toLowerCase().replace(/^www\./, "");
+  const domain = baseDomain(new URL(rawUrl).hostname);
   for (const source of sources) {
     for (const seed of source.seedUrls) {
       try {
-        const seedHost = new URL(seed).hostname.toLowerCase().replace(/^www\./, "");
-        if (seedHost && (host === seedHost || host.endsWith(`.${seedHost}`))) return source.sourceId;
+        const seedUrl = new URL(/^https?:\/\//i.test(seed) ? seed : `https://${seed}`);
+        if (baseDomain(seedUrl.hostname) === domain) return source.sourceId;
       } catch {
-        // seed без схемы или мусор — пропускаем
+        // мусор вместо адреса — пропускаем
       }
     }
   }
@@ -91,6 +101,10 @@ function newBadgeFromTags(tags: string[]): string | null {
   return tags.find((tag) => /(^|[^a-z])new([^a-z]|$)|new ?arrival|newproduct|new in/i.test(tag)) ?? null;
 }
 
+function bestsellerFromTags(tags: string[]): string | null {
+  return tags.find((tag) => /best[\s_-]?sell/i.test(tag)) ?? null;
+}
+
 /** Карточка Shopify (`/products/<handle>.json`): берём только разрешённые поля. */
 export function parseShopifyProduct(json: unknown): ExtractedProduct | null {
   const product = (json as { product?: Record<string, unknown> })?.product;
@@ -113,6 +127,7 @@ export function parseShopifyProduct(json: unknown): ExtractedProduct | null {
     productType: text(product.product_type),
     colors: (colorOption?.values ?? []).map(String).filter(Boolean),
     newBadge: newBadgeFromTags(tags),
+    bestsellerBadge: bestsellerFromTags(tags),
   };
 }
 
@@ -174,6 +189,7 @@ export function extractHtmlProduct(html: string, pageUrl: string): ExtractedProd
     productType: text(ld?.category),
     colors: text(ld?.color) ? [text(ld?.color) as string] : [],
     newBadge: null,
+    bestsellerBadge: null,
   };
 }
 

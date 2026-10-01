@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  baseDomain,
   dedupKey,
   detectSourceId,
   extractHtmlProduct,
@@ -12,7 +13,7 @@ import {
 } from "../lib/assortment/extract.ts";
 import { isBlockedAddress } from "../lib/assortment/netGuard.ts";
 import { parsePublicUrl, SafeFetchError } from "../lib/assortment/safeFetch.ts";
-import { cardSignal, pluralColors, type ObservationLite } from "../lib/assortment/signals.ts";
+import { cardSignal, cleanBadge, pluralColors, type ObservationLite } from "../lib/assortment/signals.ts";
 import { isUploadPath, referenceMediaPath, uploadPath } from "../lib/assortment/storage.ts";
 
 /**
@@ -44,6 +45,7 @@ test("Shopify: берём модель, бренд, артикул, цвета, 
   assert.deepEqual(product.colors, ["Black", "Camel", "Taupe"]);
   assert.deepEqual(product.images, ["https://cdn.shopify.com/a.jpg", "https://cdn.shopify.com/b.jpg"]);
   assert.equal(product.newBadge, "New Arrival");
+  assert.equal(product.bestsellerBadge, "Bestseller");
   assert.equal(product.publishedAt, "2026-09-12T10:00:00+02:00");
   assert.doesNotMatch(JSON.stringify(product), /price|450|520|compare/i, "цены не проходят разбор");
 });
@@ -102,6 +104,10 @@ test("Источник определяется по домену из пасп�
   assert.equal(detectSourceId("https://eu.polene-paris.com/products/x", sources), "S014");
   assert.equal(detectSourceId("https://rains.com/products/x", sources), "S027");
   assert.equal(detectSourceId("https://notpolene-paris.com/x", sources), null);
+  // Паспорт Polène хранит eng.polene-paris.com — витрина eu.* того же бренда тоже его.
+  assert.equal(detectSourceId("https://eu.polene-paris.com/products/x", [{ sourceId: "S024", seedUrls: ["https://eng.polene-paris.com/"] }]), "S024");
+  assert.equal(baseDomain("shop.brand.co.uk"), "brand.co.uk");
+  assert.equal(baseDomain("www.rains.com"), "rains.com");
 });
 
 test("Защита сети: внутренние, служебные и зарезервированные адреса закрыты", () => {
@@ -150,6 +156,19 @@ test("«Почему показали»: только наблюдённое, о
   const single = cardSignal([], { manual: false, colors: 1 });
   assert.equal(single.tone, "single");
   assert.doesNotMatch(single.why + single.label, /раст|тренд|продаж/i, "без выдуманной динамики");
+});
+
+test("Теги магазина в карточке — по-человечески, бестселлер — тоже сигнал ритейла", () => {
+  assert.equal(cleanBadge("LABEL:NEW"), "NEW");
+  assert.equal(cleanBadge("New Arrival"), "New Arrival");
+  assert.equal(cleanBadge("bestsellers-resort"), "bestsellers resort");
+  const polene = cardSignal([obs({ group_kind: "retail", metric: "new_badge", value_text: "LABEL:NEW", status: "retailer_claim" })], { manual: false, colors: 0 });
+  assert.equal(polene.label, "Отмечено ритейлером: NEW");
+  assert.match(polene.why, /^метка «NEW» на сайте/);
+  const best = cardSignal([obs({ group_kind: "retail", metric: "bestseller_badge", value_text: "bestsellers-resort", status: "retailer_claim" })], { manual: false, colors: 0 });
+  assert.equal(best.tone, "retail");
+  assert.equal(best.label, "Отмечено ритейлером: бестселлер");
+  assert.match(best.why, /в разделе бестселлеров на сайте/);
 });
 
 test("Склонение цветов", () => {

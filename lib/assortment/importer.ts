@@ -83,7 +83,7 @@ async function readProduct(url: string, warnings: string[]): Promise<ExtractedPr
   }
 }
 
-interface ImageBytes {
+export interface ImageBytes {
   bytes: Buffer;
   mime: string;
   originUrl: string | null;
@@ -100,7 +100,7 @@ async function remoteImage(url: string): Promise<ImageBytes | null> {
   }
 }
 
-async function uploadedImage(db: SupabaseClient, path: string): Promise<ImageBytes | null> {
+export async function uploadedImage(db: SupabaseClient, path: string): Promise<ImageBytes | null> {
   const { data, error } = await db.storage.from(ASSORTMENT_BUCKET).download(path);
   if (error || !data) return null;
   const bytes = Buffer.from(await data.arrayBuffer());
@@ -111,7 +111,7 @@ async function uploadedImage(db: SupabaseClient, path: string): Promise<ImageByt
 
 const sha256 = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 
-async function storeImages(db: SupabaseClient, referenceId: string, images: ImageBytes[], manual: boolean): Promise<number> {
+export async function storeImages(db: SupabaseClient, referenceId: string, images: ImageBytes[], manual: boolean): Promise<number> {
   const { data: existing } = await db.from("assortment_media").select("sha256,position").eq("reference_id", referenceId);
   const known = new Set((existing ?? []).map((row) => String(row.sha256)));
   let position = (existing ?? []).reduce((max, row) => Math.max(max, Number(row.position ?? 0) + 1), 0);
@@ -226,6 +226,9 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
     }
     if (product?.newBadge) {
       observations.push({ reference_id: referenceId, group_kind: "retail", metric: "new_badge", value_text: product.newBadge, method: "shopify_tags", status: "retailer_claim", source_url: url, observed_at: now, created_by: actorId });
+    }
+    if (product?.bestsellerBadge) {
+      observations.push({ reference_id: referenceId, group_kind: "retail", metric: "bestseller_badge", value_text: product.bestsellerBadge, method: "shopify_tags", status: "retailer_claim", source_url: url, observed_at: now, created_by: actorId });
     }
     const { error: observationsError } = await db.from("assortment_observations").insert(observations);
     if (observationsError) warnings.push(`Модель сохранена, но признаки новизны не записались: ${observationsError.message}`);
