@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 // Ручные настройки юнит-экономики кабинета: ставка налога и дополнительная
 // комиссия. Читать может любой, кто видит финансовые экраны; менять — только те,
 // кто отвечает за деньги: цифра отсюда меняет маржу во всех расчётах.
-const READ_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"] as const;
+const READ_ROLES = ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller", "seller_owner"] as const;
 const WRITE_ROLES = ["director", "fin_director", "financier"] as const;
 
 export async function GET(request: NextRequest) {

@@ -95,25 +95,64 @@ jobs:
           # Проверено вручную 02.09.2026 на этой самой версии CLI: деплой
           # привязал публичный домен без единой дополнительной команды.
 
-          # Canary: /api/auth/status всегда доступен без сессии и не требует БД-состояния.
-          # 404 значит, что промоутнулась чужая/устаревшая сборка — не должна владеть прод-алиасом.
-          code=$(curl -sS -o /tmp/auth-status-canary.json -w "%{http_code}" \
-            "https://finance-panel-two.vercel.app/api/auth/status")
-          if [ "$code" != "200" ]; then
-            echo "Auth-status canary failed: HTTP $code"
-            cat /tmp/auth-status-canary.json || true
-            # Причину дописываем в тот же файл, что уедет в Telegram: иначе в
-            # алерте окажется хвост УСПЕШНОГО деплоя, и читающий решит, что
-            # сломалось что-то другое.
-            {
-              echo
-              echo "Canary после успешного деплоя: HTTP $code на /api/auth/status"
-              cat /tmp/auth-status-canary.json 2>/dev/null || true
-            } >> /tmp/deploy.log
+          # Причину провала дописываем в тот же файл, что уедет в Telegram: иначе
+          # в алерте окажется хвост УСПЕШНОГО деплоя, и читающий решит, что
+          # сломалось что-то другое.
+          fail() {
+            echo "$1"
+            { echo; echo "$1"; } >> /tmp/deploy.log
             exit 1
+          }
+
+          # Проверка прода — через API Vercel, а не запросом к *.vercel.app.
+          #
+          # Прежняя проверка ходила curl'ом на finance-panel-two.vercel.app прямо
+          # с этой ВМ, а *.vercel.app из РФ режется по SNI: соединение то
+          # проходило, то рвалось (SSL_ERROR_SYSCALL, код 000), и успешная
+          # выкладка через раз помечалась failure. Красный статус перестал что-
+          # либо значить — настоящий провал утонул бы среди ложных (30.09.2026:
+          # #1358, #1363, #1364 выложены и работают, а статус красный).
+          # api.vercel.com с ВМ доступен — через него идёт и сам деплой.
+          #
+          # Главное, что ловила прежняя проверка, — прод-алиас у чужой или
+          # устаревшей сборки. Это проверяется напрямую: адрес прода должен
+          # указывать на ЭТУ сборку, и она должна быть READY.
+          deploy_url=$(grep -oE 'https://[a-z0-9.-]+\.vercel\.app' /tmp/deploy.out | tail -1 || true)
+          [ -n "$deploy_url" ] || fail "Деплой не вернул адрес сборки — нечего сверять с продом"
+          alias_json=""
+          for attempt in 1 2 3; do
+            alias_json=$(vercel inspect finance-panel-two.vercel.app --format json --token="$VERCEL_TOKEN" 2>/tmp/inspect.err) && break
+            alias_json=""
+            sleep 10
+          done
+          [ -n "$alias_json" ] || fail "API Vercel не ответил на inspect прод-адреса: $(tail -c 300 /tmp/inspect.err)"
+          json_field() {
+            printf '%s' "$alias_json" | node -e 'let s="";process.stdin.on("data",(c)=>{s+=c}).on("end",()=>{try{process.stdout.write(String(JSON.parse(s)[process.argv[1]] ?? "-"))}catch{process.stdout.write("-")}})' "$1"
+          }
+          alias_url=$(json_field url)
+          alias_state=$(json_field readyState)
+          if [ "https://${alias_url}" != "$deploy_url" ]; then
+            fail "Прод-адрес указывает не на эту сборку: ${alias_url} вместо ${deploy_url#https://}"
+          fi
+          [ "$alias_state" = "READY" ] || fail "Сборка прода не готова: readyState=${alias_state}"
+          echo "Прод-адрес указывает на эту сборку (${alias_url}), READY."
+
+          # HTTP-проверка роута — как дополнительная, без ложных провалов.
+          # /api/auth/status доступен без сессии и не требует БД-состояния.
+          # Ответ получен и не 200 — это настоящий провал (сборка без роута,
+          # 5xx). Соединение не установилось (код 000) — это фильтр по SNI на
+          # пути с ВМ, а не прод: алиас уже сверен через API выше.
+          code=$(curl -sS --max-time 20 -o /tmp/auth-status-canary.json -w "%{http_code}" \
+            "https://finance-panel-two.vercel.app/api/auth/status" 2>/tmp/canary.err || true)
+          if [ -z "$code" ] || [ "$code" = "000" ]; then
+            echo "HTTP-проверка недоступна с этой ВМ ($(tail -c 200 /tmp/canary.err)) — прод сверен через API Vercel."
+          elif [ "$code" != "200" ]; then
+            fail "Canary после успешного деплоя: HTTP $code на /api/auth/status $(head -c 300 /tmp/auth-status-canary.json 2>/dev/null)"
+          else
+            echo "HTTP-проверка /api/auth/status: 200."
           fi
 
-          echo "Прод задеплоен и canary пройден."
+          echo "Прод задеплоен и проверен."
 
       # Провал выкладки был НЕМЫМ. 01.09.2026 чужая ошибка типов влилась в main,
       # сборка легла, и прод простоял пять часов на старой версии — заметил это

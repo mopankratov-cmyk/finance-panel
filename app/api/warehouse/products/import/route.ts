@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { canManageStock, OPERATOR_FORBIDDEN } from "@/lib/warehouse/operatorScope";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveEntity } from "@/lib/warehouse/entityAccess";
 import { noWildberriesSourceReason, wildberriesOwnCabinets } from "@/lib/warehouse/cabinetChannels";
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
   // читаются только её собственные кабинеты, а созданные товары получают её
   // юрлицо (см. insert ниже). Существующие карточки импорт не трогает вовсе —
   // он умеет только заводить недостающие.
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
   const body = (await request.json().catch(() => null)) as
     | { entityId?: string; brands?: string[]; includeStale?: boolean; apply?: boolean }
     | null;

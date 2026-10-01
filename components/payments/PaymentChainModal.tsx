@@ -7,14 +7,15 @@ import type { DdsCompany } from "./ddsCompanies";
 import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
 import { paymentTransferBalances } from "@/lib/finance/paymentTransferBalance";
 import { PaymentSplitEditor } from "./PaymentSplitEditor";
-import { buildChainEntries, validateChain, type PaymentChainDetail } from "@/lib/finance/paymentChains";
+import { buildChainEntries, requiresFilippovLoan, validateChain, type PaymentChainDetail } from "@/lib/finance/paymentChains";
 export interface PaymentChainSeed {paymentId?: string; reviewId?: string; chainId?: string}
 const roleLabel={source:"Исходная операция", "cash-in":"Поступление в наличные", "loan-out":"Выдача займа", "loan-in":"Получение займа", spending:"Расход / перевод", "transfer-in":"Поступление на кошелёк"};
 async function json<T>(response: Response) {const body=await response.json();if(!response.ok)throw new Error(body.error??"Не удалось выполнить действие");return body as T;}
-export function PaymentChainModal({seed,accounts,companies,onClose,onSaved}:{seed:PaymentChainSeed;accounts:Account[];companies:DdsCompany[];onClose:()=>void;onSaved:()=>Promise<void>}) {
+export function PaymentChainModal({seed,accounts,companies,onClose,onSaved,confirmationOnly=false}:{seed:PaymentChainSeed;accounts:Account[];companies:DdsCompany[];onClose:()=>void;onSaved:()=>Promise<void>;confirmationOnly?:boolean}) {
  const {categories}=useDdsCategories();
  const {state}=useFinance();
  const [detail,setDetail]=useState<PaymentChainDetail|null>(null);
+ const [showEditor,setShowEditor]=useState(!confirmationOnly);
  const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [busy,setBusy]=useState(false);
  const query=useMemo(()=>new URLSearchParams({resource:"payment-chain",...(seed.paymentId?{payment_id:seed.paymentId}:{}),...(seed.reviewId?{review_id:seed.reviewId}:{}),...(seed.chainId?{chain_id:seed.chainId}:{})}).toString(),[seed.paymentId,seed.reviewId,seed.chainId]);
  useEffect(()=>{let cancelled=false;fetch("/api/finance/companies?"+query,{cache:"no-store"}).then(json<PaymentChainDetail>).then(d=>{if(!cancelled)setDetail(d);}).catch(e=>{if(!cancelled)setError(e.message);});return()=>{cancelled=true;};},[query]);
@@ -39,7 +40,8 @@ export function PaymentChainModal({seed,accounts,companies,onClose,onSaved}:{see
  };
  const companyName=(id:string|null|undefined)=>companies.find(c=>c.id===id)?.name??"Компания не определена";
  const accountName=(id:string)=>accounts.find(a=>a.id===id)?.name??"Кошелёк не определён";
- return <Modal open onClose={close} size="xl" title="Редактировать операцию" footer={<div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-slate-500">{draft?.revision ? 'Версия ' + draft.revision + ' · изменения сохраняются в истории' : 'Части сохраняются вместе с операцией'}</span><div className="flex gap-2"><button type="button" disabled={busy} onClick={close} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm">Отмена</button><button type="button" disabled={busy || !detail?.migrationAvailable || !draft || errors.length > 0} onClick={()=>void save()} className="min-h-11 rounded-lg bg-violet-600 px-5 text-sm font-medium text-white disabled:opacity-40">{busy ? 'Сохраняю…' : 'Сохранить'}</button></div></div>}>
+ const sourceCompany=companies.find(company=>company.id===draft?.sourceCompanyId);
+ return <Modal open onClose={close} size="xl" title={confirmationOnly?"Подтвердить операцию":"Редактировать операцию"} footer={<div className="flex flex-wrap items-center justify-between gap-2"><span className={errors.length?"text-xs text-amber-700":"text-xs text-slate-500"}>{confirmationOnly?(errors.length?"Проверьте отмеченные ниже данные":"Все связанные записи система создаст автоматически"):draft?.revision ? 'Версия ' + draft.revision + ' · изменения сохраняются в истории' : 'Части сохраняются вместе с операцией'}</span><div className="flex gap-2"><button type="button" disabled={busy} onClick={close} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm">Отмена</button><button type="button" title={errors.length?errors.join(". "):undefined} disabled={busy || !detail?.migrationAvailable || !draft || errors.length > 0} onClick={()=>void save()} className="min-h-11 rounded-lg bg-violet-600 px-5 text-sm font-medium text-white disabled:opacity-40">{busy ? 'Сохраняю…' : confirmationOnly?'Подтвердить и добавить в ДДС':'Сохранить'}</button></div></div>}>
   <div className="space-y-4">
    {error && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{error}</p>}
    {message && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
@@ -47,7 +49,20 @@ export function PaymentChainModal({seed,accounts,companies,onClose,onSaved}:{see
    {detail && draft && <>
     {!detail.migrationAvailable && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Сохранение станет доступно после применения владельцем миграции цепочек ДДС.</p>}
     {detail.status === 'cancelled' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Операция отменена. Исправьте разбивку и сохраните, чтобы восстановить её новой версией.</p>}
-    <PaymentSplitEditor draft={draft} accounts={accounts} companies={companies} categories={categories} counterparties={state.payments.map(p=>p.counterparty)} busy={busy} patch={patch}/>
+    {!showEditor ? <div className="space-y-3">
+      <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
+       <p className="font-semibold">Вот как операция попадёт в ДДС</p>
+       <p className="mt-1">Проверьте результат. Переводы между кошельками и займ система добавит сама.</p>
+      </div>
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+       <div className="flex flex-wrap items-start justify-between gap-2 border-b border-slate-100 pb-3"><div><p className="text-sm text-slate-500">Списание {formatDate(draft.sourceDate)}</p><p className="font-medium text-slate-900">{accountName(draft.sourceAccountId)}</p></div><b className="text-lg">{formatMoney(-draft.sourceAmount)}</b></div>
+       <ol className="mt-3 space-y-3 text-sm">
+        {draft.throughCash&&<li><b>1. В наличные:</b> {accountName(draft.cashAccountId)} · {formatMoney(draft.sourceAmount)}</li>}
+        {draft.allocations.filter(allocation=>!allocation.excluded).map((allocation,index)=>{const recipient=companies.find(company=>company.id===allocation.companyId);const loan=requiresFilippovLoan(sourceCompany,recipient);return <li key={allocation.id} className="rounded-lg bg-slate-50 p-3"><p><b>{draft.throughCash?index+2:index+1}. {allocation.category}</b> · {formatMoney(allocation.amount)}</p><p className="mt-1 text-slate-600">{allocation.counterparty||allocation.name} · расход {companyName(allocation.companyId)}</p>{loan&&<p className="mt-1 text-slate-600">Система оформит займ {companyName(draft.sourceCompanyId)} → {companyName(allocation.companyId)} через {accountName(draft.cashAccountId)} и {accountName(allocation.accountId)}.</p>}</li>})}
+       </ol>
+      </div>
+      <button type="button" onClick={()=>setShowEditor(true)} className="min-h-11 rounded-lg border border-slate-300 px-3 text-sm text-slate-700">Изменить распределение</button>
+    </div> : <PaymentSplitEditor draft={draft} accounts={accounts} companies={companies} categories={categories} counterparties={state.payments.map(p=>p.counterparty)} bankTargets={detail.bankTargets} busy={busy} patch={patch}/>}
     {recordedIssues.length>0 && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800"><p className="font-medium">В сохранённых записях выбытия и поступления не сходятся</p>{recordedIssues.map(group=><div key={group.id} className="mt-2"><p>{group.label} · разница {formatMoney(group.net)}</p>{group.entries.map(entry=><p key={entry.payment.id}>{formatDate(entry.payment.date)} · {accountName(entry.payment.accountId)} · {formatMoney(entry.payment.amount)}</p>)}</div>)}</div>}
     {balances.length>0 && <details className="rounded-lg border border-slate-200 px-3"><summary className="min-h-11 cursor-pointer py-3 text-sm">Сверка выбытий и поступлений · {balances.every(group=>group.balanced)?"0 ₽ — суммы сходятся":"есть расхождение"}</summary><div className="space-y-3 pb-3">{balances.map(group=><div key={group.id} className={group.balanced?"rounded-lg bg-emerald-50 p-3 text-sm":"rounded-lg bg-red-50 p-3 text-sm"}><p className="font-medium">{group.label} · итог {formatMoney(group.net)}</p>{group.entries.map(entry=><p key={entry.payment.id}>{formatDate(entry.payment.date)} · {companyName(entry.payment.companyId)} · {accountName(entry.payment.accountId)} · {formatMoney(entry.payment.amount)}</p>)}</div>)}</div></details>}
     {errors.length > 0 && <div role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{errors.map(e=><p key={e}>{e}</p>)}</div>}

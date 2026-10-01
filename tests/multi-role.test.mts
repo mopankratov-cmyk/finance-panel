@@ -13,6 +13,7 @@ import {
   rolesAreCabinetScoped,
   rolesAreExternal,
   rolesCan,
+  type Role,
 } from "../lib/auth/permissions.ts";
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -72,12 +73,12 @@ test("доступ к кабинету по сессии считает СУММ
   assert.equal(sessionHasCabinetAccess(scoped, FOREIGN), false);
 
   // Вторая роль — тоже ограниченная (ozon_manager): сумма всё ещё ограничена.
-  const twoScoped = { role: "wb_manager" as const, roles: ["wb_manager", "ozon_manager"] as const, cabinet_ids: [OWN] };
+  const twoScoped = { role: "wb_manager" as const, roles: ["wb_manager", "ozon_manager"] as Role[], cabinet_ids: [OWN] };
   assert.equal(sessionHasCabinetAccess(twoScoped, FOREIGN), false);
 
   // Основная роль (session.role) — ограниченная, но среди ролей есть
   // director: сумма ролей не ограничена, и это обязано снять запрет.
-  const withDirector = { role: "wb_manager" as const, roles: ["wb_manager", "director"] as const, cabinet_ids: [OWN] };
+  const withDirector = { role: "wb_manager" as const, roles: ["wb_manager", "director"] as Role[], cabinet_ids: [OWN] };
   assert.equal(sessionHasCabinetAccess(withDirector, FOREIGN), true);
   assert.equal(sessionHasCabinetAccess(withDirector, "all"), true);
 });

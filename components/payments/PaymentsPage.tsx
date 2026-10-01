@@ -48,9 +48,10 @@ import {
 } from "@/lib/finance/companyTax";
 import { COMPANY_TAX_RATE_UNAVAILABLE, COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
 import { ddsEditableAccounts, isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
+import { isCashoutPayment } from "@/lib/finance/cashout";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
-import { paymentIdFromSearch, shouldOpenCompanySettings } from "./paymentDeepLink";
+import { paymentIdFromSearch, paymentLedgerFiltersFromSearch, shouldOpenBankImport, shouldOpenCompanySettings } from "./paymentDeepLink";
 import { closeLoanScheduleRows, loadLoanScheduleRows } from "@/components/loans/scheduleStore";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 
@@ -68,6 +69,7 @@ export function PaymentsPage() {
   const [mode, setMode] = useState<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">("overview");
   const panel = useKeepAliveTabs<"overview" | "ledger" | "dds" | "review" | "reconciliation" | "chains">(mode);
   const [bankImportOpen, setBankImportOpen] = useState(false);
+  const [cashoutImport, setCashoutImport] = useState(false);
   const [historyImportOpen, setHistoryImportOpen] = useState(false);
   const [opiuAllocationPayment, setOpiuAllocationPayment] = useState<Payment | null>(null);
   const [companiesOpen, setCompaniesOpen] = useState(false);
@@ -78,6 +80,7 @@ export function PaymentsPage() {
   const [filterCategory, setFilterCategory] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
   const [filterCompany, setFilterCompany] = useState("");
+  const [cashoutOnly, setCashoutOnly] = useState(false);
   const [companies, setCompanies] = useState<DdsCompany[]>([]);
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
   const [companyError, setCompanyError] = useState<string | null>(null);
@@ -88,6 +91,18 @@ export function PaymentsPage() {
 
   useEffect(() => {
     if (shouldOpenCompanySettings(window.location.search)) setCompaniesOpen(true);
+    if (shouldOpenBankImport(window.location.search)) {
+      setCashoutImport(new URLSearchParams(window.location.search).get("cashoutImport") === "1");
+      setBankImportOpen(true);
+    }
+    const filters = paymentLedgerFiltersFromSearch(window.location.search);
+    if (filters) {
+      setMode("ledger");
+      setDateFrom(filters.from);
+      setDateTo(filters.to);
+      setFilterCompany(filters.company);
+      setCashoutOnly(true);
+    }
   }, []);
 
   useEffect(() => {
@@ -178,18 +193,20 @@ export function PaymentsPage() {
         if (filterCompany === "unassigned" && p.companyId !== null && !companyScope.unassignedCompanyIds.includes(p.companyId)) return false;
         if (filterCompany.startsWith("group:") && (!p.companyId || companyById.get(p.companyId)?.groupName !== filterCompany.slice(6))) return false;
         if (filterCompany && filterCompany !== "unassigned" && !filterCompany.startsWith("group:") && p.companyId !== filterCompany) return false;
+        if (cashoutOnly && !isCashoutPayment(p)) return false;
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [ddsPayments, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, companyById, companyScope]);
+  }, [ddsPayments, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, cashoutOnly, companyById, companyScope]);
 
-  const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany].filter(Boolean).length;
+  const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany, cashoutOnly].filter(Boolean).length;
   const resetFilters = () => {
     setDateFrom("");
     setDateTo("");
     setFilterCategory("");
     setFilterAccount("");
     setFilterCompany("");
+    setCashoutOnly(false);
   };
 
   // В фильтре должны быть и статьи вне справочника (старые выгрузки) — иначе их не отобрать.
@@ -493,7 +510,7 @@ export function PaymentsPage() {
         <>
       <Card>
         <CardContent className="pt-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
             <div>
               <label className="block text-xs text-slate-500 mb-1">С даты</label>
               <input
@@ -560,8 +577,12 @@ export function PaymentsPage() {
                 ))}
               </select>
             </div>
+            <label className="flex min-h-11 items-center gap-2 self-end rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700">
+              <input type="checkbox" checked={cashoutOnly} onChange={(event) => setCashoutOnly(event.target.checked)} className="h-4 w-4 accent-violet-600" />
+              Только «Обнал»
+            </label>
           </div>
-          {/* На телефоне пять полей занимают экран целиком, и список платежей
+          {/* На телефоне поля фильтров занимают экран целиком, и список платежей
               уезжает за нижний край: без этой строки человек видит пустой
               реестр и не понимает, что его отфильтровали. */}
           {activeFilters > 0 && (
@@ -630,11 +651,12 @@ export function PaymentsPage() {
       />
       <BankStatementModal
         open={bankImportOpen}
-        onClose={() => setBankImportOpen(false)}
+        onClose={() => { setBankImportOpen(false); setCashoutImport(false); }}
         accounts={state.accounts}
         companies={companies}
         existingPayments={paymentsWithCompany}
-        onQueued={() => setMode("review")}
+        onQueued={() => { if (cashoutImport) window.location.assign("/pnl/taxes/cashout"); else setMode("review"); }}
+        cashoutOnly={cashoutImport}
       />
       <ImportDdsModal
         open={historyImportOpen}

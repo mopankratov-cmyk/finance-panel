@@ -8,7 +8,11 @@ import { composeRnpSummaryFromSkus } from "../lib/rnp/summaryFromSkus";
 // Главный закон: производные считаются из СУММ, а не усреднением процентов —
 // среднее из ДРР двух SKU с разными оборотами исказило бы агрегат.
 
-const metric = (field: string, kind: string, daily: (number | null)[], total: number | null, forecast: number | null = null) =>
+interface TestMetricParts { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1 }
+
+const metric = (
+  field: string, kind: string, daily: (number | null)[], total: number | null, forecast: number | null = null,
+): { field: string; kind: string; daily: (number | null)[]; total: number | null; forecast: number | null; label: string; parts?: TestMetricParts } =>
   ({ field, kind, daily, total, forecast, label: field });
 
 const skuA = { metrics: [
@@ -22,6 +26,9 @@ const skuA = { metrics: [
   metric("views", "int", [1000, 1000], 2000),
   metric("reviews_count", "int", [2, 0], 2),
   metric("reviews_rating", "pct", [5, null], 5),
+  // Остаток к продаже и «остаток + в пути» нарочно разные: оборачиваемость
+  // сервера считается от первого (buildTable → calculateTurnoverDays(stock)).
+  metric("stock", "int", [30, 32], 32),
   metric("stock_total", "int", [40, 40], 40),
 ] };
 // SKU с оборотом в 10 раз меньше, но огромным ДРР: среднее по строкам дало бы
@@ -37,6 +44,7 @@ const skuB = { metrics: [
   metric("views", "int", [500, 500], 1000),
   metric("reviews_count", "int", [1, 0], 1),
   metric("reviews_rating", "pct", [2, null], 2),
+  metric("stock", "int", [6, 8], 8),
   metric("stock_total", "int", [8, 8], 8),
 ] };
 
@@ -84,11 +92,13 @@ test("рейтинг отзывов — взвешенный по числу о�
 
 test("оборачиваемость: суммарный остаток / средние дневные выкупы (формула сервера)", () => {
   const summary = composeRnpSummaryFromSkus(TEMPLATE, [skuA, skuB], 30);
-  // Остаток 48, выкупы по дням 6 и 10 → среднее 8 → 6 дней.
+  // Остаток 32 + 8 = 40, выкупы по дням 6 и 10 → среднее 8 → 5 дней. От
+  // «остатка + в пути» (40 + 8 = 48) вышло бы 6 — так под фильтром и было.
   const turnover = summary.find((item) => item.field === "turnover")!;
-  assert.equal(turnover.total, 6);
-  // Точечная метрика живёт там же, где в шаблоне (последний день).
-  assert.deepEqual(turnover.daily, [null, 6]);
+  assert.equal(turnover.total, 5);
+  // Ряд по дням — остаток дня / те же средние выкупы, а не итог во всех днях;
+  // день, где у шаблона пусто, остаётся пустым.
+  assert.deepEqual(turnover.daily, [null, 5]);
 });
 
 test("страница подменяет сводку и её дельты только при активных фильтрах", async () => {
@@ -96,7 +106,8 @@ test("страница подменяет сводку и её дельты то
   assert.match(page, /sortedSkus\.length !== activeData\.skus\.length/);
   assert.match(page, /completeMetrics\(displaySummary/);
   // Дельты сводки считаются по тому же отфильтрованному набору артикулов.
-  assert.match(page, /previousSkus = activePrevious\.skus\.filter\(\(sku\) => visibleNms\.has\(sku\.nm\)\)/);
+  assert.match(page, /activePrevious\.skus\.filter\(\(sku\) => visibleNms\.has\(sku\.nm\)\)/);
+  assert.match(page, /composeRnpWeeklySummaryFromDailySkus\(dailyPrevious, visibleNms,/);
   assert.match(page, /сводка по фильтру/);
 });
 
@@ -172,6 +183,33 @@ test("маржа под фильтром делится на выкупы тол
   );
   assert.equal(summary[0].total, 20);
   assert.equal(summary[0].daily[0], 20);
+});
+
+test("прибыль на единицу и ROMI под фильтром считаются по SKU только с известной себестоимостью", () => {
+  // SKU A: gross=100000₽, buyouts_count=50, ad_spent=200 (себестоимость известна).
+  // SKU B: gross неизвестен (null), buyouts_count=200, ad_spent=800 — наивная
+  // сумма buyouts_count/ad_spent по ОБОИМ SKU дала бы 100000/250=400₽/шт и
+  // 100000/1000×100=10000% вместо верных 100000/50=2000₽/шт и 100000/200×100=50000%.
+  const withCost = { metrics: [
+    metric("gross", "money", [100_000], 100_000),
+    metric("buyouts_count", "int", [50], 50),
+    metric("ad_spent", "money", [200], 200),
+  ] };
+  const withoutCost = { metrics: [
+    metric("buyouts_count", "int", [200], 200),
+    metric("ad_spent", "money", [800], 800),
+  ] };
+  const summary = composeRnpSummaryFromSkus(
+    [metric("profit_per_unit", "money", [null], null), metric("romi", "pct", [null], null)],
+    [withCost, withoutCost],
+    30,
+  );
+  const profitPerUnit = summary.find((item) => item.field === "profit_per_unit")!;
+  const romi = summary.find((item) => item.field === "romi")!;
+  assert.equal(profitPerUnit.total, 2_000, "100000 / 50, а не 100000 / 250");
+  assert.equal(profitPerUnit.daily[0], 2_000);
+  assert.equal(romi.total, 50_000, "100000/200×100, а не 100000/1000×100");
+  assert.equal(romi.daily[0], 50_000);
 });
 
 test("доля отмен под фильтром считается к оформленным заказам", () => {

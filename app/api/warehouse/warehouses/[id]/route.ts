@@ -56,6 +56,35 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
     }
     const since = body.fbsSalesSince ? new Date(body.fbsSalesSince) : null;
     if (since && Number.isNaN(since.getTime())) return fail("Некорректная дата", 400);
+
+    // Списание FBS находит заказ по юрлицу товара, а не по складу — WB не
+    // сообщает панели, с какого именно склада продавца ушёл заказ. Поэтому
+    // включить автосписание на двух складах одного юрлица одновременно нельзя:
+    // один и тот же заказ спишется только с одного из них (непредсказуемо,
+    // с какого), а второй склад тихо решит, что заказ уже учтён, и не спишет
+    // его вовсе.
+    if (since) {
+      const conflictResult = await db
+        .from("legal_entity_warehouses")
+        .select("warehouse_id")
+        .eq("legal_entity_id", body.entityId)
+        .not("fbs_sales_since", "is", null)
+        .neq("warehouse_id", id);
+      if (conflictResult.error) {
+        const missing = ["42P01", "42703", "PGRST204", "PGRST205"].includes(conflictResult.error.code ?? "");
+        return fail(missing ? "Примените миграции 202608240019 и 202608240020" : conflictResult.error.message, missing ? 503 : 500);
+      }
+      const conflict = (conflictResult.data ?? [])[0];
+      if (conflict) {
+        const other = await db.from("warehouses").select("name").eq("id", conflict.warehouse_id).maybeSingle();
+        const otherName = other.data?.name ? `«${other.data.name}»` : "другом складе";
+        return fail(
+          `У этого юрлица автосписание продаж FBS уже включено на складе ${otherName}. Включить его ещё и здесь нельзя: WB не различает, с какого склада продавца ушёл конкретный заказ, и списание перепутает остатки между складами. Сначала выключите автосписание на ${otherName}.`,
+          409,
+        );
+      }
+    }
+
     const { error } = await db.from("legal_entity_warehouses").upsert({
       legal_entity_id: body.entityId,
       warehouse_id: id,

@@ -258,6 +258,25 @@ export async function GET(request: NextRequest) {
       if (clientId && !cacheUpdated.has(clientId)) cacheUpdated.set(clientId, String(row.updated_at ?? "") || null);
     }
   }
+  // ozon_ad_cache.updated_at пишется только при полном успехе — постоянно
+  // падающий кабинет (например, без ключей Performance API) навсегда
+  // остаётся здесь "никогда" и монополизирует единственный слот часового
+  // крона. wb_sync_state.updated_at для job="ozon-adverts" пишется на
+  // КАЖДОЙ попытке (writeWbSyncState — и успех, и catch), поэтому даёт
+  // честный "последний раз трогали", даже когда сам синк не удался.
+  const lastAttempt = new Map<string, string | null>();
+  if (eligibleCabinets.length) {
+    const { data: attemptRows } = await db
+      .from("wb_sync_state")
+      .select("cabinet_id, updated_at")
+      .in("cabinet_id", eligibleCabinets.map((cabinet) => cabinet.id))
+      .eq("job", "ozon-adverts");
+    const cabinetById = new Map(eligibleCabinets.map((cabinet) => [cabinet.id, cabinet.client_id]));
+    for (const row of attemptRows ?? []) {
+      const clientId = cabinetById.get(String(row.cabinet_id ?? ""));
+      if (clientId) lastAttempt.set(clientId, String(row.updated_at ?? "") || null);
+    }
+  }
 
   const requestedLimit = Number(request.nextUrl.searchParams.get("limit"));
   const runLimit = requestedId || runAll
@@ -265,7 +284,7 @@ export async function GET(request: NextRequest) {
     : Number.isFinite(requestedLimit) && requestedLimit > 0
       ? requestedLimit
       : 1;
-  const cabinets = selectOzonAdSyncCabinets(eligibleCabinets, cacheUpdated, runLimit);
+  const cabinets = selectOzonAdSyncCabinets(eligibleCabinets, cacheUpdated, runLimit, lastAttempt);
   const plannedIds = new Set(cabinets.map((cabinet) => cabinet.id));
   const skipped = eligibleCabinets.filter((cabinet) => !plannedIds.has(cabinet.id)).map((cabinet) => cabinet.name);
 

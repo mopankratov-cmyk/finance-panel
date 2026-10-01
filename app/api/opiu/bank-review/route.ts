@@ -46,6 +46,7 @@ type SuggestionInput = {
 const ACTIVE_STATUSES: ReviewStatus[] = ["ready", "needs_info", "waiting_manager"];
 const ALL_STATUSES: ReviewStatus[] = [...ACTIVE_STATUSES, "approved", "rejected"];
 const COUNTERPARTY_ACCOUNT_MARKER = "__counterparty_account:";
+const isCashoutReviewItem = (row: { reasons?: unknown }) => Array.isArray(row.reasons) && row.reasons.map(String).includes("__cashout_import");
 
 function text(value: unknown, max = 2_000): string {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
           .order("id", { ascending: true })
           .range(from, to), { label: "Платежи из выписок", maxPages: 60 }),
       ]);
-      return NextResponse.json({ items, payment_sources: payments });
+      return NextResponse.json({ items: items.filter((item) => !isCashoutReviewItem(item)), payment_sources: payments });
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
     }
@@ -124,7 +125,7 @@ export async function GET(request: NextRequest) {
       .order("date", { ascending: false })
       .order("id", { ascending: true })
       .range(from, to), { label: "Очередь выписок" });
-    return NextResponse.json({ items });
+    return NextResponse.json({ items: items.filter((item) => !isCashoutReviewItem(item)) });
   } catch (error) {
     return jsonError(error instanceof Error ? error.message : "Не удалось прочитать очередь", 500);
   }
@@ -467,7 +468,9 @@ export async function POST(request: Request) {
     const selectedExternalIds=new Set(rows.map(row=>row.external_id));
     const ledgerStatement: BankStatement = {
       documentHash,
-      bank: bankNameFromWalletName(sourceAccountName, text(body.statement.bank, 255) || "Банк не определён"),
+      // БИК из имени файла имеет приоритет над вручную названным кошельком.
+      // Иначе ошибочное имя кошелька закрепляет неверный банк в реестре.
+      bank: bankNameFromWalletName(`${text(body.sourceFileName, 255)} ${sourceAccountName}`, text(body.statement.bank, 255) || "Банк не определён"),
       owner: text(body.statement.owner, 500),
       ownerInn,
       accountNumber: bankAccountNumber,
@@ -507,7 +510,9 @@ export async function POST(request: Request) {
       return jsonError(registered.error.message, 500);
     }
     const companyNames = new Map(names.map(c => [c.id,c.name]));
+    const cashoutImport = body.suggestions.some((suggestion) => suggestion.reasons?.includes("__cashout_import"));
     const confirmIds = stored.filter(row => {
+      if (cashoutImport || (Array.isArray(row.reasons) && row.reasons.map(String).includes("__cashout_import"))) return false;
       const recipientAliases = companyAliasKeys(row.counterparty + " " + row.purpose);
       const sourceName = companyNames.get(row.company_id ?? "") ?? "";
       const needsCashChain = row.amount < 0 && /основн|рио|митриченко|панкратов|кучеренко/i.test(sourceName) && recipientAliases.length > 0;

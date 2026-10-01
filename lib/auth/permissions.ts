@@ -268,14 +268,26 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     "warehouse.view", "warehouse.task.execute", "warehouse.request.create",
   ],
 
-  // §12. Внешний менеджер: товарный контур, себестоимость и заявки на склад
-  // строго в пределах своего юрлица. Плюс — управление своими сотрудниками:
-  // у клиента есть главный пользователь, который раздаёт доступ своей команде.
+  // §12. Внешний менеджер: товарный контур, себестоимость и склад строго в
+  // пределах своего юрлица. Плюс — управление своими сотрудниками: у клиента
+  // есть главный пользователь, который раздаёт доступ своей команде.
+  //
+  // warehouse.task.execute — решение владельца 29.09.2026 (аудит панели,
+  // находка №12): в своём юрлице внешний селлер сам хозяин товара, а не
+  // наёмный исполнитель, и сам ведёт склад — создаёт и выполняет задания,
+  // заводит начальные остатки. До этой правки право было только у director
+  // и внутренней роли warehouse, хотя canManageStock() (lib/warehouse/
+  // operatorScope.ts) уже пускал внешнего селлера на уровне роута — здесь
+  // была единственная настоящая преграда, proxy.ts резал его на входе
+  // раньше, чем роут успевал проверить canManageStock(). Утверждение чужого
+  // расхождения (warehouse.approve) и произвольная коррекция остатка
+  // (warehouse.stock.adjust) сюда не входят — решение было именно про
+  // задания и стартовый остаток, не про эти два права.
   seller_owner: [
     ...ANALYTICS,
     "cost.view", "cost.edit",
     ...MERCHANDISING,
-    "warehouse.view", "warehouse.request.create",
+    "warehouse.view", "warehouse.task.execute", "warehouse.request.create",
     "users.manage", "limits.manage",
   ],
 
@@ -284,7 +296,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly Permission[]> = {
     ...ANALYTICS,
     "cost.view", "cost.edit",
     ...MERCHANDISING,
-    "warehouse.view", "warehouse.request.create",
+    "warehouse.view", "warehouse.task.execute", "warehouse.request.create",
     "limits.manage",
   ],
 };

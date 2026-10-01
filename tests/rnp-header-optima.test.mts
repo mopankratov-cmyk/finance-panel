@@ -86,7 +86,7 @@ test("шапка собрана: блоки Данные/Показ, чипы и
     assert.ok(toolbar.includes(marker), `в тулбаре нет «${marker}»`);
   }
   const page = await readFile(new URL("../components/wb/WbRnpPage.tsx", import.meta.url), "utf8");
-  assert.match(page, /aggregateRnpWeekly\(base, range\.from\)/);
+  assert.match(page, /aggregateRnpWeekly\(dailyData, range\.from\)/);
   assert.match(page, /isBurnedOutSku\(sku\.metrics\)/);
   assert.match(page, /rnpLossReasons\(sku\.metrics\)/);
   // Аномалии откалиброваны по дням — в недельной гранулярности выключаются.

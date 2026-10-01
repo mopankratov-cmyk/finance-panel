@@ -243,6 +243,63 @@ test("недельная колонка метрики с частями пер�
   assert.equal(find("logistics_per_unit").daily[0], 1_400, "7 000 ₽ на 5 штук, а не среднее 2 000");
 });
 
+test("недельная маржа/прибыль-на-единицу/ROMI строки сводки считаются из weeklyParts, не из общего WEEKLY_RATIO_PAIRS", () => {
+  // Понедельник: costed-выкупы 10 000 ₽ (только SKU с известной себестоимостью),
+  // а поле buyouts_sum сводки (ВСЕ SKU) — 20 000 ₽. Наивная пара из
+  // WEEKLY_RATIO_PAIRS (gross/buyouts_sum) дала бы вдвое заниженную маржу.
+  const table = {
+    period: Array.from({ length: 7 }, (_, index) => ({ label: `0${index + 1}.09`, period_type: "рабочий" })),
+    summary: [
+      { field: "gross", kind: "money", daily: [1_000, null, null, null, null, null, null] },
+      // buyouts_sum по ВСЕМ SKU — специально шире costed-знаменателя в weeklyParts.
+      { field: "buyouts_sum", kind: "money", daily: [20_000, null, null, null, null, null, null] },
+      { field: "buyouts_count", kind: "int", daily: [50, null, null, null, null, null, null] },
+      { field: "ad_spent", kind: "money", daily: [100, null, null, null, null, null, null] },
+      {
+        field: "margin_pct", kind: "pct", daily: [10],
+        weeklyParts: { numerator: [1_000, null, null, null, null, null, null], denominator: [10_000, null, null, null, null, null, null], scale: 100 as const },
+      },
+      {
+        field: "profit_per_unit", kind: "money", daily: [50],
+        weeklyParts: { numerator: [1_000, null, null, null, null, null, null], denominator: [20, null, null, null, null, null, null], scale: 1 as const },
+      },
+      {
+        field: "romi", kind: "pct", daily: [500],
+        weeklyParts: { numerator: [1_000, null, null, null, null, null, null], denominator: [50, null, null, null, null, null, null], scale: 100 as const },
+      },
+    ],
+    skus: [],
+  };
+  const weekly = aggregateRnpWeekly(table, "2026-09-07", "2026-09-13");
+  const find = (field: string) => weekly.summary.find((metric) => metric.field === field)!;
+  assert.equal(find("margin_pct").daily[0], 10, "1000/10000 из weeklyParts, а не 1000/20000 из buyouts_sum сводки");
+  assert.equal(find("profit_per_unit").daily[0], 50, "1000/20 из weeklyParts, а не 1000/50 из buyouts_count сводки");
+  assert.equal(find("romi").daily[0], 2_000, "1000/50 из weeklyParts, а не 1000/100 из ad_spent сводки");
+  // weeklyParts не должен протечь в `parts` результата — сводка под фильтром
+  // (composeRnpSummaryFromSkus) читает только `parts` и требует его у КАЖДОГО
+  // SKU; протёкший `parts` без SKU-частей обнулил бы метрику под фильтром.
+  assert.equal((find("margin_pct") as { parts?: unknown }).parts, undefined);
+  assert.equal((find("profit_per_unit") as { parts?: unknown }).parts, undefined);
+  assert.equal((find("romi") as { parts?: unknown }).parts, undefined);
+});
+
+test("недельная профита-на-единицу у ОТДЕЛЬНОГО SKU (без weeklyParts) по-прежнему берётся из WEEKLY_RATIO_PAIRS", () => {
+  const table = {
+    period: Array.from({ length: 7 }, (_, index) => ({ label: `0${index + 1}.09`, period_type: "рабочий" })),
+    summary: [],
+    skus: [{
+      metrics: [
+        { field: "gross", kind: "money", daily: [1_000, null, null, null, null, null, null] },
+        { field: "buyouts_count", kind: "int", daily: [20, null, null, null, null, null, null] },
+        { field: "profit_per_unit", kind: "money", daily: [50] },
+      ],
+    }],
+  };
+  const weekly = aggregateRnpWeekly(table, "2026-09-07", "2026-09-13");
+  const metric = weekly.skus[0].metrics.find((m) => m.field === "profit_per_unit")!;
+  assert.equal(metric.daily[0], 50, "у одного SKU costed-разрыва нет — пара из WEEKLY_RATIO_PAIRS верна как есть");
+});
+
 test("старый снимок без частей: когортные строки гаснут, остальные не трогаются", () => {
   const table = {
     period: [{ label: "01.09", period_type: "рабочий" }],

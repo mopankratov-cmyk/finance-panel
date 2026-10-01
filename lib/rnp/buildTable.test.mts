@@ -515,8 +515,11 @@ test("налог и чистая прибыль считаются от выру
   assert.equal(find("net_margin_pct").total, 23);       // 3 450 / 15 000
   // Прибыль до налога не меняется — её семантика опубликована.
   assert.equal(find("gross").total, 4_500);
-  // Встают сразу после маржи.
-  assert.equal(metrics.findIndex((item) => item.field === "tax_rub"), 2);
+  // Встают сразу после маржи: ступень «после комиссии кабинета», затем налог.
+  assert.equal(metrics.findIndex((item) => item.field === "profit_after_agent"), 2);
+  assert.equal(metrics.findIndex((item) => item.field === "tax_rub"), 3);
+  // Комиссии кабинета нет — ступень равна прибыли после МП и рекламы.
+  assert.equal(find("profit_after_agent").total, 4_500);
 });
 
 test("нулевая ставка даёт чистую прибыль, равную прибыли", () => {

@@ -36,6 +36,8 @@ test("экономика сводки обрезана той же границ�
   // тот же день — число; хуже, прибыль полного периода делилась на выкупы
   // урезанного, и прибыль на единицу с ROMI выходили завышенными.
   assert.match(source, /const summaryEconomyAsOf = cutoffAsOf\(\s*\n\s*summaryFreshnessCutoff\(\[summaryCutoffs\.sales, summaryCutoffs\.adverts\]\)/);
-  assert.match(source, /const sumDaily = \(field: string\) => days\.map\(\(day, i\) => \{\s*\n\s*if \(day > summaryEconomyAsOf\) return null;/);
+  // По умолчанию — та же граница; валовая прибыль (ей нужна только
+  // себестоимость) передаёт границу продаж явно.
+  assert.match(source, /const sumDaily = \(field: string, until = summaryEconomyAsOf\) => days\.map\(\(day, i\) => \{\s*\n\s*if \(day > until\) return null;/);
   assert.match(source, /const costedBuyoutsSumDaily = days\.map\(\(day, index\) => \{\s*\n\s*if \(day > summaryEconomyAsOf\) return null;/);
 });

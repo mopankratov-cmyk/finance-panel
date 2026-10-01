@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities, resolveEntity } from "@/lib/warehouse/entityAccess";
 import { assertVariantsInScope } from "@/lib/warehouse/ownership";
@@ -88,7 +89,7 @@ export async function POST(request: NextRequest) {
   const session = await getServerSession();
   // Кнопка спрятана от роли warehouse в интерфейсе, но спрятанная кнопка —
   // не защита: тот же серверный сторож, что уже стоит на products/tasks.
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
 
   const scopeList = await listAccessibleEntities();
   if (!scopeList.ok) return fail(scopeList.error, scopeList.status);

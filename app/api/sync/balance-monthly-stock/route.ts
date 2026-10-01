@@ -114,7 +114,6 @@ async function saveCashError(input: Parameters<typeof saveCashSnapshot>[0]) {
     });
   }
 }
-
 async function loadScopedWbReportRows(
   cabinetId: string,
   cabinetName: string,

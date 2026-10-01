@@ -1,11 +1,11 @@
 import type { Account, Payment } from "@/lib/types";
-import { companyAliasKeys } from "./companyAliases";
+import { companyAliasKeys, preferredAliasCompany, sameCompanyAlias } from "./companyAliases";
 import { INTERCOMPANY_LOAN_CATEGORIES, LOAN_CATEGORIES, TRANSFER_CATEGORIES } from "./categories";
 
 export interface ChainCompany { id: string; name: string; groupName: string }
 export interface ChainAllocation {
   id: string; amount: number; date: string; name: string; category: string;
-  companyId: string; accountId: string; targetAccountId?: string; counterparty: string; excluded: boolean;
+  companyId: string; accountId: string; targetAccountId?: string; targetReviewId?: string; counterparty: string; excluded: boolean;
 }
 export interface PaymentChainDraft {
   id: string; revision: number; label: string; sourceDate: string; sourceAmount: number;
@@ -17,17 +17,94 @@ export type ChainRole = "source" | "cash-in" | "loan-out" | "loan-in" | "transfe
 export interface ChainEntry { payment: Payment; role: ChainRole; allocationId: string | null }
 export interface ChainMetadata { id: string; revision: number; amount: number; date: string; label: string; role: ChainRole; allocationId?: string | null }
 export interface ChainHistory { revision: number; createdAt: string; reason: string; entries: ChainEntry[] }
-export interface PaymentChainDetail { draft: PaymentChainDraft; status: "active" | "cancelled"; migrationAvailable: boolean; history: ChainHistory[] }
+export interface PaymentChainBankTarget {
+  id: string; date: string; amount: number; purpose: string; accountId: string;
+  companyId: string; sourceFileName: string; status: string;
+}
+export interface PaymentChainDetail { draft: PaymentChainDraft; status: "active" | "cancelled"; migrationAvailable: boolean; history: ChainHistory[]; bankTargets: PaymentChainBankTarget[] }
+export interface BankReviewChainSplit {
+  amount: number; category: string | null; excluded?: boolean;
+  flow?: "income" | "expense"; countsTowardBank?: boolean; isRemainder?: boolean;
+}
 const cents = (n: number) => Math.round(n * 100);
 const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е");
+const accountNorm = (s: string) => norm(s).replace(/[^а-яa-z0-9]+/g, " ").trim();
+
+/** Кассы фактического ДДС. PANKSTER GROUP используется только календарём. */
+export function chainCashAccounts(accounts: readonly Account[]) {
+  return accounts.filter((account) => account.type === "cash" && account.currency === "RUB" && !/pankster\s+group/i.test(account.name));
+}
+
+/**
+ * Выбирает кассу юрлица без ручного перебора технических кошельков.
+ * Сначала берём кассу с названием компании, затем единственную общую «Наличку».
+ */
+export function preferredChainCashAccount(company: ChainCompany | undefined, accounts: readonly Account[], companies: readonly ChainCompany[]) {
+  if (!company) return null;
+  const cash = chainCashAccounts(accounts);
+  const companyName = accountNorm(company.name);
+  const named = cash.filter((account) => {
+    const name = accountNorm(account.name);
+    return name.includes(companyName) || sameCompanyAlias(account.name, company.name);
+  });
+  if (named.length === 1) return named[0];
+  const companyNames = companies.map((candidate) => accountNorm(candidate.name)).filter(Boolean);
+  const generic = cash.filter((account) => {
+    const name = accountNorm(account.name);
+    return /^(?:наличка|наличные|касса)$/.test(name) && !companyNames.some((candidate) => name.includes(candidate));
+  });
+  return generic.length === 1 ? generic[0] : null;
+}
+
+/** Заполняет известную цепочку кассами и каноническим получателем до показа формы. */
+export function autofillPaymentChainCash(draft: PaymentChainDraft, companies: readonly ChainCompany[], accounts: readonly Account[]) {
+  const next: PaymentChainDraft = {...draft, allocations:draft.allocations.map(allocation=>({...allocation}))};
+  const source=companies.find(company=>company.id===next.sourceCompanyId);
+  for(const allocation of next.allocations) {
+    const recipient=preferredAliasCompany(`${allocation.name} ${allocation.counterparty}`,companies);
+    if(recipient&&requiresFilippovLoan(source,recipient))allocation.companyId=recipient.id;
+  }
+  if(!next.allocations.some(allocation=>requiresFilippovLoan(source,companies.find(company=>company.id===allocation.companyId))))return next;
+  next.throughCash=true;
+  const sourceCash=preferredChainCashAccount(source,accounts,companies);
+  if(!next.cashAccountId&&sourceCash)next.cashAccountId=sourceCash.id;
+  for(const allocation of next.allocations) {
+    const recipient=companies.find(company=>company.id===allocation.companyId);
+    if(!requiresFilippovLoan(source,recipient))continue;
+    const current=accounts.find(account=>account.id===allocation.accountId);
+    const recipientCash=preferredChainCashAccount(recipient,accounts,companies);
+    if((!current||current.type!=="cash"||current.currency!=="RUB"||current.id===next.cashAccountId)&&recipientCash)allocation.accountId=recipientCash.id;
+  }
+  return next;
+}
 export function isMainGroup(company: ChainCompany | undefined) {
-  return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);
+  return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко|глобалкос|иллюмей/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);
 }
 export function requiresFilippovLoan(source: ChainCompany | undefined, recipient: ChainCompany | undefined) {
   return Boolean(source && recipient && source.id !== recipient.id && isMainGroup(source) && companyAliasKeys(recipient.name).includes("филиппов"));
 }
+
+/** Technical loan and wallet-transfer entries are generated from one allocation. */
+export function bankReviewSpendingSplits<T extends BankReviewChainSplit>(splits: readonly T[]) {
+  const flow = (split: T) => split.flow ?? "expense";
+  const technicalLoan = (split: T) => split.category === INTERCOMPANY_LOAN_CATEGORIES.issued || split.category === LOAN_CATEGORIES.receipt;
+  const downstream = splits.filter((split) => !split.excluded && !split.isRemainder
+    && split.countsTowardBank === false && flow(split) === "expense" && !technicalLoan(split));
+  if (downstream.length) return downstream;
+  return splits.filter((split) => !split.excluded && !split.isRemainder
+    && split.countsTowardBank !== false && flow(split) === "expense" && !technicalLoan(split));
+}
+// Только НЕисключённые части: buildChainEntries ниже для excluded-частей не
+// создаёт ни одной записи платежа — включать их сумму сюда значило бы
+// считать деньги распределёнными там, где их разнесение в ДДС на самом деле
+// пропущено. С этим совпадением chainRemainder/validateChain (при
+// throughCash=false, где remainder обязан быть строго 0) молча пропускали
+// сохранение цепочки с исключённой частью: allocationTotal засчитывал её как
+// уже распределённую, buildChainEntries эту же часть просто выбрасывал — и
+// сумма реального банковского оттока переставала существовать в ДДС вообще,
+// без единой ошибки при сохранении.
 export function allocationTotal(draft: PaymentChainDraft) {
-  return draft.allocations.reduce((sum, p) => sum + cents(p.amount), 0) / 100;
+  return draft.allocations.reduce((sum, p) => sum + (p.excluded ? 0 : cents(p.amount)), 0) / 100;
 }
 export function chainRemainder(draft: PaymentChainDraft) { return (cents(draft.sourceAmount) - cents(allocationTotal(draft))) / 100; }
 export function encodeChainMetadata(meta: ChainMetadata, comment = "") {
@@ -69,6 +146,7 @@ export function validateChain(d: PaymentChainDraft, accounts: Account[], compani
     if(a.category===TRANSFER_CATEGORIES.outgoing) {
       const target=accounts.find(acc=>acc.id===a.targetAccountId);
       if(!target || target.currency!=="RUB" || target.id===a.accountId)errors.push("У перевода между кошельками выберите другой рублёвый кошелёк поступления");
+      if(d.bankReviewId && target?.type==="bank" && !a.targetReviewId)errors.push("Для внесения на банковский счёт выберите встречное поступление из выписки");
     }
     if (/Поступление|Получение кредитов|Продажи на МП/.test(a.category)) errors.push("У части расхода выбрана статья поступления");
     if (/зарплат/i.test(a.category) && !a.counterparty.trim()) errors.push("Для зарплаты укажите получателя в каждой части");

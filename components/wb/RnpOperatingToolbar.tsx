@@ -105,22 +105,23 @@ interface Props {
 // нельзя выбрать руками, она доступна только через готовое отображение.
 // Полноту сторожит тест tests/wb-rnp-metric-picker.regression.test.mts.
 export const METRIC_GROUPS: Array<{ label: string; fields: RnpMetricField[] }> = [
-  { label: "Основное", fields: ["orders_count", "orders_sum", "buyout_pct", "buyouts_count", "buyouts_sum", "ad_spent", "drr"] },
-  { label: "Продажи и возвраты", fields: ["orders_spp_sum", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct", "cohort_resolved_pct"] },
-  { label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"] },
-  { label: "Воронка", fields: ["views", "clicks", "ctr", "ad_orders", "ad_orders_sum", "open_card", "cart", "wishlist", "cart_cr", "order_cr"] },
+  { label: "Основное", fields: ["orders_count", "orders_sum", "buyout_pct", "buyouts_count", "buyouts_sum", "ad_spent", "drr", "tacos_pct"] },
+  { label: "Продажи и возвраты", fields: ["orders_spp_sum", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "returns_count", "returns_sum", "return_pct", "actual_buyout_pct", "cohort_resolved_pct", "expected_buyouts_count", "expected_buyouts_sum", "expected_returns_count", "expected_buyout_pct", "expected_net_buyout_pct"] },
+  { label: "Цены", fields: ["avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct", "spp_rub"] },
+  { label: "Воронка", fields: ["views", "clicks", "ctr", "ad_orders", "ad_orders_sum", "ad_cpc", "ad_cpm", "ad_cpo", "ad_acos_pct", "open_card", "cart", "wishlist", "cart_cr", "order_cr", "cart_order_cr"] },
   { label: "Органика", fields: ["org_open_card", "org_orders_count", "org_cr_pct", "org_share_pct"] },
-  { label: "Экономика", fields: ["cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "logistics_per_unit", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "gross", "margin_pct", "agent_commission_rub", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"] },
+  { label: "Экономика", fields: ["cogs", "gross_profit", "gross_margin_pct", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "logistics_per_unit", "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub", "profit_before_ads", "gross", "margin_pct", "agent_commission_rub", "profit_after_agent", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"] },
   { label: "Остатки", fields: ["stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total", "turnover", "money"] },
-  { label: "Отзывы", fields: ["reviews_count", "reviews_rating", "reviews_bad_share_pct"] },
-  { label: "Реклама · Ручная", fields: ["ads_manual_spent", "ads_manual_views", "ads_manual_clicks", "ads_manual_orders", "ads_manual_orders_sum"] },
-  { label: "Реклама · Единая", fields: ["ads_unified_spent", "ads_unified_views", "ads_unified_clicks", "ads_unified_orders", "ads_unified_orders_sum"] },
+  { label: "Отзывы", fields: ["reviews_count", "reviews_rating", "reviews_bad_share_pct", "reviews_text_count", "reviews_text_rating", "reviews_text_bad_share_pct"] },
+  { label: "Реклама · Ручная", fields: ["ads_manual_spent", "ads_manual_views", "ads_manual_clicks", "ads_manual_orders", "ads_manual_orders_sum", "ads_manual_cpc", "ads_manual_cpm", "ads_manual_cpo", "ads_manual_acos_pct"] },
+  { label: "Реклама · Единая", fields: ["ads_unified_spent", "ads_unified_views", "ads_unified_clicks", "ads_unified_orders", "ads_unified_orders_sum", "ads_unified_cpc", "ads_unified_cpm", "ads_unified_cpo", "ads_unified_acos_pct"] },
 ];
 
 const PERCENT_FIELDS: RnpMetricField[] = [
   "ctr", "buyout_pct", "actual_buyout_pct", "cohort_resolved_pct", "margin_pct", "drr", "gmroi",
   "cart_cr", "order_cr", "org_cr_pct", "org_share_pct", "cancel_pct", "return_pct", "reviews_bad_share_pct",
   "seller_discount_pct", "spp_pct", "net_margin_pct", "romi", "fbs_share_pct",
+  "cart_order_cr", "tacos_pct", "ad_acos_pct", "gross_margin_pct", "reviews_text_bad_share_pct", "expected_buyout_pct", "expected_net_buyout_pct", "ads_manual_acos_pct", "ads_unified_acos_pct",
 ];
 
 const RUBLE_FIELDS: RnpMetricField[] = [
@@ -131,12 +132,16 @@ const RUBLE_FIELDS: RnpMetricField[] = [
   "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "delivery_rub", "logistics_per_unit",
   "storage_rub", "penalty_rub", "acceptance_rub", "deduction_rub", "mp_cost_rub",
   "ad_spent", "money",
+  "ad_cpc", "ad_cpm", "ad_cpo", "spp_rub", "gross_profit", "profit_before_ads", "profit_after_agent", "expected_buyouts_sum", "ads_manual_cpc", "ads_manual_cpm", "ads_manual_cpo", "ads_unified_cpc", "ads_unified_cpm", "ads_unified_cpo",
 ];
 
 const UNITS: Partial<Record<RnpMetricField, string>> = {
   ...Object.fromEntries(PERCENT_FIELDS.map((field) => [field, "%"])),
   ...Object.fromEntries(RUBLE_FIELDS.map((field) => [field, "₽"])),
   turnover: "дн.",
+  // Оценки — в звёздах, как в таблице (metricUnit), а не «шт.» по умолчанию.
+  reviews_rating: "★",
+  reviews_text_rating: "★",
 };
 
 // Высота полей: 44px пальцем, 36px мышью. Порог lg, а не md, — планшет в
@@ -842,7 +847,7 @@ export function RnpOperatingToolbar(props: Props) {
                           <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300" />
                           <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
                             <input type="checkbox" checked={selected} onChange={() => toggleMetric(field)} className="h-5 w-5 accent-violet-600 lg:h-3.5 lg:w-3.5" />
-                            <span className={`truncate text-[10px] ${selected ? "font-medium text-slate-700" : "text-slate-500"}`}>{metric.label.replace(/, (₽|%|дней|шт)$/u, "")}</span>
+                            <span className={`truncate text-[10px] ${selected ? "font-medium text-slate-700" : "text-slate-500"}`}>{metric.label.replace(/, (₽|%|дней|шт\.?)$/u, "")}</span>
                             <span className="ml-auto shrink-0 text-[9px] text-slate-400">{UNITS[field] ?? "шт."}</span>
                           </label>
                           {selected ? (

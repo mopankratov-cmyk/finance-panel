@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { downloadWbDocument, isTaxDocumentCategory, parseWbUpdXml, stableTaxDocumentId } from "./taxDocuments.ts";
+import { downloadWbDocument, isTaxDocumentCategory, listWbDocumentCategories, listWbDocuments, parseWbUpdXml, stableTaxDocumentId } from "./taxDocuments.ts";
 
 const XML = `<?xml version="1.0" encoding="windows-1251"?>
 <Файл><Документ><СвСчФакт НомерСчФ="УПД-42" ДатаСчФ="25.09.2026" />
@@ -40,6 +40,37 @@ test("decodes the WB document from JSON Base64", async () => {
   };
   try {
     assert.deepEqual(await downloadWbDocument("token", "upd-42", "zip"), expected);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("retries WB document requests after a 429 response", async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return new Response("rate limited", { status: 429, headers: { "X-RateLimit-Retry": "0" } });
+    return Response.json({ data: { documents: [] } });
+  };
+  try {
+    assert.deepEqual(await listWbDocuments("token", "2026-08-01", "2026-09-29", 0), []);
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("loads WB document categories for server-side tax filtering", async () => {
+  const originalFetch = globalThis.fetch;
+  let requestedUrl = "";
+  globalThis.fetch = async (input) => {
+    requestedUrl = String(input);
+    return Response.json({ data: { categories: [{ name: "upd", title: "УПД" }] } });
+  };
+  try {
+    assert.deepEqual(await listWbDocumentCategories("token"), [{ name: "upd", title: "УПД" }]);
+    assert.match(requestedUrl, /\/categories\?locale=ru/);
   } finally {
     globalThis.fetch = originalFetch;
   }

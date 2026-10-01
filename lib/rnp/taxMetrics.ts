@@ -38,6 +38,15 @@ export function appendTaxMetrics(
   if (!buyoutsSum || !gross) return metrics;
   if (metrics.some((metric) => metric.field === "tax_rub")) return metrics;
   const sppPct = metrics.find((metric) => metric.field === "spp_pct");
+  // Знаменатель net_margin_pct обязан быть тем же, что у margin_pct — иначе
+  // сиблинг воспроизводит уже раз найденный и исправленный баг ("Общая сводка"
+  // делит costed-числитель на выкупы ВСЕХ SKU и занижает долю). На строке
+  // сводки margin_pct несёт weeklyParts.denominator — выкупы только SKU с
+  // известной себестоимостью (см. lib/rnp/buildTable.ts). У строки одного SKU
+  // weeklyParts нет: там своего расхождения нет, buyoutsSum.daily и так верный
+  // знаменатель для этого единственного SKU.
+  const marginMetric = metrics.find((metric) => metric.field === "margin_pct");
+  const revenueDaily = marginMetric?.weeklyParts?.denominator ?? buyoutsSum.daily;
   const rate = Number.isFinite(taxPct) && taxPct > 0 ? taxPct : 0;
   const extraRate = Number.isFinite(options.extraCommissionPct) && Number(options.extraCommissionPct) > 0
     ? Number(options.extraCommissionPct)
@@ -63,11 +72,31 @@ export function appendTaxMetrics(
     if (agent == null) return null;
     return value - taxDaily[index]! - agent;
   });
-  const netTotal = gross.total == null || taxTotal == null || agentTotal == null
+  // Итог — сумма показанных дней. Раньше из прибыли только за дни, где она
+  // известна, вычитались налог и агентская за ВСЕ дни: стоило продажам или
+  // рекламе отстать на день, и итог расходился с суммой дней и с неделей.
+  const knownNet = netDaily.filter((value): value is number => value != null);
+  const netTotal = gross.total == null || taxTotal == null || agentTotal == null || !knownNet.length
     ? null
-    : gross.total - taxTotal - agentTotal;
+    : knownNet.reduce((sum, value) => sum + value, 0);
+  const netRevenueTotal = revenueDaily.reduce<number | null>(
+    (sum, value, index) => (value == null || netDaily[index] == null ? sum : (sum ?? 0) + value),
+    null,
+  );
+  // Прибыль после комиссии кабинета — ступень между прибылью после МП и рекламы
+  // и налогом. Комиссия — с выкупов тех же SKU и дней, что у прибыли: у сводки
+  // это SKU с себестоимостью, поэтому сводка равна сумме строк SKU. Строка
+  // «Комиссия кабинета» — со всех выкупов, и на сводке она может быть больше.
+  const afterAgentDaily = gross.daily.map((value, index) => {
+    if (value == null) return null;
+    if (extraRate === 0) return value;
+    const revenue = revenueDaily[index];
+    return revenue == null ? null : value - Math.round(Number(revenue) * extraRate / 100);
+  });
+  const knownAfterAgent = afterAgentDaily.filter((value): value is number => value != null);
+  const afterAgentTotal = knownAfterAgent.length ? knownAfterAgent.reduce((sum, value) => sum + value, 0) : null;
   const netMarginDaily = netDaily.map((value, index) => {
-    const revenue = buyoutsSum.daily[index];
+    const revenue = revenueDaily[index];
     return value == null || revenue == null || revenue <= 0 ? null : Math.round((value / revenue) * 1000) / 10;
   });
   const shared = {
@@ -88,6 +117,17 @@ export function appendTaxMetrics(
       note: `Ставка ${extraRate}% с цены продавца — настройка кабинета (посредник/агент).`,
       ...shared,
     } as Metric] : []),
+    {
+      field: "profit_after_agent",
+      label: "Прибыль после комиссии кабинета, ₽",
+      kind: "money",
+      daily: afterAgentDaily,
+      total: afterAgentTotal,
+      note: extraRate > 0
+        ? `Прибыль после МП и рекламы − комиссия кабинета ${extraRate}% с выкупов тех же SKU и дней, где прибыль известна${marginMetric?.weeklyParts ? " (на сводке — только SKU с себестоимостью; строка «Комиссия кабинета» — со всех выкупов)" : ""}. До налога.`
+        : "Комиссия кабинета не задана — совпадает с прибылью после МП и рекламы. До налога.",
+      ...shared,
+    } as Metric,
     { field: "tax_rub", label: "Налог, ₽", kind: "money", daily: taxDaily, total: taxTotal, note, ...shared },
     {
       field: "net_profit",
@@ -95,7 +135,7 @@ export function appendTaxMetrics(
       kind: "money",
       daily: netDaily,
       total: netTotal,
-      note: `Прибыль после расходов МП минус налог${extraRate > 0 ? " и комиссия кабинета" : ""}. ${note}`,
+      note: `Прибыль после МП и рекламы минус налог${extraRate > 0 ? " и комиссия кабинета" : ""}. ${note}`,
       ...shared,
     },
     {
@@ -103,10 +143,16 @@ export function appendTaxMetrics(
       label: "Чистая маржа, %",
       kind: "pct",
       daily: netMarginDaily,
-      total: netTotal != null && buyoutsSum.total != null && buyoutsSum.total > 0
-        ? Math.round((netTotal / buyoutsSum.total) * 1000) / 10
+      total: netTotal != null && netRevenueTotal != null && netRevenueTotal > 0
+        ? Math.round((netTotal / netRevenueTotal) * 1000) / 10
         : null,
-      note: `Чистая прибыль / выручка по выкупам. ${note}`,
+      note: `Чистая прибыль / выручка по выкупам${marginMetric?.weeklyParts ? " (только SKU с известной себестоимостью, как в margin_pct)" : ""}. ${note}`,
+      // Только у строки сводки (когда у margin_pct есть weeklyParts) — недельная
+      // колонка иначе взяла бы net_profit/buyouts_sum из WEEKLY_RATIO_PAIRS, тот
+      // же расхождающийся по охвату знаменатель. Не `parts`: сводка под
+      // фильтром требует такую же часть у каждого SKU, а у SKU её нет — см.
+      // комментарий у Metric.weeklyParts.
+      ...(marginMetric?.weeklyParts ? { weeklyParts: { numerator: netDaily, denominator: revenueDaily, scale: 100 as const } } : {}),
       ...shared,
     },
   ];

@@ -1,3 +1,5 @@
+import { aggregateRnpWeekly } from "./operatingMatrix";
+
 // Пересборка «Общей сводки» РНП из отфильтрованного набора SKU (бренд,
 // категория, теги, список артикулов, «сгоревшие», «потери»). Серверная сводка
 // считается по всему кабинету из сырых строк; на клиенте повторяем те же
@@ -6,10 +8,15 @@
 // исказило бы агрегат). Формулы сверены с lib/rnp/buildTable.ts и
 // lib/rnp/taxMetrics.ts — расхождение сторожит тест rnp-summary-from-skus.
 
+/** Хвост пояснения у строк отзывов, когда отзывы кабинета не прочитались. */
+export const RNP_REVIEWS_READ_FAILED_NOTE = " Отзывы не прочитались из базы — строка молчит, а не показывает ноль.";
+
 interface MetricParts {
   numerator: (number | null)[];
   denominator: (number | null)[];
   scale: 100 | 1;
+  /** Знаки после запятой (CPC в копейках) — см. RnpMetricParts.decimals. */
+  decimals?: 2;
 }
 
 interface BaseMetric {
@@ -20,7 +27,30 @@ interface BaseMetric {
   forecast: number | null;
   /** Числитель и знаменатель производной, которых нет среди строк таблицы. */
   parts?: MetricParts;
+  /**
+   * Части прибыльных долей строки сводки (только SKU с себестоимостью) — для
+   * недельных колонок. Шаблонные weeklyParts посчитаны по ВСЕМ SKU и под фильтром
+   * неверны: пересборка отдаёт свои, по выбранным.
+   */
+  weeklyParts?: MetricParts;
 }
+
+/** Метаданные строки, которые пересборка иногда берёт у артикулов, а не у шаблона. */
+interface MetricMeta {
+  status?: string;
+  coveragePct?: number;
+  qualityReason?: string;
+  note?: string;
+}
+
+/** Прибыльные доли: числитель есть только у SKU с себестоимостью (см. costedRatio). */
+const COSTED_RATIOS: Record<string, { profit: string; denominator: string; scale: 100 | 1 }> = {
+  margin_pct: { profit: "gross", denominator: "buyouts_sum", scale: 100 },
+  net_margin_pct: { profit: "net_profit", denominator: "buyouts_sum", scale: 100 },
+  profit_per_unit: { profit: "gross", denominator: "buyouts_count", scale: 1 },
+  romi: { profit: "gross", denominator: "ad_spent", scale: 100 },
+  gross_margin_pct: { profit: "gross_profit", denominator: "buyouts_sum", scale: 100 },
+};
 
 type Get = (field: string) => number | null;
 
@@ -35,7 +65,48 @@ function perUnit(num: number | null, den: number | null): number | null {
 }
 
 /** Производные, которые пересчитываются только из своих `parts`. */
-const PARTS_ONLY_FIELDS = new Set(["actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit"]);
+const PARTS_ONLY_FIELDS = new Set([
+  "actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit",
+  "cart_order_cr",
+  "tacos_pct",
+  "ad_cpc",
+  "ad_cpm",
+  "ad_cpo",
+  "ad_acos_pct",
+  "reviews_text_bad_share_pct",
+  "expected_buyout_pct",
+  "expected_net_buyout_pct",
+  "ads_manual_cpc",
+  "ads_manual_cpm",
+  "ads_manual_cpo",
+  "ads_manual_acos_pct",
+  "ads_unified_cpc",
+  "ads_unified_cpm",
+  "ads_unified_cpo",
+  "ads_unified_acos_pct",
+]);
+
+/**
+ * Доли, чьи части — суммы строк самой таблицы. Под фильтром их пересчитываем из
+ * строк (sumAt пропускает SKU без факта), а не из `parts`: sumParts гасит день
+ * целиком, если у одного SKU части нет, и кабинет без синка продаж обнулял бы
+ * цену выкупа у всего фильтра, хотя сервер его просто не учитывает.
+ */
+const RECOMPUTED_FROM_ROWS = new Set(["avg_buyout_price"]);
+
+/**
+ * Разбивка заказов по схемам: у артикула она молчит в дни без воронки и после
+ * границы синка сборочных заданий его кабинета. Сумма «по тем, кто знает» дала
+ * бы под фильтром FBS/FBW одного кабинета при заказах двух, а сводка без
+ * фильтра за этот день честно молчит. Поэтому день пуст, если хоть у одного
+ * выбранного артикула заказы известны, а схема — нет.
+ */
+const STRICT_SCHEME_FIELDS = new Set([
+  "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum",
+  // Прогноз продаж: у артикула кабинета без ставки выкупа он молчит — сумма «по
+  // тем, у кого есть» выдала бы прогноз части заказов за прогноз всех.
+  "expected_buyouts_count", "expected_buyouts_sum", "expected_returns_count",
+]);
 
 // Производные из СУММ выбранных SKU — формулы buildTable/taxMetrics один в один.
 const RATIO_RULES: Record<string, (g: Get) => number | null> = {
@@ -55,22 +126,58 @@ const RATIO_RULES: Record<string, (g: Get) => number | null> = {
   },
   return_pct: (g) => pctOf(g("returns_count"), g("buyouts_gross_count")),
   // actual_buyout_pct, cohort_resolved_pct и logistics_per_unit пересчитываются
-  // из своих `parts` (когорта заказов, логистика финотчёта) — см. ниже.
+  // только из своих `parts` (когорта заказов, логистика финотчёта) — см. ниже.
   fbs_share_pct: (g) => {
     const fbs = g("orders_fbs_sum");
     const known = (fbs ?? 0) + (g("orders_fbw_sum") ?? 0);
     return fbs != null && known > 0 ? r1((fbs / known) * 100) : null;
   },
   drr: (g) => pctOf(g("ad_spent"), g("orders_sum")),
-  romi: (g) => pctOf(g("gross"), g("ad_spent")),
-  gmroi: (g) => {
-    const value = pctOf(g("gross"), g("money"));
-    return value == null ? null : Math.min(999, value);
-  },
+  // romi/profit_per_unit — В weightedRules, не здесь: g("gross") суммирует
+  // только SKU с известной себестоимостью (она null у остальных), а
+  // g("ad_spent")/g("buyouts_count") суммировали бы ВСЕ выбранные SKU — тот же
+  // баг, что чинили для margin_pct (costedRatio ниже), просто для другой пары
+  // полей. SKU A gross=100000₽/buyouts=50 (себестоимость известна) + SKU B
+  // gross=null/buyouts=200 (неизвестна) давало бы profit_per_unit=400₽/шт
+  // вместо верных 100000/50=2000₽/шт.
   avg_order_price: (g) => perUnit(g("orders_sum"), g("orders_count")),
-  avg_buyout_price: (g) => perUnit(g("buyouts_sum"), g("buyouts_count")),
-  profit_per_unit: (g) => perUnit(g("gross"), g("buyouts_count")),
+  // «Выкуплено, ₽» = выкупы нетто + возвраты; то же, что parts у buildTable.
+  avg_buyout_price: (g) => {
+    const sum = g("buyouts_sum");
+    const returns = g("returns_sum");
+    return sum == null || returns == null ? null : perUnit(sum + returns, g("buyouts_gross_count"));
+  },
 };
+
+/**
+ * Поля, из которых собрана каждая доля RATIO_RULES. Итог периода складывает их
+ * только за дни, где известны ВСЕ: источники кончаются в разные дни, и итог из
+ * сумм «за все дни» делил бы заказы за 8 дней на переходы за 7.
+ */
+const RATIO_FIELDS: Record<string, string[]> = {
+  ctr: ["clicks", "views"],
+  cart_cr: ["cart", "open_card"],
+  order_cr: ["orders_count", "open_card"],
+  org_cr_pct: ["org_orders_count", "org_open_card"],
+  org_share_pct: ["org_open_card", "open_card"],
+  buyout_pct: ["buyouts_count", "orders_count"],
+  cancel_pct: ["cancels_count", "orders_count"],
+  return_pct: ["returns_count", "buyouts_gross_count"],
+  fbs_share_pct: ["orders_fbs_sum", "orders_fbw_sum"],
+  drr: ["ad_spent", "orders_sum"],
+  avg_order_price: ["orders_sum", "orders_count"],
+  avg_buyout_price: ["buyouts_sum", "returns_sum", "buyouts_gross_count"],
+};
+
+/**
+ * «Прибыль к запасу» (поле gmroi): прибыль за период / деньги в остатках. Точка в
+ * дате факта, как на сервере. Раньше правило стояло в RATIO_RULES и срабатывало
+ * раньше точечной ветки: под фильтром метрика заполнялась во все дни.
+ */
+function gmroiFrom(g: Get): number | null {
+  const value = pctOf(g("gross"), g("money"));
+  return value == null ? null : Math.min(999, value);
+}
 
 type At = (metric: BaseMetric) => number | null;
 
@@ -90,29 +197,37 @@ function weightedRules(skusMetrics: Map<string, BaseMetric>[], at: At): Record<s
     }
     return weightTotal > 0 ? weightedSum / weightTotal : null;
   };
-  // Знаменатель маржи — выкупы ТОЛЬКО тех SKU, у которых прибыль посчитана.
-  // Сервер считает именно так (costedBuyoutsSumDaily в buildTable). Общий
-  // знаменатель по всем выбранным SKU занижал маржу тем сильнее, чем больше
-  // товаров без себестоимости: половина ассортимента без закупочной цены
-  // превращала честные 20% в 10%, и по этой цифре поднимали цены.
-  const costedRatio = (profitField: string) => (): number | null => {
+  // Знаменатель — сумма поля denominatorField ТОЛЬКО тех SKU, у которых
+  // числитель (profitField) посчитан. Сервер считает именно так
+  // (costedBuyoutsSumDaily/costedBuyoutsCountDaily/costedAdSpendDaily в
+  // buildTable). Знаменатель по ВСЕМ выбранным SKU занижал бы метрику тем
+  // сильнее, чем больше товаров без себестоимости: половина ассортимента без
+  // закупочной цены превращала честные 20% маржи в 10%, и по этой цифре
+  // поднимали цены (тот же класс бага для profit_per_unit/romi — см. коммент
+  // у RATIO_RULES выше).
+  const costedRatio = (profitField: string, denominatorField: string, scale: 100 | 1) => (): number | null => {
     let profit = 0;
-    let buyouts = 0;
+    let denominator = 0;
     let seen = false;
     for (const metrics of skusMetrics) {
-      const gross = metrics.has(profitField) ? at(metrics.get(profitField)!) : null;
-      const sum = metrics.has("buyouts_sum") ? at(metrics.get("buyouts_sum")!) : null;
-      if (gross == null || sum == null) continue;
-      profit += gross;
-      buyouts += sum;
+      const value = metrics.has(profitField) ? at(metrics.get(profitField)!) : null;
+      const den = metrics.has(denominatorField) ? at(metrics.get(denominatorField)!) : null;
+      if (value == null || den == null) continue;
+      profit += value;
+      denominator += den;
       seen = true;
     }
-    return seen && buyouts > 0 ? r1((profit / buyouts) * 100) : null;
+    if (!seen || denominator <= 0) return null;
+    const result = (profit / denominator) * scale;
+    return scale === 100 ? r1(result) : Math.round(result);
   };
 
   return {
-    margin_pct: costedRatio("gross"),
-    net_margin_pct: costedRatio("net_profit"),
+    margin_pct: costedRatio(COSTED_RATIOS.margin_pct.profit, COSTED_RATIOS.margin_pct.denominator, COSTED_RATIOS.margin_pct.scale),
+    net_margin_pct: costedRatio(COSTED_RATIOS.net_margin_pct.profit, COSTED_RATIOS.net_margin_pct.denominator, COSTED_RATIOS.net_margin_pct.scale),
+    profit_per_unit: costedRatio(COSTED_RATIOS.profit_per_unit.profit, COSTED_RATIOS.profit_per_unit.denominator, COSTED_RATIOS.profit_per_unit.scale),
+    romi: costedRatio(COSTED_RATIOS.romi.profit, COSTED_RATIOS.romi.denominator, COSTED_RATIOS.romi.scale),
+    gross_margin_pct: costedRatio(COSTED_RATIOS.gross_margin_pct.profit, COSTED_RATIOS.gross_margin_pct.denominator, COSTED_RATIOS.gross_margin_pct.scale),
     // Цена покупателя = Σ(цена_i × выкупы_gross_i) / Σвыкупов — точная сумма оплат.
     final_price: () => {
       const value = collect("final_price", "buyouts_gross_count");
@@ -125,6 +240,10 @@ function weightedRules(skusMetrics: Map<string, BaseMetric>[], at: At): Record<s
     reviews_bad_share_pct: () => {
       const value = collect("reviews_bad_share_pct", "reviews_count");
       return value == null ? null : r1(value);
+    },
+    reviews_text_rating: () => {
+      const value = collect("reviews_text_rating", "reviews_text_count");
+      return value == null ? null : Math.round(value * 100) / 100;
     },
     // СПП: восстанавливаем сумму оплат покупателя из gross-выручки и ставки SKU.
     spp_pct: () => {
@@ -185,26 +304,47 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
   };
 
   const totalAt: At = (metric) => metric.total;
+  const strictSchemeAt = (field: string, index: number): number | null => {
+    let sum = 0;
+    let seen = false;
+    for (const metrics of skusMetrics) {
+      const value = metrics.get(field)?.daily[index];
+      if (value == null || !Number.isFinite(value)) {
+        if (metrics.get("orders_count")?.daily[index] != null) return null;
+        continue;
+      }
+      sum += value;
+      seen = true;
+    }
+    return seen ? sum : null;
+  };
+  // Значение поля за день для пересчёта: схема — строго, остальное — по тем, кто знает.
+  const dayValue = (field: string, index: number) => STRICT_SCHEME_FIELDS.has(field)
+    ? strictSchemeAt(field, index)
+    : sumAt(field, dailyAt(index));
   const dailyAt = (index: number): At => (metric) => metric.daily[index] ?? null;
   const forecastAt: At = (metric) => metric.forecast;
 
   const weightedTotal = weightedRules(skusMetrics, totalAt);
 
-  const turnoverTotal = (() => {
-    const stock = sumAt("stock_total", totalAt) ?? sumAt("stock", totalAt);
-    if (stock == null) return null;
-    // Формула calculateTurnoverDays из buildTable: остаток / среднедневные
-    // выкупы за последние N дней с данными.
+  // Формула calculateTurnoverDays из buildTable: остаток / среднедневные выкупы за
+  // последние N дней с данными. Остаток — именно «Остаток», как на сервере. Раньше
+  // брался stock_total (остаток + товар в пути к клиенту и обратно), и под любым
+  // фильтром оборачиваемость выходила в ~1,8 раза больше серверной.
+  const averageDailyBuyouts = (() => {
     const buyoutsDaily = Array.from({ length: dayCount }, (_, index) => sumAt("buyouts_count", dailyAt(index)));
     const observed = buyoutsDaily.filter((value): value is number => value != null && Number.isFinite(value)).slice(-Math.max(1, turnoverWindowDays));
     if (!observed.length) return null;
-    const average = observed.reduce((sum, value) => sum + value, 0) / observed.length;
-    return average > 0 ? Math.round(stock / average) : null;
+    return observed.reduce((sum, value) => sum + value, 0) / observed.length;
   })();
+  const turnoverFor = (stock: number | null) =>
+    stock != null && averageDailyBuyouts != null && averageDailyBuyouts > 0 ? Math.round(stock / averageDailyBuyouts) : null;
+  const turnoverTotal = turnoverFor(sumAt("stock", totalAt));
 
-  const ratio = (num: number | null, den: number | null, scale: 100 | 1) => {
+  const ratio = (num: number | null, den: number | null, scale: 100 | 1, decimals?: 2) => {
     if (num == null || den == null || !(den > 0)) return null;
     const value = (num / den) * scale;
+    if (decimals === 2) return Math.round(value * 100) / 100;
     return scale === 100 ? r1(value) : Math.round(value);
   };
   // Сумма ряда частей по выбранным SKU. null в частях значит «факт неизвестен»
@@ -229,20 +369,94 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     return known.length ? known.reduce((acc, value) => acc + value, 0) : null;
   };
 
-  return template.map((metric) => {
+  // Части прибыльной доли по дням — только SKU, у которых известны и прибыль, и
+  // знаменатель в этот день (тот же отбор, что у costedRatio и у сервера).
+  const costedParts = (profitField: string, denominatorField: string, scale: 100 | 1): MetricParts => {
+    const numerator: (number | null)[] = [];
+    const denominator: (number | null)[] = [];
+    for (let index = 0; index < dayCount; index++) {
+      let num = 0, den = 0, seen = false;
+      for (const metrics of skusMetrics) {
+        const profit = metrics.get(profitField)?.daily[index];
+        const base = metrics.get(denominatorField)?.daily[index];
+        if (profit == null || base == null || !Number.isFinite(profit) || !Number.isFinite(base)) continue;
+        num += profit;
+        den += base;
+        seen = true;
+      }
+      numerator.push(seen ? num : null);
+      denominator.push(seen ? den : null);
+    }
+    return { numerator, denominator, scale };
+  };
+
+  // Части цены выкупа из строк выбранных SKU: «Выкуплено, ₽» и «Выкуплено, шт».
+  const buyoutPriceParts = (): MetricParts => {
+    const numerator: (number | null)[] = [];
+    const denominator: (number | null)[] = [];
+    for (let index = 0; index < dayCount; index++) {
+      const sum = sumAt("buyouts_sum", dailyAt(index));
+      const returns = sumAt("returns_sum", dailyAt(index));
+      const count = sumAt("buyouts_gross_count", dailyAt(index));
+      const known = sum != null && returns != null && count != null;
+      numerator.push(known ? sum + returns : null);
+      denominator.push(known ? count : null);
+    }
+    return { numerator, denominator, scale: 1 };
+  };
+
+  const EXPECTED_FIELDS = new Set(["expected_buyouts_count", "expected_buyouts_sum", "expected_returns_count", "expected_buyout_pct", "expected_net_buyout_pct"]);
+  const REVIEW_FIELDS = new Set(["reviews_count", "reviews_rating", "reviews_bad_share_pct", "reviews_text_count", "reviews_text_rating", "reviews_text_bad_share_pct"]);
+  const readFailed = (field: string) => skusMetrics.some((metrics) => (metrics.get(field) as { qualityReason?: string } | undefined)?.qualityReason === "api_error");
+
+  return template.map((templateMetric) => {
+    // weeklyParts шаблона посчитаны по всему набору SKU — под фильтром они чужие.
+    const { weeklyParts: _templateWeeklyParts, ...rest } = templateMetric;
+    void _templateWeeklyParts;
+    let metric = rest as M;
+    // Отзывы кабинета не прочитались: сумма по остальным выдала бы часть за целое
+    // — как и сводка без фильтра, молчим. Выбраны только SKU здоровых кабинетов —
+    // статус сводки «ошибка чтения» к ним не относится.
+    // Прогноз в сводке нескольких кабинетов молчит, если хоть у одного нет
+    // ставки. Под фильтром только по артикулам со ставкой числа возвращаются —
+    // и пояснение со статусом тоже берутся у них, а не «прогноза нет» шаблона.
+    if (EXPECTED_FIELDS.has(metric.field) && (metric as MetricMeta).qualityReason === "unsupported_source") {
+      const rows = skusMetrics.map((metrics) => metrics.get(metric.field) as (BaseMetric & MetricMeta) | undefined).filter((row) => row != null);
+      if (rows.length && rows.every((row) => row.qualityReason !== "unsupported_source")) {
+        const worst = rows.reduce((a, b) => ((b.coveragePct ?? 100) < (a.coveragePct ?? 100) ? b : a));
+        metric = { ...metric, status: worst.status, coveragePct: worst.coveragePct, qualityReason: worst.qualityReason, note: worst.note ?? (metric as MetricMeta).note } as M;
+      }
+    }
+    if (REVIEW_FIELDS.has(metric.field)) {
+      if (readFailed(metric.field)) {
+        return { ...metric, daily: Array.from({ length: dayCount }, () => null), total: null, forecast: null, coveragePct: 0, status: "unavailable", qualityReason: "api_error" } as M;
+      }
+      if ((metric as { qualityReason?: string }).qualityReason === "api_error") {
+        const note = (metric as { note?: string }).note;
+        metric = {
+          ...metric,
+          coveragePct: 100,
+          status: "ready",
+          qualityReason: undefined,
+          ...(note ? { note: note.replace(RNP_REVIEWS_READ_FAILED_NOTE, "") } : {}),
+        } as M;
+      }
+    }
     const scale = metric.parts?.scale
       ?? skusMetrics.map((metrics) => metrics.get(metric.field)?.parts?.scale).find((value) => value != null);
-    if (scale != null) {
+    if (scale != null && !RECOMPUTED_FROM_ROWS.has(metric.field)) {
       const rawNumerator = Array.from({ length: dayCount }, (_, index) => sumParts(metric.field, (parts) => parts.numerator, index));
       const rawDenominator = Array.from({ length: dayCount }, (_, index) => sumParts(metric.field, (parts) => parts.denominator, index));
       const numerator = rawNumerator.map((value, index) => rawDenominator[index] == null ? null : value);
       const denominator = rawDenominator.map((value, index) => rawNumerator[index] == null ? null : value);
+      const decimals = metric.parts?.decimals
+        ?? skusMetrics.map((metrics) => metrics.get(metric.field)?.parts?.decimals).find((value) => value != null);
       return {
         ...metric,
-        daily: numerator.map((num, index) => ratio(num, denominator[index], scale)),
-        total: ratio(knownTotal(numerator), knownTotal(denominator), scale),
+        daily: numerator.map((num, index) => ratio(num, denominator[index], scale, decimals)),
+        total: ratio(knownTotal(numerator), knownTotal(denominator), scale, decimals),
         forecast: null,
-        parts: { numerator, denominator, scale },
+        parts: { numerator, denominator, scale, ...(decimals ? { decimals } : {}) },
       };
     }
     // Снимок, собранный до появления `parts`: долю из процентов SKU не сложить,
@@ -252,15 +466,33 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
     }
     const rule = RATIO_RULES[metric.field];
     if (rule) {
+      const fields = RATIO_FIELDS[metric.field] ?? [];
+      // Дни, где известны все поля доли: итог — только из них.
+      const matchedIndexes = Array.from({ length: dayCount }, (_, index) => index)
+        .filter((index) => fields.every((field) => dayValue(field, index) != null));
+      const matchedTotal = (field: string) => {
+        let sum = 0;
+        let seen = false;
+        for (const index of matchedIndexes) {
+          const value = dayValue(field, index);
+          if (value == null) continue;
+          sum += value;
+          seen = true;
+        }
+        return seen ? sum : null;
+      };
       return {
         ...metric,
-        daily: Array.from({ length: dayCount }, (_, index) => rule((field) => sumAt(field, dailyAt(index)))),
-        total: rule((field) => sumAt(field, totalAt)),
+        daily: Array.from({ length: dayCount }, (_, index) => rule((field) => dayValue(field, index))),
+        total: fields.length ? rule(matchedTotal) : rule((field) => sumAt(field, totalAt)),
         forecast: null,
+        // Части шаблона посчитаны по всем SKU — неделя под фильтром взяла бы их.
+        ...(RECOMPUTED_FROM_ROWS.has(metric.field) ? { parts: buyoutPriceParts() } : {}),
       };
     }
     const weighted = weightedTotal[metric.field as keyof ReturnType<typeof weightedRules>];
     if (weighted) {
+      const costed = COSTED_RATIOS[metric.field];
       return {
         ...metric,
         daily: Array.from({ length: dayCount }, (_, index) => {
@@ -269,19 +501,36 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
         }),
         total: weighted(),
         forecast: null,
+        // Недельные колонки пересчитают прибыльную долю из этих частей, а не
+        // средним по дням (margin_pct в WEEKLY_RATIO_PAIRS нет намеренно).
+        ...(costed ? { weeklyParts: costedParts(costed.profit, costed.denominator, costed.scale) } : {}),
       };
     }
-    if (metric.field === "turnover" || metric.field === "gmroi") {
-      const total = metric.field === "turnover"
-        ? turnoverTotal
-        : RATIO_RULES.gmroi((field) => sumAt(field, totalAt));
+    if (metric.field === "turnover") {
       return {
         ...metric,
-        // Точечные метрики (снимок на дату): значение живёт там же, где у шаблона.
+        // Ряд по дням: остаток дня выбранных SKU / те же среднедневные выкупы, что
+        // у сервера. Раньше каждый день затирался одним итогом.
+        daily: Array.from({ length: dayCount }, (_, index) =>
+          metric.daily[index] == null ? null : turnoverFor(sumAt("stock", dailyAt(index)))),
+        total: turnoverTotal,
+        forecast: null,
+      };
+    }
+    if (metric.field === "gmroi") {
+      const total = gmroiFrom((field) => sumAt(field, totalAt));
+      return {
+        ...metric,
+        // Точечная метрика (снимок на дату): значение живёт там же, где у шаблона.
         daily: metric.daily.map((value) => (value == null ? null : total)),
         total,
         forecast: null,
       };
+    }
+    if (STRICT_SCHEME_FIELDS.has(metric.field)) {
+      const daily = Array.from({ length: dayCount }, (_, index) => strictSchemeAt(metric.field, index));
+      const total = knownTotal(daily);
+      return { ...metric, daily, total: total == null ? null : Math.round(total), forecast: null };
     }
     return {
       ...metric,
@@ -296,4 +545,29 @@ export function composeRnpSummaryFromSkus<M extends BaseMetric>(
       })(),
     };
   });
+}
+
+/**
+ * Сводка по выбранным SKU для недельного вида — из ДНЕВНЫХ SKU, свёрнутая в недели.
+ *
+ * Собирать её из недельных SKU нельзя: части долей там уже сложены по неделям,
+ * каждая за свои дни, и итог под фильтром начинал зависеть от гранулярности
+ * (заказы за неделю делились на переходы без сегодняшнего дня), а
+ * «среднедневные» выкупы оборачиваемости становились средненедельными — дни
+ * превращались в недели. Итоги берутся из дневной сборки, недельные колонки —
+ * из её частей тем же aggregateRnpWeekly, что и у несфильтрованной сводки.
+ */
+export function composeRnpWeeklySummaryFromDailySkus<M extends BaseMetric>(
+  daily: { period: { label: string; period_type: string }[]; summary: M[]; skus: { nm: number; metrics: M[] }[] },
+  visibleNms: ReadonlySet<number>,
+  turnoverWindowDays: number,
+  fromIso: string,
+  todayIso?: string,
+): M[] {
+  const composed = composeRnpSummaryFromSkus(
+    daily.summary,
+    daily.skus.filter((sku) => visibleNms.has(sku.nm)),
+    turnoverWindowDays,
+  );
+  return aggregateRnpWeekly({ period: daily.period, summary: composed, skus: [] }, fromIso, todayIso).summary;
 }

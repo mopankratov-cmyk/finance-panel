@@ -59,7 +59,9 @@ test("органика = всё минус реклама, по дням и ит
 
 // Атрибуция WB когортная: заказ приписан рекламе в течение окна после клика,
 // и день всплеска может дать «рекламных» больше, чем всех заказов дня.
-test("отрицательный день органики показывается нулём, а не минусом", () => {
+test("отрицательный день органики молчит, а не показывается нулём", () => {
+  // Органику такого дня не определить: ноль был бы выдуманным фактом, и сумма
+  // зажатых нулей расходилась бы с итогом (правило «недоступный факт молчит»).
   const metrics: Metric[] = [
     metric("open_card", [500], 500),
     metric("clicks", [600], 600),
@@ -67,8 +69,41 @@ test("отрицательный день органики показывает�
     metric("ad_orders", [80], 80),
   ];
   appendOrganicMetrics(metrics);
-  assert.deepEqual(metrics.find((item) => item.field === "org_open_card")?.daily, [0]);
-  assert.deepEqual(metrics.find((item) => item.field === "org_orders_count")?.daily, [0]);
+  assert.deepEqual(metrics.find((item) => item.field === "org_open_card")?.daily, [null]);
+  assert.deepEqual(metrics.find((item) => item.field === "org_orders_count")?.daily, [null]);
+  assert.equal(metrics.find((item) => item.field === "org_orders_count")?.total, null);
+});
+
+test("итог органики — сумма показанных дней, даже когда источники кончаются в разные дни", () => {
+  // 29.09 воронки ещё нет, а клики и заказы есть. Раньше итог вычитал клики за
+  // 8 дней из переходов за 7: 13 315 при сумме дней 14 635.
+  const metrics: Metric[] = [
+    metric("open_card", [1000, 1200, null], 2200),
+    metric("clicks", [100, 150, 900], 1150),
+    metric("orders_count", [40, 50, 33], 123),
+    metric("ad_orders", [10, 20, 54], 84),
+  ];
+  appendOrganicMetrics(metrics);
+  const orgOpen = metrics.find((item) => item.field === "org_open_card")!;
+  assert.deepEqual(orgOpen.daily, [900, 1050, null]);
+  assert.equal(orgOpen.total, 1950);
+  const share = metrics.find((item) => item.field === "org_share_pct")!;
+  assert.equal(share.total, 88.6, "1950 / 2200 — переходы тех же двух дней");
+});
+
+test("незакрытый день с заказами из статистики — органика заказов молчит", () => {
+  // 29.09: заказов в статистике 33 из ~68, рекламных 54. «33 − 54» — не органика.
+  const days3 = ["2026-09-27", "2026-09-28", "2026-09-29"];
+  const metrics: Metric[] = [
+    metric("open_card", [1000, 1200, null], 2200),
+    metric("clicks", [100, 150, 900], 1150),
+    metric("orders_count", [80, 110, 33], 223),
+    metric("ad_orders", [50, 75, 20], 145),
+  ];
+  appendOrganicMetrics(metrics, { days: days3, ordersPrimary: "2026-09-28" });
+  const orgOrders = metrics.find((item) => item.field === "org_orders_count")!;
+  assert.deepEqual(orgOrders.daily, [30, 35, null], "33 − 20 = 13 выглядело бы честным числом, но день не полный");
+  assert.equal(orgOrders.total, 65);
 });
 
 test("пустой день источника остаётся пустым, а не нулём", () => {

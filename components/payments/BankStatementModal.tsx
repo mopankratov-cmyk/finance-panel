@@ -8,7 +8,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { BankStatement } from "./bankStatement";
 import { requiresCounterparty, type BankSuggestion } from "./bankAutoClassify";
 import { mandatoryBankCategory } from "@/lib/opiu/bankPaymentRules";
-import type { DdsCompany } from "./ddsCompanies";
+import { canonicalPaymentCompanyId, paymentCompanyOptions, type DdsCompany } from "./ddsCompanies";
 import { rememberBankAccount, saveBankReviewBatch } from "./bankReviewStore";
 import { needsDirectUpload, uploadViaStorage } from "./uploadViaStorage";
 import { useDdsCategories, useFinance } from "@/components/providers/FinanceProvider";
@@ -17,6 +17,7 @@ import { formatMoney } from "@/lib/format";
 import type { Account, Payment } from "@/lib/types";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { importedBankAccountName, importedBankAccountOpeningDate } from "./importedBankAccount";
+import { cashoutKind } from "@/lib/finance/cashout";
 
 // Статьи — из единого справочника; отдельного списка «для выписки» больше нет.
 
@@ -27,9 +28,13 @@ interface Props {
   companies: DdsCompany[];
   existingPayments: Array<Payment & { companyId?: string | null }>;
   onQueued: () => void;
+  cashoutOnly?: boolean;
 }
 
-export function BankStatementModal({ open, onClose, accounts, companies, existingPayments, onQueued }: Props) {
+type ImportResult = { queued: number; approved: number; matchedTransfers: number; duplicatesSkipped: number };
+const emptyImportResult = (): ImportResult => ({ queued: 0, approved: 0, matchedTransfers: 0, duplicatesSkipped: 0 });
+
+export function BankStatementModal({ open, onClose, accounts, companies, existingPayments, onQueued, cashoutOnly = false }: Props) {
   const { state, dispatch } = useFinance();
   const { categories: BANK_CATEGORIES } = useDdsCategories();
   const [statement, setStatement] = useState<BankStatement | null>(null);
@@ -48,8 +53,13 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<BankSuggestion[]>([]);
-  const [done, setDone] = useState<{ queued: number; approved: number; matchedTransfers: number; duplicatesSkipped: number } | null>(null);
+  const [done, setDone] = useState<ImportResult | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchProcessed, setBatchProcessed] = useState(0);
+  const [batchResult, setBatchResult] = useState<ImportResult>(emptyImportResult);
   const [controlMismatchAccepted, setControlMismatchAccepted] = useState(false);
+  const selectableCompanies = useMemo(() => paymentCompanyOptions(companies), [companies]);
 
   const selectedAccount = accounts.find((account) => account.id === accountId);
   const selectedCompany = companies.find((company) => company.id === companyId);
@@ -73,6 +83,10 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     setBulkCategory("");
     setSuggestions([]);
     setDone(null);
+    setPendingFiles([]);
+    setBatchTotal(0);
+    setBatchProcessed(0);
+    setBatchResult(emptyImportResult());
     setControlMismatchAccepted(false);
     setError(null);
     onClose();
@@ -97,9 +111,21 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       const data = await response.json().catch(() => null) as { statement?: BankStatement; suggestions?: BankSuggestion[]; accountNumberKnown?: boolean; error?: string } | null;
       if (!response.ok || !data?.statement || !data.suggestions) throw new Error(data?.error ?? "Не удалось распознать выписку");
       const parsed = data.statement;
-      const suggestions = data.suggestions;
+      const rawSuggestions = data.suggestions;
+      const filteredSuggestions = cashoutOnly
+        ? rawSuggestions.filter((suggestion) => cashoutKind({ amount: Number(suggestion.row?.amount), name: suggestion.row?.purpose ?? "", counterparty: suggestion.row?.counterparty ?? "", comment: suggestion.row?.purpose ?? "", importSource: "bank-review:cashout" }) !== null)
+        : rawSuggestions;
+      if (cashoutOnly && !filteredSuggestions.length) throw new Error("В выписке не найдены снятия, переводы физлицам/СБП или внесения через банкомат");
+      const selectedIds = new Set(filteredSuggestions.map((suggestion) => suggestion.row?.id).filter((id): id is string => Boolean(id)));
+      const rows = cashoutOnly ? parsed.rows.filter((row) => selectedIds.has(row.id)) : parsed.rows;
+      const filteredStatement = cashoutOnly
+        ? { ...parsed, rows, declaredDebit: Math.abs(rows.filter((row) => row.amount < 0).reduce((sum, row) => sum + row.amount, 0)), declaredCredit: rows.filter((row) => row.amount > 0).reduce((sum, row) => sum + row.amount, 0) }
+        : parsed;
+      const suggestions = cashoutOnly
+        ? filteredSuggestions.map((suggestion) => ({ ...suggestion, needsReview: true, reasons: [...(suggestion.reasons ?? []), "__cashout_import"] }))
+        : filteredSuggestions;
       setSuggestions(suggestions);
-      setStatement(parsed);
+      setStatement(filteredStatement);
       setAccountNumberKnown(typeof data.accountNumberKnown === "boolean" ? data.accountNumberKnown : null);
       setNewAccountName("");
       setConfirmedCategories(new Set(
@@ -112,13 +138,16 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       setCommentOverrides(new Map());
       setFileName(file.name);
       setControlMismatchAccepted(false);
-      setIncluded(new Set(parsed.rows.map((row) => row.id)));
+      setIncluded(new Set(filteredStatement.rows.map((row) => row.id)));
       setCategories(
         new Map(
           suggestions.map((suggestion) => [suggestion.row.id, suggestion.category ?? ""]),
         ),
       );
-      const suggestedCompanyId = suggestions.find((suggestion) => suggestion.companyId)?.companyId;
+      const suggestedCompanyId = canonicalPaymentCompanyId(
+        suggestions.find((suggestion) => suggestion.companyId)?.companyId,
+        companies,
+      );
       const suggestedAccountId = suggestions.find((suggestion) => suggestion.accountId)?.accountId;
       if (suggestedCompanyId) setCompanyId(suggestedCompanyId);
       if (parsed.accountNumber && data.accountNumberKnown === false) setAccountId("");
@@ -128,6 +157,38 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFiles = (files: File[]) => {
+    if (!files.length) return;
+    setPendingFiles(files.slice(1));
+    setBatchTotal(files.length);
+    setBatchProcessed(0);
+    setBatchResult(emptyImportResult());
+    setDone(null);
+    void handleFile(files[0]);
+  };
+
+  const openNextFile = () => {
+    const [next, ...rest] = pendingFiles;
+    if (!next) return;
+    setPendingFiles(rest);
+    setStatement(null);
+    setFileName("");
+    setCompanyId("");
+    setAccountId("");
+    setAccountNumberKnown(null);
+    setNewAccountName("");
+    setCategories(new Map());
+    setConfirmedCategories(new Set());
+    setCounterpartyOverrides(new Map());
+    setPurposeOverrides(new Map());
+    setCommentOverrides(new Map());
+    setIncluded(new Set());
+    setSuggestions([]);
+    setDone(null);
+    setError(null);
+    void handleFile(next);
   };
 
   const selectedRows = useMemo(
@@ -244,6 +305,13 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       }
       dispatch({type:"LOAD",payload:await loadFinanceState()});
       setDone(result);
+      setBatchProcessed((value) => value + 1);
+      setBatchResult((current) => ({
+        queued: current.queued + result.queued,
+        approved: current.approved + result.approved,
+        matchedTransfers: current.matchedTransfers + result.matchedTransfers,
+        duplicatesSkipped: current.duplicatesSkipped + result.duplicatesSkipped,
+      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось отправить операции на проверку");
     } finally {
@@ -258,7 +326,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       <button type="button" aria-label="Закрыть" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
       <div ref={panel} role="dialog" aria-modal="true" aria-label="Импорт банковской выписки" className="relative flex max-h-[92dvh] w-full max-w-[1500px] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 sm:px-5 sm:py-4">
-          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Импорт банковской выписки</h2>
+          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">{cashoutOnly ? "Импорт выписки для раздела «Обнал»" : "Импорт банковской выписки"}</h2>
           <button type="button" onClick={close} aria-label="Закрыть" className="tap -mr-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
         <div className="overflow-y-auto overscroll-contain px-4 pb-safe-4 pt-4 sm:px-5">
@@ -267,19 +335,19 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-800">
             Добавлено в ДДС: <b>{done.approved}</b>. Требуют проверки: <b>{done.queued}</b>. Пропущено дублей: <b>{done.duplicatesSkipped}</b>. Связано переводов между выписками: <b>{done.matchedTransfers}</b>.
           </div>
-          <button onClick={() => { close(); onQueued(); }} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">
-            Вернуться к операциям
-          </button>
+          {pendingFiles.length ? <button onClick={openNextFile} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">Следующая выписка ({pendingFiles.length} осталось)</button> : <>
+            {batchTotal > 1 ? <div className="rounded-lg border border-violet-200 bg-violet-50 p-4 text-violet-900">Обработано файлов: <b>{batchProcessed} из {batchTotal}</b>. Всего добавлено: <b>{batchResult.approved}</b>, требуют проверки: <b>{batchResult.queued}</b>, дублей пропущено: <b>{batchResult.duplicatesSkipped}</b>.</div> : null}
+            <button onClick={() => { close(); onQueued(); }} className="min-h-11 w-full rounded-lg bg-violet-600 px-4 font-medium text-white">Вернуться к операциям</button>
+          </>}
         </div>
       ) : (
         <div className="space-y-4 text-sm">
           <label className="flex min-h-24 cursor-pointer items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 p-4 text-slate-500 hover:border-violet-400 hover:text-violet-700">
-            <FileSpreadsheet className="h-5 w-5" /> {fileName || "Выбрать выписку XLSX или PDF"}
-            <input type="file" accept=".xlsx,.pdf" className="hidden" onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) void handleFile(file);
-            }} />
+            <FileSpreadsheet className="h-5 w-5" /> {fileName || "Выбрать одну или несколько выписок XLSX/PDF"}
+            <input type="file" accept=".xlsx,.pdf" multiple className="hidden" onChange={(e) => handleFiles(Array.from(e.target.files ?? []))} />
           </label>
+
+          {batchTotal > 1 ? <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sky-800">Пакет: файл {Math.min(batchProcessed + 1, batchTotal)} из {batchTotal}. Каждая выписка проверяется отдельно; дубли система пропустит.</div> : null}
 
           {loading && <div className="flex items-center gap-2 text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Читаю выписку…</div>}
 
@@ -297,7 +365,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
                   <label className="mb-1 block text-xs text-slate-500">Компания по умолчанию — необязательно</label>
                   <select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="min-h-11 w-full rounded-lg border border-slate-300 px-3">
                     <option value="">Определять отдельно по платежам</option>
-                    {companies.filter((company) => company.isActive).map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                    {selectableCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                   </select>
                 </div>
                 <div>

@@ -58,6 +58,7 @@ export async function GET(request: NextRequest) {
         state: (row.state ?? {}) as Record<string, unknown>,
       })) satisfies OpiuReportQueueState[],
       period,
+      Date.now(),
     );
   }
 

@@ -1,3 +1,5 @@
+import { RNP_LEGACY_PRESET_FIELDS } from "./legacyPresets";
+
 export const RNP_METRIC_FIELDS = [
   "views",
   "clicks",
@@ -9,6 +11,7 @@ export const RNP_METRIC_FIELDS = [
   "wishlist",
   "cart_cr",
   "order_cr",
+  "cart_order_cr",
   "org_open_card",
   "org_orders_count",
   "org_cr_pct",
@@ -32,19 +35,28 @@ export const RNP_METRIC_FIELDS = [
   "buyout_pct",
   "actual_buyout_pct",
   "cohort_resolved_pct",
+  "expected_buyouts_count",
+  "expected_buyouts_sum",
+  "expected_returns_count",
+  "expected_buyout_pct",
+  "expected_net_buyout_pct",
   "orders_spp_sum",
   "avg_order_price",
   "seller_discount_pct",
   "avg_buyout_price",
   "final_price",
   "spp_pct",
+  "spp_rub",
   "gross",
   "margin_pct",
   "agent_commission_rub",
+  "profit_after_agent",
   "tax_rub",
   "net_profit",
   "net_margin_pct",
   "cogs",
+  "gross_profit",
+  "gross_margin_pct",
   "commission_rub",
   "acquiring_rub",
   "logistics_rub",
@@ -55,10 +67,16 @@ export const RNP_METRIC_FIELDS = [
   "acceptance_rub",
   "deduction_rub",
   "mp_cost_rub",
+  "profit_before_ads",
   "profit_per_unit",
   "romi",
   "ad_spent",
   "drr",
+  "tacos_pct",
+  "ad_cpc",
+  "ad_cpm",
+  "ad_cpo",
+  "ad_acos_pct",
   "stock",
   "stock_in_way_to_client",
   "stock_in_way_from_client",
@@ -69,16 +87,27 @@ export const RNP_METRIC_FIELDS = [
   "reviews_count",
   "reviews_rating",
   "reviews_bad_share_pct",
+  "reviews_text_count",
+  "reviews_text_rating",
+  "reviews_text_bad_share_pct",
   "ads_manual_spent",
   "ads_manual_views",
   "ads_manual_clicks",
   "ads_manual_orders",
   "ads_manual_orders_sum",
+  "ads_manual_cpc",
+  "ads_manual_cpm",
+  "ads_manual_cpo",
+  "ads_manual_acos_pct",
   "ads_unified_spent",
   "ads_unified_views",
   "ads_unified_clicks",
   "ads_unified_orders",
   "ads_unified_orders_sum",
+  "ads_unified_cpc",
+  "ads_unified_cpm",
+  "ads_unified_cpo",
+  "ads_unified_acos_pct",
 ] as const;
 
 export type RnpMetricField = (typeof RNP_METRIC_FIELDS)[number];
@@ -136,7 +165,7 @@ export interface RnpAnomalyThresholds {
 }
 
 /** Метрики, отклонение которых меряется в пунктах, а не в процентах. */
-const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "actual_buyout_pct", "cohort_resolved_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct", "seller_discount_pct", "spp_pct", "net_margin_pct", "fbs_share_pct"]);
+const POINT_THRESHOLD_FIELDS = new Set<string>(["buyout_pct", "actual_buyout_pct", "cohort_resolved_pct", "drr", "ctr", "margin_pct", "cart_cr", "order_cr", "cancel_pct", "return_pct", "seller_discount_pct", "spp_pct", "net_margin_pct", "fbs_share_pct", "cart_order_cr", "tacos_pct", "ad_acos_pct", "gross_margin_pct"]);
 
 export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
   byField: {
@@ -196,6 +225,16 @@ export const DEFAULT_RNP_ANOMALY_THRESHOLDS: RnpAnomalyThresholds = {
     drr: 5,
     ctr: 2,
     margin_pct: 5,
+    cart_order_cr: 3,
+    tacos_pct: 5,
+    ad_cpc: 20,
+    ad_cpm: 20,
+    ad_cpo: 20,
+    ad_acos_pct: 5,
+    gross_profit: 30,
+    gross_margin_pct: 5,
+    profit_before_ads: 30,
+    profit_after_agent: 30,
   },
   stockCoverageDays: 7,
   streakDays: 3,
@@ -217,25 +256,25 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
     id: "sales",
     label: "Продажи и возвраты",
     description: "Заказы, отмены, выкупы и возвраты",
-    fields: ["orders_sum", "orders_spp_sum", "orders_count", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "buyouts_sum", "buyouts_count", "returns_count", "returns_sum", "return_pct", "buyout_pct", "actual_buyout_pct", "cohort_resolved_pct"],
+    fields: ["orders_sum", "orders_spp_sum", "orders_count", "orders_fbs_count", "orders_fbs_sum", "orders_fbw_count", "orders_fbw_sum", "fbs_share_pct", "cancels_count", "cancel_pct", "buyouts_gross_count", "buyouts_gross_rub", "buyouts_sum", "buyouts_count", "returns_count", "returns_sum", "return_pct", "buyout_pct", "actual_buyout_pct", "cohort_resolved_pct", "expected_buyouts_count", "expected_buyouts_sum", "expected_returns_count", "expected_buyout_pct", "expected_net_buyout_pct"],
   },
   {
     id: "price",
     label: "Цены",
     description: "Чек, скидка продавца и СПП",
-    fields: ["orders_count", "avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct"],
+    fields: ["orders_count", "avg_order_price", "seller_discount_pct", "avg_buyout_price", "final_price", "spp_pct", "spp_rub"],
   },
   {
     id: "conversion",
     label: "Конверсии",
     description: "Показы, переходы, корзины и выкуп",
-    fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr", "org_open_card", "org_orders_count", "org_cr_pct", "org_share_pct", "orders_count", "buyout_pct"],
+    fields: ["views", "clicks", "ctr", "open_card", "cart", "cart_cr", "order_cr", "cart_order_cr", "org_open_card", "org_orders_count", "org_cr_pct", "org_share_pct", "orders_count", "buyout_pct"],
   },
   {
     id: "ads",
     label: "Реклама",
     description: "Трафик, расходы и эффективность",
-    fields: ["views", "clicks", "ctr", "ad_orders", "ad_orders_sum", "open_card", "orders_sum", "orders_count", "ad_spent", "drr"],
+    fields: ["views", "clicks", "ctr", "ad_orders", "ad_orders_sum", "open_card", "orders_sum", "orders_count", "ad_spent", "drr", "tacos_pct", "ad_cpc", "ad_cpm", "ad_cpo", "ad_acos_pct"],
   },
   {
     id: "stock",
@@ -247,7 +286,7 @@ export const RNP_VIEW_PRESETS: ReadonlyArray<{
     id: "economy",
     label: "Юнит-экономика",
     description: "Выручка, расходы по статьям, прибыль и отдача",
-    fields: ["buyouts_sum", "cogs", "commission_rub", "acquiring_rub", "logistics_rub", "logistics_per_unit", "mp_cost_rub", "ad_spent", "gross", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"],
+    fields: ["buyouts_sum", "cogs", "gross_profit", "gross_margin_pct", "commission_rub", "acquiring_rub", "logistics_rub", "logistics_per_unit", "mp_cost_rub", "profit_before_ads", "ad_spent", "tacos_pct", "gross", "tax_rub", "net_profit", "net_margin_pct", "profit_per_unit", "romi", "gmroi"],
   },
 ];
 
@@ -291,6 +330,12 @@ const POSITIVE_WHEN_UP = new Set([
   // выручке продавца. Для кабинета это хорошая новость.
   "spp_pct",
   "reviews_rating",
+  "cart_order_cr",
+  "gross_profit",
+  "gross_margin_pct",
+  "profit_before_ads",
+  "profit_after_agent",
+  "reviews_text_rating",
 ]);
 // Рост отмен, возвратов и собственной скидки — плохая новость, направление обратное.
 const POSITIVE_WHEN_DOWN = new Set([
@@ -307,6 +352,12 @@ const POSITIVE_WHEN_DOWN = new Set([
   "stock_in_way_from_client",
   // Логистика на проданную штуку растёт от невыкупа и тарифов — плохой знак.
   "logistics_per_unit",
+  "tacos_pct",
+  "ad_cpc",
+  "ad_cpm",
+  "ad_cpo",
+  "ad_acos_pct",
+  "reviews_text_bad_share_pct",
 ]);
 
 const METRIC_LABELS: Record<string, string> = {
@@ -323,7 +374,7 @@ const METRIC_LABELS: Record<string, string> = {
   open_card: "Переходы",
   cart: "Корзины",
   cart_cr: "Конверсия в корзину",
-  order_cr: "Конверсия в заказ",
+  order_cr: "Переход→заказ",
   orders_sum: "Заказы, ₽",
   orders_count: "Заказы, шт",
   orders_fbs_count: "Заказы FBS, шт",
@@ -340,7 +391,7 @@ const METRIC_LABELS: Record<string, string> = {
   return_pct: "Доля возвратов",
   buyout_pct: "Выкуп",
   actual_buyout_pct: "Фактический выкуп",
-  cohort_resolved_pct: "Заказы с итогом",
+  cohort_resolved_pct: "Окончательный итог",
   buyouts_gross_count: "Выкуплено, шт",
   buyouts_gross_rub: "Выкуплено, ₽",
   orders_spp_sum: "Заказы с СПП",
@@ -373,11 +424,11 @@ const METRIC_LABELS: Record<string, string> = {
   stock: "Остаток",
   stock_in_way_to_client: "В пути к клиенту",
   stock_in_way_from_client: "В пути от клиента",
-  stock_total: "Всего на складах",
+  stock_total: "Остаток + в пути",
   turnover: "Оборачиваемость",
   money: "Деньги в остатках",
-  gmroi: "GMROI",
-  reviews_count: "Отзывы",
+  gmroi: "Прибыль к запасу",
+  reviews_count: "Оценки",
   ads_manual_spent: "Ручн. ₽",
   ads_manual_views: "Ручн. показы",
   ads_manual_clicks: "Ручн. клики",
@@ -388,8 +439,35 @@ const METRIC_LABELS: Record<string, string> = {
   ads_unified_clicks: "Един. клики",
   ads_unified_orders: "Един. заказы",
   ads_unified_orders_sum: "Един. заказы ₽",
-  reviews_rating: "Рейтинг нов.",
+  reviews_rating: "Средняя оценка",
   reviews_bad_share_pct: "1–3★ %",
+  cart_order_cr: "Корзина→заказ",
+  tacos_pct: "TACoS",
+  ad_cpc: "CPC",
+  ad_cpm: "CPM",
+  ad_cpo: "CPO",
+  ad_acos_pct: "ACoS",
+  spp_rub: "СПП ₽",
+  gross_profit: "Валовая прибыль",
+  gross_margin_pct: "Валовая маржа",
+  profit_before_ads: "Прибыль до рекламы",
+  profit_after_agent: "Прибыль после комиссии",
+  reviews_text_count: "Отзывы с текстом",
+  reviews_text_rating: "Оценка отзывов",
+  reviews_text_bad_share_pct: "1–3★ с текстом",
+  expected_buyouts_count: "Продажи (прогноз)",
+  expected_buyouts_sum: "Продажи (прогноз) ₽",
+  expected_returns_count: "Возвраты (прогноз)",
+  expected_buyout_pct: "% выкупа (прогноз)",
+  expected_net_buyout_pct: "% выкупа с возвр. (прогноз)",
+  ads_manual_cpc: "Ручн. CPC",
+  ads_manual_cpm: "Ручн. CPM",
+  ads_manual_cpo: "Ручн. CPO",
+  ads_manual_acos_pct: "Ручн. ACoS",
+  ads_unified_cpc: "Един. CPC",
+  ads_unified_cpm: "Един. CPM",
+  ads_unified_cpo: "Един. CPO",
+  ads_unified_acos_pct: "Един. ACoS",
 };
 
 /**
@@ -410,7 +488,7 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   open_card: "переходы",
   cart: "корзины",
   cart_cr: "конв. в корзину",
-  order_cr: "конв. в заказ",
+  order_cr: "переход→заказ",
   orders_sum: "заказы ₽",
   orders_count: "заказы",
   orders_fbs_count: "заказы FBS",
@@ -427,7 +505,7 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   return_pct: "доля возвратов",
   buyout_pct: "выкуп",
   actual_buyout_pct: "факт. выкуп",
-  cohort_resolved_pct: "заказы с итогом",
+  cohort_resolved_pct: "окончательный итог",
   buyouts_gross_count: "выкуплено",
   buyouts_gross_rub: "выкуплено ₽",
   orders_spp_sum: "заказы с СПП",
@@ -459,11 +537,11 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   stock: "остаток",
   stock_in_way_to_client: "в пути к клиенту",
   stock_in_way_from_client: "в пути от клиента",
-  stock_total: "всего на складах",
+  stock_total: "остаток + в пути",
   turnover: "оборач.",
   money: "деньги в остатках",
-  gmroi: "GMROI",
-  reviews_count: "Отзывы",
+  gmroi: "Прибыль к запасу",
+  reviews_count: "оценки",
   ads_manual_spent: "Ручн. ₽",
   ads_manual_views: "Ручн. показы",
   ads_manual_clicks: "Ручн. клики",
@@ -474,8 +552,35 @@ const METRIC_BADGE_LABELS: Record<string, string> = {
   ads_unified_clicks: "Един. клики",
   ads_unified_orders: "Един. заказы",
   ads_unified_orders_sum: "Един. заказы ₽",
-  reviews_rating: "Рейтинг нов.",
+  reviews_rating: "средняя оценка",
   reviews_bad_share_pct: "1–3★ %",
+  cart_order_cr: "корзина→заказ",
+  tacos_pct: "TACoS",
+  ad_cpc: "CPC",
+  ad_cpm: "CPM",
+  ad_cpo: "CPO",
+  ad_acos_pct: "ACoS",
+  spp_rub: "СПП ₽",
+  gross_profit: "валовая прибыль",
+  gross_margin_pct: "валовая маржа",
+  profit_before_ads: "прибыль до рекламы",
+  profit_after_agent: "прибыль после комиссии",
+  reviews_text_count: "отзывы с текстом",
+  reviews_text_rating: "оценка отзывов",
+  reviews_text_bad_share_pct: "1–3★ с текстом",
+  expected_buyouts_count: "продажи (прогноз)",
+  expected_buyouts_sum: "продажи (прогноз) ₽",
+  expected_returns_count: "возвраты (прогноз)",
+  expected_buyout_pct: "% выкупа (прогноз)",
+  expected_net_buyout_pct: "% выкупа с возвр. (прогноз)",
+  ads_manual_cpc: "Ручн. CPC",
+  ads_manual_cpm: "Ручн. CPM",
+  ads_manual_cpo: "Ручн. CPO",
+  ads_manual_acos_pct: "Ручн. ACoS",
+  ads_unified_cpc: "Един. CPC",
+  ads_unified_cpm: "Един. CPM",
+  ads_unified_cpo: "Един. CPO",
+  ads_unified_acos_pct: "Един. ACoS",
 };
 
 function finite(value: number | null | undefined): value is number {
@@ -495,6 +600,24 @@ export function previousEqualRange(from: string, to: string) {
   const previousStart = new Date(previousEnd);
   previousStart.setUTCDate(previousStart.getUTCDate() - days + 1);
   return { from: isoDate(previousStart), to: isoDate(previousEnd) };
+}
+
+/**
+ * Пресет, которому соответствует сохранённый список полей: текущий — как есть,
+ * прежняя версия пресета — с пометкой `legacy`: такой выбор надо заменить
+ * текущим списком, иначе новые строки пресета так и не появятся.
+ */
+export function rnpPresetForFields(fields: readonly string[]): { id: RnpViewId; legacy: boolean } {
+  const same = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((field, index) => field === b[index]);
+  const current = RNP_VIEW_PRESETS.find((view) => same(view.fields, fields));
+  if (current) return { id: current.id, legacy: false };
+  for (const view of RNP_VIEW_PRESETS) {
+    const legacy = RNP_LEGACY_PRESET_FIELDS[view.id] ?? [];
+    // Прежний список чистится так же, как сохранённый: поля, которых больше нет,
+    // из сохранённого выбора уже выброшены.
+    if (legacy.some((list) => same(sanitizeMetricFields(list, []), fields))) return { id: view.id, legacy: true };
+  }
+  return { id: "custom", legacy: false };
 }
 
 export function sanitizeMetricFields(value: unknown, fallback: readonly string[] = RNP_VIEW_PRESETS[0].fields): RnpMetricField[] {
@@ -532,8 +655,19 @@ export function matchesArticleList(sku: Pick<RnpOperatingSku, "nm" | "art" | "na
   return tokens.some((token) => art.includes(token) || name.includes(token) || nm.includes(token));
 }
 
-export function metricDelta(current: number | null | undefined, previous: number | null | undefined): RnpMetricDelta | null {
+export function metricDelta(
+  current: number | null | undefined,
+  previous: number | null | undefined,
+  kind?: string,
+): RnpMetricDelta | null {
   if (!finite(current) || !finite(previous)) return null;
+  // Копейки CPC и сотые оценки: до 0,1 сдвиг в 5 копеек был бы «ровно», а
+  // процент от округлённой разницы — вдвое больше настоящего.
+  if (kind === "money2" || kind === "rating") {
+    const absolute = Math.round((current - previous) * 100) / 100;
+    const percent = previous === 0 ? null : Math.round(((current - previous) / Math.abs(previous)) * 1_000) / 10;
+    return { absolute, percent, direction: absolute > 0 ? "up" : absolute < 0 ? "down" : "flat" };
+  }
   const absolute = Math.round((current - previous) * 10) / 10;
   const percent = previous === 0 ? null : Math.round((absolute / Math.abs(previous)) * 1_000) / 10;
   return {
@@ -587,6 +721,12 @@ const VOLUME_SCALED_FIELDS = new Set([
   "agent_commission_rub",
   // Отзывы растут вместе с продажами; сигналы — рейтинг и доля плохих.
   "reviews_count",
+  // Прогноз продаж = заказы × ставка якоря, а якорь от периода не зависит: у
+  // прошлого периода та же ставка, и дельта прогноза лишь повторяет дельту
+  // заказов — с обратным знаком у возвратов («рост» у падающего артикула).
+  "expected_buyouts_count",
+  "expected_buyouts_sum",
+  "expected_returns_count",
   // Разрез рекламы по видам кампаний — объёмные ряды, аномалии ловит общий ДРР.
   "ads_manual_spent",
   "ads_manual_views",
@@ -598,6 +738,16 @@ const VOLUME_SCALED_FIELDS = new Set([
   "ads_unified_clicks",
   "ads_unified_orders",
   "ads_unified_orders_sum",
+  "spp_rub",
+  "reviews_text_count",
+  "ads_manual_cpc",
+  "ads_manual_cpm",
+  "ads_manual_cpo",
+  "ads_manual_acos_pct",
+  "ads_unified_cpc",
+  "ads_unified_cpm",
+  "ads_unified_cpo",
+  "ads_unified_acos_pct",
 ]);
 
 export function anomalyDirection(field: string, delta: RnpMetricDelta): "positive" | "negative" | null {
@@ -619,7 +769,7 @@ export function detectSkuAnomalies(
   const anomalies: RnpAnomaly[] = [];
   for (const metric of current.metrics) {
     const previousMetric = previousByField.get(metric.field);
-    const delta = metricDelta(metric.total, previousMetric?.total);
+    const delta = metricDelta(metric.total, previousMetric?.total, metric.kind);
     if (!delta) continue;
     const changeMagnitude = metric.kind === "pct" ? Math.abs(delta.absolute) : Math.abs(delta.percent ?? 0);
     // Порог берём по конкретной метрике, иначе — общий (проценты vs пункты).
@@ -774,7 +924,32 @@ export type RnpGranularity = "day" | "week";
  * Производные, у которых нет пары среди строк таблицы: неделя, сводка под
  * фильтром и сравнение с прошлым периодом пересчитывают их только из `parts`.
  */
-export const PARTS_ONLY_METRIC_FIELDS = new Set<string>(["actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit"]);
+/** Оценки 1–5: неделя — среднее, взвешенное числом оценок (части со scale 1 округлили бы до целого). */
+const WEIGHTED_RATINGS: Record<string, string> = {
+  reviews_rating: "reviews_count",
+  reviews_text_rating: "reviews_text_count",
+};
+
+export const PARTS_ONLY_METRIC_FIELDS = new Set<string>([
+  "actual_buyout_pct", "cohort_resolved_pct", "logistics_per_unit", "avg_buyout_price",
+  "cart_order_cr",
+  "tacos_pct",
+  "ad_cpc",
+  "ad_cpm",
+  "ad_cpo",
+  "ad_acos_pct",
+  "reviews_text_bad_share_pct",
+  "expected_buyout_pct",
+  "expected_net_buyout_pct",
+  "ads_manual_cpc",
+  "ads_manual_cpm",
+  "ads_manual_cpo",
+  "ads_manual_acos_pct",
+  "ads_unified_cpc",
+  "ads_unified_cpm",
+  "ads_unified_cpo",
+  "ads_unified_acos_pct",
+]);
 
 /**
  * Снимок РНП живёт в кэше до 12 часов и переживает выкладку. В снимке, собранном
@@ -803,7 +978,9 @@ interface GranularityMetricLike {
   kind: string;
   daily: (number | null)[];
   /** Числитель и знаменатель, которых нет среди строк таблицы (см. Metric.parts). */
-  parts?: { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1 };
+  parts?: { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1; decimals?: 2 };
+  /** Только для строки сводки — см. Metric.weeklyParts. */
+  weeklyParts?: { numerator: (number | null)[]; denominator: (number | null)[]; scale: 100 | 1 };
 }
 
 interface GranularityTableLike {
@@ -881,16 +1058,29 @@ const WEEKLY_RATIO_PAIRS: Record<string, { numerator: string; denominator: strin
   // в наборе метрик такого знаменателя нет. Пересчёт по общему buyouts_sum
   // занижал бы недельную маржу и расходился с колонкой «Итого» на том же
   // экране — ровно та ошибка, которую чинили в сводке под фильтром.
+  //
+  // net_margin_pct/romi/profit_per_unit здесь ОСТАЮТСЯ — эти пары по-прежнему
+  // нужны СТРОКАМ ОТДЕЛЬНЫХ SKU (у одного SKU costed-разрыва нет, buyouts_sum/
+  // ad_spent/buyouts_count того же SKU и так верный знаменатель). Строку
+  // СВОДКИ они больше не считают: buildTable.ts/taxMetrics.ts кладут ей
+  // weeklyParts с costed-ограниченным знаменателем, и mapMetrics выше
+  // проверяет weeklyParts раньше этой карты (см. комментарий там же).
   net_margin_pct: { numerator: "net_profit", denominator: "buyouts_sum", scale: 100 },
+  // Для строк SKU: у сводки свои weeklyParts (знаменатель — SKU с себестоимостью).
+  gross_margin_pct: { numerator: "gross_profit", denominator: "buyouts_sum", scale: 100 },
   romi: { numerator: "gross", denominator: "ad_spent", scale: 100 },
   avg_order_price: { numerator: "orders_sum", denominator: "orders_count", scale: 1 },
-  avg_buyout_price: { numerator: "buyouts_sum", denominator: "buyouts_count", scale: 1 },
   profit_per_unit: { numerator: "gross", denominator: "buyouts_count", scale: 1 },
 };
 
 /**
  * Метрики-снимки: остаток на складе не складывается за неделю. Суммирование
  * давало семикратный остаток и такую же оборачиваемость.
+ *
+ * Цена покупателя, СПП, скидка продавца и доля плохих отзывов — не снимки, а
+ * доли: при `parts` неделя пересчитывает их из сумм (ветка parts идёт раньше).
+ * Здесь они только как запасной путь для строк без частей (снимок до них, SKU
+ * без первичных строк), чтобы деньги не сложились в «недельную цену».
  */
 const WEEKLY_POINT_IN_TIME = new Set([
   "stock", "stock_in_way_to_client", "stock_in_way_from_client", "stock_total",
@@ -927,33 +1117,49 @@ export function aggregateRnpWeekly<T extends GranularityTableLike>(table: T, fro
   // за тот же период.
   const mapMetrics = <M extends GranularityMetricLike>(metrics: M[]): M[] => {
     const byField = new Map(metrics.map((metric) => [metric.field, metric]));
-    const sums = new Map<string, (number | null)[]>();
-    const sumOf = (field: string): (number | null)[] => {
-      const cached = sums.get(field);
-      if (cached) return cached;
-      const source = byField.get(field);
-      const value = source
-        ? buckets.map((bucket) => {
-          const values = bucketValues(source.daily, bucket);
-          return values.length ? values.reduce((acc, item) => acc + item, 0) : null;
-        })
-        : buckets.map(() => null);
-      sums.set(field, value);
-      return value;
-    };
     const bucketSums = (values: (number | null)[]) => buckets.map((bucket) => {
       const known = bucketValues(values, bucket);
       return known.length ? known.reduce((acc, item) => acc + item, 0) : null;
     });
+    // Числитель и знаменатель недели — только за дни, где известны оба. Источники
+    // кончаются в разные дни: заказы за сегодня есть, переходов ещё нет, и
+    // «заказы за 2 дня / переходы за 1» давали конверсию вдвое выше.
+    const matchedBucketSums = (numeratorDaily: (number | null)[], denominatorDaily: (number | null)[]) => {
+      const known = (value: number | null | undefined): value is number => value != null && Number.isFinite(value);
+      const numerator: (number | null)[] = [];
+      const denominator: (number | null)[] = [];
+      for (const bucket of buckets) {
+        let num = 0, den = 0, seen = false;
+        for (const index of bucket.indexes) {
+          const n = numeratorDaily[index];
+          const d = denominatorDaily[index];
+          if (!known(n) || !known(d)) continue;
+          num += n;
+          den += d;
+          seen = true;
+        }
+        numerator.push(seen ? num : null);
+        denominator.push(seen ? den : null);
+      }
+      return { numerator, denominator };
+    };
     return metrics.map((metric) => {
       if (!metric.parts && PARTS_ONLY_METRIC_FIELDS.has(metric.field)) {
         // Снимок старше `parts`: среднее процентов по дням было бы неверным.
         return { ...metric, daily: buckets.map(() => null) };
       }
-      if (metric.parts) {
-        const numerator = bucketSums(metric.parts.numerator);
-        const denominator = bucketSums(metric.parts.denominator);
-        const scale = metric.parts.scale;
+      // weeklyParts — только у строки СВОДКИ (margin_pct/profit_per_unit/romi),
+      // не у SKU: их знаменатель — сумма по SKU С ИЗВЕСТНОЙ себестоимостью, а не
+      // "факт есть у всех выбранных SKU", как у обычных `parts`. Намеренно НЕ
+      // кладём weeklyParts обратно в результат и не трогаем `parts` этой
+      // метрики — сводка под фильтром (composeRnpSummaryFromSkus) читает только
+      // `parts`, weeklyParts ей не виден, и это защищает от регресса: если бы
+      // знаменатель тут ушёл в `parts`, под фильтром метрика обнулялась бы —
+      // parts требует такую же часть у КАЖДОГО SKU, а у SKU её нет.
+      if (metric.weeklyParts) {
+        const numerator = bucketSums(metric.weeklyParts.numerator);
+        const denominator = bucketSums(metric.weeklyParts.denominator);
+        const scale = metric.weeklyParts.scale;
         return {
           ...metric,
           daily: buckets.map((_, index) => {
@@ -963,16 +1169,53 @@ export function aggregateRnpWeekly<T extends GranularityTableLike>(table: T, fro
             const value = (num / den) * scale;
             return scale === 100 ? Math.round(value * 10) / 10 : Math.round(value);
           }),
+        };
+      }
+      if (metric.parts) {
+        const numerator = bucketSums(metric.parts.numerator);
+        const denominator = bucketSums(metric.parts.denominator);
+        const { scale, decimals } = metric.parts;
+        return {
+          ...metric,
+          daily: buckets.map((_, index) => {
+            const num = numerator[index];
+            const den = denominator[index];
+            if (num == null || den == null || !(den > 0)) return null;
+            const value = (num / den) * scale;
+            if (decimals === 2) return Math.round(value * 100) / 100;
+            return scale === 100 ? Math.round(value * 10) / 10 : Math.round(value);
+          }),
           // Недельные части нужны сводке под фильтром: она складывает их по SKU.
-          parts: { numerator, denominator, scale },
+          parts: { numerator, denominator, scale, ...(decimals ? { decimals } : {}) },
+        };
+      }
+      // Рейтинг отзывов — средняя оценка, взвешенная числом отзывов, а не оценка
+      // последнего дня недели и не среднее по дням. Так же — оценка отзывов с текстом.
+      const ratingWeight = WEIGHTED_RATINGS[metric.field];
+      if (ratingWeight && byField.has(ratingWeight)) {
+        const counts = byField.get(ratingWeight)!.daily;
+        const weighted = metric.daily.map((rating, index) => {
+          const count = counts[index];
+          return rating != null && count != null ? rating * count : null;
+        });
+        const { numerator, denominator } = matchedBucketSums(weighted, counts);
+        return {
+          ...metric,
+          daily: buckets.map((_, index) => {
+            const num = numerator[index];
+            const den = denominator[index];
+            return num == null || den == null || !(den > 0) ? null : Math.round((num / den) * 100) / 100;
+          }),
         };
       }
       const pair = WEEKLY_RATIO_PAIRS[metric.field];
       if (!pair || !byField.has(pair.numerator) || !byField.has(pair.denominator)) {
         return { ...metric, daily: aggregateDaily(metric.field, metric.kind, metric.daily, buckets) };
       }
-      const numerator = sumOf(pair.numerator);
-      const denominator = sumOf(pair.denominator);
+      const { numerator, denominator } = matchedBucketSums(
+        byField.get(pair.numerator)!.daily,
+        byField.get(pair.denominator)!.daily,
+      );
       return {
         ...metric,
         daily: buckets.map((_, index) => {

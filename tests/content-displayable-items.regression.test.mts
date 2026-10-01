@@ -21,6 +21,8 @@ const item = (usability: ContentItem["usability"], key: string): ContentItem => 
   label: key,
   isCover: false,
   frameIndex: null,
+  group: "funnel",
+  groupPinned: false,
 });
 
 test("в сетку не попадает то, у чего нечего показать", () => {

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
@@ -271,11 +272,16 @@ export async function GET(req: NextRequest) {
   ) && (await checkCronAuth(req)) === null;
   let session = null;
   if (!isCron) {
-    const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"]);
+    const gate = await requireApiSession(["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller", "seller_owner"]);
     if (gate) return gate;
     session = await getServerSession();
     if (!session) return NextResponse.json({ error: "Требуется вход" }, { status: 401 });
-    if (!["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller"].includes(session.role)) {
+    // Вторая роль сотрудника добавляет доступ, а не отменяет первый —
+    // sessionRoles(session), а не одиночная session.role (см. requireApiSession
+    // чуть выше, там уже так; здесь была дублирующая проверка с тем же
+    // требованием, но по одной роли — seller_owner со второй ролью получал 403
+    // на собственных данных юнит-экономики).
+    if (!sessionRoles(session).some((role) => ["director", "fin_director", "financier", "wb_manager", "ozon_manager", "seller", "seller_owner"].includes(role))) {
       return NextResponse.json({ error: "Недостаточно прав" }, { status: 403 });
     }
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { sessionRoles } from "@/lib/auth/session";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { listAccessibleEntities } from "@/lib/warehouse/entityAccess";
 import { assertProductsInScope } from "@/lib/warehouse/ownership";
@@ -27,7 +28,7 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   const session = await getServerSession();
   // Справочник — зона администратора и менеджера: оператор фулфилмента
   // работает с тем, что в нём есть, но не правит.
-  if (!canManageStock(session?.role)) return fail(OPERATOR_FORBIDDEN, 403);
+  if (!sessionRoles(session).some((role) => canManageStock(role))) return fail(OPERATOR_FORBIDDEN, 403);
   const { id } = await ctx.params;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return fail("Некорректное тело запроса", 400);

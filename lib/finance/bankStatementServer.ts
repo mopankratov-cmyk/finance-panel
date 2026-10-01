@@ -7,6 +7,7 @@ import type { Account, Payment } from "@/lib/types";
 import { statementFromGrid, type BankStatement } from "./bankStatementGrid";
 import { cleanPdf, recognizeBankStatementPdf } from "./bankStatementPdf";
 import { xlsxGrid, xlsxText } from "./xlsxGrid";
+import { bankNameFromWalletName } from "./bankNames";
 
 // Выписку разбирает сервер целиком: файл → операции → предложения по компании,
 // кошельку и статье. Раньше XLSX и классификация жили в браузере, и результат
@@ -23,10 +24,12 @@ export async function recognizeBankStatementUpload(file: UploadedStatement): Pro
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".xlsx")) {
     const documentHash = createHash("sha256").update(file.bytes).digest("hex");
-    return statementFromGrid(xlsxGrid(file.bytes), xlsxText(file.bytes), documentHash);
+    const statement = statementFromGrid(xlsxGrid(file.bytes), xlsxText(file.bytes), documentHash);
+    return { ...statement, bank: bankNameFromWalletName(file.name, statement.bank) };
   }
   if (lower.endsWith(".pdf") || file.mimeType === "application/pdf") {
-    return recognizeBankStatementPdf(cleanPdf(file.bytes), file.name);
+    const statement = await recognizeBankStatementPdf(cleanPdf(file.bytes), file.name);
+    return { ...statement, bank: bankNameFromWalletName(file.name, statement.bank) };
   }
   throw new Error("Поддерживаются банковские выписки XLSX и PDF");
 }
@@ -72,7 +75,9 @@ export async function suggestForStatement(db: SupabaseClient, statement: BankSta
   const accountList: Account[] = (accounts.data ?? []).map((row) => ({
     id: String(row.id), name: String(row.name), type: row.type as Account["type"], currency: row.currency as Account["currency"], balance: Number(row.balance),
   }));
-  const companyList = (companies.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? ""), isActive: Boolean(row.is_active) }));
+  const companyList = (companies.data ?? [])
+    .map((row) => ({ id: String(row.id), name: String(row.name), groupName: String(row.group_name ?? ""), isActive: Boolean(row.is_active) }))
+    .filter((company) => company.isActive);
   const mappingList: BankAccountMapping[] = (mappings.data ?? []).map((row) => ({
     bankAccountNumber: String(row.bank_account_number ?? "").replace(/\D/g, ""),
     ownerInn: String(row.owner_inn ?? "").replace(/\D/g, ""),

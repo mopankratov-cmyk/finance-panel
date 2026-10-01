@@ -5,7 +5,7 @@ import { recommendWbDestination } from "./marketplaceDestination.ts";
 
 const payment = (patch: Partial<Payment>): Payment => ({
   id: "p1", date: "2026-08-01", name: "Поступление Wildberries", amount: 100,
-  category: "Продажи на МП", accountId: "a1", status: "done", ...patch,
+  category: "Продажи на МП", accountId: "a1", status: "done", counterparty: "", ...patch,
 });
 
 test("uses an exact previous cabinet publication before bank history", () => {

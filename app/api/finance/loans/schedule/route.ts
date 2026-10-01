@@ -8,7 +8,8 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { wbLoanFactFromRow } from "@/lib/loans/marketplaceFacts";
 import { isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
-import type { Payment } from "@/lib/types";
+import { loanToRow } from "@/lib/finance/dbServer";
+import type { Loan, Payment } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -84,6 +85,8 @@ export async function POST(request: Request) {
 
 type PutBody = {
   loanId?: string; accountId?: string; companyId?: string | null; currency?: string; exchangeRate?: number; creditorName?: string; contractFileName?: string;
+  /** Новый договор передаётся вместе с графиком: это убирает гонку между двумя API-запросами. */
+  loan?: Loan;
   rows?: Array<{ id?: string; dueDate?: string; kind?: string; amountRub?: number; amountOriginal?: number | null; balanceBefore?: number | null; balanceAfter?: number | null; status?: string }>;
 };
 
@@ -97,6 +100,17 @@ export async function PUT(request: Request) {
   const accountId = text(body?.accountId, 80);
   if (!loanId || !accountId || !Array.isArray(body?.rows)) return NextResponse.json({ error: "Нужны кредит, счёт и строки графика" }, { status: 400 });
   if (body.rows.length > 500) return NextResponse.json({ error: "Слишком много строк графика" }, { status: 413 });
+  if (body.loan && body.loan.id !== loanId) return NextResponse.json({ error: "Договор не соответствует графику" }, { status: 400 });
+  // Даже если старый клиент не дождался отдельной записи договора или повторно
+  // сохраняет черновик после ошибки, этот же серверный запрос гарантирует, что
+  // ссылка loan_schedule_rows.loan_id уже существует до вставки строк графика.
+  if (body.loan) {
+    const savedLoan = await client.from("loans").upsert(loanToRow(body.loan), { onConflict: "id" });
+    if (savedLoan.error) return NextResponse.json({ error: savedLoan.error.message }, { status: 500 });
+  }
+  const loanResult = await client.from("loans").select("id").eq("id", loanId).maybeSingle();
+  if (loanResult.error) return NextResponse.json({ error: loanResult.error.message }, { status: 500 });
+  if (!loanResult.data) return NextResponse.json({ error: "Договор ещё не сохранён. Повторите сохранение." }, { status: 409 });
   const currency = text(body.currency, 3) || "RUB";
   const exchangeRate = Number(body.exchangeRate) > 0 ? Number(body.exchangeRate) : 1;
   const companyId = text(body.companyId, 80) || null;
@@ -193,8 +207,11 @@ export async function PATCH(request: Request) {
     if (wbRow.error) return NextResponse.json({ error: wbRow.error.message }, { status: 500 });
     const source = wbRow.data ? wbLoanFactFromRow(wbRow.data) : null;
     if (!source) return NextResponse.json({ error: "Удержание WB не найдено или не относится к кредиту" }, { status: 404 });
-    if (rows.length !== 1 || rows[0].kind !== source.kind || Math.abs(rows[0].amountRub - source.amountRub) > 0.01) {
-      return NextResponse.json({ error: "Удержание WB не совпадает с одной строкой графика" }, { status: 409 });
+    const exactMatch = rows.length === 1 && rows[0].kind === source.kind && Math.abs(rows[0].amountRub - source.amountRub) <= 0.01;
+    // Автосверка закрывает только полное совпадение. Человек может зачесть
+    // удержание вручную в одну плановую строку после явного подтверждения.
+    if (!exactMatch && (!body?.confirmed || rows.length !== 1)) {
+      return NextResponse.json({ error: "Удержание WB не совпадает с одной строкой графика. Выберите одну строку и подтвердите ручной зачёт." }, { status: 409 });
     }
     const now = new Date().toISOString();
     const updated = await client.from("loan_schedule_rows").update({ status: "paid", paid_by_marketplace_source: source.source, updated_at: now })
@@ -202,7 +219,8 @@ export async function PATCH(request: Request) {
     if (updated.error || (updated.data ?? []).length !== 1) return NextResponse.json({ error: updated.error?.message ?? "Строка уже закрыта" }, { status: 409 });
     if (rows[0].calendarPaymentId) {
       const planned = await client.from("payments").select("comment").eq("id", rows[0].calendarPaymentId).maybeSingle();
-      const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by-marketplace:[^\]]+\]/g, "").trim()} [paid-by-marketplace:${source.source}]`.trim();
+      const manualMarker = exactMatch ? "" : " [manual-marketplace-match]";
+      const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by-marketplace:[^\]]+\]|\s*\[manual-marketplace-match\]/g, "").trim()} [paid-by-marketplace:${source.source}]${manualMarker}`.trim();
       await client.from("payments").update({ status: "cancelled", comment }).eq("id", rows[0].calendarPaymentId);
     }
     return NextResponse.json({ ok: true, rows: [{ ...rows[0], status: "paid", paidByMarketplaceSource: source.source }] });
