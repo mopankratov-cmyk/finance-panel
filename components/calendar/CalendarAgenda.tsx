@@ -4,7 +4,7 @@ import { CalendarPlus, CheckCircle2, Clock3 } from "lucide-react";
 import { formatDate, formatMoney } from "@/lib/format";
 import type { DayInfo } from "@/lib/calculations";
 import type { Payment } from "@/lib/types";
-import { displayPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
+import { displayPaymentLabel, getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
 
 export function CalendarAgenda({
   days,
@@ -49,7 +49,7 @@ export function CalendarAgenda({
                 {expenses.length ? (
                   <div className="flex flex-wrap gap-1.5">
                     {expenses.slice(0, 4).map((payment) => {
-                      const label = displayPaymentComment(payment.comment) || payment.name || payment.counterparty || payment.category || "Без комментария";
+                      const label = displayPaymentLabel(payment);
                       return (
                       <span key={payment.id} title={label} className="inline-flex max-w-56 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700">
                         {payment.status === "done" ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600" /> : <Clock3 className="h-3.5 w-3.5 shrink-0 text-amber-600" />}

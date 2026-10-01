@@ -47,6 +47,10 @@ export function displayPaymentComment(comment?: string): string {
   return [plain, contract ? `Договор: ${contract}` : ""].filter(Boolean).join(" · ");
 }
 
+export function displayPaymentLabel(payment: Pick<Payment, "name" | "comment" | "counterparty" | "category">): string {
+  return payment.name || displayPaymentComment(payment.comment) || payment.counterparty || payment.category || "Без комментария";
+}
+
 export function editablePaymentComment(comment?: string): string {
   return (comment ?? "").replace(/\[[^\]]+\]/g, " ").replace(/\s{2,}/g, " ").trim();
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { chronologicalPaymentOrder, displayPaymentComment, editablePaymentComment } from "./paymentPriority.ts";
+import { chronologicalPaymentOrder, displayPaymentComment, displayPaymentLabel, editablePaymentComment } from "./paymentPriority.ts";
 
 const technical = "[loan:abc:schedule:row:principal] [origination-fee:0] [fee-months:36] [contract:ИП Панкратов JetLend займ № 22612 обновленный.pdf] [priority:A]";
 
@@ -10,6 +10,10 @@ test("технические маркеры превращаются в чита
 
 test("в поле редактирования остаётся только пользовательский текст", () => {
   assert.equal(editablePaymentComment(`Платёж по договору ${technical}`), "Платёж по договору");
+});
+
+test("календарь показывает получателя раньше служебного комментария серии", () => {
+  assert.equal(displayPaymentLabel({ name: "Алексею Хлестову", comment: "[recurring:weekly] · weekly, платёж 1", counterparty: "", category: "Оплата % по кредиту" }), "Алексею Хлестову");
 });
 
 test("платежи идут от новой даты к старой независимо от приоритета", () => {

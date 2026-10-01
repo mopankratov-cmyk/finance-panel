@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import type { DayInfo } from "@/lib/calculations";
 import { formatMoney } from "@/lib/format";
 import type { Payment } from "@/lib/types";
-import { displayPaymentComment, getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
+import { displayPaymentLabel, getPaymentPriority, PRIORITY_META, priorityRank } from "./paymentPriority";
 
 interface CalendarDayCellProps {
   dateStr: string;
@@ -36,7 +36,7 @@ export function CalendarDayCell({
   const expense = activePayments.filter((payment) => payment.amount < 0).reduce((sum, payment) => sum - payment.amount, 0);
   const expenseRows = activePayments.filter((payment) => payment.amount < 0).sort((a, b) => priorityRank(a) - priorityRank(b) || a.amount - b.amount).slice(0, 3);
   const hiddenExpenses = activePayments.filter((payment) => payment.amount < 0).length - expenseRows.length;
-  const compactLabel = (payment: Payment) => displayPaymentComment(payment.comment) || payment.name || payment.counterparty || payment.category || "Без комментария";
+  const compactLabel = (payment: Payment) => displayPaymentLabel(payment);
 
   const negative = info?.isNegative;
 
