@@ -1,4 +1,9 @@
+import { companyAliasGroup } from "@/lib/finance/companyAliases";
+
 function normalizedCounterpartyKey(name: string) {
+  const legalSoleProprietor = /(?:^|[\s(])ип(?:[\s)]|$)|индивидуальн(?:ый|ого)\s+предпринимател(?:ь|я)/i.test(name);
+  const aliasGroup = legalSoleProprietor ? companyAliasGroup(name) : null;
+  if (aliasGroup) return `company-alias:${aliasGroup.join("|")}`;
   const normalized = name
     .toLocaleLowerCase("ru")
     .replace(/ё/g, "е")
