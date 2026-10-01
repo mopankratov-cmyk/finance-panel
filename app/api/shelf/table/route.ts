@@ -11,6 +11,8 @@ import {
 } from "@/lib/shelf/slices";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { shelfFreshness, type ShelfFreshness } from "@/lib/shelf/freshness";
+import { loadShelfFreshnessFacts } from "@/lib/shelf/freshnessFacts";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -82,6 +84,13 @@ export async function GET(request: NextRequest) {
   }
   const daysRaw = Number(searchParams.get("days") ?? HISTORY_DAYS_DEFAULT);
   const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.round(daysRaw), 1), HISTORY_DAYS_MAX) : HISTORY_DAYS_DEFAULT;
+
+  // Свежесть сборщика — по всему срезу, а не по окну истории: застой длиннее
+  // окна иначе не виден. Идёт параллельно с остальным; не прочиталась — экран
+  // работает без неё, а не падает.
+  const freshnessPromise: Promise<ShelfFreshness | null> = loadShelfFreshnessFacts(db, cabinetId)
+    .then((facts) => shelfFreshness(facts))
+    .catch(() => null);
 
   // Список отслеживаемых и глобальные исключения друг от друга не зависят —
   // замер показал по 0.5 и 0.7 секунды подряд, хотя запросы независимы.
@@ -270,6 +279,7 @@ export async function GET(request: NextRequest) {
     };
   });
 
+  const freshness = await freshnessPromise;
   mark("total");
-  return NextResponse.json(searchParams.get("timings") === "1" ? { items, days, timings } : { items, days });
+  return NextResponse.json(searchParams.get("timings") === "1" ? { items, days, freshness, timings } : { items, days, freshness });
 }

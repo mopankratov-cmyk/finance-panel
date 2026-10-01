@@ -128,6 +128,10 @@
       "schedule": "15 6 * * *"
     },
     {
+      "path": "/api/sync/shelf-freshness",
+      "schedule": "15 9,17,21 * * *"
+    },
+    {
       "path": "/api/sync/wb-tax-documents",
       "schedule": "25 4 * * *"
     },

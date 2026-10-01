@@ -6,6 +6,8 @@ import { hasCabinetAccess, sessionHasCabinetAccess } from "@/lib/auth/cabinetAcc
 import { getServerSession } from "@/lib/auth/server";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getWbSyncTargets } from "@/lib/sync/cabinets";
+import { missedSlotsLabel, SHELF_STALL_ACTION, shelfFreshness, shelfStallSummary, type ShelfFreshnessFacts } from "@/lib/shelf/freshness";
+import { loadShelfFreshnessFacts } from "@/lib/shelf/freshnessFacts";
 import { wbSyncHealthStatus } from "@/lib/sync/wbSyncHealthStatus";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requestAllowedNmIds } from "@/lib/wb/requestProductScope";
@@ -51,6 +53,42 @@ async function sourceSnapshot(db: SupabaseClient, cabinetId: string, table: stri
       error: error instanceof Error ? error.message : `Не удалось прочитать ${table}`,
     };
   }
+}
+
+/**
+ * «Полки» в таблице источников. Их приносит не крон панели, а сборщик на Mac mini
+ * по слотам 10:00 / 18:00 / 22:00 МСК, поэтому SLA в минутах тут не годится —
+ * просрочка = пропущенный слот (`lib/shelf/freshness.ts`), а «Повторить» из панели
+ * нечего: запустить сборщик можно только на самой машине. Кабинет без активных
+ * артикулов строки не получает — ждать от сборщика там нечего.
+ */
+function shelfSource(loaded: { facts: ShelfFreshnessFacts | null; error: string | null }, now = Date.now()) {
+  if (loaded.error) {
+    return { job: "shelf", rows: 0, lastSyncedAt: null, error: loaded.error, status: "error", stale: false, ageMinutes: null, slaMinutes: null, missedSlots: null, external: true, cursor: null, attempts: 0, coveragePct: null, fieldCoverage: [], stateUpdatedAt: null, lastError: loaded.error };
+  }
+  if (!loaded.facts || loaded.facts.activeWatches <= 0) return null;
+  const freshness = shelfFreshness(loaded.facts, now);
+  const lastSyncedAt = freshness.lastIngestAt ?? freshness.lastCollectedAt;
+  const stalled = freshness.state === "stalled";
+  return {
+    job: "shelf",
+    rows: freshness.snapshots,
+    lastSyncedAt,
+    error: null,
+    status: stalled ? "stale" : freshness.state === "awaiting" ? "pending" : "caught_up",
+    stale: stalled,
+    ageMinutes: lastSyncedAt ? Math.max(0, Math.round((now - Date.parse(lastSyncedAt)) / 60_000)) : null,
+    slaMinutes: null,
+    missedSlots: freshness.missedSlots,
+    missedSlotsLabel: missedSlotsLabel(freshness.missedSlots),
+    external: true,
+    cursor: null,
+    attempts: 0,
+    coveragePct: null,
+    fieldCoverage: [],
+    stateUpdatedAt: null,
+    lastError: stalled ? `Сбор встал: ${shelfStallSummary(freshness, now)}. ${SHELF_STALL_ACTION}` : null,
+  };
 }
 
 async function fieldCoverageSnapshot(db: SupabaseClient, cabinetId: string, table: string, field: string, label: string): Promise<FieldCoverage> {
@@ -640,7 +678,7 @@ export async function GET(request: NextRequest) {
       acc[brand] = (acc[brand] ?? 0) + 1;
       return acc;
     }, {});
-    const [sources, ordersPriceCoverage, ordersSppCoverage, salesPriceCoverage, salesSppCoverage] = await Promise.all([
+    const [sources, ordersPriceCoverage, ordersSppCoverage, salesPriceCoverage, salesSppCoverage, shelfFacts] = await Promise.all([
       Promise.all([
         sourceSnapshot(db, cabinet.id, "wb_orders", "synced_at").then((value) => ({ job: "orders", ...value })),
         sourceSnapshot(db, cabinet.id, "wb_sales", "synced_at").then((value) => ({ job: "sales", ...value })),
@@ -655,7 +693,12 @@ export async function GET(request: NextRequest) {
       fieldCoverageSnapshot(db, cabinet.id, "wb_orders", "spp", "SPP% заказов"),
       fieldCoverageSnapshot(db, cabinet.id, "wb_sales", "price_with_disc", "Цена до СПП продаж"),
       fieldCoverageSnapshot(db, cabinet.id, "wb_sales", "spp", "SPP% продаж"),
+      loadShelfFreshnessFacts(db, cabinet.id).then(
+        (facts) => ({ facts, error: null }),
+        (error: unknown) => ({ facts: null, error: error instanceof Error ? error.message : "Свежесть «Полок» не прочиталась" }),
+      ),
     ]);
+    const shelf = shelfSource(shelfFacts);
     const cabinetStates = states.filter((state) => state.cabinet_id === cabinet.id);
     const stateByJob = new Map(cabinetStates.map((state) => [state.job, state]));
     const fieldCoverageByJob = new Map<string, FieldCoverage[]>([
@@ -683,7 +726,7 @@ export async function GET(request: NextRequest) {
         checkedAt: token.checked_at,
         error: token.last_error,
       })),
-      sources: sources.map((source) => {
+      sources: [...sources.map((source) => {
         const state = stateByJob.get(source.job);
         const stateLastSyncedAt = typeof state?.state?.lastSyncedAt === "string" ? state.state.lastSyncedAt : null;
         const lastSyncedAt = stateLastSyncedAt || source.lastSyncedAt || state?.updated_at || null;
@@ -715,7 +758,7 @@ export async function GET(request: NextRequest) {
           stateUpdatedAt: state?.updated_at ?? null,
           lastError: health.lastError,
         };
-      }),
+      }), ...(shelf ? [shelf] : [])],
     });
   }
 

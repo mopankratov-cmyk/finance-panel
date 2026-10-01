@@ -9,6 +9,7 @@ import { readApiResponse, readOkApiResponse } from "@/lib/http/readApiResponse";
 import { asSyncPayload, syncDeferredMessage, syncErrorMessage, syncPayloadOk } from "@/lib/sync/result";
 import type { SyncLogRow } from "@/app/api/sync-log/route";
 import { syncFreshness } from "@/lib/sync/freshness";
+import { SHELF_SLOT_HOURS_MSK } from "@/lib/shelf/freshness";
 
 const JOBS: { key: string; label: string; schedule: string }[] = [
   { key: "orders", label: "Заказы WB", schedule: "каждый час, :00" },
@@ -28,9 +29,16 @@ interface CabinetHealthSource {
   rows: number;
   lastSyncedAt: string | null;
   ageMinutes: number | null;
-  slaMinutes: number;
+  /** null — источник живёт не по SLA в минутах (полки идут по слотам). */
+  slaMinutes: number | null;
   stale: boolean;
-  coveragePct: number;
+  /** null — покрытие для источника не считается. */
+  coveragePct: number | null;
+  /** Полки: сколько плановых слотов пропущено после последнего снимка. */
+  missedSlots?: number | null;
+  missedSlotsLabel?: string;
+  /** Данные приносит внешний сборщик (Mac mini) — из панели его не перезапустить. */
+  external?: boolean;
   fieldCoverage?: Array<{ field: string; label: string; filled: number; total: number; coveragePct: number | null; error: string | null }>;
   cursor: string | null;
   lastError: string | null;
@@ -201,7 +209,7 @@ export function SyncPage() {
                       const tone = bad ? "bg-red-50 text-red-700" : pending ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700";
                       const key = `${source.job}:${cabinet.id}`;
                       const statusLabel = source.status === "stale" ? "просрочено" : bad ? "ошибка" : pending ? "догружается" : "свежо";
-                      return <tr key={source.job}><td className="px-4 py-2.5 font-medium text-slate-700">{source.job}</td><td className="px-3 py-2.5"><span className={`rounded px-1.5 py-0.5 font-semibold ${tone}`}>{statusLabel}</span>{source.lastError ? <div className="mt-1 flex max-w-[220px] items-start gap-1 text-[10px] text-red-500"><span className="min-w-0 truncate">{source.lastError}</span><Hint label="Полный текст ошибки"><span className="break-anywhere">{source.lastError}</span></Hint></div> : null}</td><td className="px-3 py-2.5 text-right tabular-nums"><div>{source.coveragePct}%</div>{source.fieldCoverage?.map((coverage) => <div key={coverage.field} title={coverage.error || `${coverage.filled} из ${coverage.total}`} className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${coverage.error ? "text-red-500" : coverage.coveragePct == null ? "text-slate-300" : coverage.coveragePct >= 80 ? "text-emerald-600" : "text-amber-600"}`}>{coverage.label}: {coverage.error ? "ошибка" : coverage.coveragePct == null ? "—" : `${coverage.coveragePct}%`}{coverage.error ? <Hint label={`Что за ошибка по полю «${coverage.label}»`}><span className="break-anywhere">{coverage.error}</span></Hint> : null}</div>)}</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(source.rows)}</td><td className="px-3 py-2.5 text-slate-500">{source.lastSyncedAt ? formatTime(source.lastSyncedAt) : "—"}{source.ageMinutes != null ? <div className="text-[9px] text-slate-300">возраст {source.ageMinutes} мин · SLA {source.slaMinutes} мин</div> : null}{source.cursor ? <div className="max-w-[180px] truncate text-[9px] text-slate-300" title={source.cursor}>cursor {source.cursor}</div> : null}</td><td className="px-3 py-2.5 text-right"><button onClick={() => runJob(source.job, cabinet.id)} disabled={running !== null} className="tap-row inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Play className={`h-3 w-3 ${running === key ? "animate-pulse" : ""}`} />Повторить</button></td></tr>;
+                      return <tr key={source.job}><td className="px-4 py-2.5 font-medium text-slate-700">{source.job}</td><td className="px-3 py-2.5"><span className={`rounded px-1.5 py-0.5 font-semibold ${tone}`}>{statusLabel}</span>{source.lastError ? <div className="mt-1 flex max-w-[220px] items-start gap-1 text-[10px] text-red-500"><span className="min-w-0 truncate">{source.lastError}</span><Hint label="Полный текст ошибки"><span className="break-anywhere">{source.lastError}</span></Hint></div> : null}</td><td className="px-3 py-2.5 text-right tabular-nums"><div>{source.coveragePct == null ? "—" : `${source.coveragePct}%`}</div>{source.fieldCoverage?.map((coverage) => <div key={coverage.field} title={coverage.error || `${coverage.filled} из ${coverage.total}`} className={`mt-1 flex items-center justify-end gap-1 text-[9px] ${coverage.error ? "text-red-500" : coverage.coveragePct == null ? "text-slate-300" : coverage.coveragePct >= 80 ? "text-emerald-600" : "text-amber-600"}`}>{coverage.label}: {coverage.error ? "ошибка" : coverage.coveragePct == null ? "—" : `${coverage.coveragePct}%`}{coverage.error ? <Hint label={`Что за ошибка по полю «${coverage.label}»`}><span className="break-anywhere">{coverage.error}</span></Hint> : null}</div>)}</td><td className="px-3 py-2.5 text-right tabular-nums">{formatNumber(source.rows)}</td><td className="px-3 py-2.5 text-slate-500">{source.lastSyncedAt ? formatTime(source.lastSyncedAt) : "—"}{source.missedSlots != null ? <div className={`text-[9px] ${source.missedSlots > 0 ? "text-red-400" : "text-slate-300"}`}>{source.missedSlots > 0 ? `${source.missedSlotsLabel} · ` : ""}слоты {SHELF_SLOT_HOURS_MSK.map((hour) => `${hour}:00`).join(" / ")} МСК</div> : source.ageMinutes != null ? <div className="text-[9px] text-slate-300">возраст {source.ageMinutes} мин · SLA {source.slaMinutes} мин</div> : null}{source.cursor ? <div className="max-w-[180px] truncate text-[9px] text-slate-300" title={source.cursor}>cursor {source.cursor}</div> : null}</td><td className="px-3 py-2.5 text-right">{source.external ? <span className="text-[10px] text-slate-400">сборщик на Mac mini</span> : <button onClick={() => runJob(source.job, cabinet.id)} disabled={running !== null} className="tap-row inline-flex items-center gap-1 rounded-md border border-slate-200 px-3 py-1 font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-50"><Play className={`h-3 w-3 ${running === key ? "animate-pulse" : ""}`} />Повторить</button>}</td></tr>;
                     })}</tbody>
                   </table>
                 </div>

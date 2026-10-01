@@ -1,10 +1,13 @@
 /**
- * Свежесть внешнего сборщика (Mac mini): полки и снимки выплат.
+ * Свежесть внешнего сборщика (Mac mini) по возрасту снимка — для снимков выплат.
  *
  * Сборщики пишут ошибки только в свой лог на mini. 01.10.2026 выяснилось, что
  * полки стояли десять дней, а снимки выплат части кабинетов — тоже (умер узел
  * VPN, и запросы к панели не выходили), и в панели этого не было видно вовсе.
  * Отсюда — явная плашка, когда самый свежий снимок старше порога.
+ *
+ * Полки меряются точнее — пропущенными плановыми слотами, а не часами:
+ * `lib/shelf/freshness.ts`.
  */
 
 export interface CollectorFreshness {
@@ -49,7 +52,5 @@ export function collectorFreshness(lastAt: string | null, thresholdHours: number
   return { lastAt: new Date(ms).toISOString(), hours, label: collectorAgeLabel(hours), stalled: hours > thresholdHours };
 }
 
-/** Полки: плановые сборы 10:00 / 18:00 / 22:00 МСК, штатная пауза — 12 ч; сутки = пропущено два слота. */
-export const SHELF_STALL_HOURS = 24;
 /** Выплаты: агент ходит раз в 6 часов; сутки = четыре пропущенных прогона подряд. */
 export const PAYOUT_STALL_HOURS = 24;

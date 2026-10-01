@@ -2,7 +2,7 @@ import { strict as assert } from "node:assert";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-import { collectorAgeLabel, collectorFreshness, latestIso, PAYOUT_STALL_HOURS, SHELF_STALL_HOURS } from "../lib/collectorFreshness";
+import { collectorAgeLabel, collectorFreshness, latestIso, PAYOUT_STALL_HOURS } from "../lib/collectorFreshness";
 
 /**
  * Сборщики на Mac mini (полки, снимки выплат) об отказах пишут только в свой
@@ -23,8 +23,8 @@ test("самый свежий снимок — по времени, пустые
 
 test("встал — только если снимки были и самый свежий старше порога", () => {
   assert.deepEqual(collectorFreshness(null, 24, NOW), { lastAt: null, hours: null, label: "снимков нет", stalled: false }, "кабинет без сборщика — не тревога");
-  assert.equal(collectorFreshness(hoursAgo(12), SHELF_STALL_HOURS, NOW).stalled, false, "штатная ночная пауза полок");
-  assert.equal(collectorFreshness(hoursAgo(25), SHELF_STALL_HOURS, NOW).stalled, true);
+  assert.equal(collectorFreshness(hoursAgo(12), 24, NOW).stalled, false);
+  assert.equal(collectorFreshness(hoursAgo(25), 24, NOW).stalled, true);
   assert.equal(collectorFreshness(hoursAgo(7), PAYOUT_STALL_HOURS, NOW).stalled, false, "один пропущенный прогон выплат");
   assert.equal(collectorFreshness(hoursAgo(240), PAYOUT_STALL_HOURS, NOW).label, "10 дн назад");
   assert.equal(collectorFreshness("не дата", 24, NOW).stalled, false);
@@ -34,13 +34,6 @@ test("подпись возраста", () => {
   assert.equal(collectorAgeLabel(0.4), "меньше часа назад");
   assert.equal(collectorAgeLabel(5.4), "5 ч назад");
   assert.equal(collectorAgeLabel(49), "2 дн назад");
-});
-
-test("«Полки»: плашка застоя — по активным артикулам, над списком", () => {
-  const page = read("../components/wb/WbShelfPage.tsx");
-  assert.match(page, /collectorFreshness\(latestIso\(items\.filter\(\(item\) => item\.watch\.active\)\.map\(\(item\) => item\.latest\?\.collectedAt\)\), SHELF_STALL_HOURS\)/);
-  assert.match(page, /shelfFreshness\.stalled && shelfFreshness\.lastAt \? \(\s*<div role="alert"/);
-  assert.match(page, /Сбор полок встал/);
 });
 
 test("выплаты: свежесть агента — отдельным запросом, без снимков и без правки предложений календаря", () => {

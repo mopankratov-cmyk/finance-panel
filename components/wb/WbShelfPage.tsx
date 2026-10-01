@@ -15,7 +15,7 @@ import { WbProductImage } from "./WbProductImage";
 import { useCabinetSkuOrder } from "@/lib/wb/useCabinetSkuOrder";
 import { useWbCabinet } from "./WbCabinetContext";
 import { WbEmptyState, WbErrorState, WbModuleHeader } from "./WbModuleHeader";
-import { collectorFreshness, latestIso, SHELF_STALL_HOURS } from "@/lib/collectorFreshness";
+import { formatMskShort, missedSlotsLabel, SHELF_SLOT_HOURS_MSK, SHELF_STALL_ACTION, shelfStallSummary, type ShelfFreshness } from "@/lib/shelf/freshness";
 
 interface WatchView {
   id: string;
@@ -70,7 +70,7 @@ function collectedAge(iso: string): { label: string; stale: boolean } {
 // Ближайший плановый слот сборщика (10:00/18:00/22:00 МСК) — для сводки.
 function nextSlotLabel(): string {
   const hour = Number(new Intl.DateTimeFormat("ru-RU", { timeZone: "Europe/Moscow", hour: "numeric", hour12: false }).format(new Date()));
-  const slot = [10, 18, 22].find((value) => hour < value);
+  const slot = SHELF_SLOT_HOURS_MSK.find((value) => hour < value);
   return slot ? `${slot}:00` : "10:00 завтра";
 }
 
@@ -386,6 +386,8 @@ export function WbShelfPage() {
     window.history.replaceState(null, "", url.toString());
   };
   const [items, setItems] = useState<ShelfItem[]>([]);
+  // Свежесть сборщика по плановым слотам — считает сервер по всему срезу.
+  const [freshness, setFreshness] = useState<ShelfFreshness | null>(null);
   const [settings, setSettings] = useState<SettingsRow[]>([]);
   const [days, setDays] = useState(14);
   const [loading, setLoading] = useState(true);
@@ -440,9 +442,9 @@ export function WbShelfPage() {
     const query = `cabinet=${encodeURIComponent(cabinetId || "all")}`;
     Promise.all([
       fetch(`/api/shelf/table?${query}&days=${days}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
-        const body = await response.json() as { items?: ShelfItem[]; error?: string };
+        const body = await response.json() as { items?: ShelfItem[]; freshness?: ShelfFreshness | null; error?: string };
         if (!response.ok || body.error) throw new Error(body.error || `Ошибка ${response.status}`);
-        return body.items ?? [];
+        return { items: body.items ?? [], freshness: body.freshness ?? null };
       }),
       fetch(`/api/shelf/watch?${query}`, { cache: "no-store", signal: controller.signal }).then(async (response) => {
         const body = await response.json() as { settings?: SettingsRow[]; error?: string };
@@ -450,9 +452,10 @@ export function WbShelfPage() {
         return body.settings ?? [];
       }),
     ])
-      .then(([tableItems, settingsRows]) => {
+      .then(([table, settingsRows]) => {
         if (current !== requestId.current) return;
-        setItems(tableItems);
+        setItems(table.items);
+        setFreshness(table.freshness);
         setSettings(settingsRows);
       })
       .catch((cause: unknown) => {
@@ -515,13 +518,6 @@ export function WbShelfPage() {
   useEffect(() => setActiveTagIds([]), [cabinetId]);
   // Ярлык на модели = все её цвета одной группой: фильтр сужает и список,
   // и сводку над ним — карточки сводки честны к выбранному ярлыку.
-  // Сборщик живёт на Mac mini и об отказах пишет только в свой лог: десять дней
-  // простоя 21.09–01.10.2026 в панели не было видно. Возраст у каждой карточки
-  // есть, но общий застой должен бросаться в глаза сразу.
-  const shelfFreshness = useMemo(
-    () => collectorFreshness(latestIso(items.filter((item) => item.watch.active).map((item) => item.latest?.collectedAt)), SHELF_STALL_HOURS),
-    [items],
-  );
   const taggedItems = useMemo(
     () => items.filter((item) => nmMatchesTags(tagIdsByNm, item.watch.nmId, activeTagIds)),
     [activeTagIds, items, tagIdsByNm],
@@ -663,9 +659,13 @@ export function WbShelfPage() {
           </WbEmptyState>
         ) : (
           <div className="space-y-2">
-            {shelfFreshness.stalled && shelfFreshness.lastAt ? (
+            {/* Сборщик живёт на Mac mini и об отказах пишет только в свой лог:
+                простой 21.09–01.10.2026 в панели не было видно девять дней.
+                Застой меряется пропущенными слотами, а не часами: ночная пауза
+                22:00→10:00 штатно длится 12 часов. */}
+            {freshness?.state === "stalled" ? (
               <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs leading-5 text-rose-800">
-                <b>Сбор полок встал:</b> последний снимок {new Date(shelfFreshness.lastAt).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} МСК ({shelfFreshness.label}). Снимки делает сборщик на Mac mini — проверьте, что машина в сети и у неё работает выход за границу (VPN): без него панель на vercel.app из РФ недоступна.
+                <b>Сбор полок встал:</b> {shelfStallSummary(freshness)}. {SHELF_STALL_ACTION}
               </div>
             ) : null}
             <WbTagFilterChips
@@ -682,16 +682,25 @@ export function WbShelfPage() {
               const cheaper = withTop6.filter((value) => value > 0).length;
               const dearer = withTop6.filter((value) => value < 0).length;
               const avgDiff = withTop6.length ? withTop6.reduce((sum, value) => sum + value, 0) / withTop6.length : null;
-              const lastCollected = taggedItems
+              // Сборщик один на весь кабинет — последний сбор не зависит от
+              // ярлыка. Время — московское, и дата, если сбор был не сегодня:
+              // одно «01:35» простоя в девять дней читалось как свежий сбор.
+              const lastCollected = freshness?.lastIngestAt ?? freshness?.lastCollectedAt ?? taggedItems
                 .map((item) => item.latest?.collectedAt)
                 .filter((value): value is string => Boolean(value))
                 .sort()
                 .at(-1);
+              const stalled = freshness?.state === "stalled";
               const cards: { label: string; value: string; hint: string; tone?: string }[] = [
                 { label: activeTagIds.length ? "По ярлыку" : "В реестре", value: String(taggedItems.length), hint: `${totalActive} активных для сбора` },
                 { label: "Мы дешевле рынка", value: withTop6.length ? `${cheaper} из ${withTop6.length}` : "—", hint: "по средней Топ-6", tone: cheaper > dearer ? "text-emerald-700" : undefined },
                 { label: "Мы дороже рынка", value: withTop6.length ? `${dearer} из ${withTop6.length}` : "—", hint: avgDiff == null ? "нет данных" : `средняя дельта ${pct(avgDiff)}`, tone: dearer > 0 ? "text-rose-600" : undefined },
-                { label: "Последний сбор", value: lastCollected ? new Date(lastCollected).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }) : "—", hint: `следующий слот ${nextSlotLabel()} МСК` },
+                {
+                  label: "Последний сбор",
+                  value: lastCollected ? formatMskShort(lastCollected) : "—",
+                  hint: stalled && freshness ? missedSlotsLabel(freshness.missedSlots) : `следующий слот ${nextSlotLabel()} МСК`,
+                  tone: stalled ? "text-rose-600" : undefined,
+                },
               ];
               return (
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">

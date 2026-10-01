@@ -15,6 +15,8 @@ import { cabinetIdFromParam } from "@/lib/rnp/resolveShop";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { getWbCabinet } from "@/lib/wb/cabinetTokens";
 import { syncFactVerdict } from "@/lib/health/syncFacts";
+import { SHELF_SLOT_HOURS_MSK, shelfFreshness, shelfStallSummary } from "@/lib/shelf/freshness";
+import { loadShelfFreshnessFacts } from "@/lib/shelf/freshnessFacts";
 
 export const dynamic = "force-dynamic";
 
@@ -118,7 +120,7 @@ export async function GET(request: NextRequest) {
   const receiptPromise = allowedNmIds !== null && allowedNmIds.size === 0
     ? Promise.resolve({ data: [] as Row[], error: null })
     : receiptQuery;
-  const [orderResult, receiptResult, syncResult, connectionResult, taraResult, distributionResult, runResult, stockFreshness, funnelFreshness, ordersFactFreshness, salesFactFreshness] = await Promise.all([
+  const [orderResult, receiptResult, syncResult, connectionResult, taraResult, distributionResult, runResult, stockFreshness, funnelFreshness, ordersFactFreshness, salesFactFreshness, shelfFacts] = await Promise.all([
     db.from("purchase_orders").select(orderSelect).eq("cabinet_id", cabinetId).neq("status", "draft").neq("status", "cancelled").order("updated_at", { ascending: false }).limit(40),
     receiptPromise,
     db.from("wb_sync_state").select("job, status, updated_at").eq("cabinet_id", cabinetId).in("job", ["orders", "sales", "history-365"]),
@@ -132,6 +134,7 @@ export async function GET(request: NextRequest) {
     // что реально лежит в базе.
     latestScoped(db, "wb_orders", "date", cabinetId, allowedNmIds),
     latestScoped(db, "wb_sales", "date", cabinetId, allowedNmIds),
+    loadShelfFreshnessFacts(db, cabinetId).catch(() => null),
   ]);
 
   if (orderResult.error) return fail(missingOptionalTable(orderResult.error.code) ? "Контур заказов не развёрнут: примените миграцию purchase_orders" : orderResult.error.message, missingOptionalTable(orderResult.error.code) ? 503 : 500);
@@ -143,6 +146,7 @@ export async function GET(request: NextRequest) {
     else if (result.error) warnings.push("Часть operational health временно недоступна");
   }
   if (stockFreshness.error || funnelFreshness.error) warnings.push("Не удалось определить свежесть части WB-данных");
+  if (!shelfFacts) warnings.push("Не удалось определить свежесть «Полок»");
 
   const scopedOrders = rows(orderResult.data).map(rawOrder).filter((order) => allowedNmIds === null || (order.items.length > 0 && order.items.every((item) => allowedNmIds.has(item.nmId))));
   const receipts = rows(receiptResult.data).map(rawReceipt);
@@ -186,6 +190,26 @@ export async function GET(request: NextRequest) {
       href: "/wb/funnel",
     },
   ];
+
+  // «Полки» приносит не крон панели, а сборщик на Mac mini, и об отказах он
+  // пишет только в свой лог: 21.09–01.10.2026 он молчал девять дней. Застой —
+  // пропущенный плановый слот (lib/shelf/freshness.ts). Кабинет без активных
+  // артикулов карточки не получает: ждать от сборщика там нечего.
+  if (shelfFacts && shelfFacts.activeWatches > 0) {
+    const shelf = shelfFreshness(shelfFacts, now.getTime());
+    checks.push({
+      key: "shelf",
+      name: "Полки (сборщик Mac mini)",
+      state: shelf.state === "stalled" ? "error" : shelf.state === "awaiting" ? "warning" : "ok",
+      detail: shelf.state === "stalled"
+        ? `Сбор встал: ${shelfStallSummary(shelf, now.getTime())}`
+        : shelf.state === "awaiting"
+          ? "Артикулы добавлены, первого снимка ещё не было"
+          : `Снимки приходят по слотам ${SHELF_SLOT_HOURS_MSK.map((hour) => `${hour}:00`).join(" / ")} МСК`,
+      updatedAt: shelf.lastIngestAt ?? shelf.lastCollectedAt,
+      href: "/wb/shelf",
+    });
+  }
 
   const connection = connectionResult.data as Row | null;
   checks.push({
