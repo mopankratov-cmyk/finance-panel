@@ -282,10 +282,10 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
   }
   const monthlyHeaderIndex = grid.findIndex((row) => {
     const cells = row.map(normalize);
-    return cells.some((cell) => cell === "дата" || /дата.*период|период.*дата/.test(cell))
+    return cells.some((cell) => cell === "дата" || cell === "месяц" || /дата.*период|период.*дата/.test(cell))
       && cells.some((cell) => /начислено.*процент/.test(cell))
       && cells.some((cell) => /выплачено.*тела|погашено.*тела/.test(cell))
-      && cells.some((cell) => /остаток.*тела.*конец/.test(cell));
+      && cells.some((cell) => /остаток.*тела(?:.*конец)?/.test(cell));
   });
   // Наша помесячная модель отличается от банковского графика: в ней отдельно
   // указаны начисления, фактические оплаты и будущий план. Для карточки займа
@@ -295,13 +295,13 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
   if (monthlyHeaderIndex >= 0) {
     const headers = grid[monthlyHeaderIndex].map(normalize);
     const findColumn = (...patterns: RegExp[]) => headers.findIndex((cell) => patterns.some((pattern) => pattern.test(cell)));
-    const dateColumn = findColumn(/^дата$/, /дата.*период/, /период.*дата/);
+    const dateColumn = findColumn(/^дата$/, /^месяц$/, /дата.*период/, /период.*дата/);
     const statusColumn = findColumn(/^статус$/, /факт.*план/, /план.*факт/);
     const paidInterestColumn = findColumn(/выплачено.*процент/, /погашено.*процент/);
     const paidPrincipalColumn = findColumn(/выплачено.*тела/, /погашено.*тела/);
     const paymentColumn = findColumn(/платеж.*месяц/, /всего.*оплат/, /^платеж$/);
-    const balanceBeforeColumn = findColumn(/остаток.*тела.*начал/);
-    const balanceAfterColumn = findColumn(/остаток.*тела.*конец/);
+    const balanceBeforeColumn = findColumn(/остаток.*тела.*начал/, /тело.*начал/);
+    const balanceAfterColumn = findColumn(/остаток.*тела.*конец/, /остаток.*тела/);
     const schedule: RecognizedScheduleRow[] = [];
     for (const row of grid.slice(monthlyHeaderIndex + 1)) {
       const date = spreadsheetDate(row[dateColumn] ?? "");
