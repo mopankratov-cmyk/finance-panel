@@ -14,6 +14,7 @@ test("loan schedule sums every payment component falling on the same date", () =
     interest: 6_166.35,
     penalty: 14_095.59,
     fine: 0,
+    status: "planned",
   }]);
 });
 
@@ -40,6 +41,7 @@ test("bank spreadsheet parser classifies and sums same-date schedule components"
     interest: 42_005.6,
     penalty: 11_063.31,
     fine: 0,
+    status: "planned",
   }]);
 });
 
@@ -50,8 +52,8 @@ test("Word contract schedule keeps exact principal and interest columns", () => 
     01.01.2025 9 599 217,13р. 175 985,65р. 205 918,88р. 381 904,53р.
   `);
   assert.deepEqual(schedule, [
-    { date: "2024-12-01", principal: 202_211.67, interest: 179_692.86, penalty: 0, fine: 0, balanceBefore: 9_801_428.8, balanceAfter: 9_599_217.13 },
-    { date: "2025-01-01", principal: 205_918.88, interest: 175_985.65, penalty: 0, fine: 0, balanceBefore: 9_599_217.13, balanceAfter: 9_393_298.25 },
+    { date: "2024-12-01", principal: 202_211.67, interest: 179_692.86, penalty: 0, fine: 0, status: "planned", balanceBefore: 9_801_428.8, balanceAfter: 9_599_217.13 },
+    { date: "2025-01-01", principal: 205_918.88, interest: 175_985.65, penalty: 0, fine: 0, status: "planned", balanceBefore: 9_599_217.13, balanceAfter: 9_393_298.25 },
   ]);
 });
 

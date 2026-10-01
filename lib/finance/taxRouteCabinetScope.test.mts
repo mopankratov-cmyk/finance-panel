@@ -25,7 +25,7 @@ test("tax page includes report services and full-cabinet advertising in USN with
   const page = readFileSync(new URL("../../components/taxes/TaxesPage.tsx", import.meta.url), "utf8");
   assert.match(page, /automaticMarketplaceExpenses = money\(marketplace\.serviceExpensesExAdvertising \+ advertisingExpense\)/);
   assert.match(page, /document\.marketplace === "other" && document\.usnExpenseStatus === "included"/);
-  assert.match(page, /marketplaceExpensesGross: \(register\?\.yearSettings\.recognizedCogs \?\? 0\) \+ automaticMarketplaceExpenses \+ additionalMpExpenses/);
+  assert.match(page, /marketplaceExpensesGross: recognizedCogs \+ automaticMarketplaceExpenses \+ additionalMpExpenses/);
   assert.match(page, /advertisingCoverageIncomplete/);
 });
 

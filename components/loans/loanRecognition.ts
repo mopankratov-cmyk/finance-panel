@@ -255,7 +255,13 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
   // строки остаются плановыми, а не выдаются за уже совершённые расходы.
   if (detailedHeaderIndex >= 0) {
     const headers = grid[detailedHeaderIndex].map(normalize);
-    const findColumn = (...patterns: RegExp[]) => headers.findIndex((cell) => patterns.some((pattern) => pattern.test(cell)));
+    const findColumn = (...patterns: RegExp[]) => {
+      for (const pattern of patterns) {
+        const index = headers.findIndex((cell) => pattern.test(cell));
+        if (index >= 0) return index;
+      }
+      return -1;
+    };
     const dateColumn = findColumn(/дата.*платеж/);
     const interestColumn = findColumn(/платеж.*процент/);
     const principalColumn = findColumn(/платеж.*тела/);
@@ -294,7 +300,13 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
   // в ложный расход ДДС.
   if (monthlyHeaderIndex >= 0) {
     const headers = grid[monthlyHeaderIndex].map(normalize);
-    const findColumn = (...patterns: RegExp[]) => headers.findIndex((cell) => patterns.some((pattern) => pattern.test(cell)));
+    const findColumn = (...patterns: RegExp[]) => {
+      for (const pattern of patterns) {
+        const index = headers.findIndex((cell) => pattern.test(cell));
+        if (index >= 0) return index;
+      }
+      return -1;
+    };
     const dateColumn = findColumn(/^дата$/, /^месяц$/, /дата.*период/, /период.*дата/);
     const statusColumn = findColumn(/^статус$/, /факт.*план/, /план.*факт/);
     const paidInterestColumn = findColumn(/выплачено.*процент/, /погашено.*процент/);
