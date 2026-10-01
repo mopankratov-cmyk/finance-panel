@@ -55,6 +55,7 @@ async function saveCashSnapshot(input: {
   calculationMethod?: "provider_balance" | "brand_report_allocation";
   calculationDetails?: Record<string, unknown> | null;
   persist?: boolean;
+  preserveExisting?: boolean;
 }) {
   const summary = {
     sourceKey: input.sourceKey,
@@ -71,6 +72,15 @@ async function saveCashSnapshot(input: {
   if (input.persist === false) return summary;
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
+  if (input.preserveExisting) {
+    const existing = await db.from("balance_marketplace_cash_snapshots")
+      .select("source_key")
+      .eq("snapshot_month", input.month)
+      .eq("source_key", input.sourceKey)
+      .maybeSingle();
+    if (existing.error) throw new Error(existing.error.message);
+    if (existing.data) return { ...summary, preserved: true };
+  }
   const result = await db.from("balance_marketplace_cash_snapshots").upsert({
     snapshot_month: input.month,
     source_key: input.sourceKey,
@@ -92,6 +102,18 @@ async function saveCashSnapshot(input: {
   return summary;
 }
 
+async function saveCashError(input: Parameters<typeof saveCashSnapshot>[0]) {
+  try {
+    return await saveCashSnapshot(input);
+  } catch (storageError) {
+    const storageMessage = storageError instanceof Error ? storageError.message : String(storageError);
+    return saveCashSnapshot({
+      ...input,
+      persist: false,
+      error: [input.error, `снимок не записан: ${storageMessage}`].filter(Boolean).join("; "),
+    });
+  }
+}
 async function loadScopedWbReportRows(
   cabinetId: string,
   cabinetName: string,
@@ -199,6 +221,7 @@ async function saveSource(input: {
   persist?: boolean;
   provisional?: boolean;
   snapshotCutoff?: string | null;
+  preserveExisting?: boolean;
 }) {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Supabase не настроен");
@@ -219,6 +242,15 @@ async function saveSource(input: {
     sample: input.lines.slice(0, 5).map((row) => ({ article: row.article, location: row.locationName, quantity: row.quantity, unitValue: row.unitValue, totalValue: row.totalValue })),
   };
   if (input.persist === false) return summary;
+  if (input.preserveExisting) {
+    const existing = await db.from("balance_marketplace_stock_runs")
+      .select("source_key")
+      .eq("snapshot_month", input.month)
+      .eq("source_key", key)
+      .maybeSingle();
+    if (existing.error) throw new Error(existing.error.message);
+    if (existing.data) return { ...summary, preserved: true };
+  }
   const run = {
     snapshot_month: input.month,
     source_key: key,
@@ -338,10 +370,12 @@ export async function GET(request: NextRequest) {
   const startedAt = new Date();
   const window = moscowMonthSnapshot(startedAt);
   const dryRun = request.nextUrl.searchParams.get("dryRun") === "1";
+  const repair = request.nextUrl.searchParams.get("repair") === "1";
   const reconcileFulfillment = request.nextUrl.searchParams.get("reconcile") === "fulfillment";
   const reconciliation = fulfillmentReconciliation(startedAt);
-  if (!dryRun && !reconcileFulfillment && !window.allowed) {
-    return NextResponse.json({ ok: true, skipped: true, reason: `Снимок только 1-го числа в 00:01 МСК; сейчас ${window.date} ${window.time}` });
+  const repairAllowed = repair && window.date === window.month;
+  if (!dryRun && !reconcileFulfillment && !window.allowed && !repairAllowed) {
+    return NextResponse.json({ ok: true, skipped: true, reason: `Снимок и его восстановление доступны только 1-го числа; сейчас ${window.date} ${window.time}` });
   }
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
@@ -387,15 +421,35 @@ export async function GET(request: NextRequest) {
     ]);
     if (cabinetRows.error) throw new Error(cabinetRows.error.message);
     const metaById = new Map(((cabinetRows.data ?? []) as CabinetMeta[]).map((row) => [String(row.id), row]));
+    const existingStockKeys = new Set<string>();
+    const existingCashKeys = new Set<string>();
+    if (repair) {
+      const existingStocks = await db.from("balance_marketplace_stock_runs")
+        .select("source_key")
+        .eq("snapshot_month", window.month);
+      if (existingStocks.error) throw new Error(existingStocks.error.message);
+      for (const row of existingStocks.data ?? []) existingStockKeys.add(String(row.source_key));
+
+      // Денежная миграция могла ещё не быть применена. Это не должно снова
+      // блокировать восстановление товарных остатков.
+      const existingCash = await db.from("balance_marketplace_cash_snapshots")
+        .select("source_key")
+        .eq("snapshot_month", window.month)
+        .eq("status", "ok");
+      if (!existingCash.error) {
+        for (const row of existingCash.data ?? []) existingCashKeys.add(String(row.source_key));
+      }
+    }
 
     for (const entity of reportingEntities) {
+      if (existingStockKeys.has(sourceKey("fulfillment", entity.id))) continue;
       try {
         const entityIds = new Set([entity.id]);
         const [lines, finality] = await Promise.all([
           fulfillmentLines(dryRun ? capturedAt : monthCutoff, entityIds),
           dryRun ? Promise.resolve({ final: false, unclosed: [] as string[] }) : fulfillmentFinality(reconciliation.closeThrough, entityIds),
         ]);
-        const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: `Фулфилмент · ${entity.name}`, legalEntity: entity, lines, persist: !dryRun, provisional: !dryRun && !finality.final, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
+        const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "fulfillment", sourceLabel: `Фулфилмент · ${entity.name}`, legalEntity: entity, lines, persist: !dryRun, preserveExisting: repair, provisional: !dryRun && !finality.final, snapshotCutoff: dryRun ? capturedAt : monthCutoff });
         summaries.push(summary);
         affected += summary.rows;
       } catch (error) {
@@ -405,9 +459,10 @@ export async function GET(request: NextRequest) {
     for (const cabinetId of reportingScope.cabinetIds) {
       const cabinet = metaById.get(cabinetId);
       if (!cabinet) continue;
+      if (existingStockKeys.has(sourceKey("supplier_transit", cabinetId))) continue;
       try {
         const lines = await supplierTransitLines(new Set([cabinetId]));
-        const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "supplier_transit", sourceLabel: `В пути · ${cabinet.name}`, cabinet, lines, persist: !dryRun });
+        const summary = await saveSource({ month: window.month, capturedAt, sourceKind: "supplier_transit", sourceLabel: `В пути · ${cabinet.name}`, cabinet, lines, persist: !dryRun, preserveExisting: repair });
         summaries.push(summary);
         affected += summary.rows;
       } catch (error) {
@@ -418,6 +473,8 @@ export async function GET(request: NextRequest) {
     const reportingWbTargets = wbTargets.filter((target) => target.cabinetId && reportingScope.cabinetIds.has(target.cabinetId));
     const wbCatalogIndex = await loadWbCatalogIndex(reportingWbTargets.flatMap((target) => target.cabinetId ? [target.cabinetId] : []));
     for (const group of groupWbStatisticsTargets(reportingWbTargets)) {
+      const pendingTargets = group.filter((target) => !existingStockKeys.has(sourceKey("wb", target.cabinetId ?? "all")));
+      if (!pendingTargets.length) continue;
       try {
         const remains = await fetchWarehouseRemains({
           token: group[0].statsToken,
@@ -426,7 +483,7 @@ export async function GET(request: NextRequest) {
           // в maxDuration=300 и не меняют поведение часового синка остатков.
           maxRateLimitRetries: 3,
         });
-        for (const target of group) {
+        for (const target of pendingTargets) {
           const byNm = new Map<number, number>();
           const productScope = balanceWbProductScope(target.name, target.productScope);
           const catalogByNm = target.cabinetId ? wbCatalogIndex.get(target.cabinetId) : null;
@@ -439,7 +496,7 @@ export async function GET(request: NextRequest) {
           const lines = valueMarketplaceStocks(stocks, costsForOrganization(costRows, cabinet?.organization_id ?? null));
           const summary = await saveSource({
             month: window.month, capturedAt, sourceKind: "wb", sourceLabel: `Склад WB · ${cabinet?.name ?? target.name}`,
-            marketplace: "wb", cabinet: cabinet ?? { id: target.cabinetId ?? "", name: target.name, organization_id: null }, lines, persist: !dryRun,
+            marketplace: "wb", cabinet: cabinet ?? { id: target.cabinetId ?? "", name: target.name, organization_id: null }, lines, persist: !dryRun, preserveExisting: repair,
           });
           summaries.push(summary);
           affected += summary.rows;
@@ -465,6 +522,8 @@ export async function GET(request: NextRequest) {
       const key = privateSourceKey("wb", sellerIdentity);
       const sharedSeller = excluded.length > 0 || sellerGroup.some((item) => requiresScopedWbCash(item.name));
       if (sharedSeller) {
+        const pendingCashTargets = group.filter((target) => target.cabinetId && !existingCashKeys.has(scopedWbCashSourceKey(sellerIdentity, target.cabinetId)));
+        if (!pendingCashTargets.length) continue;
         try {
           const reports = await fetchWbFinanceReportSummaries(
             group[0].statsToken,
@@ -472,13 +531,13 @@ export async function GET(request: NextRequest) {
             shiftDate(window.month, -1),
           );
           if (!reports.length) throw new Error("WB не вернул недельные финансовые отчёты за последние 120 дней");
-          for (const target of group) {
+          for (const target of pendingCashTargets) {
             if (!target.cabinetId) continue;
             const targetCabinet = metaById.get(target.cabinetId) ?? { id: target.cabinetId, name: target.name, organization_id: null };
             const rows = await loadScopedWbReportRows(target.cabinetId, targetCabinet.name || target.name, reports);
             const calculation = calculateScopedWbCash({ snapshotDate: window.month, reports, rows });
             const targetLabel = targetCabinet.name || target.name;
-            cashSummaries.push(await saveCashSnapshot({
+            cashSummaries.push(await saveCashError({
               month: window.month,
               sourceKey: scopedWbCashSourceKey(sellerIdentity, target.cabinetId),
               marketplace: "wb",
@@ -497,14 +556,15 @@ export async function GET(request: NextRequest) {
                 lines: calculation.lines,
               },
               persist: !dryRun,
+              preserveExisting: repair,
             }));
           }
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          for (const target of group) {
+          for (const target of pendingCashTargets) {
             if (!target.cabinetId) continue;
             const targetCabinet = metaById.get(target.cabinetId) ?? { id: target.cabinetId, name: target.name, organization_id: null };
-            cashSummaries.push(await saveCashSnapshot({
+            cashSummaries.push(await saveCashError({
               month: window.month,
               sourceKey: scopedWbCashSourceKey(sellerIdentity, target.cabinetId),
               marketplace: "wb",
@@ -515,25 +575,27 @@ export async function GET(request: NextRequest) {
               error: `Не удалось рассчитать деньги наших брендов: ${message}`,
               calculationMethod: "brand_report_allocation",
               persist: !dryRun,
+              preserveExisting: repair,
             }));
           }
           errors.push(`Деньги WB ${label}: ${message}`);
         }
         continue;
       }
+      if (existingCashKeys.has(key)) continue;
       try {
         const balance = await fetchWbAccountBalance(group[0].statsToken);
         const summary = await saveCashSnapshot({
           month: window.month, sourceKey: key, marketplace: "wb", cabinet,
           cabinetName: label, amount: balance.current, availableAmount: balance.forWithdraw,
-          currency: balance.currency, capturedAt, persist: !dryRun,
+          currency: balance.currency, capturedAt, persist: !dryRun, preserveExisting: repair,
         });
         cashSummaries.push(summary);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        cashSummaries.push(await saveCashSnapshot({
+        cashSummaries.push(await saveCashError({
           month: window.month, sourceKey: key, marketplace: "wb", cabinet,
-          cabinetName: label, amount: null, capturedAt, error: message, persist: !dryRun,
+          cabinetName: label, amount: null, capturedAt, error: message, persist: !dryRun, preserveExisting: repair,
         }));
         errors.push(`Деньги WB ${label}: ${message}`);
       }
@@ -541,36 +603,48 @@ export async function GET(request: NextRequest) {
 
     if (ozonScope.ok) {
       for (const cabinet of ozonScope.scope.cabinets.filter((item) => reportingScope.cabinetIds.has(item.id))) {
-        try {
-          const warehouses = await loadOzonStocksForSnapshot(cabinet.creds);
-          if (!warehouses.ok) throw new Error(warehouses.error);
-          const meta = metaById.get(cabinet.id) ?? { id: cabinet.id, name: cabinet.name, organization_id: null };
-          const stocks = warehouses.rows.map((row) => ({ article: row.article, name: row.name, quantity: row.quantity, lineKey: `${row.article}:${row.warehouse}`, locationName: `Склад Ozon · ${cabinet.name}${row.warehouse ? ` · ${row.warehouse}` : ""}` }));
-          const lines = valueMarketplaceStocks(stocks, costsForOrganization(costRows, meta.organization_id));
-          const summary = await saveSource({
-            month: window.month, capturedAt, sourceKind: "ozon", sourceLabel: `Склад Ozon · ${cabinet.name}`,
-            marketplace: "ozon", cabinet: meta, lines, persist: !dryRun,
-          });
-          summaries.push(summary);
-          affected += summary.rows;
-        } catch (error) {
-          errors.push(`Ozon ${cabinet.name}: ${error instanceof Error ? error.message : String(error)}`);
+        if (!existingStockKeys.has(sourceKey("ozon", cabinet.id))) {
+          try {
+            const warehouses = await loadOzonStocksForSnapshot(cabinet.creds);
+            if (!warehouses.ok) throw new Error(warehouses.error);
+            const meta = metaById.get(cabinet.id) ?? { id: cabinet.id, name: cabinet.name, organization_id: null };
+            const stocks = warehouses.rows.map((row) => ({ article: row.article, name: row.name, quantity: row.quantity, lineKey: `${row.article}:${row.warehouse}`, locationName: `Склад Ozon · ${cabinet.name}${row.warehouse ? ` · ${row.warehouse}` : ""}` }));
+            const lines = valueMarketplaceStocks(stocks, costsForOrganization(costRows, meta.organization_id));
+            const summary = await saveSource({
+              month: window.month, capturedAt, sourceKind: "ozon", sourceLabel: `Склад Ozon · ${cabinet.name}`,
+              marketplace: "ozon", cabinet: meta, lines, persist: !dryRun, preserveExisting: repair,
+            });
+            summaries.push(summary);
+            affected += summary.rows;
+          } catch (error) {
+            errors.push(`Ozon ${cabinet.name}: ${error instanceof Error ? error.message : String(error)}`);
+          }
         }
         const meta = metaById.get(cabinet.id) ?? { id: cabinet.id, name: cabinet.name, organization_id: null };
         const key = privateSourceKey("ozon", cabinet.id);
-        const balance = await ozonMarketplaceBalance(cabinet.creds, window.month);
-        if (balance.ok) {
-          cashSummaries.push(await saveCashSnapshot({
+        if (existingCashKeys.has(key)) continue;
+        try {
+          const balance = await ozonMarketplaceBalance(cabinet.creds, window.month);
+          if (balance.ok) {
+            cashSummaries.push(await saveCashSnapshot({
+              month: window.month, sourceKey: key, marketplace: "ozon", cabinet: meta,
+              amount: balance.balance.opening, availableAmount: null, currency: balance.balance.currency,
+              capturedAt, persist: !dryRun, preserveExisting: repair,
+            }));
+          } else {
+            cashSummaries.push(await saveCashError({
+              month: window.month, sourceKey: key, marketplace: "ozon", cabinet: meta,
+              amount: null, capturedAt, error: balance.error, persist: !dryRun, preserveExisting: repair,
+            }));
+            errors.push(`Деньги Ozon ${cabinet.name}: ${balance.error}`);
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          cashSummaries.push(await saveCashError({
             month: window.month, sourceKey: key, marketplace: "ozon", cabinet: meta,
-            amount: balance.balance.opening, availableAmount: null, currency: balance.balance.currency,
-            capturedAt, persist: !dryRun,
+            amount: null, capturedAt, error: message, persist: !dryRun, preserveExisting: repair,
           }));
-        } else {
-          cashSummaries.push(await saveCashSnapshot({
-            month: window.month, sourceKey: key, marketplace: "ozon", cabinet: meta,
-            amount: null, capturedAt, error: balance.error, persist: !dryRun,
-          }));
-          errors.push(`Деньги Ozon ${cabinet.name}: ${balance.error}`);
+          errors.push(`Деньги Ozon ${cabinet.name}: ${message}`);
         }
       }
     } else {
@@ -579,7 +653,7 @@ export async function GET(request: NextRequest) {
 
     const status = errors.length ? "partial" : "ok";
     if (!dryRun) await writeSyncLog("balance-monthly-stock", status, affected, errors.join("; ") || null, startedAt);
-    return NextResponse.json({ ok: errors.length === 0, mode: dryRun ? "dry-run" : "snapshot", persisted: !dryRun, month: window.month, capturedAt, rows: affected, summaries, cashSummaries, errors }, { status: errors.length ? 207 : 200 });
+    return NextResponse.json({ ok: errors.length === 0, mode: dryRun ? "dry-run" : repair ? "repair" : "snapshot", persisted: !dryRun, month: window.month, capturedAt, rows: affected, summaries, cashSummaries, errors }, { status: errors.length ? 207 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Не удалось собрать месячный остаток";
     await writeSyncLog("balance-monthly-stock", "error", affected, message, startedAt);

@@ -44,7 +44,9 @@ export function moscowMonthSnapshot(now: Date): { allowed: boolean; month: strin
   const date = `${parts.year}-${parts.month}-${parts.day}`;
   const time = `${parts.hour}:${parts.minute}`;
   return {
-    allowed: parts.day === "01" && parts.hour === "00" && parts.minute === "01",
+    // Vercel может начать cron не в нулевую секунду. Основной запуск и две
+    // резервные попытки остаются в коротком окне первого числа.
+    allowed: parts.day === "01" && parts.hour === "00" && Number(parts.minute) >= 1 && Number(parts.minute) <= 20,
     month: `${parts.year}-${parts.month}-01`,
     date,
     time,

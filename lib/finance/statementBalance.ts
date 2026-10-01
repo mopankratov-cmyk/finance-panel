@@ -1,4 +1,4 @@
-import { actualLoanBalance } from "@/lib/loans/portfolioSummary";
+import { projectedLoanBalanceAt } from "@/lib/loans/portfolioSummary";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import type { Loan } from "@/lib/types";
 
@@ -9,7 +9,8 @@ export interface LoanLiabilitySnapshot {
 }
 
 /**
- * Остаток тела кредитов на дату. График сильнее исходной суммы договора;
+ * Остаток тела кредитов на дату по договорному графику. График сильнее
+ * исходной суммы договора;
  * для старых договоров без строк графика сохраняем исходную сумму и честно
  * помечаем её оценкой, а не выдаём за точный остаток.
  */
@@ -25,7 +26,7 @@ export function loanLiabilitySnapshot(
       const estimated = loanRows.length === 0;
       const amount = estimated
         ? Math.max(0, loan.principalAmount)
-        : actualLoanBalance(loan.principalAmount, scheduleDraftFromRows(loanRows), asOf);
+        : projectedLoanBalanceAt(loan.principalAmount, scheduleDraftFromRows(loanRows), asOf);
       return { id: loan.id, name: loan.creditorName, amount, estimated };
     })
     .sort((left, right) => right.amount - left.amount);

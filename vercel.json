@@ -28,6 +28,10 @@
       "schedule": "1 21 28-31 * *"
     },
     {
+      "path": "/api/sync/balance-monthly-stock?repair=1",
+      "schedule": "6,16 21 28-31 * *"
+    },
+    {
       "path": "/api/sync/balance-monthly-stock?reconcile=fulfillment",
       "schedule": "10 3 * * *"
     },
