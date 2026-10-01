@@ -116,6 +116,11 @@ export function attributeRows(direction: AssortmentDirection, attributes: Attrib
 // \b в JS не видит границ кириллических слов — границу задаём явно.
 const MONEY = /[€$£¥₽]|\d\s*(руб|р\.|eur|usd|rub|cny|юан)|(^|[^а-яёa-z])(цена|цены|цену|ценой|стоимост|price|cost|марж|себестоим)/i;
 
+/** Есть ли в тексте цена или деньги — граница ТЗ для всего, что пишут руками. */
+export function containsMoney(text: string): boolean {
+  return MONEY.test(text);
+}
+
 export class AttributeInputError extends Error {}
 
 export type AttributeEdit =
@@ -131,7 +136,7 @@ export function parseAttributeEdit(raw: unknown): AttributeEdit {
     const value = body.value.replace(/\s+/g, " ").trim();
     if (!value) return { kind: "reset" };
     if (value.length > 120) throw new AttributeInputError("Значение длиннее 120 знаков — сократите.");
-    if (MONEY.test(value)) throw new AttributeInputError("Цены и деньги в модуле не храним — опишите признак словами.");
+    if (containsMoney(value)) throw new AttributeInputError("Цены и деньги в модуле не храним — опишите признак словами.");
     return { kind: "set", value };
   }
   throw new AttributeInputError("Непонятная правка признака.");

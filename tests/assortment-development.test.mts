@@ -103,10 +103,9 @@ test("вход в модуль — плитка на главной, внутр�
   const layout = readFileSync(join(root, "components/AppLayout.tsx"), "utf8");
   assert.match(layout, /pathname\.startsWith\("\/assortment-development"\)/, "общий сайдбар модулю не нужен");
   const shell = readFileSync(join(root, "components/assortment/AssortmentShell.tsx"), "utf8");
-  for (const section of ["jackets", "bags", "sources"]) assert.match(shell, new RegExp(`ASSORTMENT_BASE_PATH\\}/${section}`), section);
-  // «Подборки» появятся вместе с экраном: пункт, ведущий в пустоту, не показываем.
-  assert.doesNotMatch(shell, /label: "Подборки"/);
-  for (const section of ["jackets", "bags", "sources"]) {
+  for (const section of ["jackets", "bags", "collections", "sources"]) assert.match(shell, new RegExp(`ASSORTMENT_BASE_PATH\\}/${section}`), section);
+  // Пункт меню есть только у раздела, у которого есть экран.
+  for (const section of ["jackets", "bags", "collections", "sources"]) {
     assert.ok(statSync(join(root, `app/assortment-development/${section}/page.tsx`)).isFile(), section);
   }
 });

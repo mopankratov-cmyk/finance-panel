@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ExternalLink, ImageOff, ImagePlus, LoaderCircle } from "lucide-react";
+import { ArrowLeft, ExternalLink, ImageOff, ImagePlus, Layers, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
 import { REJECT_REASONS, type ActionId, type RejectReason } from "@/lib/assortment/decisions";
 import { GROUP_LABEL, ruDate, type EvidenceGroup } from "@/lib/assortment/evidence";
 import type { ModelDetail } from "@/lib/assortment/model";
+import { AddToCollectionModal } from "./AddToCollectionModal";
 import type { SignalTone } from "@/lib/assortment/signals";
 import { PHOTO_ACCEPT, pickPhotos, uploadPhoto } from "./uploadPhoto";
 
@@ -38,6 +39,7 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; conflict: boolean } | null>(null);
   const [rejecting, setRejecting] = useState(false);
+  const [collecting, setCollecting] = useState(false);
   const [editing, setEditing] = useState<{ key: string; value: string } | null>(null);
   const base = `${ASSORTMENT_BASE_PATH}/${direction}`;
 
@@ -165,7 +167,9 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
           </div>
 
           <div className="flex flex-col gap-4">
-            <div className="text-sm text-slate-500">{[model.brand, model.source?.name, model.region].filter(Boolean).join(" · ")}</div>
+            <div className="text-sm text-slate-500">
+              {[model.brand, model.source?.name && model.source.name !== model.brand ? model.source.name : null, model.region].filter(Boolean).join(" · ")}
+            </div>
             <h1 className="text-2xl font-semibold leading-tight text-slate-900 break-anywhere">{model.title}</h1>
             <div className="flex flex-wrap items-center gap-2">
               <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${TONE[model.signal.tone]}`}>{model.signal.label}</span>
@@ -173,17 +177,23 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
             </div>
 
             <div className="flex flex-wrap gap-2">
+              {model.status !== "rejected" && model.status !== "archived" && (
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => setCollecting(true)}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl bg-violet-700 px-4 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-60"
+                >
+                  <Layers className="h-4 w-4" /> В подборку
+                </button>
+              )}
               {model.actions.map((action) => (
                 <button
                   key={action.id}
                   type="button"
                   disabled={busy !== null}
                   onClick={() => (action.needsReason ? setRejecting(true) : void decide(action.id))}
-                  className={`inline-flex h-11 items-center gap-2 rounded-xl px-4 text-sm disabled:opacity-60 ${
-                    action.id === "selected" || action.id === "sample_needed"
-                      ? "bg-violet-700 font-medium text-white hover:bg-violet-800"
-                      : "border border-slate-300 bg-white text-slate-800 hover:bg-slate-50"
-                  }`}
+                  className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60"
                 >
                   {busy === action.id && <LoaderCircle className="h-4 w-4 animate-spin" />}
                   {action.label}
@@ -318,6 +328,15 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
           </section>
         )}
       </div>
+
+      {collecting && (
+        <AddToCollectionModal
+          direction={model.direction}
+          referenceId={model.id}
+          onClose={() => setCollecting(false)}
+          onAdded={() => void load()}
+        />
+      )}
 
       <RejectModal
         open={rejecting}

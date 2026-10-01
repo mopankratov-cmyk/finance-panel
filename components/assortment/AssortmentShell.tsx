@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Database, Shirt, ShoppingBag } from "lucide-react";
+import { Home, Database, Layers, Shirt, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ASSORTMENT_BASE_PATH } from "@/lib/assortment/constants";
@@ -13,13 +13,11 @@ interface NavItem {
   icon: IconComponent;
 }
 
-/**
- * Разделы модуля. «Подборки» появятся здесь вместе с экраном подборок: пункт,
- * ведущий в пустоту, не показываем.
- */
+/** Разделы модуля. */
 export const ASSORTMENT_NAV: NavItem[] = [
   { label: "Куртки", href: `${ASSORTMENT_BASE_PATH}/jackets`, icon: Shirt },
   { label: "Сумки", href: `${ASSORTMENT_BASE_PATH}/bags`, icon: ShoppingBag },
+  { label: "Подборки", href: `${ASSORTMENT_BASE_PATH}/collections`, icon: Layers },
   { label: "Источники", href: `${ASSORTMENT_BASE_PATH}/sources`, icon: Database },
 ];
 
@@ -38,7 +36,7 @@ export function AssortmentShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
   return (
     <div className="min-h-dvh bg-[#f6f7f9] text-slate-800">
-      <aside className="fixed inset-y-0 left-0 z-[60] hidden w-[216px] flex-col border-r border-slate-200 bg-white pt-safe md:flex">
+      <aside className="no-print fixed inset-y-0 left-0 z-[60] hidden w-[216px] flex-col border-r border-slate-200 bg-white pt-safe md:flex">
         <div className="flex h-[54px] shrink-0 items-center gap-2.5 border-b border-slate-200 px-3">
           <span className="grid h-7 w-7 place-items-center rounded-[9px] bg-violet-700 text-[10px] font-black text-white">РА</span>
           <span className="text-xs font-bold leading-4 text-slate-700">Разработка<br />ассортимента</span>
@@ -71,7 +69,7 @@ export function AssortmentShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <header className="sticky top-0 z-[50] border-b border-slate-200 bg-white pt-safe md:hidden">
+      <header className="no-print sticky top-0 z-[50] border-b border-slate-200 bg-white pt-safe md:hidden">
         <div className="flex h-[54px] items-center gap-2.5 px-3">
           <Link href="/" aria-label="Общая главная" className="grid h-11 w-11 place-items-center rounded-lg text-slate-500 hover:bg-slate-50">
             <Home className="h-5 w-5" />
@@ -97,7 +95,7 @@ export function AssortmentShell({ children }: { children: React.ReactNode }) {
         </nav>
       </header>
 
-      <main className="min-h-dvh md:ml-[216px]">{children}</main>
+      <main className="min-h-dvh md:ml-[216px] print:ml-0">{children}</main>
     </div>
   );
 }
