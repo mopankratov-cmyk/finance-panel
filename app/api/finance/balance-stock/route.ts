@@ -106,12 +106,17 @@ export async function GET(request: NextRequest) {
   const categories = KINDS.map((categoryKind) => {
     const categoryRuns = runs.filter((run) => run.kind === categoryKind);
     const missing = missingSources.filter((source) => source.kind === categoryKind);
-    const complete = categoryRuns.length > 0 && missing.length === 0
-      && categoryRuns.every((run) => run.status === "ok" && run.value !== null && run.missingCostCount === 0);
+    const amountReady = categoryRuns.length > 0 && missing.length === 0
+      && categoryRuns.every((run) => run.value !== null);
+    const complete = amountReady
+      && categoryRuns.every((run) => run.status === "ok" && run.missingCostCount === 0 && !run.provisional);
     return {
       kind: categoryKind,
       complete,
-      amount: complete ? round2(categoryRuns.reduce((sum, run) => sum + (run.value ?? 0), 0)) : null,
+      // Предварительный или частичный снимок всё равно содержит полезную
+      // оценку. Показываем её, но complete оставляем false, чтобы она не
+      // попадала в подтверждённый итог Баланса.
+      amount: amountReady ? round2(categoryRuns.reduce((sum, run) => sum + (run.value ?? 0), 0)) : null,
       quantity: categoryRuns.reduce((sum, run) => sum + run.quantity, 0),
       rowsCount: categoryRuns.reduce((sum, run) => sum + run.rowsCount, 0),
       provisional: categoryRuns.some((run) => run.provisional),
