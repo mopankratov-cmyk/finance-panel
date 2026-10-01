@@ -1,0 +1,45 @@
+name: quality
+
+# Проверяет именно код PR до слияния. Секреты приложения этому workflow не
+# передаются: он устанавливает зависимости, запускает статический анализ,
+# тесты и production-сборку.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    runs-on: gate
+    steps:
+      - name: Клонировать код PR
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          rm -rf repo
+          git -c http.extraheader="Authorization: token $TOKEN" \
+            clone --filter=blob:none "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git -c http.extraheader="Authorization: token $TOKEN" fetch --depth=1 origin "$HEAD_SHA"
+          git checkout --detach "$HEAD_SHA"
+
+      - name: Установить зависимости
+        working-directory: repo
+        run: npm ci --no-audit --no-fund
+
+      - name: Проверить код
+        working-directory: repo
+        run: npm run lint
+
+      - name: Запустить тесты
+        working-directory: repo
+        run: npm test
+
+      - name: Проверить production-сборку
+        working-directory: repo
+        run: npm run build
