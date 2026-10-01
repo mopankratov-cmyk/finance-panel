@@ -14,11 +14,16 @@ concurrency:
 jobs:
   checks:
     runs-on: gate
+    # Зависшая проверка держит слот раннера (capacity 3) и блокирует
+    # ai-gate и deploy всех остальных PR — ограничиваем по времени.
+    timeout-minutes: 45
     steps:
       - name: Клонировать код PR
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          # Без терминала git ждёт ввода логина вечно; пусть падает сразу.
+          GIT_TERMINAL_PROMPT: "0"
         run: |
           set -euo pipefail
           rm -rf repo
@@ -26,7 +31,9 @@ jobs:
             clone --filter=blob:none "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}.git" repo
           cd repo
           git -c http.extraheader="Authorization: token $TOKEN" fetch --depth=1 origin "$HEAD_SHA"
-          git checkout --detach "$HEAD_SHA"
+          # Клон частичный (blob:none): checkout докачивает файлы отдельным
+          # запросом к серверу, и ему тоже нужен токен.
+          git -c http.extraheader="Authorization: token $TOKEN" checkout --detach "$HEAD_SHA"
 
       - name: Установить зависимости
         working-directory: repo
