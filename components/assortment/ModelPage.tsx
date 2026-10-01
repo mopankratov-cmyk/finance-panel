@@ -10,6 +10,7 @@ import { REJECT_REASONS, type ActionId, type RejectReason } from "@/lib/assortme
 import { GROUP_LABEL, ruDate, type EvidenceGroup } from "@/lib/assortment/evidence";
 import type { ModelDetail } from "@/lib/assortment/model";
 import { AddToCollectionModal } from "./AddToCollectionModal";
+import { WbDemand } from "./WbDemand";
 import type { SignalTone } from "@/lib/assortment/signals";
 import { sampleLinks } from "@/lib/assortment/whereToBuy";
 import { PHOTO_ACCEPT, pickPhotos, uploadPhoto } from "./uploadPhoto";
@@ -275,6 +276,11 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
             ))}
           </div>
         </section>
+
+        <WbDemand
+          direction={model.direction}
+          attributes={Object.fromEntries(model.attributes.map((row) => [row.key, row.value]))}
+        />
 
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">

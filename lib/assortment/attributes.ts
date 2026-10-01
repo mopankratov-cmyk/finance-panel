@@ -65,7 +65,12 @@ const COMMON_FIELDS: AttributeField[] = [
   { key: "category", label: "Категория на сайте" },
   { key: "colors", label: "Варианты цвета" },
   { key: "note", label: "Заметка" },
+  // Слово, по которому ищем спрос на WB («хобо», «бомбер»). Пусто — берём силуэт или подтип.
+  { key: "wb_query", label: "Запрос на WB" },
 ];
+
+/** Служебные признаки: в сравнение и задание фабрике не идут. */
+export const SERVICE_KEYS = new Set(["note", "wb_query"]);
 
 export const ORIGIN_LABEL: Record<AttributeOrigin, string> = {
   published: "опубликовано на сайте",
@@ -189,7 +194,7 @@ const norm = (value: string) => value.toLowerCase().replace(/ё/g, "е").trim();
  */
 export function compareModels(direction: AssortmentDirection, models: CompareModel[]): CompareResult {
   const rows = fieldsFor(direction)
-    .filter((field) => field.key !== "note")
+    .filter((field) => !SERVICE_KEYS.has(field.key))
     .map((field) => ({ key: field.key, label: field.label, values: models.map((m) => formatValue(m.attributes[field.key])) }))
     .filter((row) => row.values.some((v) => v !== null));
   const total = models.length;

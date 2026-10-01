@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { fieldsFor, formatValue, type Attributes } from "./attributes";
+import { fieldsFor, formatValue, SERVICE_KEYS, type Attributes } from "./attributes";
 import {
   CollectionInputError,
   defaultTitle,
@@ -435,7 +435,7 @@ export async function saveVersion(db: SupabaseClient, id: string, expectedVersio
       const rows = [...groups.novelty, ...groups.spread, ...groups.retail];
       const ref = refs.get(item.referenceId);
       const attributes = fieldsFor(detail.direction)
-        .filter((f) => f.key !== "note")
+        .filter((f) => !SERVICE_KEYS.has(f.key))
         .map((f) => ({ label: f.label, value: formatValue(ref?.attributes?.[f.key]) }))
         .filter((a): a is { label: string; value: string } => Boolean(a.value));
       return {
