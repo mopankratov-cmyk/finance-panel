@@ -10,6 +10,8 @@ export interface RecognizedScheduleRow {
   interest: number;
   penalty?: number;
   fine?: number;
+  /** Факт из выгруженного графика уже состоялся; план — будущая строка. */
+  status?: "planned" | "done";
   balanceBefore?: number;
   balanceAfter?: number;
 }
@@ -47,11 +49,13 @@ export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | unde
     const fine = Number(row.fine || 0);
     if (!date || ![principal, interest, penalty, fine].every(Number.isFinite)) continue;
     if (principal + interest + penalty + fine <= 0) continue;
-    const current: RecognizedScheduleRow = byDate.get(date) ?? { date, principal: 0, interest: 0, penalty: 0, fine: 0 };
+    const current: RecognizedScheduleRow = byDate.get(date) ?? { date, principal: 0, interest: 0, penalty: 0, fine: 0, status: row.status ?? "planned" };
     current.principal += principal;
     current.interest += interest;
     current.penalty = Number(current.penalty || 0) + penalty;
     current.fine = Number(current.fine || 0) + fine;
+    // Если в одной дате есть и план, и факт, не выдаём её за полностью оплаченную.
+    if (row.status !== "done") current.status = "planned";
     if (Number.isFinite(row.balanceBefore) && !Number.isFinite(current.balanceBefore)) current.balanceBefore = row.balanceBefore;
     if (Number.isFinite(row.balanceAfter)) current.balanceAfter = row.balanceAfter;
     byDate.set(date, current);
@@ -65,6 +69,7 @@ export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | unde
       fine: Math.round(Number(row.fine || 0) * 100) / 100,
       ...(Number.isFinite(row.balanceBefore) ? { balanceBefore: Math.round(Number(row.balanceBefore) * 100) / 100 } : {}),
       ...(Number.isFinite(row.balanceAfter) ? { balanceAfter: Math.round(Number(row.balanceAfter) * 100) / 100 } : {}),
+      ...(row.status === "done" ? { status: "done" as const } : {}),
     }))
     .sort((left, right) => left.date.localeCompare(right.date));
 }
@@ -238,6 +243,100 @@ export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] 
 /** Exact local parser for bank schedules with Date / operation type / amount columns. */
 export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLoan> {
   const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
+  const detailedHeaderIndex = grid.findIndex((row) => {
+    const cells = row.map(normalize);
+    return cells.some((cell) => /дата.*платеж/.test(cell))
+      && cells.some((cell) => /платеж.*процент/.test(cell))
+      && cells.some((cell) => /платеж.*тела/.test(cell))
+      && cells.some((cell) => /остаток.*тела/.test(cell));
+  });
+  // Пользовательский файл «помесячный график займа»: детальный лист с
+  // несколькими платежами в месяц. Это готовый будущий график, поэтому все
+  // строки остаются плановыми, а не выдаются за уже совершённые расходы.
+  if (detailedHeaderIndex >= 0) {
+    const headers = grid[detailedHeaderIndex].map(normalize);
+    const findColumn = (...patterns: RegExp[]) => headers.findIndex((cell) => patterns.some((pattern) => pattern.test(cell)));
+    const dateColumn = findColumn(/дата.*платеж/);
+    const interestColumn = findColumn(/платеж.*процент/);
+    const principalColumn = findColumn(/платеж.*тела/);
+    const balanceBeforeColumn = findColumn(/тело.*до.*платеж/);
+    const balanceAfterColumn = findColumn(/остаток.*тела/);
+    const schedule: RecognizedScheduleRow[] = [];
+    for (const row of grid.slice(detailedHeaderIndex + 1)) {
+      const date = spreadsheetDate(row[dateColumn] ?? "");
+      if (!date) continue;
+      const principal = spreadsheetAmount(row[principalColumn] ?? "");
+      const interest = spreadsheetAmount(row[interestColumn] ?? "");
+      if (principal + interest <= 0) continue;
+      schedule.push({
+        date, principal, interest, penalty: 0, fine: 0, status: "planned",
+        balanceBefore: balanceBeforeColumn >= 0 ? spreadsheetAmount(row[balanceBeforeColumn] ?? "") : undefined,
+        balanceAfter: balanceAfterColumn >= 0 ? spreadsheetAmount(row[balanceAfterColumn] ?? "") : undefined,
+      });
+    }
+    const aggregated = aggregateRecognizedSchedule(schedule);
+    if (aggregated.length) {
+      const openingBalance = aggregated.find((row) => Number(row.balanceBefore) > 0)?.balanceBefore ?? 0;
+      return { principalAmount: openingBalance, dueDate: aggregated.at(-1)?.date ?? "", schedule: aggregated, confidence: 100, warnings: [] };
+    }
+  }
+  const monthlyHeaderIndex = grid.findIndex((row) => {
+    const cells = row.map(normalize);
+    return cells.some((cell) => cell === "дата" || cell === "месяц" || /дата.*период|период.*дата/.test(cell))
+      && cells.some((cell) => /начислено.*процент/.test(cell))
+      && cells.some((cell) => /выплачено.*тела|погашено.*тела/.test(cell))
+      && cells.some((cell) => /остаток.*тела(?:.*конец)?/.test(cell));
+  });
+  // Наша помесячная модель отличается от банковского графика: в ней отдельно
+  // указаны начисления, фактические оплаты и будущий план. Для карточки займа
+  // берём именно факт оплаты (для прошедших периодов) и «Платёж за месяц» для
+  // будущих. Так Excel не превращает начисленные, но ещё не уплаченные проценты
+  // в ложный расход ДДС.
+  if (monthlyHeaderIndex >= 0) {
+    const headers = grid[monthlyHeaderIndex].map(normalize);
+    const findColumn = (...patterns: RegExp[]) => headers.findIndex((cell) => patterns.some((pattern) => pattern.test(cell)));
+    const dateColumn = findColumn(/^дата$/, /^месяц$/, /дата.*период/, /период.*дата/);
+    const statusColumn = findColumn(/^статус$/, /факт.*план/, /план.*факт/);
+    const paidInterestColumn = findColumn(/выплачено.*процент/, /погашено.*процент/);
+    const paidPrincipalColumn = findColumn(/выплачено.*тела/, /погашено.*тела/);
+    const paymentColumn = findColumn(/платеж.*месяц/, /всего.*оплат/, /^платеж$/);
+    const balanceBeforeColumn = findColumn(/остаток.*тела.*начал/, /тело.*начал/);
+    const balanceAfterColumn = findColumn(/остаток.*тела.*конец/, /остаток.*тела/);
+    const schedule: RecognizedScheduleRow[] = [];
+    for (const row of grid.slice(monthlyHeaderIndex + 1)) {
+      const date = spreadsheetDate(row[dateColumn] ?? "");
+      if (!date) continue;
+      const statusText = normalize(row[statusColumn] ?? "");
+      const isPlan = /план/.test(statusText);
+      const paidPrincipal = spreadsheetAmount(row[paidPrincipalColumn] ?? "");
+      const paidInterest = spreadsheetAmount(row[paidInterestColumn] ?? "");
+      const payment = spreadsheetAmount(row[paymentColumn] ?? "");
+      const principal = paidPrincipal;
+      const interest = isPlan ? Math.max(0, payment - principal) : paidInterest;
+      if (principal + interest <= 0) continue;
+      schedule.push({
+        date,
+        principal,
+        interest,
+        penalty: 0,
+        fine: 0,
+        status: isPlan ? "planned" : "done",
+        balanceBefore: balanceBeforeColumn >= 0 ? spreadsheetAmount(row[balanceBeforeColumn] ?? "") : undefined,
+        balanceAfter: balanceAfterColumn >= 0 ? spreadsheetAmount(row[balanceAfterColumn] ?? "") : undefined,
+      });
+    }
+    const aggregated = aggregateRecognizedSchedule(schedule);
+    if (aggregated.length) {
+      const openingBalance = aggregated.find((row) => Number(row.balanceBefore) > 0)?.balanceBefore ?? 0;
+      return {
+        principalAmount: openingBalance,
+        dueDate: aggregated.at(-1)?.date ?? "",
+        schedule: aggregated,
+        confidence: 100,
+        warnings: [],
+      };
+    }
+  }
   const headerIndex = grid.findIndex((row) => {
     const cells = row.map(normalize);
     return cells.some((cell) => /дата платежа/.test(cell))

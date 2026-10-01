@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { applyLoanCorrections, recognizeLoanDocument } from "./recognizeLoan.ts";
+import { recognizeLoanSpreadsheet } from "@/components/loans/loanRecognition";
 
 const deps = {
   rate: async (currency: string) => currency === "USD" ? { rate: 80, date: "2026-09-03" } : { rate: 1, date: "" },
@@ -33,6 +34,39 @@ test("XLSX-график банка читается по ячейкам серв
   // Скалярные поля ИИ перекрывает (как и раньше в браузере); локальный приоритет — только у графика и даты возврата.
   assert.equal(result.recognized.creditorName, "Кто-то другой");
   assert.equal(result.suggestedCompanyId, "c-1", "компания подсказана по заёмщику из ИИ");
+});
+
+test("помесячный Excel различает факт оплаты и будущий план", () => {
+  const parsed = recognizeLoanSpreadsheet([
+    ["Дата", "Статус", "Остаток тела на начало", "Начислено процентов", "Выплачено процентов", "Выплачено тела", "Остаток тела на конец", "Платёж за месяц"],
+    ["28.02.2026", "Факт", "1000000", "69041.10", "40000", "0", "1000000", "40000"],
+    ["31.03.2026", "Факт", "1000000", "60164.38", "0", "100000", "900000", "100000"],
+    ["31.10.2026", "План", "800000", "48920.55", "312241.10", "0", "800000", "312241.10"],
+    ["26.11.2026", "План", "800000", "29063.01", "30641.10", "800000", "0", "830641.10"],
+  ]);
+  assert.deepEqual(parsed.schedule, [
+    { date: "2026-02-28", principal: 0, interest: 40000, penalty: 0, fine: 0, status: "done", balanceBefore: 1000000, balanceAfter: 1000000 },
+    { date: "2026-03-31", principal: 100000, interest: 0, penalty: 0, fine: 0, status: "done", balanceBefore: 1000000, balanceAfter: 900000 },
+    { date: "2026-10-31", principal: 0, interest: 312241.1, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 800000 },
+    { date: "2026-11-26", principal: 800000, interest: 30641.1, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 0 },
+  ]);
+  assert.equal(parsed.principalAmount, 1000000);
+  assert.equal(parsed.dueDate, "2026-11-26");
+});
+
+test("детальный график из файла Хлестовой читает все будущие даты и суммы", () => {
+  const parsed = recognizeLoanSpreadsheet([
+    ["Месяц", "Дата платежа", "Назначение", "Тело до платежа", "Дней начисления", "Начислено процентов", "Проценты до платежа", "Платеж процентов", "Платеж тела", "Платеж всего", "Остаток процентов", "Остаток тела", "Долг после платежа"],
+    ["Октябрь", "46296", "Проценты", "800000", "1", "1578.08", "264898.63", "30000", "0", "30000", "236476.71", "800000", "1036476.71"],
+    ["Ноябрь", "46331", "Тело + текущие проценты", "800000", "6", "9468.49", "0", "9468.49", "100000", "109468.49", "0", "700000", "700000"],
+    ["Ноябрь", "46352", "Тело + текущие проценты", "300000", "7", "4142.47", "0", "4142.47", "300000", "304142.47", "0", "0", "0"],
+  ]);
+  assert.deepEqual(parsed.schedule, [
+    { date: "2026-10-01", principal: 0, interest: 30000, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 800000 },
+    { date: "2026-11-05", principal: 100000, interest: 9468.49, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 700000 },
+    { date: "2026-11-26", principal: 300000, interest: 4142.47, penalty: 0, fine: 0, status: "planned", balanceBefore: 300000, balanceAfter: 0 },
+  ]);
+  assert.equal(parsed.dueDate, "2026-11-26");
 });
 
 test("PDF без текстового слоя без ИИ требует OCR, а не даёт пустой результат", async () => {

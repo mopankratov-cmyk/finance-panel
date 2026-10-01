@@ -238,6 +238,8 @@ export async function commitImport(
   companiesAssigned: number;
   duplicatesSkipped: number;
   suspectedSkipped: number;
+  linkedTransfers: number;
+  linkWarning: string | null;
 }> {
   const response = await fetch("/api/finance/import", {
     method: "POST",
@@ -246,7 +248,7 @@ export async function commitImport(
   });
   const body = await response.json().catch(() => ({})) as {
     accountsCreated?: number; paymentsCreated?: number; companiesAssigned?: number;
-    duplicatesSkipped?: number; suspectedSkipped?: number; error?: string;
+    duplicatesSkipped?: number; suspectedSkipped?: number; linkedTransfers?: number; linkWarning?: string | null; error?: string;
   };
   if (!response.ok) throw new Error(body.error || `Ошибка импорта ${response.status}`);
   return {
@@ -255,6 +257,8 @@ export async function commitImport(
     companiesAssigned: Number(body.companiesAssigned ?? 0),
     duplicatesSkipped: Number(body.duplicatesSkipped ?? 0),
     suspectedSkipped: Number(body.suspectedSkipped ?? 0),
+    linkedTransfers: Number(body.linkedTransfers ?? 0),
+    linkWarning: body.linkWarning ?? null,
   };
 }
 

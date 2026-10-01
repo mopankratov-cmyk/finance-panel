@@ -213,6 +213,21 @@ export async function POST(request: NextRequest) {
     } else {
       throw new Error(rpc.error.message);
     }
+    // Два ДДС обычно загружаются последовательно, поэтому в момент первой
+    // загрузки встречной стороны ещё нет. После каждого импорта связываем
+    // только однозначные пары. RPC дополнительно не связывает разные
+    // финансовые контуры: основная группа ↔ ИП Филиппов оформляется займом.
+    let linkedTransfers = 0;
+    let linkWarning: string | null = null;
+    const linkResult = await db.rpc("link_unlinked_dds_transfers");
+    if (!linkResult.error) {
+      const value = (linkResult.data ?? {}) as { linkedPairs?: number };
+      linkedTransfers = Number(value.linkedPairs ?? 0);
+    } else if (!MISSING_COMMIT_RPC.has(linkResult.error.code ?? "")) {
+      // Сам импорт уже завершён и повторять его из-за ошибки последующего
+      // связывания нельзя. Возвращаем честное предупреждение вместо 500.
+      linkWarning = `Платежи загружены, но автоматическое связывание не выполнено: ${linkResult.error.message}`;
+    }
     await audit(request, await getServerSession(), {
       action: "finance_import.commit",
       subject: `счета: ${accountsCreated}, платежи: ${paymentsCreated}, компании: ${companyUpdates.length}`,
@@ -222,6 +237,8 @@ export async function POST(request: NextRequest) {
         companiesAssigned: companyUpdates.length,
         duplicatesSkipped: Number(plan.duplicatePayments ?? 0),
         suspectedSkipped: suspectedRows.length - acceptedRows.length,
+        linkedTransfers,
+        linkWarning,
       },
     });
     return NextResponse.json({
@@ -230,6 +247,8 @@ export async function POST(request: NextRequest) {
       companiesAssigned: companyUpdates.length,
       duplicatesSkipped: Number(plan.duplicatePayments ?? 0),
       suspectedSkipped: suspectedRows.length - acceptedRows.length,
+      linkedTransfers,
+      linkWarning,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Не удалось выполнить импорт" }, { status: 500 });

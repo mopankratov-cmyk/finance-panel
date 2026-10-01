@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { firstSheetPath, unzipXlsx, xlsxGrid, xlsxText } from "./xlsxGrid.ts";
+import { firstSheetPath, unzipXlsx, xlsxGrid, xlsxGridFromEntries, xlsxText } from "./xlsxGrid.ts";
 
 const statement = readFileSync(new URL("../../tests/fixtures/bank-statement-mini.xlsx", import.meta.url));
 
@@ -26,4 +26,12 @@ test("текст книги содержит шапку для регуляро�
   const text = xlsxText(statement);
   assert.match(text, /Клиент: ИП Иванов Иван Иванович/);
   assert.match(text, /ИНН: 123456789012/);
+});
+
+test("XLSX с namespace-префиксом x: читается так же, как обычный", () => {
+  const entries = new Map<string, Buffer>([
+    ["xl/worksheets/sheet1.xml", Buffer.from('<?xml version="1.0"?><x:worksheet xmlns:x="urn:test"><x:sheetData><x:row r="1"><x:c r="A1" t="s"><x:v>0</x:v></x:c><x:c r="B1"><x:v>42</x:v></x:c></x:row></x:sheetData></x:worksheet>')],
+    ["xl/sharedStrings.xml", Buffer.from('<x:sst xmlns:x="urn:test"><x:si><x:t>Платёж</x:t></x:si></x:sst>')],
+  ]);
+  assert.deepEqual(xlsxGridFromEntries(entries), [["Платёж", "42"]]);
 });

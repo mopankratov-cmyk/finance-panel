@@ -106,7 +106,7 @@ function parseTextDate(value: string, fallbackYear: number) {
   return `${human[3] ?? fallbackYear}-${String(RUSSIAN_MONTHS[monthKey]).padStart(2, "0")}-${human[1].padStart(2, "0")}`;
 }
 
-function parseTextSchedule(text: string, fallbackYear: number): TextScheduleLine[] {
+export function parseTextSchedule(text: string, fallbackYear: number): TextScheduleLine[] {
   return text.split(/\r?\n/).flatMap((rawLine) => {
     const line = rawLine.trim();
     const dateMatch = line.match(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|20\d{2}-\d{2}-\d{2}|\d{1,2}\s+(?:январ\w*|феврал\w*|март\w*|апрел\w*|мая|июн\w*|июл\w*|август\w*|сентябр\w*|октябр\w*|ноябр\w*|декабр\w*)(?:\s+20\d{2})?)/i);
@@ -114,6 +114,7 @@ function parseTextSchedule(text: string, fallbackYear: number): TextScheduleLine
     if (!dateMatch || amount === undefined) return [];
     const label = line
       .replace(/^\s*\d+[.)]\s*/, "")
+      .replace(/^\s*\d+\s+(?=\d{1,2}[./-]\d{1,2})/, "")
       .replace(dateMatch[0], "")
       .replace(/(?:сумма\s*платежа|назначение\s*платежа|дата\s*платежа)/gi, "")
       .replace(/[+-]?[\d\s ]+(?:[,.]\d{1,2})?\s*(?:₽|руб\.?|р\b)/gi, "")
@@ -146,16 +147,60 @@ function scheduleCandidate(line: TextScheduleLine, payments: Payment[], ownerWor
   return ranked[0].payment;
 }
 
-function recognizeTextSchedule(text: string, payments: Payment[], fallbackYear: number): { correction?: TextCorrection; error?: string } | null {
+function seriesId(payment: Payment) {
+  return payment.comment?.match(/\[series:([^\]]+)\]/i)?.[1] ?? null;
+}
+
+function scheduleCategory(line: TextScheduleLine, series: readonly Payment[], fallback: string) {
+  if (/тел[ао]\s+(?:займа|кредита)|основн.*долг/i.test(line.label)) {
+    return series.find((payment) => /тел[ао]|основн.*долг|оплаты по кредитам/i.test(payment.category))?.category
+      ?? "Погашение тела кредита";
+  }
+  if (/процент/i.test(line.label)) {
+    return series.find((payment) => /процент|оплата\s*%/i.test(payment.category))?.category
+      ?? "Оплата % по кредиту";
+  }
+  return fallback;
+}
+
+function matchingSeries(lines: TextScheduleLine[], planned: Payment[], ownerWords: string[]) {
+  if (!ownerWords.length) return null;
+  const owned = planned.filter((payment) => {
+    const words = normalizedWords(paymentSearchText(payment));
+    return ownerWords.every((word) => words.some((candidate) => similarWord(word, candidate)));
+  });
+  const groups = new Map<string, Payment[]>();
+  for (const payment of owned) {
+    const id = seriesId(payment);
+    if (!id) continue;
+    groups.set(id, [...(groups.get(id) ?? []), payment]);
+  }
+  const exact = [...groups.values()].filter((group) => group.length === lines.length);
+  return exact.length === 1 ? exact[0].sort((left, right) => left.date.localeCompare(right.date)) : null;
+}
+
+function recognizeTextSchedule(text: string, payments: Payment[], fallbackYear: number, context = ""): { correction?: TextCorrection; error?: string } | null {
   const lines = parseTextSchedule(text, fallbackYear);
   if (!lines.length) return null;
-  const ownerWords = textOwnerWords(text);
+  const paidLines = lines.filter((line) => /^оплачен/i.test(line.label));
+  const plannedLines = lines.filter((line) => !/^оплачен/i.test(line.label));
+  if (!plannedLines.length) return { error: "В списке нет будущих плановых платежей." };
+  const ownerWords = [...new Set([...textOwnerWords(text), ...normalizedWords(context)])];
   const planned = payments.filter((payment) => payment.status === "planned");
   const usedPaymentIds = new Set<string>();
   const updates: Payment[] = [];
   const unchanged: TextScheduleLine[] = [];
   const notFound: TextScheduleLine[] = [];
-  for (const line of lines) {
+  const series = matchingSeries(plannedLines, planned, ownerWords);
+  for (const [index, line] of plannedLines.entries()) {
+    const seriesPayment = series?.[index];
+    if (seriesPayment) {
+      const nextAmount = seriesPayment.amount < 0 ? -Math.abs(line.amount) : Math.abs(line.amount);
+      const category = scheduleCategory(line, series, seriesPayment.category);
+      if (seriesPayment.date === line.date && Math.abs(seriesPayment.amount - nextAmount) < 0.01 && seriesPayment.category === category) unchanged.push(line);
+      else updates.push({ ...seriesPayment, date: line.date, amount: nextAmount, category });
+      continue;
+    }
     const candidate = scheduleCandidate(line, planned, ownerWords, usedPaymentIds);
     if (!candidate) {
       notFound.push(line);
@@ -169,9 +214,9 @@ function recognizeTextSchedule(text: string, payments: Payment[], fallbackYear: 
   if (notFound.length) {
     return { error: `Не удалось однозначно сопоставить строки: ${notFound.map((line) => `${formatDate(line.date)} · ${formatMoney(line.amount)}${line.label ? ` · ${line.label}` : ""}`).join("; ")}. Проверьте имя получателя, сумму или назначение.` };
   }
-  const sourcePayment = updates[0] ?? planned.find((payment) => payment.date === lines[0].date && Math.abs(Math.abs(payment.amount) - Math.abs(lines[0].amount)) < 0.01) ?? planned[0];
+  const sourcePayment = updates[0] ?? planned.find((payment) => payment.date === plannedLines[0].date && Math.abs(Math.abs(payment.amount) - Math.abs(plannedLines[0].amount)) < 0.01) ?? planned[0];
   if (!sourcePayment) return { error: "В календаре нет плановых платежей для сверки." };
-  const parts = [updates.length ? `будет исправлено: ${updates.length}` : "изменения не требуются", unchanged.length ? `уже совпадают: ${unchanged.length}` : ""];
+  const parts = [updates.length ? `будет исправлено: ${updates.length}` : "изменения не требуются", unchanged.length ? `уже совпадают: ${unchanged.length}` : "", paidLines.length ? `оплаченные строки пропущены: ${paidLines.length}` : ""];
   return { correction: { payment: sourcePayment, updates, additions: [], summary: `Список распознан — ${parts.filter(Boolean).join(", ")}.` } };
 }
 
@@ -179,8 +224,8 @@ function findPlannedCorrectionPayment(payments: Payment[], date: string, amount?
   return payments.filter((payment) => payment.status === "planned" && payment.date === date && (amount === undefined || Math.abs(Math.abs(payment.amount) - Math.abs(amount)) < 0.01));
 }
 
-function recognizeCalendarCorrection(text: string, payments: Payment[], fallbackYear: number): { correction?: TextCorrection; error?: string } {
-  const scheduleResult = recognizeTextSchedule(text, payments, fallbackYear);
+export function recognizeCalendarCorrection(text: string, payments: Payment[], fallbackYear: number, context = ""): { correction?: TextCorrection; error?: string } {
+  const scheduleResult = recognizeTextSchedule(text, payments, fallbackYear, context);
   if (scheduleResult) return scheduleResult;
   const dates = [...text.matchAll(/\b(\d{1,2}[./-]\d{1,2}[./-]\d{4}|20\d{2}-\d{2}-\d{2})\b/g)].map((match) => textDate(match[1])).filter((date): date is string => Boolean(date));
   const amounts = correctionAmounts(text);
@@ -308,6 +353,7 @@ export function CalendarPage() {
   const [replaceCalendarOpen, setReplaceCalendarOpen] = useState(false);
   const [priorityScope, setPriorityScope] = useState<PaymentPriorityScope>("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [paymentStatusScope, setPaymentStatusScope] = useState<"planned" | "done">("planned");
   const [flowScope, setFlowScope] = useState<"all" | "expense" | "income">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -464,6 +510,7 @@ export function CalendarPage() {
   const searchedCalendarPayments = useMemo(() => {
     const query = searchQuery.trim().toLowerCase().replace(/ё/g, "е");
     return allVisibleCalendarPayments.filter((payment) => {
+      if (payment.status !== paymentStatusScope) return false;
       if (flowScope === "expense" && payment.amount >= 0) return false;
       if (flowScope === "income" && payment.amount <= 0) return false;
       if (dateFrom && payment.date < dateFrom) return false;
@@ -484,7 +531,7 @@ export function CalendarPage() {
       ].filter((value) => value !== undefined && value !== null).join(" ").toLowerCase().replace(/ё/g, "е");
       return searchable.includes(query);
     });
-  }, [accountNames, allVisibleCalendarPayments, companyById, companyByPayment, dateFrom, dateTo, flowScope, searchQuery]);
+  }, [accountNames, allVisibleCalendarPayments, companyById, companyByPayment, dateFrom, dateTo, flowScope, paymentStatusScope, searchQuery]);
   const visibleCalendarPayments = useMemo(
     () => searchedCalendarPayments.filter((payment) => priorityScope === "all" || getPaymentPriority(payment) === priorityScope),
     [searchedCalendarPayments, priorityScope],
@@ -527,8 +574,8 @@ export function CalendarPage() {
     }),
     [visibleCalendarPayments, year, month],
   );
-  const plannedIncome = monthPayments.filter((payment) => payment.status === "planned" && payment.amount > 0).reduce((sum, payment) => sum + payment.amount, 0);
-  const plannedExpense = monthPayments.filter((payment) => payment.status === "planned" && payment.amount < 0).reduce((sum, payment) => sum - payment.amount, 0);
+  const displayedIncome = monthPayments.filter((payment) => payment.amount > 0).reduce((sum, payment) => sum + payment.amount, 0);
+  const displayedExpense = monthPayments.filter((payment) => payment.amount < 0).reduce((sum, payment) => sum - payment.amount, 0);
   const negativeDays = [...dailyMap.values()].filter((day) => day.isNegative && day.date >= today).length;
 
   const weeks = useMemo(
@@ -736,8 +783,8 @@ export function CalendarPage() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryTile icon={TrendingUp} label="План поступлений" value={plannedIncome} tone="emerald" />
-        <SummaryTile icon={CircleDollarSign} label="План расходов" value={plannedExpense} tone="rose" />
+        <SummaryTile icon={TrendingUp} label={paymentStatusScope === "planned" ? "План поступлений" : "Факт поступлений ДДС"} value={displayedIncome} tone="emerald" />
+        <SummaryTile icon={CircleDollarSign} label={paymentStatusScope === "planned" ? "План расходов" : "Факт расходов ДДС"} value={displayedExpense} tone="rose" />
         <SummaryTile icon={CheckCircle2} label="План совпал с фактом" value={planFactMatches.length} count tone="violet" onClick={() => setPlanFactOpen((open) => !open)} expanded={planFactOpen} />
         <SummaryTile icon={negativeDays > 0 ? TriangleAlert : Clock3} label="Дней с кассовым разрывом" value={negativeDays} count tone={negativeDays > 0 ? "amber" : "slate"} />
       </div>
@@ -892,7 +939,7 @@ export function CalendarPage() {
         <p className="mt-2 text-sm text-slate-600">Напишите фразой или вставьте список из таблицы. Понимаю даты с годом и без: «01.10.2026» и «1 октября». Система покажет найденные строки и не изменит календарь без подтверждения.</p>
         <textarea value={textCorrection} onChange={(event) => { setTextCorrection(event.target.value); setTextCorrectionPreview(null); setTextCorrectionError(null); }} placeholder="Например: «перенеси платёж 50 000 ₽ с 05.10.2026 на 12.10.2026» или вставьте: 1 октября | Погашение процентов | 36 000 ₽" className="mt-3 min-h-24 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm" />
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" onClick={() => { const result = recognizeCalendarCorrection(textCorrection, state.payments, currentDate.getFullYear()); setTextCorrectionPreview(result.correction ?? null); setTextCorrectionError(result.error ?? null); }} className="min-h-11 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-100">Распознать</button>
+          <button type="button" onClick={() => { const result = recognizeCalendarCorrection(textCorrection, state.payments, currentDate.getFullYear(), searchQuery); setTextCorrectionPreview(result.correction ?? null); setTextCorrectionError(result.error ?? null); }} className="min-h-11 rounded-lg border border-violet-300 bg-white px-4 text-sm font-semibold text-violet-700 hover:bg-violet-100">Распознать</button>
           {textCorrectionPreview && (textCorrectionPreview.updates.length > 0 || textCorrectionPreview.additions.length > 0) && <button type="button" onClick={() => {
             const companyId = companyByPayment.get(textCorrectionPreview.payment.id) ?? textCorrectionPreview.payment.companyId ?? null;
             for (const payment of textCorrectionPreview.updates) handleUpdatePayment(payment, companyId);
@@ -1015,6 +1062,10 @@ export function CalendarPage() {
               <button onClick={() => chooseLayout("grid")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "grid" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><LayoutGrid className="h-4 w-4" /> Календарь</button>
               <button onClick={() => chooseLayout("agenda")} className={`inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm font-semibold ${calendarLayout === "agenda" ? "bg-white text-violet-700 shadow-sm" : "text-slate-600"}`}><List className="h-4 w-4" /> Список</button>
             </div>
+            <div className="flex rounded-lg bg-slate-100 p-1" aria-label="Плановые или фактические платежи">
+              <button type="button" onClick={() => setPaymentStatusScope("planned")} className={`min-h-11 rounded-md px-3 text-sm font-semibold ${paymentStatusScope === "planned" ? "bg-white text-amber-700 shadow-sm" : "text-slate-600"}`}>План</button>
+              <button type="button" onClick={() => setPaymentStatusScope("done")} className={`min-h-11 rounded-md px-3 text-sm font-semibold ${paymentStatusScope === "done" ? "bg-white text-emerald-700 shadow-sm" : "text-slate-600"}`}>Факт ДДС</button>
+            </div>
             </div>
           </div>
         </CardHeader>
@@ -1123,6 +1174,7 @@ export function CalendarPage() {
           companies={companies}
           companyByPayment={companyByPayment}
           priorityScope={priorityScope}
+          statusScope={paymentStatusScope}
           onEdit={(payment) => {
             setCurrentDate(new Date(`${payment.date}T00:00:00`));
             setSelectedDate(payment.date);
@@ -1257,6 +1309,7 @@ function FlowList({
   companies,
   companyByPayment,
   priorityScope,
+  statusScope,
   onEdit,
   onAdd,
   onBulkAdd,
@@ -1268,6 +1321,7 @@ function FlowList({
   companies: DdsCompany[];
   companyByPayment: Map<string, string | null>;
   priorityScope: PaymentPriorityScope;
+  statusScope: "planned" | "done";
   onEdit: (payment: Payment) => void;
   onAdd: () => void;
   onBulkAdd: () => void;
@@ -1289,7 +1343,7 @@ function FlowList({
             {priorityScope !== "all" && ` · приоритет ${priorityScope}`}
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            План и факт по выбранной компании · {rows.length} операций
+            {statusScope === "planned" ? "Плановые платежи" : "Фактические платежи ДДС"} по выбранной компании · {rows.length} операций
             {priorityScope !== "all" && " · список отфильтрован"}
           </p>
           </div>

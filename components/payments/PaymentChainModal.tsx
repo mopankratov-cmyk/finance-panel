@@ -47,7 +47,7 @@ export function PaymentChainModal({seed,accounts,companies,onClose,onSaved,confi
    {message && <p role="status" className="rounded-lg bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
    {!detail && !error && <p>Загружаю операцию…</p>}
    {detail && draft && <>
-    {!detail.migrationAvailable && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Сохранение станет доступно после применения владельцем миграции цепочек ДДС.</p>}
+    {!detail.migrationAvailable && <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Сохранение станет доступно после применения владельцем миграции 202610010002_dds_partial_wallet_provenance.sql.</p>}
     {detail.status === 'cancelled' && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Операция отменена. Исправьте разбивку и сохраните, чтобы восстановить её новой версией.</p>}
     {!showEditor ? <div className="space-y-3">
       <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950">
