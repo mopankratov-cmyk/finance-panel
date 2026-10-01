@@ -18,6 +18,8 @@ export interface PaymentChainDraft {
   bankReviewId: string | null;
   /** Конкретные пополнения транзитного/личного кошелька, из которых оплачен расход. */
   sourceFundingLinks?: PaymentChainFundingLink[];
+  sourceFundingCandidateCompanyIds?: string[];
+  sourceFundingSelectionRequired?: boolean;
 }
 export type ChainRole = "source" | "cash-in" | "loan-out" | "loan-in" | "transfer-in" | "spending";
 export interface ChainEntry { payment: Payment; role: ChainRole; allocationId: string | null }
