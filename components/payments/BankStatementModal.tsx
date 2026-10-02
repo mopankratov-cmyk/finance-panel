@@ -243,6 +243,10 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
 
   const handlePrepare = async () => {
     if (!statement) return;
+    if (cashoutOnly && !companyId) {
+      setError("Для импорта в раздел «Обнал» выберите компанию — ИП Панкратов или ООО РИО.");
+      return;
+    }
     if (!selectedAccount && !needsNewBankAccount) {
       setError("Перед отправкой выберите кошелёк / банковский счёт. Компанию можно определить отдельно для каждого платежа в разделе «На проверке». ");
       return;
