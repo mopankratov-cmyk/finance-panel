@@ -48,9 +48,11 @@ export function cardSignal(observations: ObservationLite[], options: { manual: b
   const bestseller = observations.find((o) => o.group_kind === "retail" && o.metric === "bestseller_badge" && o.value_text);
   const published = observations.find((o) => o.metric === "published_at" && o.value_text);
   const spread = observations.filter((o) => o.group_kind === "spread" && (o.value_text || o.value_num != null));
+  const reviews = observations.find((o) => o.metric === "reviews_count" && o.value_num != null);
   const parts: string[] = [];
   if (badge) parts.push(`метка «${cleanBadge(badge.value_text ?? "")}» на сайте`);
   if (bestseller) parts.push("в разделе бестселлеров на сайте");
+  if (reviews?.value_num) parts.push(`отзывов на сайте магазина: ${reviews.value_num}`);
   if (published?.value_text) parts.push(`опубликовано ${ru(published.value_text)}`);
   if (options.colors > 1) parts.push(`${options.colors} ${pluralColors(options.colors)} в одной модели`);
   if (spread.length === 0) parts.push("пока одна находка");

@@ -35,6 +35,8 @@ const METRIC_LABEL: Record<string, string> = {
   published_at: "Опубликовано на сайте",
   new_badge: "Метка ритейлера",
   bestseller_badge: "Отметка бестселлера",
+  reviews_count: "Отзывы на сайте магазина",
+  rating: "Рейтинг на сайте магазина",
 };
 
 const BADGE_METRICS = new Set(["new_badge", "bestseller_badge"]);
@@ -43,6 +45,8 @@ const METHOD_LABEL: Record<string, string> = {
   import_url: "добавлено по ссылке",
   import_manual: "добавлено по фото",
   crawl_shopify: "автообход каталога",
+  brightdata_asos: "сбор Bright Data с ASOS",
+  brightdata_hm: "сбор Bright Data с H&M",
   shopify_published_at: "дата публикации из карточки",
   shopify_tags: "теги карточки",
 };

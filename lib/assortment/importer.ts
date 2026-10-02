@@ -92,7 +92,7 @@ export interface ImageBytes {
   uploadPath: string | null;
 }
 
-async function remoteImage(url: string): Promise<ImageBytes | null> {
+export async function remoteImage(url: string): Promise<ImageBytes | null> {
   try {
     const response = await safeFetch(url, { maxBytes: MAX_IMAGE_BYTES, timeoutMs: 12_000, accept: "image/webp,image/jpeg,image/png;q=0.9,*/*;q=0.5" });
     const mime = sniffImageMime(response.body);
