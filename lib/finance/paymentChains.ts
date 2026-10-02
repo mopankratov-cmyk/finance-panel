@@ -174,7 +174,9 @@ export function validateChain(d: PaymentChainDraft, accounts: Account[], compani
     if (!a.name.trim()) missing.push("назначение");
     if (!recipient) missing.push("компанию в поле «Чей расход / кому»");
     if (!account || account.currency !== "RUB") missing.push("рублёвый кошелёк");
-    if (!categories.includes(a.category)) missing.push(a.category ? "допустимую статью" : "статью");
+    // Пустая статья допустима: пользователь может пока не знать назначение.
+    // Такая запись остаётся в ДДС в разделе «Без статьи» для последующего разбора.
+    if (a.category && !categories.includes(a.category)) missing.push("допустимую статью");
     if (missing.length) {
       const amount = Number.isFinite(a.amount) ? `, ${a.amount.toLocaleString("ru-RU")} ₽` : "";
       errors.push(`Часть ${allocationIndex + 1}${amount}: укажите ${missing.join(", ")}`);
