@@ -170,12 +170,12 @@ begin
   update public.payments
      set comment = regexp_replace(
        comment,
-       '\\[contract:[^]]+\\]',
+       $contract_re$\[contract:[^]]+\]$contract_re$,
        '[contract:Договора_займа_Максим_Алексей.docx]',
        'g'
      )
    where position('[loan:' || v_loan_id || ':' in coalesce(comment, '')) > 0
-     and coalesce(comment, '') ~ '\\[contract:';
+     and position('[contract:' in coalesce(comment, '')) > 0;
 
   delete from public.finance_loan_documents
    where loan_id = v_loan_id
@@ -223,12 +223,12 @@ begin
     update public.finance_payments
        set comment = regexp_replace(
          comment,
-         '\\[contract:[^]]+\\]',
+         $contract_re$\[contract:[^]]+\]$contract_re$,
          '[contract:Договора_займа_Максим_Алексей.docx]',
          'g'
        ), updated_at = now()
      where position('[loan:' || v_loan_id || ':' in coalesce(comment, '')) > 0
-       and coalesce(comment, '') ~ '\\[contract:';
+       and position('[contract:' in coalesce(comment, '')) > 0;
   end if;
 end
 $restore_khlestov$;
