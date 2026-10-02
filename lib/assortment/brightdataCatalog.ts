@@ -20,8 +20,8 @@ export interface CollectionTarget {
 }
 
 /**
- * ASOS — по запросам (раздел новинок с параметром в адресе сборщик не берёт);
- * H&M — по разделу (`category_url`). Около 160 записей за прогон.
+ * ASOS — по запросам (раздел новинок с параметром в адресе сборщик не берёт),
+ * включая Mango; H&M — по разделу (`category_url`). Около 180 записей за прогон.
  */
 export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
   {
@@ -31,6 +31,16 @@ export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
   {
     sourceId: "S046", datasetId: "gd_ldbg7we91cp53nr2z4", direction: "jackets", discoverBy: "keyword", limitPerInput: 10, method: "brightdata_asos",
     inputs: ["bomber jacket", "puffer jacket", "trench coat", "leather jacket"].map((keyword) => ({ keyword })),
+  },
+  // Mango своих новинок через Bright Data не отдаёт (сборщик только по ссылкам),
+  // а ASOS Mango продаёт — берём его выдачу по бренду (живая проба 02.10).
+  {
+    sourceId: "S046", datasetId: "gd_ldbg7we91cp53nr2z4", direction: "bags", discoverBy: "keyword", limitPerInput: 10, method: "brightdata_asos",
+    inputs: [{ keyword: "mango bag" }],
+  },
+  {
+    sourceId: "S046", datasetId: "gd_ldbg7we91cp53nr2z4", direction: "jackets", discoverBy: "keyword", limitPerInput: 10, method: "brightdata_asos",
+    inputs: [{ keyword: "mango jacket" }],
   },
   {
     sourceId: "S007", datasetId: "gd_lebec5ir293umvxh5g", direction: "bags", discoverBy: "category", limitPerInput: 40, method: "brightdata_hm",
