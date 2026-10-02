@@ -10,6 +10,7 @@ import { REJECT_REASONS, type ActionId, type RejectReason } from "@/lib/assortme
 import { GROUP_LABEL, ruDate, type EvidenceGroup } from "@/lib/assortment/evidence";
 import type { ModelDetail } from "@/lib/assortment/model";
 import { AddToCollectionModal } from "./AddToCollectionModal";
+import { SimilarModels } from "./SimilarModels";
 import { WbDemand } from "./WbDemand";
 import type { SignalTone } from "@/lib/assortment/signals";
 import { sampleLinks } from "@/lib/assortment/whereToBuy";
@@ -276,6 +277,8 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
             ))}
           </div>
         </section>
+
+        <SimilarModels direction={model.direction} similar={model.similar} />
 
         <WbDemand
           direction={model.direction}

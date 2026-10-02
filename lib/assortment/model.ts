@@ -5,6 +5,7 @@ import { ACTIONS, availableActions, DECISION_LABEL, isReferenceStatus, reasonLab
 import { buildEvidence, type EvidenceGroup, type EvidenceObservation, type EvidenceRow } from "./evidence";
 import { storeImages, uploadedImage, type ImageBytes } from "./importer";
 import { cardSignal, type CardSignal } from "./signals";
+import { loadSimilar, type SimilarResult } from "./similarStore";
 import { ASSORTMENT_BUCKET, isUploadPath, signedUrls } from "./storage";
 
 export interface ModelMedia {
@@ -43,6 +44,7 @@ export interface ModelDetail {
   attributes: AttributeRow[];
   actions: Array<{ id: ActionId; label: string; needsReason: boolean }>;
   decisions: ModelDecision[];
+  similar: SimilarResult;
 }
 
 /** Правку уже сделал кто-то другой — карточку нужно перечитать. */
@@ -100,6 +102,8 @@ export async function loadModel(db: SupabaseClient, id: string): Promise<ModelDe
   ]);
   const failed = obsError ?? mediaError ?? decError;
   if (failed) throw new Error(failed.message);
+  const similar = await loadSimilar(db, id, ref.direction, ref.brand);
+  const otherBrands = similar.state === "ready" ? similar.items.filter((item) => !item.sameBrand).length : null;
 
   const obs = (observations ?? []) as EvidenceObservation[];
   const paths = (media ?? []).map((m) => String(m.storage_path)).filter(Boolean);
@@ -130,7 +134,7 @@ export async function loadModel(db: SupabaseClient, id: string): Promise<ModelDe
       isManual: Boolean(m.is_manual),
       originUrl: m.origin_url ? String(m.origin_url) : null,
     })),
-    evidence: buildEvidence(obs),
+    evidence: buildEvidence(obs, otherBrands),
     attributes: attributeRows(ref.direction, attributes),
     actions: availableActions(status).map((action) => ({ id: action, label: ACTIONS[action].label, needsReason: Boolean(ACTIONS[action].needsReason) })),
     decisions: (decisions ?? []).map((d) => ({
@@ -141,6 +145,7 @@ export async function loadModel(db: SupabaseClient, id: string): Promise<ModelDe
       createdAt: String(d.created_at),
       version: Number(d.version),
     })),
+    similar,
   };
 }
 

@@ -79,7 +79,11 @@ function rowFrom(o: EvidenceObservation): EvidenceRow {
 
 const missing = (label: string, value: string, detail: string): EvidenceRow => ({ label, value, detail, sourceUrl: null, missing: true });
 
-export function buildEvidence(observations: EvidenceObservation[]): Record<EvidenceGroup, EvidenceRow[]> {
+/**
+ * similarOtherBrands — сколько моделей других брендов похожи по фото; null —
+ * отпечатки ещё не посчитаны (тогда честное «не проверялось»).
+ */
+export function buildEvidence(observations: EvidenceObservation[], similarOtherBrands: number | null = null): Record<EvidenceGroup, EvidenceRow[]> {
   const by = (group: EvidenceGroup) => observations
     .filter((o) => o.group_kind === group)
     .sort((a, b) => a.observed_at.localeCompare(b.observed_at))
@@ -90,10 +94,20 @@ export function buildEvidence(observations: EvidenceObservation[]): Record<Evide
   }
   const spread = by("spread");
   if (spread.length === 0) {
-    spread.push(
-      missing("Независимые публикации", "нет данных", "соцсети пока не подключены"),
-      missing("Похожие модели у других брендов", "не проверялось", "поиск похожих появится на этапе 2"),
-    );
+    spread.push(missing("Независимые публикации", "нет данных", "соцсети пока не подключены"));
+    if (similarOtherBrands === null) {
+      spread.push(missing("Похожие модели у других брендов", "не проверялось", "отпечаток фото ещё не посчитан"));
+    } else if (similarOtherBrands === 0) {
+      spread.push(missing("Похожие модели у других брендов", "по фото не нашлось", "среди моделей раздела в ленте"));
+    } else {
+      spread.push({
+        label: "Похожие модели у других брендов",
+        value: `${similarOtherBrands} по фото`,
+        detail: "сходство по фото — подсказка, а не доказательство одной модели; смотрите блок «Похожие модели»",
+        sourceUrl: null,
+        missing: false,
+      });
+    }
   }
   const retail = by("retail");
   if (retail.length === 0) {

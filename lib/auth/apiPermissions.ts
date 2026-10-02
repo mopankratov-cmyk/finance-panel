@@ -214,6 +214,8 @@ const RULES: readonly ApiRule[] = [
   // держит каждый роут модуля (ASSORTMENT_ROLES в lib/assortment/constants.ts):
   // внешние роли с analytics.view туда не проходят.
   ["/api/assortment-development/", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
+  // Сборщик отпечатков фото на Mac mini — без сессии, роут проверяет свой секрет.
+  ["/api/assortment-collector/", { open: "self-guarded" }],
   ["/api/operational-health", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
   ["/api/rnp/", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
   ["/api/shops", { read: READ_ANALYTICS, write: READ_ANALYTICS }],
