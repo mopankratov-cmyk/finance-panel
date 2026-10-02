@@ -43,6 +43,7 @@ export function isCashoutPayment(payment: CashoutCandidate): boolean {
 
 export function isCashoutCompanyName(name: string): boolean {
   const normalized = name.toLocaleLowerCase("ru-RU").replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
+  if (normalized.includes("общая группа рио")) return false;
   const tokens = normalized.split(" ");
   return tokens.includes("панкратов") || tokens.includes("рио");
 }
