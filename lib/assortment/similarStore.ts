@@ -32,7 +32,16 @@ export async function loadSimilar(db: SupabaseClient, referenceId: string, direc
   if (own.length === 0) return { state: "not_ready", reason: "Отпечаток фото этой модели ещё не посчитан — сборщик на mini делает это раз в 15 минут." };
 
   const { data, error } = await db.rpc("assortment_similar_models", { p_reference_id: referenceId, p_limit: 24 });
-  if (error) return { state: "not_ready", reason: "Поиск похожих по фото ещё не подключён." };
+  if (error) {
+    // Отпечатки есть, а функции нет — называем, какой миграции не хватает.
+    const missingFunction = error.code === "PGRST202" || /assortment_similar_models/.test(error.message ?? "");
+    return {
+      state: "not_ready",
+      reason: missingFunction
+        ? "Отпечатки фото посчитаны, но не применена функция поиска похожих — миграция 202610030002_assortment_similar_models.sql."
+        : `Поиск похожих не ответил: ${error.message}`,
+    };
+  }
   const close = ((data ?? []) as Array<{ reference_id: string; distance: number }>).filter((row) => row.distance <= MAX_DISTANCE);
   if (close.length === 0) return { state: "ready", items: [] };
 
