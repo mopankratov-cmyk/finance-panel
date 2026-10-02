@@ -167,8 +167,12 @@ export async function savePaymentChain(body: Record<string,unknown>) {
   const requested=new Map<string,number>();
   for(const allocation of targetAllocations) {
    const target=byId.get(allocation.targetReviewId!);
-   if(!target||target.status==='rejected'||target.matched_transfer_id||String(target.date).slice(0,10)!==allocation.date||String(target.account_id??'')!==allocation.targetAccountId||String(target.company_id??'')!==allocation.companyId)
-    throw fail("Встречное поступление изменилось или не соответствует дате, компании и банковскому счёту");
+   if(!target)throw fail("Встречное поступление не найдено. Выберите его заново",409);
+   if(target.status==='rejected')throw fail("Встречное поступление отклонено. Выберите другое поступление",409);
+   if(target.matched_transfer_id)throw fail("Встречное поступление уже связано с другой операцией",409);
+   if(String(target.date).slice(0,10)!==allocation.date)throw fail("Дата части не совпадает с датой встречного поступления. Выберите поступление заново",409);
+   if(String(target.account_id??'')!==allocation.targetAccountId)throw fail("Счёт поступления изменился. Выберите встречное поступление заново",409);
+   if(String(target.company_id??'')!==allocation.companyId)throw fail("Компания части не совпадает с владельцем счёта поступления. Выберите поступление заново",409);
    requested.set(allocation.targetReviewId!,Math.round(((requested.get(allocation.targetReviewId!)??0)+allocation.amount)*100)/100);
   }
   const otherHeads=await dbRequired().from("finance_payment_chains").select("id,draft").eq("status","active").neq("id",d.id);
