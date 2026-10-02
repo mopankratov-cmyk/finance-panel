@@ -17,27 +17,27 @@ function utf16be(bytes: Buffer) {
   return String.fromCharCode(...units);
 }
 
-function decodePdfLiteral(value: string) {
-  let text = "";
+function pdfLiteralBytes(value: string) {
+  const bytes: number[] = [];
   for (let index = 0; index < value.length; index++) {
     const char = value[index];
     if (char !== "\\") {
-      text += char;
+      bytes.push(char.charCodeAt(0) & 0xff);
       continue;
     }
     const next = value[++index] ?? "";
-    if (next === "n") text += "\n";
-    else if (next === "r") text += "\r";
-    else if (next === "t") text += "\t";
-    else if (next === "b") text += "\b";
-    else if (next === "f") text += "\f";
+    if (next === "n") bytes.push(0x0a);
+    else if (next === "r") bytes.push(0x0d);
+    else if (next === "t") bytes.push(0x09);
+    else if (next === "b") bytes.push(0x08);
+    else if (next === "f") bytes.push(0x0c);
     else if (/[0-7]/.test(next)) {
       const octal = `${next}${value[index + 1] ?? ""}${value[index + 2] ?? ""}`.match(/^[0-7]{1,3}/)?.[0] ?? next;
-      text += String.fromCharCode(Number.parseInt(octal, 8));
+      bytes.push(Number.parseInt(octal, 8));
       index += octal.length - 1;
-    } else if (next !== "\r" && next !== "\n") text += next;
+    } else if (next !== "\r" && next !== "\n") bytes.push(next.charCodeAt(0) & 0xff);
   }
-  return text;
+  return Buffer.from(bytes);
 }
 
 function cmapFrom(streams: Buffer[]): UnicodeMap {
@@ -62,8 +62,7 @@ function cmapFrom(streams: Buffer[]): UnicodeMap {
   return map;
 }
 
-function decodeHex(value: string, map: UnicodeMap) {
-  const bytes = Buffer.from(value.replace(/\s+/g, ""), "hex");
+function decodeBytes(bytes: Buffer, map: UnicodeMap) {
   if (!map.size) return bytes.toString("latin1");
   const widths = [...new Set([...map.keys()].map((key) => key.length / 2))].sort((left, right) => right - left);
   let text = "";
@@ -79,6 +78,14 @@ function decodeHex(value: string, map: UnicodeMap) {
     offset += width;
   }
   return text;
+}
+
+function decodeHex(value: string, map: UnicodeMap) {
+  return decodeBytes(Buffer.from(value.replace(/\s+/g, ""), "hex"), map);
+}
+
+function decodePdfLiteral(value: string, map: UnicodeMap) {
+  return decodeBytes(pdfLiteralBytes(value), map);
 }
 
 function streamsFromPdf(bytes: Buffer) {
@@ -112,10 +119,10 @@ export function extractPdfText(bytes: Buffer) {
       const token = match[0];
       const inner = match[1];
       if (inner != null) chunks.push(decodeHex(inner, map));
-      else if (token.startsWith("(")) chunks.push(decodePdfLiteral(token.slice(1, token.lastIndexOf(")"))));
+      else if (token.startsWith("(")) chunks.push(decodePdfLiteral(token.slice(1, token.lastIndexOf(")")), map));
       else {
         for (const item of token.matchAll(/<([0-9A-Fa-f\s]+)>|\((?:\\.|[^\\)])*\)/g)) {
-          chunks.push(item[1] != null ? decodeHex(item[1], map) : decodePdfLiteral(item[0].slice(1, -1)));
+          chunks.push(item[1] != null ? decodeHex(item[1], map) : decodePdfLiteral(item[0].slice(1, -1), map));
         }
       }
     }
