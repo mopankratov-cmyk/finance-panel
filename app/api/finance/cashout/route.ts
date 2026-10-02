@@ -27,6 +27,7 @@ type CashoutReviewRow = {
   counterparty: string | null;
   purpose: string | null;
   reasons: unknown;
+  status: string;
 };
 
 type Operation = {
@@ -73,9 +74,8 @@ export async function GET(request: NextRequest) {
         .range(pageFrom, pageTo), { label: "Операции раздела Обнал", maxPages: 60 }),
       loadAllSupabasePages<CashoutReviewRow>((pageFrom, pageTo) => db
         .from("bank_review_items")
-        .select("id,date,amount,company_id,counterparty,purpose,reasons")
+        .select("id,date,amount,company_id,counterparty,purpose,reasons,status")
         .in("company_id", companyIds)
-        .in("status", ["ready", "needs_info", "waiting_manager"])
         .gte("date", from)
         .lte("date", to)
         .order("date", { ascending: true })
@@ -106,7 +106,10 @@ export async function GET(request: NextRequest) {
       byCompany.set(row.company_id, [...(byCompany.get(row.company_id) ?? []), operation]);
     }
     for (const row of reviewRows) {
-      if (!row.company_id || !Array.isArray(row.reasons) || !row.reasons.map(String).includes("__cashout_import")) continue;
+      // Маркер импорта важнее статуса очереди: подтверждённые строки
+      // банковской выписки не должны исчезать из «Обнала». Отклонённые
+      // строки по-прежнему не показываем.
+      if (row.status === "rejected" || !row.company_id || !Array.isArray(row.reasons) || !row.reasons.map(String).includes("__cashout_import")) continue;
       const candidate = { amount: Number(row.amount), name: row.purpose ?? "", counterparty: row.counterparty ?? "", comment: "", importSource: "bank-review:cashout" };
       const kind = cashoutKind(candidate);
       if (!kind) continue;
