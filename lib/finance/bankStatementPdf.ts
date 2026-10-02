@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 import type { BankStatement } from "./bankStatementGrid";
 import { ANTHROPIC_MODEL } from "@/lib/ai/models";
 import { COMPANY_ALIAS_PROMPT_NOTE } from "@/lib/finance/companyAliases";
+import { extractPdfText } from "@/lib/loans/pdfText";
+import { parseStatementNumber } from "./bankStatementGrid";
 
 // Распознавание PDF-выписки ИИ. Перенесено из роута без изменения логики:
 // провайдеры запускаются одновременно, выбирается результат с наименьшим
@@ -71,6 +73,55 @@ function normalizeDate(value: unknown): string {
   if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
   const ru = text.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
   return ru ? `${ru[3]}-${ru[2].padStart(2, "0")}-${ru[1].padStart(2, "0")}` : "";
+}
+
+const sberOperationStart = /\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+/;
+const cleanSberText = (value: string) => value
+  .replace(/T-B\)5k/gi,"T-Bank")
+  .replace(/zo5 B\)5k\s*\(\s*zo5\s*\)/gi,"Ozon Bank (Ozon)")
+  .replace(/Alf\)-B\)5k/gi,"Alfa-Bank")
+  .replace(/\s+/g," ").trim();
+
+/** Детерминированный разбор текстовых PDF Сбербанка с карточными операциями. */
+export function recognizeSberStatementText(text: string, documentHash: string): BankStatement | null {
+  if(!/Выписка по плат[её]жному сч[её]ту/i.test(text)||!/СберБанк Онлайн/i.test(text))return null;
+  const period=text.match(/За период\s+(\d{2}\.\d{2}\.\d{4})\s+[—–-]\s+(\d{2}\.\d{2}\.\d{4})/i);
+  const owner=text.match(/Владелец сч[её]та\s+(.+?)\s+Номер сч[её]та/i)?.[1]?.trim()??"";
+  const accountNumber=text.match(/Номер сч[её]та\s+([\d ]{15,30})\s+Карты/i)?.[1]?.replace(/\D/g,"")??"";
+  const opening=text.match(/Остаток на\s+\d{2}\.\d{2}\.\d{4}\s+([\d ]+,\d{2})/i)?.[1];
+  const declaredCredit=text.match(/Пополнение\s+([\d ]+,\d{2})/i)?.[1];
+  const declaredDebit=text.match(/Списание\s+([\d ]+,\d{2})/i)?.[1];
+  const closing=text.match(/Остаток на\s+\d{2}\.\d{2}\.\d{4}\s+([\d ]+,\d{2})\s+Расшифровка/i)?.[1];
+  const operationText=text.slice(text.indexOf("Расшифровка операций")+"Расшифровка операций".length);
+  const pattern=/(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})\s+(.+?)\s+(\+?\d[\d ]*,\d{2})\s+(\d[\d ]*,\d{2})\s+(\d{2}\.\d{2}\.\d{4})\s+(\d{6})\s+([\s\S]*?)(?=\d{2}\.\d{2}\.\d{4}\s+\d{2}:\d{2}\s+|Продолжение на следующей странице|Дата формирования документа|$)/g;
+  const rows: RawRow[]=[];
+  for(const match of operationText.matchAll(pattern)) {
+    const signedAmount=match[4].trim();
+    const amount=parseStatementNumber(signedAmount);
+    if(!amount)continue;
+    const category=cleanSberText(match[3]);
+    const description=cleanSberText(match[8]
+      .replace(/Выписка по плат[её]жному сч[её]ту\s+Страница\s+\d+\s+из\s+\d+[\s\S]*?ОСТАТОК СРЕДСТВ\s+В валюте сч[её]та/gi," ")
+    );
+    const transferParty=description.match(/Перевод (?:для|от)\s+(.+?)\.\s+Операция/i)?.[1]?.trim();
+    const merchant=description.match(/^(.+?)\.\s+Операция/i)?.[1]?.trim();
+    rows.push({
+      date:match[1],
+      amount:signedAmount.startsWith("+")?amount:-amount,
+      counterparty:transferParty??merchant??"",
+      purpose:`${category}. ${description}`.trim(),
+      documentNumber:match[7],
+    });
+  }
+  if(!rows.length||!sberOperationStart.test(operationText))return null;
+  return normalizeStatement({
+    bank:"Сбербанк",owner,accountNumber,dateFrom:period?.[1],dateTo:period?.[2],
+    openingBalance:opening==null?undefined:parseStatementNumber(opening),
+    closingBalance:closing==null?undefined:parseStatementNumber(closing),
+    declaredDebit:declaredDebit==null?undefined:parseStatementNumber(declaredDebit),
+    declaredCredit:declaredCredit==null?undefined:parseStatementNumber(declaredCredit),
+    rows,
+  },documentHash);
 }
 
 export function normalizeStatement(raw: RawStatement, documentHash: string): BankStatement {
@@ -222,6 +273,8 @@ export class PdfRecognitionError extends Error {
 
 export async function recognizeBankStatementPdf(pdf: Buffer, fileName: string): Promise<BankStatement> {
   const documentHash = createHash("sha256").update(pdf).digest("hex");
+  const local=recognizeSberStatementText(extractPdfText(pdf),documentHash);
+  if(local)return local;
   const providers: Array<{ name: string; promise: Promise<RawStatement> }> = [];
   if (process.env.ANTHROPIC_API_KEY) {
     // Раньше PDF гоняли на двух моделях (быстрая + точная) и выбирали лучшую.
