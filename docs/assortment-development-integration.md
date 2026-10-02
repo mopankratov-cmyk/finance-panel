@@ -192,7 +192,7 @@ ffmpeg — это правка `package.json` и установка на mini, �
 | Карточки WB | `wb_cards.photos*` | Сравнение «наша модель ↔ референс» (позже). |
 | Контент | `content_assets` (поле `niche`: jackets / bags), `lib/content/productLibrary.ts`, `/wb/content` | Собственные фото образцов можно класть сюда и ссылаться. |
 
-## 11. План этапов (обновлён 01.10.2026)
+## 11. План этапов (обновлён 01.10.2026; состояние на 03.10 — в §13)
 
 Каждый PR показывает работу на реальных данных и даёт список ограничений.
 Миграции применяет владелец.
@@ -249,3 +249,92 @@ ffmpeg — это правка `package.json` и установка на mini, �
    этапе 2, токен добавляет владелец.
 5. sharp и ffmpeg на mini — можно ставить на этапе 2.
 6. Меню: своё светлое меню модуля, вход — плитка на главной.
+
+## 13. Состояние и эксплуатация (03.10.2026)
+
+Этапы 1 и 2 — на проде (PR #1391–#1423), все миграции применены владельцем:
+202610010005 (схема), 202610020001 (поля задания), 202610020002 (обход),
+202610030001 (отпечатки фото), 202610030002 (функция похожих).
+
+**Что работает**
+
+| Часть | Где | PR |
+|---|---|---|
+| Находки по ссылке и фото, лента «Новинки / Отмечено ритейлером / Скрытые» | `/assortment-development/{jackets,bags}` | #1394 |
+| Карточка модели: доказательства, признаки с происхождением, решения с версией, сравнение 2–6 | `…/{раздел}/{id}`, `…/{раздел}/compare` | #1395 |
+| Подборки: план сумок 5+3, доска курток, задание на образец (печать, CSV, JSON) | `/assortment-development/collections` | #1396 |
+| Учёт отказов, «Собрать черновик» | там же | #1397 |
+| Где купить образец (только ссылки) | карточка, задание | #1398 |
+| Воскресная сводка в Telegram | крон | #1399 |
+| Спрос на WB (MPSTATS, частотность без цен) | карточка | #1400 |
+| Автообход Shopify (Rains, Polène, Songmont, JW PEI) | крон | #1401, #1410 |
+| Похожие модели по фото (CLIP на mini, pgvector) | карточка | #1411–#1413 |
+| Bright Data: пилот (только руководитель) | `/api/assortment-development/brightdata` | #1414, #1418 |
+| Bright Data: сбор ASOS (вкл. Mango) и H&M | крон | #1419–#1422 |
+| Признаки по фото — оценка ИИ | крон + кнопка в карточке | #1423 |
+
+**Расписание (UTC → МСК)**
+
+| Крон | Когда | Что |
+|---|---|---|
+| `/api/sync/assortment-crawl` | 03:30 ежедневно (06:30) | Shopify-бренды; первый проход — база; новинка = невиданный и опубликован ≤ 60 дней |
+| `/api/sync/assortment-brightdata?phase=trigger` | 05:00 ср, сб (08:00) | запуск проб ASOS и H&M (~180 записей) |
+| `…?phase=collect`, `…?phase=collect&retry=1` | 06:30 и 08:30 ср, сб | забрать готовые пробы; номера — в `assortment_sources.capabilities.brightdata_pending` |
+| `/api/sync/assortment-ai-attributes` | 09:00 ежедневно (12:00) | признаки по фото, не больше 20 моделей (`ASSORTMENT_AI_DAILY_LIMIT`) |
+| `/api/sync/assortment-digest` | 07:00 вс (10:00) | сводка в Telegram; `?dryRun=1` — только текст |
+
+Все кроны можно вызвать вручную под сессией руководителя (GET в браузере).
+Пульс каждого — строка `sync_log` (job `assortment-*`) и у источников
+`last_attempt_at` / `last_error` (экран «Источники», воскресная сводка).
+
+**Сборщик отпечатков на Mac mini**
+
+- Папка `~/assortment-embedder` (Node 22 из `~/opt/node`,
+  `@huggingface/transformers`, модель `Xenova/clip-vit-base-patch32` в
+  `./models`, ~340 МБ). LaunchAgent `com.financepanel.assortment-embedder`,
+  раз в 15 минут. Лог — `logs/embedder.log`, пульс — `sync_log` job
+  `assortment-embed`.
+- Ручной прогон: `launchctl kickstart -k gui/$(id -u)/com.financepanel.assortment-embedder`.
+- Проверка модели без панели: `node src/embed.js --selftest <url картинки>`.
+- Ходит в панель по двум узким путям `/api/assortment-collector/{queue,embeddings}`
+  с секретом `ASSORTMENT_COLLECTOR_SECRET` (Vercel + `.env` на mini).
+
+**Переменные окружения (только имена)**
+
+`MPSTATS_TOKEN`, `BRIGHTDATA_API_TOKEN`, `ASSORTMENT_COLLECTOR_SECRET`,
+`ANTHROPIC_API_KEY` (основной ИИ, модель `ANTHROPIC_MODEL`), `POLZA_API_KEY`
+(резерв), `FINANCE_TELEGRAM_BOT_TOKEN` / `FINANCE_TELEGRAM_CHAT_ID`,
+`FINANCE_PANEL_URL` (ссылки в сводке; по умолчанию finance-panel-two),
+`ASSORTMENT_AI_DAILY_LIMIT` (по умолчанию 20). Переменная, добавленная после
+сборки, видна только после редеплоя.
+
+**Bright Data — что выяснили пилотом (02.10)**
+
+- ASOS (`gd_ldbg7we91cp53nr2z4`): поиск по `keyword`, `category`, `brand`;
+  отдаёт название, бренд, состав, фото, отзывы, рейтинг — работает полностью.
+- H&M (`gd_lebec5ir293umvxh5g`): `category` с полем `category_url`; часть
+  карточек падает по таймауту у самого сборщика.
+- Zara (`gd_lct4vafw1tgx27d4o0`): поиск по разделу работает, разбор карточки
+  сломан у Bright Data («Cannot destructure property 'offers'»).
+- Mango, Uniqlo, Zara.com, COS: только по готовым ссылкам — новинки сами не
+  находят; Mango берём через выдачу ASOS.
+- Zalando: `keyword` требует `domain: "www.zalando.co.uk"`; `category` с
+  `?order=` в адресе падает.
+- Pinterest-посты и TikTok-посты: поиск по `keyword`; Instagram-посты — только
+  по ссылкам.
+- Номера проб — `s_…` или `sd_…`; ключи API — формата UUID; аккаунт должен
+  быть активирован (иначе «Customer is not active»).
+
+**Грабли, найденные живой проверкой**
+
+- `\b` в регулярках JS не видит границ кириллических слов — русские основы
+  писать без него.
+- «Нет колонки из поздней миграции» ≠ «нет таблиц модуля»: первое обходим без
+  503 (`isMissingColumnError`).
+- HEAD-запрос с подсчётом к несуществующей таблице в supabase-js приходит без
+  ошибки — проверять обычным `select … limit 1`.
+- Пакетный upsert supabase-js с разным набором полей проставляет недостающие
+  как null — известные и новые строки писать отдельными пачками.
+- База обхода — по источнику **и** разделу, иначе второй раздел первого сбора
+  уходит в ленту как новинки.
+
