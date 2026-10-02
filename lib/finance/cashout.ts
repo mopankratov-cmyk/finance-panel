@@ -20,6 +20,11 @@ export function cashoutKind(payment: CashoutCandidate): CashoutKind | null {
   const counterparty = (payment.counterparty ?? "").replace(/\s+/g, " ").trim();
   const searchable = `${purpose} ${counterparty}`;
 
+  // Банковская комиссия может содержать слова «СБП» или «перевод» в
+  // назначении исходной операции, но сама не является обналом. Такие строки
+  // остаются РКО и не должны попадать в импорт раздела «Обнал».
+  if (/комисси\w*/i.test(purpose) && /банк\w*/i.test(searchable)) return null;
+
   if (Number(payment.amount) > 0) {
     return /внесен(?:ие|ия)[^.]{0,60}(?:налич|банкомат|\batm\b)|взнос\s+налич|пополнен(?:ие|ия)[^.]{0,50}(?:банкомат|налич)|прием\s+налич|самоинкассац|\b(?:cash deposit|atm deposit)\b/i.test(searchable) ? "atm_deposit" : null;
   }
