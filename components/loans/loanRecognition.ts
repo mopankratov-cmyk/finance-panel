@@ -293,11 +293,13 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
       && cells.some((cell) => /выплачено.*тела|погашено.*тела/.test(cell))
       && cells.some((cell) => /остаток.*тела(?:.*конец)?/.test(cell));
   });
-  // Наша помесячная модель отличается от банковского графика: в ней отдельно
-  // указаны начисления, фактические оплаты и будущий план. Для карточки займа
-  // берём именно факт оплаты (для прошедших периодов) и «Платёж за месяц» для
-  // будущих. Так Excel не превращает начисленные, но ещё не уплаченные проценты
-  // в ложный расход ДДС.
+  // В помесячной модели «Начислено процентов» и «Погашено процентов» имеют
+  // разную экономическую сущность. В графике обязательств нужна первая колонка:
+  // погашение может закрывать долг прошлых месяцев (например, октябрьский платёж
+  // за июль–октябрь), поэтому подстановка его вместо начисления скрывает месяцы
+  // и завышает один из них. Факт оплаты связывается с графиком отдельно через
+  // ДДС, а импорт не должен объявлять строку оплаченной только из-за значения в
+  // колонке «Погашено».
   if (monthlyHeaderIndex >= 0) {
     const headers = grid[monthlyHeaderIndex].map(normalize);
     const findColumn = (...patterns: RegExp[]) => {
@@ -308,23 +310,18 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
       return -1;
     };
     const dateColumn = findColumn(/^дата$/, /^месяц$/, /дата.*период/, /период.*дата/);
-    const statusColumn = findColumn(/^статус$/, /факт.*план/, /план.*факт/);
-    const paidInterestColumn = findColumn(/выплачено.*процент/, /погашено.*процент/);
+    const accruedInterestColumn = findColumn(/начислено.*процент/);
     const paidPrincipalColumn = findColumn(/выплачено.*тела/, /погашено.*тела/);
-    const paymentColumn = findColumn(/платеж.*месяц/, /всего.*оплат/, /^платеж$/);
     const balanceBeforeColumn = findColumn(/остаток.*тела.*начал/, /тело.*начал/);
     const balanceAfterColumn = findColumn(/остаток.*тела.*конец/, /остаток.*тела/);
     const schedule: RecognizedScheduleRow[] = [];
     for (const row of grid.slice(monthlyHeaderIndex + 1)) {
       const date = spreadsheetDate(row[dateColumn] ?? "");
       if (!date) continue;
-      const statusText = normalize(row[statusColumn] ?? "");
-      const isPlan = /план/.test(statusText);
       const paidPrincipal = spreadsheetAmount(row[paidPrincipalColumn] ?? "");
-      const paidInterest = spreadsheetAmount(row[paidInterestColumn] ?? "");
-      const payment = spreadsheetAmount(row[paymentColumn] ?? "");
+      const accruedInterest = spreadsheetAmount(row[accruedInterestColumn] ?? "");
       const principal = paidPrincipal;
-      const interest = isPlan ? Math.max(0, payment - principal) : paidInterest;
+      const interest = accruedInterest;
       if (principal + interest <= 0) continue;
       schedule.push({
         date,
@@ -332,7 +329,10 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
         interest,
         penalty: 0,
         fine: 0,
-        status: isPlan ? "planned" : "done",
+        // «Факт» в файле означает период расчёта, а не полное закрытие каждой
+        // его части. При частичной оплате единственный статус строки не может
+        // честно быть «оплачено».
+        status: "planned",
         balanceBefore: balanceBeforeColumn >= 0 ? spreadsheetAmount(row[balanceBeforeColumn] ?? "") : undefined,
         balanceAfter: balanceAfterColumn >= 0 ? spreadsheetAmount(row[balanceAfterColumn] ?? "") : undefined,
       });

@@ -36,7 +36,7 @@ test("XLSX-график банка читается по ячейкам серв
   assert.equal(result.suggestedCompanyId, "c-1", "компания подсказана по заёмщику из ИИ");
 });
 
-test("помесячный Excel различает факт оплаты и будущий план", () => {
+test("помесячный Excel сохраняет начисления по месяцам, а не подменяет их оплатами", () => {
   const parsed = recognizeLoanSpreadsheet([
     ["Дата", "Статус", "Остаток тела на начало", "Начислено процентов", "Выплачено процентов", "Выплачено тела", "Остаток тела на конец", "Платёж за месяц"],
     ["28.02.2026", "Факт", "1000000", "69041.10", "40000", "0", "1000000", "40000"],
@@ -45,10 +45,10 @@ test("помесячный Excel различает факт оплаты и б�
     ["26.11.2026", "План", "800000", "29063.01", "30641.10", "800000", "0", "830641.10"],
   ]);
   assert.deepEqual(parsed.schedule, [
-    { date: "2026-02-28", principal: 0, interest: 40000, penalty: 0, fine: 0, status: "done", balanceBefore: 1000000, balanceAfter: 1000000 },
-    { date: "2026-03-31", principal: 100000, interest: 0, penalty: 0, fine: 0, status: "done", balanceBefore: 1000000, balanceAfter: 900000 },
-    { date: "2026-10-31", principal: 0, interest: 312241.1, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 800000 },
-    { date: "2026-11-26", principal: 800000, interest: 30641.1, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 0 },
+    { date: "2026-02-28", principal: 0, interest: 69041.1, penalty: 0, fine: 0, status: "planned", balanceBefore: 1000000, balanceAfter: 1000000 },
+    { date: "2026-03-31", principal: 100000, interest: 60164.38, penalty: 0, fine: 0, status: "planned", balanceBefore: 1000000, balanceAfter: 900000 },
+    { date: "2026-10-31", principal: 0, interest: 48920.55, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 800000 },
+    { date: "2026-11-26", principal: 800000, interest: 29063.01, penalty: 0, fine: 0, status: "planned", balanceBefore: 800000, balanceAfter: 0 },
   ]);
   assert.equal(parsed.principalAmount, 1000000);
   assert.equal(parsed.dueDate, "2026-11-26");
