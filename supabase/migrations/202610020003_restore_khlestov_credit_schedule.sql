@@ -8,6 +8,9 @@ declare
   v_wrong_row_id uuid;
   v_wrong_payment_id uuid;
   v_manual_count integer;
+  v_manual_template public.payments%rowtype;
+  v_interest_category text;
+  v_principal_category text;
 begin
   select count(*), min(id::text)
     into v_loan_count, v_loan_id
@@ -60,6 +63,69 @@ begin
        and r.calendar_payment_id is not null
    );
 
+  -- Одна из строк отдельного плана могла быть удалена при предыдущей ручной
+  -- корректировке. Берём реквизиты из сохранившейся строки и достраиваем
+  -- только отсутствующие даты. Это идемпотентно: повторный запуск ничего не
+  -- дублирует.
+  select p.*
+    into v_manual_template
+  from public.payments p
+  where lower(coalesce(p.name, '')) like '%алексею хлестову%'
+  order by p.date desc
+  limit 1;
+
+  if v_manual_template.id is null then
+    raise exception 'Не найдена ни одна строка отдельного плана Хлестова, из которой можно восстановить реквизиты';
+  end if;
+
+  select
+    max(category) filter (where abs(amount) = 30000::numeric),
+    max(category) filter (where abs(amount) = 375000::numeric)
+    into v_interest_category, v_principal_category
+  from public.payments
+  where lower(coalesce(name, '')) like '%алексею хлестову%';
+
+  v_interest_category := coalesce(v_interest_category, 'Оплата % по кредиту');
+  v_principal_category := coalesce(v_principal_category, 'Оплаты по кредитам и займам');
+
+  with target(payment_date, payment_amount, payment_category) as (values
+    (date '2026-10-01',  -30000::numeric, v_interest_category),
+    (date '2026-10-08',  -30000::numeric, v_interest_category),
+    (date '2026-10-15',  -30000::numeric, v_interest_category),
+    (date '2026-10-22',  -30000::numeric, v_interest_category),
+    (date '2026-10-29',  -30000::numeric, v_interest_category),
+    (date '2026-11-05', -375000::numeric, v_principal_category),
+    (date '2026-11-12', -375000::numeric, v_principal_category),
+    (date '2026-11-19', -375000::numeric, v_principal_category),
+    (date '2026-11-26', -375000::numeric, v_principal_category)
+  )
+  insert into public.payments (
+    id, name, amount, type, category, account_id, company_id, date, status,
+    counterparty, comment, import_source, is_demo
+  )
+  select
+    gen_random_uuid(),
+    'Алексею Хлестову',
+    target.payment_amount,
+    'expense',
+    target.payment_category,
+    v_manual_template.account_id,
+    v_manual_template.company_id,
+    target.payment_date,
+    'planned',
+    v_manual_template.counterparty,
+    'Плановый платёж по согласованному графику Алексею Хлестову',
+    null,
+    false
+  from target
+  where not exists (
+    select 1
+    from public.payments p
+    where lower(coalesce(p.name, '')) like '%алексею хлестову%'
+      and p.date = target.payment_date
+      and p.amount = target.payment_amount
+  );
+
   select count(*)
     into v_manual_count
   from public.payments
@@ -75,7 +141,7 @@ begin
     end;
 
   if v_manual_count <> 9 then
-    raise exception 'Ожидалось 9 строк отдельного плана Хлестова, найдено %', v_manual_count;
+    raise exception 'После восстановления ожидалось 9 строк отдельного плана Хлестова, найдено %', v_manual_count;
   end if;
 
   update public.payments
