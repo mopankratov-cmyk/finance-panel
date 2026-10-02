@@ -21,12 +21,15 @@ export type SimilarResult =
  * честно «ещё не посчитано», а не пустой список.
  */
 export async function loadSimilar(db: SupabaseClient, referenceId: string, direction: AssortmentDirection, brand: string | null): Promise<SimilarResult> {
-  const { count, error: ownError } = await db.from("assortment_media_embeddings")
-    .select("media_id", { count: "exact", head: true })
+  // Без head-запроса: HEAD к несуществующей таблице приходит без тела, и
+  // supabase-js не отдаёт ошибку — «не подключено» выглядело бы как «не посчитано».
+  const { data: own, error: ownError } = await db.from("assortment_media_embeddings")
+    .select("media_id")
     .eq("reference_id", referenceId)
-    .not("embedding", "is", null);
-  if (ownError) return { state: "not_ready", reason: "Поиск похожих по фото ещё не подключён." };
-  if (!count) return { state: "not_ready", reason: "Отпечаток фото этой модели ещё не посчитан — сборщик на mini делает это раз в 15 минут." };
+    .not("embedding", "is", null)
+    .limit(1);
+  if (ownError || !own) return { state: "not_ready", reason: "Поиск похожих по фото ещё не подключён." };
+  if (own.length === 0) return { state: "not_ready", reason: "Отпечаток фото этой модели ещё не посчитан — сборщик на mini делает это раз в 15 минут." };
 
   const { data, error } = await db.rpc("assortment_similar_models", { p_reference_id: referenceId, p_limit: 24 });
   if (error) return { state: "not_ready", reason: "Поиск похожих по фото ещё не подключён." };
