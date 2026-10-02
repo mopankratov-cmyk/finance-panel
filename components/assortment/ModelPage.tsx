@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ExternalLink, ImageOff, ImagePlus, Layers, LoaderCircle } from "lucide-react";
+import { ArrowLeft, ExternalLink, ImageOff, ImagePlus, Layers, LoaderCircle, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
@@ -286,9 +286,27 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
         />
 
         <section className="flex flex-col gap-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-semibold text-slate-900">Признаки</h2>
-            <span className="text-xs text-slate-500">С сайта, от ИИ или вручную — откуда взят каждый, видно справа. Исходное значение при правке сохраняется.</span>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-col gap-0.5">
+              <h2 className="text-lg font-semibold text-slate-900">Признаки</h2>
+              <span className="text-xs text-slate-500">С сайта, от ИИ или вручную — откуда взят каждый, видно у значения. Исходное значение при правке сохраняется.</span>
+            </div>
+            {model.media.length > 0 && (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={() => void run("ai", async () => {
+                  const response = await fetch(`/api/assortment-development/references/${model.id}/ai-attributes`, { method: "POST" });
+                  const body = await response.json().catch(() => ({}));
+                  if (!response.ok) throw Object.assign(new Error(body?.error || `ИИ не ответил (${response.status})`), { status: response.status });
+                  return body.model as ModelDetail;
+                })}
+                className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-violet-300 bg-violet-50 px-3 text-sm text-violet-800 hover:bg-violet-100 disabled:opacity-60"
+              >
+                {busy === "ai" ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Определить признаки по фото
+              </button>
+            )}
           </div>
           <ul className="divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white">
             {model.attributes.map((row) => (

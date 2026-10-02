@@ -178,6 +178,10 @@
     {
       "path": "/api/sync/assortment-brightdata?phase=collect&retry=1",
       "schedule": "30 8 * * 3,6"
+    },
+    {
+      "path": "/api/sync/assortment-ai-attributes",
+      "schedule": "0 9 * * *"
     }
   ]
 }

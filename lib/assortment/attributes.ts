@@ -16,6 +16,10 @@ export interface AttributeEntry {
   not_visible?: boolean;
   reviewer?: string;
   reviewed_at?: string;
+  /** Для оценки ИИ: уверенность 0…1, модель и время оценки. */
+  confidence?: number;
+  model?: string;
+  estimated_at?: string;
   previous?: Omit<AttributeEntry, "previous">;
 }
 
@@ -111,7 +115,9 @@ export function attributeRows(direction: AssortmentDirection, attributes: Attrib
       key: field.key,
       label: field.label,
       value: formatValue(entry),
-      origin: entry ? ORIGIN_LABEL[entry.origin] ?? entry.origin : "не заполнено",
+      origin: entry
+        ? `${ORIGIN_LABEL[entry.origin] ?? entry.origin}${entry.origin === "ai_estimate" && typeof entry.confidence === "number" ? `, уверенность ${Math.round(entry.confidence * 100)}%` : ""}`
+        : "не заполнено",
       previous: previous && entry?.previous ? `${ORIGIN_LABEL[entry.previous.origin] ?? entry.previous.origin}: ${previous}` : null,
     };
   });
