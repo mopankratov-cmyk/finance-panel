@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssortmentDirection } from "./constants";
-import { catalogUrl, classifyItem, crawlPlan, isShopifyCrawlable, MAX_CATALOG_PAGES, parseCatalogPage, productUrl, CATALOG_PAGE_SIZE, type CatalogItem } from "./crawl";
+import { catalogUrl, classifyItem, collectionHandles, collectionUrl, crawlPlan, isShopifyCrawlable, MAX_CATALOG_PAGES, mergeCatalog, parseCatalogPage, productUrl, CATALOG_PAGE_SIZE, type CatalogItem } from "./crawl";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { importReference } from "./importer";
 import { safeFetch, SafeFetchError } from "./safeFetch";
@@ -28,17 +28,35 @@ export class CrawlTableMissingError extends Error {
 
 type SourceRow = { source_id: string; name: string; categories: string[]; access_status: string; access_note: string | null; seed_urls: string[] };
 
-async function fetchCatalog(seed: string, deadline: number): Promise<CatalogItem[]> {
+async function fetchPages(urlFor: (page: number) => string, maxPages: number, deadline: number): Promise<CatalogItem[]> {
   const items: CatalogItem[] = [];
-  for (let page = 1; page <= MAX_CATALOG_PAGES; page++) {
+  for (let page = 1; page <= maxPages; page++) {
     if (Date.now() > deadline) break;
-    const response = await safeFetch(catalogUrl(seed, page), { maxBytes: 12 * 1024 * 1024, timeoutMs: 20_000, accept: "application/json" });
+    const response = await safeFetch(urlFor(page), { maxBytes: 12 * 1024 * 1024, timeoutMs: 20_000, accept: "application/json" });
     const batch = parseCatalogPage(JSON.parse(response.body.toString("utf8")));
     items.push(...batch);
     if (batch.length < CATALOG_PAGE_SIZE) break;
     await new Promise((r) => setTimeout(r, 800));
   }
   return items;
+}
+
+/**
+ * Коллекции новинок из паспорта + весь каталог до предела страниц. Каталог
+ * бывает больше предела (у JW PEI — больше 2000 товаров), и новинки за ним
+ * видны только через коллекции. Недоступная коллекция не роняет обход.
+ */
+async function fetchCatalog(seed: string, note: string | null, deadline: number): Promise<CatalogItem[]> {
+  const collections: CatalogItem[][] = [];
+  for (const handle of collectionHandles(note)) {
+    try {
+      collections.push(await fetchPages((page) => collectionUrl(seed, handle, page), 2, deadline));
+    } catch {
+      // коллекцию переименовали или закрыли — весь каталог всё равно обойдём
+    }
+  }
+  const all = await fetchPages((page) => catalogUrl(seed, page), MAX_CATALOG_PAGES, deadline);
+  return mergeCatalog(...collections, all);
 }
 
 async function knownIds(db: SupabaseClient, sourceId: string): Promise<Set<string>> {
@@ -70,13 +88,14 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
   const categories = source.categories.filter((c): c is AssortmentDirection => c === "jackets" || c === "bags");
   try {
     const known = await knownIds(db, source.source_id);
-    const fetched = await fetchCatalog(seed, deadline);
+    const fetched = await fetchCatalog(seed, source.access_note, deadline);
     result.fetched = fetched.length;
     if (fetched.length === 0) throw new Error("каталог пуст — сайт мог сменить устройство");
     const plan = crawlPlan(known, fetched);
     result.baseline = plan.baseline;
     const now = new Date().toISOString();
     const fresh = new Set(plan.fresh.map((i) => i.sourceItemId));
+    const late = new Set(plan.late.map((i) => i.sourceItemId));
     // Новые вставляются со своим флагом базы, известные только обновляют
     // last_seen_at и описание. Две пачки, потому что supabase-js в пачке с
     // разным набором полей проставит отсутствующие как null — и затёр бы baseline.
@@ -86,7 +105,8 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
       const direction = classifyItem(item, categories);
       if (direction) result.relevant += 1;
       const row = { source_id: source.source_id, source_item_id: item.sourceItemId, handle: item.handle, title: item.title, product_type: item.productType, direction, published_at: item.publishedAt, last_seen_at: now };
-      if (plan.baseline || fresh.has(item.sourceItemId)) inserts.push({ ...row, baseline: plan.baseline });
+      if (plan.baseline || late.has(item.sourceItemId)) inserts.push({ ...row, baseline: true });
+      else if (fresh.has(item.sourceItemId)) inserts.push({ ...row, baseline: false });
       else updates.push(row);
     }
     for (const rows of [inserts, updates]) {

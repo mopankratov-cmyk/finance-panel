@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { catalogUrl, classifyItem, crawlPlan, isShopifyCrawlable, parseCatalogPage, productUrl, type CatalogItem } from "../lib/assortment/crawl.ts";
+import { catalogUrl, classifyItem, collectionHandles, collectionUrl, crawlPlan, isShopifyCrawlable, mergeCatalog, parseCatalogPage, productUrl, type CatalogItem } from "../lib/assortment/crawl.ts";
 import { crawlStatus } from "../lib/assortment/coverage.ts";
 
 /**
@@ -39,7 +39,7 @@ test("Раздел товара: сумки, куртки, «Shell Bag» — с�
 
 test("Первый обход — база без новинок; дальше новые — только невиданные ID", () => {
   const fetched = [item({ sourceItemId: "1" }), item({ sourceItemId: "2" })];
-  assert.deepEqual(crawlPlan(new Set(), fetched), { baseline: true, fresh: [] });
+  assert.deepEqual(crawlPlan(new Set(), fetched), { baseline: true, fresh: [], late: [] });
   assert.deepEqual(crawlPlan(new Set(["1"]), fetched).fresh.map((i) => i.sourceItemId), ["2"]);
   assert.deepEqual(crawlPlan(new Set(["1", "2"]), fetched).fresh, []);
 });
@@ -71,4 +71,24 @@ test("Миграция обхода без цен; крон заведён еж�
   const vercel = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
   assert.deepEqual(vercel.crons.filter((c) => c.path === "/api/sync/assortment-crawl"), [{ path: "/api/sync/assortment-crawl", schedule: "30 3 * * *" }]);
   assert.match(readFileSync(join(root, "app/api/sync/assortment-crawl/route.ts"), "utf8"), /export async function GET/);
+});
+
+test("Невиданный, но давно опубликованный товар — в базу, а не в ленту", () => {
+  const now = Date.parse("2026-10-02T00:00:00Z");
+  const plan = crawlPlan(new Set(["0"]), [
+    item({ sourceItemId: "new", publishedAt: "2026-09-20T00:00:00Z" }),
+    item({ sourceItemId: "old", publishedAt: "2025-03-01T00:00:00Z" }),
+    item({ sourceItemId: "nodate", publishedAt: null }),
+  ], now);
+  assert.deepEqual(plan.fresh.map((i) => i.sourceItemId), ["new", "nodate"]);
+  assert.deepEqual(plan.late.map((i) => i.sourceItemId), ["old"]);
+});
+
+test("Коллекции новинок из паспорта, их адреса и склейка с каталогом без дублей", () => {
+  assert.deepEqual(collectionHandles("Shopify products.json; коллекции coats-jackets, bags, topnew-in-bags"), ["coats-jackets", "bags", "topnew-in-bags"]);
+  assert.deepEqual(collectionHandles("Shopify products.json; коллекции handbags, new-bags; тег NEW"), ["handbags", "new-bags"]);
+  assert.deepEqual(collectionHandles("HTML /us/"), []);
+  assert.equal(collectionUrl("https://www.jwpei.com/", "topnew-in-bags", 1), "https://www.jwpei.com/collections/topnew-in-bags/products.json?limit=250&page=1");
+  const merged = mergeCatalog([item({ sourceItemId: "1", title: "из коллекции" })], [item({ sourceItemId: "1", title: "из каталога" }), item({ sourceItemId: "2" })]);
+  assert.deepEqual(merged.map((i) => [i.sourceItemId, i.title]), [["1", "из коллекции"], ["2", ""]]);
 });

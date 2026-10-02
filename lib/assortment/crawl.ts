@@ -62,12 +62,45 @@ export function classifyItem(item: CatalogItem, categories: AssortmentDirection[
 export interface CrawlPlan {
   baseline: boolean;
   fresh: CatalogItem[];
+  /** Невиданные раньше, но давно опубликованные: в базу, не в ленту. */
+  late: CatalogItem[];
 }
 
-/** Первый обход — база; дальше новыми считаем только невиданные ранее ID. */
-export function crawlPlan(known: Set<string>, fetched: CatalogItem[]): CrawlPlan {
-  if (known.size === 0) return { baseline: true, fresh: [] };
-  return { baseline: false, fresh: fetched.filter((item) => !known.has(item.sourceItemId)) };
+export const FRESH_DAYS = 60;
+
+/**
+ * Первый обход — база. Дальше новинка — это товар, которого раньше не видели
+ * И который опубликован недавно: каталог больше предела страниц, и старый
+ * товар, впервые попавший в окно обхода, новинкой не становится.
+ */
+export function crawlPlan(known: Set<string>, fetched: CatalogItem[], nowMs = Date.now()): CrawlPlan {
+  if (known.size === 0) return { baseline: true, fresh: [], late: [] };
+  const unseen = fetched.filter((item) => !known.has(item.sourceItemId));
+  const recent = (item: CatalogItem) => {
+    if (!item.publishedAt) return true;
+    const published = Date.parse(item.publishedAt);
+    return Number.isNaN(published) || nowMs - published <= FRESH_DAYS * 24 * 3600 * 1000;
+  };
+  return { baseline: false, fresh: unseen.filter(recent), late: unseen.filter((item) => !recent(item)) };
+}
+
+/** Коллекции новинок из паспорта источника: «…; коллекции women, new-arrivals; …». */
+export function collectionHandles(note: string | null): string[] {
+  const match = (note ?? "").match(/коллекци[яи]\s+([^;]+)/i);
+  if (!match) return [];
+  return match[1].split(",").map((h) => h.trim()).filter((h) => /^[a-z0-9][a-z0-9-]*$/i.test(h));
+}
+
+export function collectionUrl(seed: string, handle: string, page: number): string {
+  const url = new URL(seed);
+  return `${url.protocol}//${url.host}/collections/${handle}/products.json?limit=${CATALOG_PAGE_SIZE}&page=${page}`;
+}
+
+/** Сначала коллекции (там новинки), затем весь каталог; дубли по ID отбрасываются. */
+export function mergeCatalog(...lists: CatalogItem[][]): CatalogItem[] {
+  const seen = new Map<string, CatalogItem>();
+  for (const list of lists) for (const item of list) if (!seen.has(item.sourceItemId)) seen.set(item.sourceItemId, item);
+  return [...seen.values()];
 }
 
 export function catalogUrl(seed: string, page: number): string {
