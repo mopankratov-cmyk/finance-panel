@@ -86,6 +86,8 @@ export function autofillPaymentChainCash(draft: PaymentChainDraft, companies: re
   const next: PaymentChainDraft = {...draft, allocations:draft.allocations.map(allocation=>({...allocation}))};
   const source=companies.find(company=>company.id===next.sourceCompanyId);
   for(const allocation of next.allocations) {
+    // An explicitly selected bank statement row already identifies the owner.
+    if(allocation.targetReviewId)continue;
     const recipient=preferredAliasCompany(`${allocation.name} ${allocation.counterparty}`,companies);
     if(recipient&&requiresFilippovLoan(source,recipient))allocation.companyId=recipient.id;
   }
@@ -95,12 +97,43 @@ export function autofillPaymentChainCash(draft: PaymentChainDraft, companies: re
   if(!next.cashAccountId&&sourceCash)next.cashAccountId=sourceCash.id;
   for(const allocation of next.allocations) {
     const recipient=companies.find(company=>company.id===allocation.companyId);
-    if(!requiresFilippovLoan(source,recipient))continue;
+    if(!requiresFilippovLoan(source,recipient)) {
+      if(next.cashAccountId)allocation.accountId=next.cashAccountId;
+      continue;
+    }
     const current=accounts.find(account=>account.id===allocation.accountId);
     const recipientCash=preferredChainCashAccount(recipient,accounts,companies);
     if((!current||current.type!=="cash"||current.currency!=="RUB"||current.id===next.cashAccountId)&&recipientCash)allocation.accountId=recipientCash.id;
   }
   return next;
+}
+
+/**
+ * A row from the recipient's bank statement is the authoritative destination:
+ * its account and company must move together. This also turns a transfer between
+ * the main group and Filippov into the required cash/loan chain automatically.
+ */
+export function selectPaymentChainBankTarget(
+  draft: PaymentChainDraft,
+  allocationId: string,
+  target: PaymentChainBankTarget,
+  companies: readonly ChainCompany[],
+  accounts: readonly Account[],
+) {
+  const recipient=companies.find(company=>company.id===target.companyId);
+  const updated: PaymentChainDraft={
+    ...draft,
+    allocations:draft.allocations.map(allocation=>allocation.id===allocationId?{
+      ...allocation,
+      companyId:target.companyId,
+      category:TRANSFER_CATEGORIES.outgoing,
+      name:allocation.name||`Внесение на банковский счёт ${recipient?.name??"получателя"}`,
+      date:target.date,
+      targetAccountId:target.accountId,
+      targetReviewId:target.id,
+    }:{...allocation}),
+  };
+  return autofillPaymentChainCash(updated,companies,accounts);
 }
 export function isMainGroup(company: ChainCompany | undefined) {
   return Boolean(company && /основн|рио|митриченко|панкратов|кучеренко|глобалкос|иллюмей/.test(norm(company.groupName + " " + company.name)) && !companyAliasKeys(company.name).length);

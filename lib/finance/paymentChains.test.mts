@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {allocateWalletFunding,allocationTotal,autofillPaymentChainCash,bankReviewSpendingSplits,buildChainEntries,chainCashAccounts,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,isMainGroup,preferredChainCashAccount,requiresFilippovLoan,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
+import {allocateWalletFunding,allocationTotal,autofillPaymentChainCash,bankReviewSpendingSplits,buildChainEntries,chainCashAccounts,chainRemainder,chainMetadata,encodeChainMetadata,isLegacyPaymentSplit,isMainGroup,preferredChainCashAccount,requiresFilippovLoan,selectPaymentChainBankTarget,validateChain,chainIdForPayment,type PaymentChainDraft} from "./paymentChains.ts";
 import {DDS_CATEGORIES} from "./categories.ts";
 import type {Account} from "../types.ts";
 const companies=[{id:'main',name:'ИП Митриченко',groupName:'Основная группа'},{id:'kor',name:'ИП Коровкин',groupName:'Коровкин'},{id:'fil',name:'ИП Филиппов',groupName:'Коровкин'},{id:'other',name:'ООО Другая',groupName:'Отдельная'}];
@@ -172,6 +172,28 @@ test('bank-review chain requires an incoming statement row for a transfer to Fil
  d.allocations[0].targetReviewId='incoming-review';
  assert.deepEqual(validateChain(d,accounts,companies,DDS_CATEGORIES),[]);
  const rows=entries(d);assert.equal(rows.at(-1)?.role,'transfer-in');assert.equal(rows.at(-1)?.payment.accountId,'filbank');
+});
+
+test('selecting an incoming Filippov statement row aligns the company and builds the complete loan chain',()=>{
+ const d=draft();d.bankReviewId='source-review';d.sourceAmount=400000;d.allocations=[
+  {...d.allocations[0],amount:40000},
+  {...d.allocations[1],amount:60000,category:'Оплата % по кредиту'},
+  {...d.allocations[2],amount:300000,companyId:'main',accountId:'bank',category:'Выбытие — Перевод между счетами',targetAccountId:'filbank'},
+ ];
+ const selected=selectPaymentChainBankTarget(d,'dividend',{
+  id:'incoming-review',date:'2026-09-17',amount:300000,availableAmount:300000,allocatedAmount:0,
+  purpose:'Внесение через банкомат',accountId:'filbank',companyId:'fil',sourceFileName:'filippov.xlsx',status:'pending',
+ },companies,accounts);
+ assert.equal(selected.throughCash,true);
+ assert.equal(selected.allocations[0].accountId,'cash');
+ assert.equal(selected.allocations[1].accountId,'cash');
+ assert.deepEqual(selected.allocations[2],{
+  ...d.allocations[2],companyId:'fil',accountId:'korcash',date:'2026-09-17',targetAccountId:'filbank',targetReviewId:'incoming-review',
+ });
+ assert.deepEqual(validateChain(selected,accounts,companies,DDS_CATEGORIES),[]);
+ const rows=entries(selected);
+ assert.deepEqual(rows.filter(row=>row.allocationId==='dividend').map(row=>row.role),['loan-out','loan-in','spending','transfer-in']);
+ assert.equal(rows.at(-1)?.payment.accountId,'filbank');
 });
 
 test('one bank payment is not listed as a split operation',()=>{
