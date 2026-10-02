@@ -30,5 +30,6 @@ test("не считает ручные, прочие поступления, ю�
 test("выбирает только Панкратова и РИО", () => {
   assert.equal(isCashoutCompanyName("ИП Панкратов"), true);
   assert.equal(isCashoutCompanyName("ООО «РИО»"), true);
+  assert.equal(isCashoutCompanyName("Общая группа РИО"), false);
   assert.equal(isCashoutCompanyName("Слоёно"), false);
 });
