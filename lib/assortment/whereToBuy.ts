@@ -1,3 +1,5 @@
+import { stripColorTail } from "./collections";
+
 /**
  * «Где купить образец» (улучшение 5 от 01.10.2026). Чистые функции.
  *
@@ -17,7 +19,7 @@ export interface SampleLink {
 
 /** Название модели без расцветки: «Boky - Textured Camel» → «Boky». */
 export function modelHead(title: string | null): string {
-  return (title ?? "").split(/\s+[-–—|]\s+|,\s+/)[0].replace(/\s+/g, " ").trim();
+  return stripColorTail((title ?? "").split(/\s+[-–—|]\s+|,\s+/)[0].replace(/\s+/g, " ").trim());
 }
 
 export function sampleQuery(ref: { brand: string | null; title: string | null }): string {

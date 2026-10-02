@@ -15,6 +15,7 @@ import {
   planProgress,
   sameConstruction,
   seasonOptions,
+  stripColorTail,
   type BriefSnapshot,
   type PlanItemLite,
 } from "../lib/assortment/collections.ts";
@@ -113,4 +114,17 @@ test("Миграция задания не добавляет цен и экон
   const columns = [...sql.matchAll(/add column if not exists (\w+)/g)].map((m) => m[1]);
   assert.deepEqual(columns, ["brief", "responsible"]);
   for (const column of columns) assert.doesNotMatch(column, /price|cost|margin|currency|spp|moq|budget/i);
+});
+
+test("Расцветка ASOS «… in black» — та же конструкция; короткие названия не режем", () => {
+  assert.equal(
+    constructionKey({ brand: "Stradivarius", title: "Stradivarius Soft-touch bomber jacket in ecru" }),
+    constructionKey({ brand: "Stradivarius", title: "Stradivarius Soft-touch bomber jacket in black" }),
+  );
+  assert.equal(stripColorTail("mango funnel neck bomber jacket in brown check"), "mango funnel neck bomber jacket");
+  assert.equal(stripColorTail("bag in leather"), "bag in leather");
+  assert.notEqual(
+    constructionKey({ brand: "Stradivarius", title: "Stradivarius Oversize bomber jacket in khaki" }),
+    constructionKey({ brand: "Stradivarius", title: "Stradivarius Soft-touch bomber jacket in black" }),
+  );
 });

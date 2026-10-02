@@ -102,8 +102,19 @@ export function isValidPeriod(kind: CollectionKind, period: string): boolean {
  */
 export function constructionKey(ref: { brand: string | null; title: string | null }): string {
   const title = (ref.title ?? "").toLowerCase().replace(/ё/g, "е");
-  const head = title.split(/\s+[-–—|]\s+|,\s+/)[0].replace(/\s+/g, " ").trim();
+  const head = stripColorTail(title.split(/\s+[-–—|]\s+|,\s+/)[0].replace(/\s+/g, " ").trim());
   return `${(ref.brand ?? "").toLowerCase().trim()}|${head}`;
+}
+
+/**
+ * Расцветка в конце названия на манер ASOS: «… bomber jacket in ecru» и
+ * «… in black» — одна модель. Срезаем «in <1–3 слова>», если до него
+ * осталось хотя бы три слова (иначе «Bag in leather» превратилось бы в «bag»).
+ */
+export function stripColorTail(title: string): string {
+  const match = title.match(/^(.*\S)\s+in\s+[\p{L}\d'&/-]+(?:\s+[\p{L}\d'&/-]+){0,2}$/u);
+  if (!match) return title;
+  return match[1].split(/\s+/).length >= 3 ? match[1] : title;
 }
 
 export interface PlanItemLite {
