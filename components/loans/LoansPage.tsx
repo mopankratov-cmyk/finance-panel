@@ -869,7 +869,14 @@ function LoanDetails({ loan, company, companyId, schedule, payments, companyByPa
   const [documentsError, setDocumentsError] = useState("");
   const [documentUploading, setDocumentUploading] = useState(false);
   const [traceRow, setTraceRow] = useState<LoanScheduleDraft | null>(null);
-  const paidPrincipal = schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
+  // У одной даты графика могут быть отдельно тело и проценты. Если тело уже
+  // оплачено, а проценты ещё нет, сводная строка даты остаётся «плановой».
+  // Поэтому погашенное тело считаем по исходным строкам, а не по статусу
+  // склеенной строки даты.
+  const paidPrincipalRows = scheduleRows.filter((row) => row.loanId === loan.id && row.kind === "principal" && row.status === "paid");
+  const paidPrincipal = paidPrincipalRows.length
+    ? paidPrincipalRows.reduce((sum, row) => sum + row.amountRub, 0)
+    : schedule.filter((row) => row.status === "done").reduce((sum, row) => sum + row.principal, 0);
   const fee = metadataNumber(payments, loan.id, "origination-fee");
   const feeMonths = metadataNumber(payments, loan.id, "fee-months", 36);
   const currency = commentValue(firstLoanComment(payments, loan.id), "currency") || "RUB";
