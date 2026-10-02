@@ -70,3 +70,9 @@ test("Отзывы магазина попадают в «почему пока�
   const signal = cardSignal([{ group_kind: "retail", metric: "reviews_count", value_text: null, value_num: 152, null_reason: null, status: "observed", observed_at: "2026-10-07T07:00:00Z" }], { manual: false, colors: 0 });
   assert.match(signal.why, /отзывов на сайте магазина: 152/);
 });
+
+test("База — по разделу: известные сумки не делают куртки новинками", () => {
+  const source = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(source, /knownIds\(db, source\.sourceId, snapshot\.direction\)/);
+  assert.match(source, /\.eq\("direction", direction\)/);
+});

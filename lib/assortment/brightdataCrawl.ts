@@ -72,10 +72,15 @@ async function downloadRecords(snapshotId: string): Promise<unknown[]> {
   return Array.isArray(data) ? data.map(stripMoney) : [];
 }
 
-async function knownIds(db: SupabaseClient, sourceId: string): Promise<Set<string>> {
+/**
+ * Уже виденные вещи источника В ЭТОМ РАЗДЕЛЕ. База — по разделу, а не по
+ * источнику: первый сбор 02.10 положил сумки ASOS базой, а куртки, разобранные
+ * следом, посчитал новинками — 7 штук ушли в ленту.
+ */
+async function knownIds(db: SupabaseClient, sourceId: string, direction: AssortmentDirection): Promise<Set<string>> {
   const ids = new Set<string>();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from("assortment_source_items").select("source_item_id").eq("source_id", sourceId).range(from, from + 999);
+    const { data, error } = await db.from("assortment_source_items").select("source_item_id").eq("source_id", sourceId).eq("direction", direction).range(from, from + 999);
     if (error) throw new Error(error.message);
     for (const row of data ?? []) ids.add(String(row.source_item_id));
     if (!data || data.length < 1000) return ids;
@@ -143,7 +148,7 @@ async function processSnapshot(
 ): Promise<{ collected: number; added: number; baseline: boolean }> {
   const records = (await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
   const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [snapshot.direction]) === snapshot.direction);
-  const known = await knownIds(db, source.sourceId);
+  const known = await knownIds(db, source.sourceId, snapshot.direction);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
   const fresh = new Set(plan.fresh.map((i) => i.sourceItemId));
   const now = new Date().toISOString();
