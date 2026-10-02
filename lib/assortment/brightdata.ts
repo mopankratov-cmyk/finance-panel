@@ -94,14 +94,17 @@ export async function triggerCollection(input: TriggerInput): Promise<string> {
   return result.snapshot_id;
 }
 
+/** Номер пробы Bright Data: s_… или sd_… (живая проверка 02.10 вернула sd_). */
+export const SNAPSHOT_ID = /^sd?_[a-z0-9]+$/i;
+
 export async function snapshotProgress(snapshotId: string): Promise<{ status: string; records: number | null; errors: number | null }> {
-  if (!/^s_[a-z0-9]+$/i.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");
+  if (!SNAPSHOT_ID.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");
   const p = await call<Record<string, unknown>>(`/datasets/v3/progress/${snapshotId}`);
   return { status: String(p.status ?? "unknown"), records: typeof p.records === "number" ? p.records : null, errors: typeof p.errors === "number" ? p.errors : null };
 }
 
 export async function snapshotRecords(snapshotId: string, limit = 20): Promise<{ fields: string[]; records: unknown[] }> {
-  if (!/^s_[a-z0-9]+$/i.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");
+  if (!SNAPSHOT_ID.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");
   const raw = await call<unknown>(`/datasets/v3/snapshot/${snapshotId}?format=json`);
   const list = Array.isArray(raw) ? raw : [];
   const records = list.slice(0, limit).map(stripMoney);

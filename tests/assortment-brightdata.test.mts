@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { relevantDatasets, stripMoney } from "../lib/assortment/brightdata.ts";
+import { relevantDatasets, SNAPSHOT_ID, stripMoney } from "../lib/assortment/brightdata.ts";
 
 /** Пилот Bright Data: цены не проходят, пилот — только у руководителя. */
 
@@ -31,4 +31,11 @@ test("Пилот стоит денег — запускает только ру�
   assert.match(route, /requireApiSession\(ASSORTMENT_ROLES\)/);
   assert.match(route, /includes\("director"\)/);
   assert.doesNotMatch(readFileSync(join(root, "lib/assortment/brightdata.ts"), "utf8"), /unlocker|zone=/i, "веб-анлокер (обход защиты) не используем");
+});
+
+test("Номера проб Bright Data: s_ и sd_, ничего лишнего", () => {
+  assert.ok(SNAPSHOT_ID.test("sd_mur6qo0e2f4fiji7a8"));
+  assert.ok(SNAPSHOT_ID.test("s_m1abc"));
+  assert.ok(!SNAPSHOT_ID.test("sd_../../x"));
+  assert.ok(!SNAPSHOT_ID.test("gd_lct4vafw1tgx27d4o0"));
 });
