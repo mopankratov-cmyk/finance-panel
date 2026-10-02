@@ -102,6 +102,11 @@ test('requires salary recipient and permits a remaining cash balance without inv
  const d=draft();d.allocations[0].counterparty='';assert.match(validateChain(d,accounts,companies,DDS_CATEGORIES).join(' '),/получателя/);
  d.allocations=[];assert.deepEqual(validateChain(d,accounts,companies,DDS_CATEGORIES),[]);assert.equal(entries(d).length,2);assert.equal(chainRemainder(d),55000);
 });
+test('validation identifies the exact split row and only its missing fields',()=>{
+ const d=draft();d.allocations[2]={...d.allocations[2],amount:50000,category:''};d.sourceAmount=75000;
+ const errors=validateChain(d,accounts,companies,DDS_CATEGORIES);
+ assert.deepEqual(errors,['Часть 3, 50 000 ₽: укажите статью']);
+});
 test('excluded parts do not create loans or expenses; malformed metadata does not pretend to be a chain',()=>{
  const d=draft();d.allocations[2].excluded=true;assert.equal(entries(d).length,4);
  assert.equal(chainMetadata('[dds-chain:garbage]'),null);

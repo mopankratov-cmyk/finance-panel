@@ -165,12 +165,20 @@ export function validateChain(d: PaymentChainDraft, accounts: Account[], compani
   const cash = accounts.find(a => a.id === d.cashAccountId);
   if (d.throughCash && (!cash || cash.type !== "cash" || cash.currency !== "RUB")) errors.push("Выберите рублёвый кошелёк наличных компании-источника");
   if (d.throughCash && d.sourceAccountId === d.cashAccountId) errors.push("Кошелёк источника и кошелёк пополнения наличных должны отличаться");
-  for (const a of d.allocations) {
+  for (const [allocationIndex, a] of d.allocations.entries()) {
     if (!Number.isFinite(a.amount) || cents(a.amount) <= 0 || a.amount !== cents(a.amount)/100 || !validDate(a.date) || a.date < d.sourceDate) errors.push("Каждой части нужны сумма до копеек и дата не раньше исходного перевода");
     if (a.excluded) continue;
     const recipient = companies.find(c => c.id === a.companyId);
     const account = accounts.find(acc => acc.id === a.accountId);
-    if (!a.name.trim() || !recipient || !account || account.currency !== "RUB" || !categories.includes(a.category)) errors.push("Заполните назначение, компанию, рублёвый кошелёк и статью каждой части");
+    const missing: string[] = [];
+    if (!a.name.trim()) missing.push("назначение");
+    if (!recipient) missing.push("компанию в поле «Чей расход / кому»");
+    if (!account || account.currency !== "RUB") missing.push("рублёвый кошелёк");
+    if (!categories.includes(a.category)) missing.push(a.category ? "допустимую статью" : "статью");
+    if (missing.length) {
+      const amount = Number.isFinite(a.amount) ? `, ${a.amount.toLocaleString("ru-RU")} ₽` : "";
+      errors.push(`Часть ${allocationIndex + 1}${amount}: укажите ${missing.join(", ")}`);
+    }
     if(a.category===TRANSFER_CATEGORIES.outgoing) {
       const target=accounts.find(acc=>acc.id===a.targetAccountId);
       if(!target || target.currency!=="RUB" || target.id===a.accountId)errors.push("У перевода между кошельками выберите другой рублёвый кошелёк поступления");
