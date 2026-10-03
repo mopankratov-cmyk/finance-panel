@@ -131,7 +131,7 @@ async function createFromRecord(
   record: MappedRecord,
   method: string,
   deadline: number,
-): Promise<{ referenceId: string; created: boolean }> {
+): Promise<{ referenceId: string; created: boolean; photos: number }> {
   const normalized = normalizeProductUrl(record.url);
   const region = regionFromUrl(record.url);
   const key = dedupKey(source.sourceId, region, record.sourceItemId, normalized);
@@ -139,7 +139,7 @@ async function createFromRecord(
   const { data: existing } = await db.from("assortment_references").select("id").eq("dedup_key", key).maybeSingle();
   if (existing) {
     await db.from("assortment_references").update({ last_seen_at: now }).eq("id", existing.id);
-    return { referenceId: String(existing.id), created: false };
+    return { referenceId: String(existing.id), created: false, photos: 0 };
   }
   const attributes: Record<string, unknown> = {};
   if (record.category) attributes.category = { value: record.category, origin: "published" };
@@ -172,8 +172,8 @@ async function createFromRecord(
     const image = await remoteImage(url);
     if (image) images.push(image);
   }
-  await storeImages(db, referenceId, images, false);
-  return { referenceId, created: true };
+  const photos = await storeImages(db, referenceId, images, false);
+  return { referenceId, created: true, photos };
 }
 
 async function processSnapshot(
@@ -196,6 +196,8 @@ export interface IngestResult {
   added: number;
   baseline: boolean;
   churn: boolean;
+  /** Новые находки, чьи фото панель скачать не смогла (сайт не пускает облако) — их принесёт mini. */
+  missingPhotos: Array<{ referenceId: string; urls: string[] }>;
 }
 
 /**
@@ -239,6 +241,7 @@ export async function ingestRecords(
     if (error) throw new Error(error.message);
   }
   let added = 0;
+  const missingPhotos: IngestResult["missingPhotos"] = [];
   if (!asBaseline) {
     for (const r of relevant.filter((x) => fresh.has(x.sourceItemId))) {
       if (added >= NEW_PER_SOURCE || Date.now() > deadline) break;
@@ -246,12 +249,13 @@ export async function ingestRecords(
         const created = await createFromRecord(db, source, target.direction, r, target.method, deadline);
         await db.from("assortment_source_items").update({ reference_id: created.referenceId }).eq("source_id", source.sourceId).eq("source_item_id", r.sourceItemId);
         if (created.created) added += 1;
+        if (created.created && created.photos === 0 && r.images.length > 0) missingPhotos.push({ referenceId: created.referenceId, urls: r.images });
       } catch {
         // одна запись не легла — остальные идут; эта останется в очереди без reference_id
       }
     }
   }
-  return { collected: relevant.length, added, baseline: asBaseline, churn };
+  return { collected: relevant.length, added, baseline: asBaseline, churn, missingPhotos };
 }
 
 /** Сбор готовых проб. Не готова — ждёт следующего захода; старше суток — снимается. */

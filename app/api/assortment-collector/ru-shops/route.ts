@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkAssortmentCollectorAuth } from "@/lib/assortment/collectorAuth";
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
 import { miniShopsPlan, parseMiniShopPages, RuShopPagesError } from "@/lib/assortment/ruShops";
-import { crawlShop } from "@/lib/assortment/ruShopsStore";
+import { attachMiniPhoto, crawlShop, MiniPhotoError } from "@/lib/assortment/ruShopsStore";
 import { ASSORTMENT_BOT_UA } from "@/lib/assortment/safeFetch";
 import { writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -22,6 +22,9 @@ const MAX_UNPACKED_BYTES = 60_000_000;
  * облако). GET — план на сегодня: какие страницы скачать и как понять, что
  * страница пустая; `?all=1` или `?source=S131` — вне дней магазина. POST —
  * сжатая посылка страниц одного магазина; разбор, база и новинки — в панели.
+ * В ответе — новые находки, чьи фото панель скачать не смогла (CDN тоже не
+ * пускает облако): загрузчик приносит их `POST ?photo=1` { referenceId, url,
+ * data: base64 } — только для свежей находки своего магазина и с его CDN.
  * Пульс — строка sync_log «assortment-ru-shops» на каждую посылку.
  */
 export async function GET(request: NextRequest) {
@@ -40,6 +43,18 @@ export async function POST(request: NextRequest) {
   const startedAt = new Date();
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
+
+  if (request.nextUrl.searchParams.get("photo") === "1") {
+    const body = (await request.json().catch(() => null)) as { referenceId?: unknown; url?: unknown; data?: unknown } | null;
+    try {
+      const bytes = typeof body?.data === "string" ? Buffer.from(body.data, "base64") : Buffer.alloc(0);
+      const stored = await attachMiniPhoto(db, { referenceId: body?.referenceId, url: body?.url, bytes });
+      return NextResponse.json({ ok: true, stored });
+    } catch (error) {
+      if (error instanceof MiniPhotoError) return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Фото не сохранилось" }, { status: 500 });
+    }
+  }
 
   let parcel;
   try {

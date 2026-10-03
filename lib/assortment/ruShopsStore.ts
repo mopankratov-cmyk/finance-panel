@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MappedRecord } from "./brightdataCatalog";
 import { ingestRecords } from "./brightdataCrawl";
-import { nextSitemapState, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds, type RuShop, type SitemapDiff } from "./ruShops";
+import { miniPhotoShop, nextSitemapState, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds, type RuShop, type SitemapDiff } from "./ruShops";
+import { sniffImageMime } from "@/lib/ctrtest/pinImage";
+import { storeImages } from "./importer";
 import { ASSORTMENT_BOT_UA, safeFetch } from "./safeFetch";
+import { MAX_IMAGE_BYTES } from "./storage";
 
 /** Пауза между страницами одного сайта — вежливо, не чаще запроса в секунду. */
 const PAGE_PAUSE_MS = 1_200;
@@ -19,6 +22,8 @@ export interface RuShopResult {
   baseline: boolean;
   /** Новых моделей по карте сайта, ждущих появления в каталоге. */
   pending: number;
+  /** Новые находки без фото: облаку их не отдали — принесёт загрузчик на mini. */
+  missingPhotos: Array<{ referenceId: string; urls: string[] }>;
   error: string | null;
 }
 
@@ -79,7 +84,7 @@ function fetchPages(shop: RuShop): PageSource {
  * с mini), разбор, база и новинки — здесь, одинаково для обоих путей.
  */
 export async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: number, getPage: PageSource = fetchPages(shop)): Promise<RuShopResult> {
-  const result: RuShopResult = { sourceId: shop.sourceId, name: shop.name, ok: false, pages: 0, collected: 0, added: 0, baseline: false, pending: 0, error: null };
+  const result: RuShopResult = { sourceId: shop.sourceId, name: shop.name, ok: false, pages: 0, collected: 0, added: 0, baseline: false, pending: 0, missingPhotos: [], error: null };
   const now = new Date().toISOString();
   const warnings: string[] = [];
   try {
@@ -120,6 +125,7 @@ export async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: numb
       result.collected += done.collected;
       result.added += done.added;
       result.baseline = result.baseline || done.baseline;
+      result.missingPhotos.push(...done.missingPhotos);
     }
 
     const next = models && diff ? nextSitemapState(models, diff, seen) : null;
@@ -156,4 +162,25 @@ export async function runRuShopsCrawl(db: SupabaseClient, deadline: number, only
     results.push(await crawlShop(db, shop, deadline));
   }
   return results;
+}
+
+export class MiniPhotoError extends Error {}
+
+/**
+ * Фото новой находки, принесённое загрузчиком на mini: только для находки
+ * магазина «via: mini», созданной обходом и ещё без единого фото, и только с
+ * CDN этого магазина. Байты проверяются как картинка.
+ */
+export async function attachMiniPhoto(db: SupabaseClient, input: { referenceId: unknown; url: unknown; bytes: Buffer }): Promise<number> {
+  if (typeof input.referenceId !== "string" || !/^[0-9a-f-]{36}$/i.test(input.referenceId)) throw new MiniPhotoError("Неверная находка");
+  const { data: ref, error } = await db.from("assortment_references").select("id,source_id,created_by").eq("id", input.referenceId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!ref || ref.created_by !== "crawler" || !miniPhotoShop(ref.source_id, input.url)) throw new MiniPhotoError("Фото не для этой находки");
+  const { count, error: countError } = await db.from("assortment_media").select("id", { count: "exact", head: true }).eq("reference_id", input.referenceId);
+  if (countError) throw new Error(countError.message);
+  if ((count ?? 0) > 0) return 0;
+  if (input.bytes.length === 0 || input.bytes.length > MAX_IMAGE_BYTES) throw new MiniPhotoError("Фото пустое или больше 10 МБ");
+  const mime = sniffImageMime(input.bytes);
+  if (!mime) throw new MiniPhotoError("Это не картинка");
+  return storeImages(db, input.referenceId, [{ bytes: input.bytes, mime, originUrl: String(input.url), uploadPath: null }], false);
 }

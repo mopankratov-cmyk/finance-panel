@@ -7,7 +7,7 @@ import { asCatalogItem } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { gzipSync } from "node:zlib";
 import {
-  limeImage, limeModelId, miniShopsPlan, nextSitemapState, parseLimeCatalog, parseMiniShopPages, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl,
+  limeImage, limeModelId, miniPhotoShop, miniShopsPlan, nextSitemapState, parseLimeCatalog, parseMiniShopPages, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl,
   RuShopPagesError, sitemapDiff, sitemapModelIds,
 } from "../lib/assortment/ruShops.ts";
 
@@ -183,4 +183,22 @@ test("Посылка загрузчика: только его магазины 
   const route = readFileSync(join(root, "app/api/assortment-collector/ru-shops/route.ts"), "utf8");
   assert.match(route, /gunzipSync\(packed, \{ maxOutputLength: MAX_UNPACKED_BYTES \}\)/);
   assert.match(route, /checkAssortmentCollectorAuth\(request\)/);
+});
+
+test("Фото, которые облаку не отдали, приносит mini: только своему магазину и с его CDN", () => {
+  for (const shop of RU_SHOPS) {
+    const records = parseShopCatalog(shop, shop.sourceId === "S130" ? PAGE : fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html", S135: "pompa.html", S136: "askent.html" }[shop.sourceId]!));
+    for (const r of records) assert.ok(r.images.every((src) => shop.imageHosts.includes(new URL(src).hostname)), `${shop.name}: фото ${r.images[0]} не с его CDN`);
+  }
+  assert.equal(miniPhotoShop("S131", "https://imgcdn.befree.ru/rest/V1/images/1280/product/images/BF1/BF1_20_1.jpg")?.name, "befree");
+  assert.equal(miniPhotoShop("S131", "https://evil.example/x.jpg"), null, "чужой адрес");
+  assert.equal(miniPhotoShop("S131", "http://imgcdn.befree.ru/x.jpg"), null, "только https");
+  assert.equal(miniPhotoShop("S130", "https://a.cdn.lime-shine.com/p/x.jpeg"), null, "Lime — не через mini");
+  assert.equal(miniPhotoShop("S999", "https://imgcdn.befree.ru/x.jpg"), null);
+  const store = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");
+  assert.match(store, /ref\.created_by !== "crawler"/, "только находки обхода");
+  assert.match(store, /if \(\(count \?\? 0\) > 0\) return 0;/, "фото уже есть — не трогаем");
+  assert.match(store, /sniffImageMime\(input\.bytes\)/, "байты — картинка");
+  const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(crawl, /created\.photos === 0 && r\.images\.length > 0\) missingPhotos\.push/);
 });

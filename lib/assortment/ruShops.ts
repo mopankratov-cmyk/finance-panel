@@ -51,6 +51,8 @@ export interface RuShop {
    * отсюда — 200). Страницы приносит загрузчик на Mac mini, разбор — в панели.
    */
   via?: "mini";
+  /** Откуда фото товаров: фото, которые облаку не отдали, mini приносит только с этих адресов. */
+  imageHosts: string[];
   /**
    * Адрес карточки товара (регулярное выражение): загрузчик на mini листает
    * страницы, пока на них есть новые такие адреса. Разбор и полнота раздела
@@ -75,6 +77,7 @@ export const RU_SHOPS: RuShop[] = [
     sitemapUrl: "https://limestore.com/sitemap.xml",
     pageParam: "page",
     parser: "lime",
+    imageHosts: ["a.cdn.lime-shine.com"],
     cardHref: "/ru_ru/product/[^\"?#]+",
     sections: [
       { direction: "bags", slug: "women_bags" },
@@ -93,6 +96,7 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://befree.ru/zhenskaya/",
     pageParam: "page",
     parser: "befree",
+    imageHosts: ["imgcdn.befree.ru"],
     via: "mini",
     cardHref: "/zhenskaya/product/[A-Z0-9]+/\\d+",
     sections: [
@@ -111,6 +115,7 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://loverepublic.ru/catalog/",
     pageParam: "page",
     parser: "love_republic",
+    imageHosts: ["imgcdn.loverepublic.ru"],
     via: "mini",
     cardHref: "/catalog/[a-z0-9_/-]+/\\d+/",
     sections: [
@@ -129,6 +134,7 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://zarina.ru/catalog/",
     pageParam: "page",
     parser: "zarina",
+    imageHosts: ["imgcdn.zarina.ru"],
     via: "mini",
     cardHref: "/catalog/product/ZR[0-9A-Z]+-\\d+/",
     sections: [
@@ -149,6 +155,7 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://www.sela.ru/eshop/women/",
     pageParam: "page",
     parser: "sela",
+    imageHosts: ["cdn01.sela.ru"],
     via: "mini",
     cardHref: "/eshop/[a-z0-9_/-]+/SL\\d+_\\d+/",
     sections: [
@@ -167,6 +174,7 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://www.pompa.ru/catalog/",
     pageParam: "PAGEN_1",
     parser: "pompa",
+    imageHosts: ["www.pompa.ru"],
     cardHref: "/catalog/product/\\d+/",
     sections: [
       { direction: "bags", slug: "aksessuary/sumki/" },
@@ -185,6 +193,7 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://askent.ru/cat/",
     pageParam: "PAGEN_3",
     parser: "askent",
+    imageHosts: ["askent.ru"],
     via: "mini",
     cardHref: "/cat/sumki/[a-z0-9_]+/",
     sections: [{ direction: "bags", slug: "sumki/" }],
@@ -370,4 +379,16 @@ export function parseMiniShopPages(body: unknown): { shop: RuShop; pages: Map<st
     pages.set(section.slug, raw.pages as string[]);
   }
   return { shop, pages };
+}
+
+/** Фото от загрузчика: магазин «via: mini» и адрес с его CDN — иначе не принимаем. */
+export function miniPhotoShop(sourceId: unknown, url: unknown): RuShop | null {
+  const shop = RU_SHOPS.find((s) => s.sourceId === sourceId && s.via === "mini");
+  if (!shop || typeof url !== "string") return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" && shop.imageHosts.includes(parsed.hostname) ? shop : null;
+  } catch {
+    return null;
+  }
 }
