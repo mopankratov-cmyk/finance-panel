@@ -95,11 +95,26 @@ const missing = (label: string, value: string, detail: string): EvidenceRow => (
  * similarOtherBrands — сколько моделей других брендов похожи по фото; null —
  * отпечатки ещё не посчитаны (тогда честное «не проверялось»).
  */
+/** Метрики, которые замеряются повторно (еженедельно): показываем последний замер. */
+const REPEATED = new Set(["wb_sales_30d", "reviews_count", "rating"]);
+
 export function buildEvidence(observations: EvidenceObservation[], similarOtherBrands: number | null = null): Record<EvidenceGroup, EvidenceRow[]> {
-  const by = (group: EvidenceGroup) => observations
-    .filter((o) => o.group_kind === group)
-    .sort((a, b) => a.observed_at.localeCompare(b.observed_at))
-    .map(rowFrom);
+  const by = (group: EvidenceGroup) => {
+    const list = observations.filter((o) => o.group_kind === group).sort((a, b) => a.observed_at.localeCompare(b.observed_at));
+    const rows: EvidenceRow[] = [];
+    const seen = new Set<string>();
+    for (const o of [...list].reverse()) {
+      if (REPEATED.has(o.metric)) {
+        if (seen.has(o.metric)) continue;
+        seen.add(o.metric);
+        const row = rowFrom(o);
+        const previous = list.filter((p) => p.metric === o.metric && p.observed_at < o.observed_at && p.value_num != null).pop();
+        if (previous?.value_num != null && o.value_num != null) row.detail = `${row.detail} · было ${previous.value_num.toLocaleString("ru-RU")} (${ruDate(previous.observed_at)})`;
+        rows.unshift(row);
+      } else rows.unshift(rowFrom(o));
+    }
+    return rows;
+  };
   const novelty = by("novelty");
   if (!observations.some((o) => o.metric === "published_at")) {
     novelty.push(missing("Опубликовано на сайте", "неизвестно", "сайт не отдал дату публикации"));

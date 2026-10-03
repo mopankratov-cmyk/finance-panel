@@ -66,9 +66,48 @@ export interface RuSimilarCandidate {
   url: string;
 }
 
-/** Лучшее похожее на WB: самое продаваемое среди похожих по фото. */
-export function bestRuMatch(candidates: RuSimilarCandidate[]): RuSimilarCandidate | null {
-  const withSales = candidates.filter((c) => typeof c.sales === "number" && c.sales > 0);
-  if (withSales.length === 0) return null;
-  return withSales.sort((a, b) => (b.sales ?? 0) - (a.sales ?? 0) || a.distance - b.distance)[0];
+/**
+ * Силуэт сумки или подтип куртки → основы слов, которыми его называют на WB.
+ * Живая проверка 03.10: по одному фото «девушка с сумкой» CLIP даёт 90–95%
+ * сходства совсем разным сумкам, и «похожим» оказывался просто самый
+ * продаваемый тоут. Поэтому сначала совпадение формы, потом фото.
+ */
+const SHAPE_STEMS: Array<{ match: RegExp; stems: string[] }> = [
+  { match: /хобо/, stems: ["хобо"] },
+  { match: /тоут|шоп+ер/, stems: ["тоут", "шоппер", "шопер"] },
+  { match: /багет/, stems: ["багет"] },
+  { match: /кросс-?боди|через плечо/, stems: ["кросс-боди", "кроссбоди", "кросс боди"] },
+  { match: /седел|седл/, stems: ["седл"] },
+  { match: /ведро|мешок|бакет/, stems: ["ведро", "мешок"] },
+  { match: /клатч/, stems: ["клатч"] },
+  { match: /полумесяц/, stems: ["полумесяц"] },
+  { match: /рюкзак/, stems: ["рюкзак"] },
+  { match: /бомбер/, stems: ["бомбер"] },
+  { match: /тренч|плащ/, stems: ["тренч", "плащ"] },
+  { match: /пуховик/, stems: ["пуховик"] },
+  { match: /парк/, stems: ["парка", "парки"] },
+  { match: /ветровк|анорак/, stems: ["ветровк", "анорак"] },
+  { match: /пальто/, stems: ["пальто"] },
+  { match: /косух/, stems: ["косух"] },
+  { match: /жилет/, stems: ["жилет"] },
+];
+
+/** Основы слов формы зарубежной находки: силуэт сумки или подтип куртки. */
+export function shapeStems(direction: AssortmentDirection, attributes: Record<string, string | null>): string[] {
+  const value = (direction === "bags" ? attributes.silhouette : attributes.subtype)?.toLowerCase().replace(/ё/g, "е") ?? "";
+  if (!value || value === "не видно") return [];
+  return SHAPE_STEMS.find((s) => s.match.test(value))?.stems ?? [];
+}
+
+export function matchesShape(stems: string[], title: string): boolean {
+  const text = title.toLowerCase().replace(/ё/g, "е");
+  return stems.some((stem) => text.includes(stem));
+}
+
+/** Похожее на WB: та же форма по названию, затем самое близкое по фото. */
+export function closestRuMatch(candidates: RuSimilarCandidate[], stems: string[]): RuSimilarCandidate | null {
+  if (stems.length === 0) return null;
+  const sameShape = candidates.filter((c) => matchesShape(stems, c.title) && typeof c.sales === "number" && c.sales > 0);
+  if (sameShape.length === 0) return null;
+  return sameShape.sort((a, b) => a.distance - b.distance || (b.sales ?? 0) - (a.sales ?? 0))[0];
 }

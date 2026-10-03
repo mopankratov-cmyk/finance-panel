@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEvidence, type EvidenceObservation } from "../lib/assortment/evidence.ts";
-import { bestRuMatch, isRuSource, RU_SOURCE_IDS, ruDirection, wbProductUrl } from "../lib/assortment/ruMarket.ts";
+import { closestRuMatch, isRuSource, matchesShape, RU_SOURCE_IDS, ruDirection, shapeStems, wbProductUrl } from "../lib/assortment/ruMarket.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
 
 /** «Рынок РФ»: топ WB и Lime на WB по MPSTATS, без цен; учимся по похожему. */
@@ -26,14 +26,20 @@ test("Раздел товара WB: сумки и верхняя одежда; �
   assert.ok(isRuSource("S128") && isRuSource("S129") && !isRuSource("S024") && !isRuSource(null));
 });
 
-test("Лучшее похожее на WB — самое продаваемое; без продаж — нет сигнала", () => {
-  const best = bestRuMatch([
-    { referenceId: "a", distance: 0.12, sales: 300, title: "A", brand: "X", url: "u1" },
-    { referenceId: "b", distance: 0.25, sales: 1200, title: "B", brand: "Y", url: "u2" },
-    { referenceId: "c", distance: 0.1, sales: null, title: "C", brand: "Z", url: "u3" },
-  ]);
-  assert.equal(best?.referenceId, "b");
-  assert.equal(bestRuMatch([{ referenceId: "c", distance: 0.1, sales: null, title: "C", brand: null, url: "" }]), null);
+test("Похожее на WB — той же формы и самое близкое по фото, а не самый продаваемый тоут", () => {
+  const stems = shapeStems("bags", { silhouette: "кросс-боди" });
+  assert.ok(stems.includes("кросс-боди"));
+  const candidates = [
+    { referenceId: "tote", distance: 0.05, sales: 4903, title: "Сумка большая тоут шоппер", brand: "BAGYbgs", url: "u1" },
+    { referenceId: "cb-far", distance: 0.22, sales: 1706, title: "Сумка кросс-боди через плечо", brand: "MILARA", url: "u2" },
+    { referenceId: "cb-near", distance: 0.09, sales: 300, title: "Сумка кроссбоди маленькая", brand: "X", url: "u3" },
+  ];
+  assert.equal(closestRuMatch(candidates, stems)?.referenceId, "cb-near");
+  assert.equal(closestRuMatch(candidates, []), null, "без формы — без сигнала");
+  assert.equal(closestRuMatch(candidates, shapeStems("bags", { silhouette: "клатч" })), null, "клатча нет — честно ничего");
+  assert.deepEqual(shapeStems("jackets", { subtype: "Бомбер" }), ["бомбер"]);
+  assert.deepEqual(shapeStems("bags", { silhouette: "не видно" }), []);
+  assert.ok(matchesShape(["тоут", "шоппер", "шопер"], "Сумка-шопер замшевая"));
 });
 
 test("Карточка WB: «Продаётся на WB», свежий замер, без «пока одна находка»", () => {
@@ -75,4 +81,15 @@ test("Без продаж — не ориентир: нулевые позици
   assert.match(store, /export function sellingOnly/);
   assert.match(store, /archiveNotSelling/);
   assert.match(readFileSync(join(root, "lib/assortment/feed.ts"), "utf8"), /view === "ru"\) \{[\s\S]*wb_sales_30d/);
+});
+
+test("Еженедельные замеры в доказательствах — последний и «было», без повторов", () => {
+  const evidence = buildEvidence([
+    obs({ value_num: 800, observed_at: "2026-10-05T04:00:00Z" }),
+    obs({ value_num: 1234, observed_at: "2026-10-12T04:00:00Z" }),
+  ], null);
+  const rows = evidence.retail.filter((r) => r.label === "Продажи на WB за 30 дней");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].value, "1 234 шт");
+  assert.match(rows[0].detail, /было 800 \(05\.10\.2026\)/);
 });

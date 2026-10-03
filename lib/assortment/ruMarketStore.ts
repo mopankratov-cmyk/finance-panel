@@ -5,8 +5,9 @@ import { closedMoscowDates } from "@/lib/wb/sklejki";
 import type { AssortmentDirection } from "./constants";
 import { dedupKey } from "./extract";
 import { remoteImage, storeImages } from "./importer";
-import { bestRuMatch, isRuSource, LIME_BRANDS, RU_LIME_PER_DIRECTION, RU_SOURCE_IDS, RU_SOURCES, RU_TOP_PER_SUBJECT, ruDirection, wbProductUrl, type RuSimilarCandidate } from "./ruMarket";
-import { MAX_DISTANCE } from "./similar";
+import { closestRuMatch, isRuSource, shapeStems, LIME_BRANDS, RU_LIME_PER_DIRECTION, RU_SOURCE_IDS, RU_SOURCES, RU_TOP_PER_SUBJECT, ruDirection, wbProductUrl, type RuSimilarCandidate } from "./ruMarket";
+import { formatValue, type Attributes } from "./attributes";
+import { MAX_DISTANCE, similarityPercent } from "./similar";
 import { ownSubjects } from "./wbDemand";
 
 const NEW_PER_RUN = 120;
@@ -206,7 +207,7 @@ export async function learnFromRuMarket(db: SupabaseClient, deadline: number): P
   const { data: embedded } = await db.from("assortment_media_embeddings").select("reference_id").not("embedding", "is", null).limit(5000);
   const ids = [...new Set((embedded ?? []).map((r) => String(r.reference_id)))];
   if (ids.length === 0) return { checked: 0, matched: 0 };
-  const { data: refs } = await db.from("assortment_references").select("id,source_id,title,brand,url,direction,status").in("id", ids);
+  const { data: refs } = await db.from("assortment_references").select("id,source_id,title,brand,url,direction,status,attributes").in("id", ids);
   const all = new Map((refs ?? []).map((r) => [String(r.id), r]));
   const foreign = (refs ?? []).filter((r) => !isRuSource(r.source_id) && r.status !== "archived");
   let matched = 0;
@@ -214,23 +215,30 @@ export async function learnFromRuMarket(db: SupabaseClient, deadline: number): P
   for (const ref of foreign) {
     if (Date.now() > deadline) break;
     checked += 1;
+    const plain = Object.fromEntries(Object.entries((ref.attributes ?? {}) as Attributes).map(([k, v]) => [k, formatValue(v)]));
+    const stems = shapeStems(ref.direction as AssortmentDirection, plain);
+    if (stems.length === 0) {
+      // Формы ещё нет (ИИ не разобрал фото) — сравнивать не с чем, сигнала нет.
+      await db.from("assortment_observations").delete().eq("reference_id", ref.id).eq("metric", "ru_similar_sales");
+      continue;
+    }
     const { data: similar } = await db.rpc("assortment_similar_models", { p_reference_id: ref.id, p_limit: 30 });
     const ru = ((similar ?? []) as Array<{ reference_id: string; distance: number }>)
       .filter((s) => s.distance <= MAX_DISTANCE)
       .map((s) => ({ s, r: all.get(String(s.reference_id)) }))
       .filter((x) => x.r && isRuSource(x.r.source_id) && x.r.direction === ref.direction);
     const sales = await latestSales(db, ru.map((x) => String(x.r!.id)));
-    const best = bestRuMatch(ru.map((x): RuSimilarCandidate => ({
+    const best = closestRuMatch(ru.map((x): RuSimilarCandidate => ({
       referenceId: String(x.r!.id), distance: x.s.distance, sales: sales.get(String(x.r!.id)) ?? null,
       title: String(x.r!.title ?? ""), brand: x.r!.brand ? String(x.r!.brand) : null, url: String(x.r!.url ?? ""),
-    })));
+    })), stems);
     await db.from("assortment_observations").delete().eq("reference_id", ref.id).eq("metric", "ru_similar_sales");
     if (!best) continue;
     matched += 1;
     const now = new Date().toISOString();
     await db.from("assortment_observations").insert({
       reference_id: ref.id, group_kind: "spread", metric: "ru_similar_sales", value_num: best.sales, unit: "шт", period: "30 дней",
-      value_text: [best.brand, best.title].filter(Boolean).join(" · ").slice(0, 200),
+      value_text: `${[best.brand, best.title].filter(Boolean).join(" · ").slice(0, 180)} (сходство по фото ${similarityPercent(best.distance)}%)`,
       method: "mpstats_similar", status: "provider_estimate", source_url: best.url, observed_at: now, created_by: "crawler",
     });
   }
