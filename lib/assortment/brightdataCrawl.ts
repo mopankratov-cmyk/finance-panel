@@ -35,9 +35,12 @@ async function mark(db: SupabaseClient, sourceId: string, patch: Record<string, 
 }
 
 /** Запуск проб по всем целям (ср и сб утром). Номера проб — в capabilities источника. */
-export async function triggerBrightData(db: SupabaseClient): Promise<BrightDataRunResult[]> {
+export async function triggerBrightData(db: SupabaseClient, options: { only?: string | null; force?: boolean } = {}): Promise<BrightDataRunResult[]> {
   const bySource = new Map<string, typeof BRIGHTDATA_TARGETS>();
-  for (const target of BRIGHTDATA_TARGETS) bySource.set(target.sourceId, [...(bySource.get(target.sourceId) ?? []), target]);
+  for (const target of BRIGHTDATA_TARGETS) {
+    if (options.only && target.sourceId !== options.only) continue;
+    bySource.set(target.sourceId, [...(bySource.get(target.sourceId) ?? []), target]);
+  }
   const results: BrightDataRunResult[] = [];
   for (const [sourceId, targets] of bySource) {
     const now = new Date().toISOString();
@@ -46,7 +49,7 @@ export async function triggerBrightData(db: SupabaseClient): Promise<BrightDataR
       const pending = readPending(source.capabilities).filter((p) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS);
       let started = 0;
       for (const target of targets) {
-        if (target.weekdayUtc !== undefined && new Date().getUTCDay() !== target.weekdayUtc) continue;
+        if (!options.force && target.weekdayUtc !== undefined && new Date().getUTCDay() !== target.weekdayUtc) continue;
         const snapshotId = target.kind === "dataset"
           ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
           : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
