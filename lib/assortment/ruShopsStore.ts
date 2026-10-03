@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MappedRecord } from "./brightdataCatalog";
 import { ingestRecords } from "./brightdataCrawl";
 import { nextSitemapState, parseLimeCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds, type RuShop } from "./ruShops";
-import { safeFetch } from "./safeFetch";
+import { ASSORTMENT_BOT_UA, safeFetch } from "./safeFetch";
 
 /** Пауза между страницами одного сайта — вежливо, не чаще запроса в секунду. */
 const PAGE_PAUSE_MS = 1_200;
@@ -25,7 +25,7 @@ export interface RuShopResult {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function fetchText(url: string, maxBytes: number): Promise<string> {
-  const response = await safeFetch(url, { maxBytes, timeoutMs: 25_000, accept: "text/html,application/xml;q=0.9,*/*;q=0.5" });
+  const response = await safeFetch(url, { maxBytes, timeoutMs: 25_000, accept: "text/html,application/xml;q=0.9,*/*;q=0.5", userAgent: ASSORTMENT_BOT_UA });
   return response.body.toString("utf8");
 }
 

@@ -50,6 +50,7 @@ test("Lime: только каталог и карта сайта — стран�
   const store = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");
   assert.doesNotMatch(store, /\/product\//, "сборщик не строит адресов товаров");
   assert.match(store, /PAGE_PAUSE_MS = 1_200/);
+  assert.match(store, /userAgent: ASSORTMENT_BOT_UA/, "представляемся роботом честно, не браузером");
 });
 
 test("Новые модели — по карте сайта; первый обход — база", () => {

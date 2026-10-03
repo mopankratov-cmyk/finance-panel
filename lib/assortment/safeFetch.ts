@@ -29,7 +29,16 @@ export interface SafeFetchOptions {
   timeoutMs: number;
   accept?: string;
   maxRedirects?: number;
+  /**
+   * Свой User-Agent. Обход каталогов представляется роботом честно: так сайт
+   * сам решает по robots.txt, что нам отдавать. Lime 04.10 браузерному
+   * заголовку включал проверку на бота (307 + куки), а роботу отдавал страницы.
+   */
+  userAgent?: string;
 }
+
+/** Честное имя робота модуля для обхода каталогов сайтов. */
+export const ASSORTMENT_BOT_UA = "Mozilla/5.0 (compatible; FinancePanelAssortmentBot/1.0)";
 
 export interface SafeFetchResult {
   url: string;
@@ -78,7 +87,7 @@ function requestOnce(url: URL, options: SafeFetchOptions): Promise<{ status: num
         method: "GET",
         lookup: guardedLookup as unknown as typeof dnsLookup,
         headers: {
-          "User-Agent": USER_AGENT,
+          "User-Agent": options.userAgent ?? USER_AGENT,
           Accept: options.accept ?? "*/*",
           "Accept-Encoding": "gzip, deflate, br",
           "Accept-Language": "en-GB,en;q=0.9",
