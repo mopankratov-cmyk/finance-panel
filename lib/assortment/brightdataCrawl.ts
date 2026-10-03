@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
 import {
-  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, mapRecord, PENDING_TTL_MS, readCoverage, readPending,
+  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, PENDING_TTL_MS, readCoverage, readPending,
   uniqueRecords, writeCoverage, writePending, type MappedRecord, type PendingSnapshot,
 } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
@@ -57,7 +57,7 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
           ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
           : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
         pending.push({
-          snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind, trustDirection: target.trustDirection,
+          snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind,
           ...(target.kind === "dataset" ? { recordsLimit: target.recordsLimit ?? 50, coverage: filterSignature(target.filter) } : {}),
         });
         started += 1;
@@ -184,15 +184,16 @@ async function processSnapshot(
   preloaded?: unknown[],
   /** Новинкам выборки не верим (раздел обрезан или сменил охват) — всё новое ложится базой. */
   quiet = false,
-): Promise<{ collected: number; added: number; baseline: boolean }> {
+  /** Готовый набор: слишком много новинок разом — пересборка набора, а не новинки. */
+  churnGuard = false,
+): Promise<{ collected: number; added: number; baseline: boolean; churn: boolean }> {
   const records = uniqueRecords((preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r)));
-  const relevant = snapshot.trustDirection
-    ? records
-    : records.filter((r) => classifyItem(asCatalogItem(r), [snapshot.direction]) === snapshot.direction);
+  const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [snapshot.direction]) === snapshot.direction);
   const known = await knownIds(db, source.sourceId, snapshot.direction);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
   const fresh = new Set(plan.fresh.map((i) => i.sourceItemId));
-  const asBaseline = plan.baseline || quiet;
+  const churn = churnGuard && !plan.baseline && !quiet && looksLikeChurn(plan.fresh.length, relevant.length);
+  const asBaseline = plan.baseline || quiet || churn;
   const now = new Date().toISOString();
   const inserts: Array<Record<string, unknown>> = [];
   const updates: Array<Record<string, unknown>> = [];
@@ -219,7 +220,7 @@ async function processSnapshot(
       }
     }
   }
-  return { collected: relevant.length, added, baseline: asBaseline };
+  return { collected: relevant.length, added, baseline: asBaseline, churn };
 }
 
 /** Сбор готовых проб. Не готова — ждёт следующего захода; старше суток — снимается. */
@@ -248,9 +249,10 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
             continue;
           }
           const verdict = datasetVerdict(rows.length, snapshot, coverage[coverageKey(snapshot)]);
-          const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline, rows, verdict.quiet);
+          const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline, rows, verdict.quiet, true);
           if (verdict.remember && snapshot.coverage) coverage[coverageKey(snapshot)] = snapshot.coverage;
           if (verdict.warning) errors.push(verdict.warning);
+          if (done.churn) errors.push(`раздел «${snapshot.direction === "bags" ? "сумки" : "куртки"}»: ${done.collected} моделей, из них слишком много новых разом — похоже на пересборку набора, сбор лёг базой`);
           result.collected = (result.collected ?? 0) + done.collected;
           result.added = (result.added ?? 0) + done.added;
           result.baseline = result.baseline || done.baseline;

@@ -32,8 +32,6 @@ export interface CollectionTarget {
   recordsLimit?: number;
   /** Запускать только в этот день недели (UTC, 0 — вс): наборы обновляются нечасто. */
   weekdayUtc?: number;
-  /** Раздел задан фильтром набора — названия на разных языках, словарём не проверяем. */
-  trustDirection?: boolean;
 }
 
 /**
@@ -43,8 +41,10 @@ export interface CollectionTarget {
  * пуховики, BOLSO — сумки. CHAQUETA не берём: там кардиганы. Одна витрина
  * (США, английский): товар в наборе повторяется по странам, и раздел всех
  * витрин в выборку целиком не влезает. Записи — модель в цвете; набор хранит
- * и распроданное (`availability: false`): куртки одной витрины не влезли и в
- * 600 записей (03.10), поэтому в куртках только то, что в продаже.
+ * и распроданное (`availability: false`): куртки одной витрины не влезли в 600
+ * записей (03.10) ни с распроданным, ни без — поэтому в куртках только то, что
+ * в продаже, и потолок 1 000. Семейство в наборе бывает чужим (ремень и брюки
+ * с BOLSO) — раздел проверяем по английскому названию, как у ASOS.
  */
 const ZARA_US = { name: "url", operator: "includes", value: "/us/en/" };
 const ZARA_IN_STOCK = { name: "availability", operator: "=", value: true };
@@ -91,15 +91,15 @@ export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
   },
   {
     sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
-    kind: "dataset", filter: zaraFilter(["CAZADORA", "ABRIGO", "GABARDINA", "PLUMIFERO", "PARKA"], [ZARA_IN_STOCK]), recordsLimit: 600, weekdayUtc: 3, trustDirection: true,
+    kind: "dataset", filter: zaraFilter(["CAZADORA", "ABRIGO", "GABARDINA", "PLUMIFERO", "PARKA"], [ZARA_IN_STOCK]), recordsLimit: 1000, weekdayUtc: 3,
   },
   {
     sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "bags", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
-    kind: "dataset", filter: zaraFilter(["BOLSO", "BOLSOS"]), recordsLimit: 300, weekdayUtc: 3, trustDirection: true,
+    kind: "dataset", filter: zaraFilter(["BOLSO", "BOLSOS"]), recordsLimit: 300, weekdayUtc: 3,
   },
   {
     sourceId: "S003", datasetId: "gd_mosh3s7wdb7jafn85", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_uniqlo",
-    kind: "dataset", recordsLimit: 400, weekdayUtc: 3, trustDirection: true,
+    kind: "dataset", recordsLimit: 400, weekdayUtc: 3,
     filter: uniqloFilter("WOMEN > Outerwear", [
       { name: "product_category", operator: "not_includes", value: "Blazers" },
       { name: "item_id", operator: "includes", value: "-003" },
@@ -107,7 +107,7 @@ export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
   },
   {
     sourceId: "S003", datasetId: "gd_mosh3s7wdb7jafn85", direction: "bags", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_uniqlo",
-    kind: "dataset", recordsLimit: 300, weekdayUtc: 3, trustDirection: true,
+    kind: "dataset", recordsLimit: 300, weekdayUtc: 3,
     filter: uniqloFilter("WOMEN > Accessories > Bags"),
   },
   {
@@ -127,7 +127,6 @@ export interface PendingSnapshot {
   method: string;
   triggeredAt: string;
   kind?: "collect" | "dataset";
-  trustDirection?: boolean;
   /** Для выборки набора: потолок и отпечаток фильтра — проверить полноту и смену охвата. */
   recordsLimit?: number;
   coverage?: string;
@@ -191,6 +190,17 @@ export function datasetVerdict(rows: number, snapshot: Pick<PendingSnapshot, "re
   }
   const changed = snapshot.coverage !== undefined && stored !== snapshot.coverage;
   return { quiet: changed, remember: snapshot.coverage !== undefined, warning: null };
+}
+
+/**
+ * Пересборка набора, а не новинки. Bright Data пересобирает записи, и старая
+ * вещь может заново попасть под фильтр (03.10 через час после базы Zara
+ * «появились» давние брюки и ремень). Разом больше четверти раздела и больше
+ * десяти моделей — такому сбору не верим: ложится базой, в «Источниках»
+ * предупреждение.
+ */
+export function looksLikeChurn(fresh: number, collected: number): boolean {
+  return fresh > 10 && fresh > collected * 0.25;
 }
 
 /** Проба висит дольше суток — её уже не ждём. */

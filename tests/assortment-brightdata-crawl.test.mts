@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripMoney } from "../lib/assortment/brightdata.ts";
-import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, mapRecord, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
+import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
 
@@ -60,15 +60,15 @@ test("Цели сбора: Zara и Uniqlo (наборы), ASOS и H&M паспо
   const collect = BRIGHTDATA_TARGETS.filter((t) => t.kind !== "dataset").reduce((s, t) => s + t.limitPerInput * t.inputs.length, 0);
   const dataset = BRIGHTDATA_TARGETS.filter((t) => t.kind === "dataset").reduce((s, t) => s + (t.recordsLimit ?? 0), 0);
   assert.ok(collect <= 200, `сборщики: ${collect} записей за прогон`);
-  // Потолок, а не расход: платим за пришедшие записи; 1 600 — это не больше $4 в неделю.
-  assert.ok(dataset <= 1600, `наборы: потолок ${dataset} записей в неделю`);
+  // Потолок, а не расход: платим за пришедшие записи; 2 000 — это не больше $5 в неделю.
+  assert.ok(dataset <= 2000, `наборы: потолок ${dataset} записей в неделю`);
   assert.ok(BRIGHTDATA_TARGETS.every((t) => t.kind !== "dataset" || ((t.recordsLimit ?? 0) > 0 && (t.recordsLimit ?? 0) <= 1000)), "выборка набора — до 1 000 записей");
   assert.doesNotMatch(JSON.stringify(BRIGHTDATA_TARGETS), /ozon/i);
 });
 
 test("Zara — готовый набор раз в неделю: женское, без кардиганов, одна витрина", () => {
   const zara = BRIGHTDATA_TARGETS.filter((t) => t.sourceId === "S001");
-  assert.ok(zara.every((t) => t.kind === "dataset" && t.weekdayUtc === 3 && t.trustDirection));
+  assert.ok(zara.every((t) => t.kind === "dataset" && t.weekdayUtc === 3));
   const text = JSON.stringify(zara.map((t) => t.filter));
   assert.match(text, /"WOMAN"/);
   assert.match(text, /CAZADORA/);
@@ -129,7 +129,7 @@ test("Повтор товара в выборке (Zara по странам) —
 test("Uniqlo — готовый набор по средам: женская верхняя одежда без блейзеров, размер S; сумки", () => {
   const uniqlo = BRIGHTDATA_TARGETS.filter((t) => t.sourceId === "S003");
   assert.deepEqual(uniqlo.map((t) => t.direction).sort(), ["bags", "jackets"]);
-  assert.ok(uniqlo.every((t) => t.kind === "dataset" && t.weekdayUtc === 3 && t.trustDirection && t.datasetId === "gd_mosh3s7wdb7jafn85"));
+  assert.ok(uniqlo.every((t) => t.kind === "dataset" && t.weekdayUtc === 3 && t.datasetId === "gd_mosh3s7wdb7jafn85"));
   const jackets = JSON.stringify(uniqlo.find((t) => t.direction === "jackets")!.filter);
   assert.match(jackets, /WOMEN > Outerwear/);
   assert.match(jackets, /"not_includes","value":"Blazers"/);
@@ -173,4 +173,20 @@ test("Охват разделов хранится в capabilities рядом с
   assert.deepEqual(readCoverage(caps), { [key]: "abc" });
   assert.deepEqual(readPending(caps), []);
   assert.deepEqual(readCoverage({ brightdata_coverage: { [key]: 5 } }), {});
+});
+
+test("Чужое семейство в наборе Zara (ремень, брюки под BOLSO) в сумки не идёт", () => {
+  const zara = (name: string, family: string) => asCatalogItem(mapRecord({ product_id: 1, product_name: name, url: "https://www.zara.com/us/en/x-p01.html", product_family: family })!);
+  assert.equal(classifyItem(zara("LEATHER DRESS BELT", "BOLSO"), ["bags"]), null);
+  assert.equal(classifyItem(zara("PANTS WITH A HIGH WAIST", "BOLSO"), ["bags"]), null);
+  assert.equal(classifyItem(zara("LEATHER CROSSBODY BAG", "BOLSO"), ["bags"]), "bags");
+  assert.equal(classifyItem(zara("WOOL BLEND COAT WITH FAUX FUR COLLAR", "ABRIGO"), ["jackets"]), "jackets");
+  assert.equal(classifyItem(zara("FAUX LEATHER BOMBER JACKET", "CAZADORA"), ["jackets"]), "jackets");
+});
+
+test("Пересборка набора: много «новых» разом — не новинки", () => {
+  assert.equal(looksLikeChurn(4, 120), false, "4 из 120 — обычная неделя");
+  assert.equal(looksLikeChurn(10, 20), false, "до десяти моделей верим");
+  assert.equal(looksLikeChurn(40, 120), true);
+  assert.equal(looksLikeChurn(12, 30), true);
 });
