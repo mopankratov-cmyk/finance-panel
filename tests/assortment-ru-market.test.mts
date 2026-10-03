@@ -38,6 +38,7 @@ test("Похожее на WB — той же формы и самое близк
   assert.equal(closestRuMatch(candidates, []), null, "без формы — без сигнала");
   assert.equal(closestRuMatch(candidates, shapeStems("bags", { silhouette: "клатч" })), null, "клатча нет — честно ничего");
   assert.deepEqual(shapeStems("jackets", { subtype: "Бомбер" }), ["бомбер"]);
+  assert.deepEqual(shapeStems("jackets", { subtype: "жакет" }), ["жакет", "пиджак", "блейзер"]);
   assert.deepEqual(shapeStems("bags", { silhouette: "не видно" }), []);
   assert.ok(matchesShape(["тоут", "шоппер", "шопер"], "Сумка-шопер замшевая"));
 });

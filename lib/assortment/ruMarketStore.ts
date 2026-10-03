@@ -222,7 +222,8 @@ export async function learnFromRuMarket(db: SupabaseClient, deadline: number): P
       await db.from("assortment_observations").delete().eq("reference_id", ref.id).eq("metric", "ru_similar_sales");
       continue;
     }
-    const { data: similar } = await db.rpc("assortment_similar_models", { p_reference_id: ref.id, p_limit: 30 });
+    // Ближайших берём с запасом: среди них много зарубежных, а нужна та же форма на WB.
+    const { data: similar } = await db.rpc("assortment_similar_models", { p_reference_id: ref.id, p_limit: 50 });
     const ru = ((similar ?? []) as Array<{ reference_id: string; distance: number }>)
       .filter((s) => s.distance <= MAX_DISTANCE)
       .map((s) => ({ s, r: all.get(String(s.reference_id)) }))
