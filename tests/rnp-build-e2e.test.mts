@@ -19,9 +19,10 @@ while (new Date(Date.now() + MSK).toISOString().slice(11, 19) > "23:59:40") {
 }
 process.env.NEXT_PUBLIC_SUPABASE_URL = "http://fake-supabase.test";
 process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-key";
-// Раннер CI — Node 20, глобального WebSocket там нет, а supabase-js ищет его уже
-// в createClient (realtime-js берёт транспорт в конструкторе) и падает. Стенду
-// realtime не нужен: заглушка лишь даёт создать клиент, а открыть сокет не даёт.
+// На Node < 22 глобального WebSocket нет (так было на раннере CI до 03.10.2026),
+// а supabase-js ищет его уже в createClient (realtime-js берёт транспорт в
+// конструкторе) и падает. Стенду realtime не нужен: заглушка лишь даёт создать
+// клиент, а открыть сокет не даёт.
 globalThis.WebSocket ??= class {
   constructor() { throw new Error("стенд РНП не открывает realtime-сокеты"); }
 } as unknown as typeof WebSocket;

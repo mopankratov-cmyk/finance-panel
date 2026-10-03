@@ -120,7 +120,7 @@ auto-merge включается API-вызовом из гейта — `merge_wh
 - [ ] Эндпоинт `GET /api/v1/repos/{o}/{r}/pulls/{n}/files` отдаёт `status`+`filename` (есть в свежих Gitea).
 - [ ] `POST /pulls/{n}/merge` принимает `merge_when_checks_succeed` (иначе: сделать чек обязательным
       и мёржить без флага, либо обновить Gitea).
-- [ ] Раннер `gate:host` видит `node -v` ≥18, `jq`, `curl`, `git`.
+- [ ] Раннер `gate:host` видит `node -v` 22.x (как на Vercel), `jq`, `curl`, `git`.
 - [ ] `secrets.GITHUB_TOKEN` имеет права на merge/comment (обычно да; иначе завести PAT-секрет).
 
 ---

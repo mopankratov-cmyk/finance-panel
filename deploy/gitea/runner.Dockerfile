@@ -5,7 +5,9 @@
 # Сборка:  docker build -t finance-gitea-runner -f runner.Dockerfile .
 # Регистрация выполняется энтрипоинтом по env (см. ниже / docker-compose.yml / README).
 
-FROM node:20-bookworm-slim
+# Node — та же мажорная, что на Vercel и локально (22): на node:20 supabase-js
+# падал без глобального WebSocket, а undici 8.11 требует ≥22.19 (03.10.2026).
+FROM node:22-bookworm-slim
 
 ARG ACT_RUNNER_VERSION=0.2.11
 ARG TARGETARCH=amd64
