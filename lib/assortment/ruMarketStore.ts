@@ -89,7 +89,27 @@ async function storeItem(db: SupabaseClient, sourceId: string, direction: Assort
   return outcome;
 }
 
-async function storeAll(db: SupabaseClient, sourceId: string, picks: Array<{ direction: AssortmentDirection; item: MarketItem }>, method: string, deadline: number, budget: { added: number }): Promise<RuMarketResult> {
+/**
+ * Без продаж за месяц — не ориентир рынка: живая проверка 03.10 показала, что
+ * «LIME» в MPSTATS — мелкий продавец с нулевыми продажами.
+ */
+export function sellingOnly<T extends { item: MarketItem }>(picks: T[]): T[] {
+  return picks.filter((p) => typeof p.item.sales === "number" && p.item.sales > 0);
+}
+
+/** Позиции рынка, у которых последний замер — ноль продаж, прячем из вкладки. */
+async function archiveNotSelling(db: SupabaseClient) {
+  const { data: refs } = await db.from("assortment_references").select("id").in("source_id", RU_SOURCE_IDS).neq("status", "archived");
+  const ids = (refs ?? []).map((r) => String(r.id));
+  if (ids.length === 0) return 0;
+  const sales = await latestSales(db, ids);
+  const dead = ids.filter((id) => (sales.get(id) ?? 0) <= 0);
+  if (dead.length) await db.from("assortment_references").update({ status: "archived", updated_at: new Date().toISOString() }).in("id", dead);
+  return dead.length;
+}
+
+async function storeAll(db: SupabaseClient, sourceId: string, allPicks: Array<{ direction: AssortmentDirection; item: MarketItem }>, method: string, deadline: number, budget: { added: number }): Promise<RuMarketResult> {
+  const picks = sellingOnly(allPicks);
   const result: RuMarketResult = { sourceId, items: picks.length, added: 0, updated: 0 };
   for (const { direction, item } of picks) {
     if (Date.now() > deadline) break;
@@ -146,10 +166,11 @@ export async function collectRuMarket(db: SupabaseClient, deadline: number): Pro
     }
     const picks: Array<{ direction: AssortmentDirection; item: MarketItem }> = [];
     for (const direction of ["bags", "jackets"] as const) {
-      const own = items.filter((item) => ruDirection(item.subject, item.name) === direction).slice(0, RU_LIME_PER_DIRECTION);
+      const own = items.filter((item) => ruDirection(item.subject, item.name) === direction && (item.sales ?? 0) > 0).slice(0, RU_LIME_PER_DIRECTION);
       picks.push(...own.map((item) => ({ direction, item })));
     }
     if (items.length === 0) throw new Error("бренд Lime в MPSTATS не найден");
+    if (picks.length === 0) throw new Error("у Lime на WB нет продаж сумок и верхней одежды за 30 дней — похоже, официального магазина Lime на WB нет");
     results.push(await storeAll(db, RU_SOURCES.lime.source_id, picks, "mpstats_brand", deadline, budget));
     await mark(db, RU_SOURCES.lime.source_id, true, null);
   } catch (error) {
@@ -157,6 +178,7 @@ export async function collectRuMarket(db: SupabaseClient, deadline: number): Pro
     await mark(db, RU_SOURCES.lime.source_id, false, `MPSTATS: ${message}`);
     results.push({ sourceId: RU_SOURCES.lime.source_id, items: 0, added: 0, updated: 0, error: message });
   }
+  await archiveNotSelling(db);
   return results;
 }
 

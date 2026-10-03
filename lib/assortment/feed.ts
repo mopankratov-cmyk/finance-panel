@@ -105,5 +105,12 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
     };
   });
   const filtered = view === "retail" ? cards.filter((c) => c.signal.tone === "retail") : cards;
+  if (view === "ru") {
+    // Рынок РФ — по продажам, а не по дате: первым то, что больше продаётся.
+    const sales = (id: string) => (byRef.get(id) ?? [])
+      .filter((o) => o.metric === "wb_sales_30d" && o.value_num != null)
+      .sort((a, b) => b.observed_at.localeCompare(a.observed_at))[0]?.value_num ?? 0;
+    filtered.sort((a, b) => sales(b.id) - sales(a.id));
+  }
   return filtered.slice(0, limit);
 }

@@ -69,3 +69,10 @@ test("Без цен: клиент MPSTATS не отдаёт цены и выру
   const vercel = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
   assert.deepEqual(vercel.crons.filter((c) => c.path === "/api/sync/assortment-ru-market"), [{ path: "/api/sync/assortment-ru-market", schedule: "0 4 * * 1" }]);
 });
+
+test("Без продаж — не ориентир: нулевые позиции не берём; вкладка — по продажам", () => {
+  const store = readFileSync(join(root, "lib/assortment/ruMarketStore.ts"), "utf8");
+  assert.match(store, /export function sellingOnly/);
+  assert.match(store, /archiveNotSelling/);
+  assert.match(readFileSync(join(root, "lib/assortment/feed.ts"), "utf8"), /view === "ru"\) \{[\s\S]*wb_sales_30d/);
+});
