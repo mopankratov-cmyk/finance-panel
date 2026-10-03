@@ -3,7 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { sessionRoles } from "@/lib/auth/session";
 import { audit } from "@/lib/audit/log";
-import { BrightDataError, hasBrightData, listDatasets, snapshotProgress, snapshotRecords, triggerCollection } from "@/lib/assortment/brightdata";
+import { BrightDataError, datasetMetadata, datasetSnapshotRecords, filterDataset, hasBrightData, listDatasets, snapshotProgress, snapshotRecords, triggerCollection } from "@/lib/assortment/brightdata";
 import { ASSORTMENT_ROLES } from "@/lib/assortment/constants";
 
 export const dynamic = "force-dynamic";
@@ -15,7 +15,9 @@ export const maxDuration = 60;
  * проба стоит денег. Ответы — без цен (вырезаются в lib/assortment/brightdata).
  *
  * GET ?action=catalog | ?action=status&snapshot=s_… | ?action=records&snapshot=s_…
+ *     ?action=dataset_meta&dataset=gd_… | ?action=dataset_records&snapshot=s_…
  * POST { datasetId, inputs: [{url|keyword…}], discoverBy?, limitPerInput }
+ *      { action: "filter", datasetId, filter, recordsLimit } — выборка готового набора
  */
 async function directorOnly() {
   const gate = await requireApiSession(ASSORTMENT_ROLES);
@@ -41,6 +43,8 @@ export async function GET(request: NextRequest) {
   try {
     if (action === "status") return NextResponse.json(await snapshotProgress(snapshot));
     if (action === "records") return NextResponse.json(await snapshotRecords(snapshot, 20));
+    if (action === "dataset_meta") return NextResponse.json(await datasetMetadata(request.nextUrl.searchParams.get("dataset") ?? ""));
+    if (action === "dataset_records") return NextResponse.json((await datasetSnapshotRecords(snapshot, 20)) ?? { pending: true });
     return NextResponse.json({ datasets: await listDatasets() });
   } catch (e) {
     return failure(e);
@@ -51,6 +55,15 @@ export async function POST(request: NextRequest) {
   const { error, session } = await directorOnly();
   if (error) return error;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (body?.action === "filter") {
+    try {
+      const snapshotId = await filterDataset(String(body.datasetId ?? ""), body.filter, Number(body.recordsLimit) || 10);
+      await audit(request, session, { action: "assortment.update", subject: "brightdata:dataset-filter", after: { datasetId: body.datasetId, recordsLimit: body.recordsLimit, snapshotId } });
+      return NextResponse.json({ snapshotId });
+    } catch (e) {
+      return failure(e);
+    }
+  }
   const inputs = Array.isArray(body?.inputs) ? (body.inputs as unknown[]).filter((i): i is Record<string, string> => Boolean(i) && typeof i === "object") : [];
   if (inputs.length === 0) return NextResponse.json({ error: "Нужен хотя бы один вход (url или ключевое слово)" }, { status: 400 });
   try {
