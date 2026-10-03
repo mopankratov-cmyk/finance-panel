@@ -25,7 +25,7 @@
 
 import type { MappedRecord } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
-import { parseBefree, parseLoveRepublic, parsePompa, parseSela, parseZarina } from "./ruShopParsers";
+import { parseAskent, parseBefree, parseLoveRepublic, parsePompa, parseSela, parseZarina } from "./ruShopParsers";
 
 export interface RuShopSection {
   direction: AssortmentDirection;
@@ -33,7 +33,7 @@ export interface RuShopSection {
   slug: string;
 }
 
-export type RuShopParser = "lime" | "befree" | "love_republic" | "zarina" | "sela" | "pompa";
+export type RuShopParser = "lime" | "befree" | "love_republic" | "zarina" | "sela" | "pompa" | "askent";
 
 export interface RuShop {
   sourceId: string;
@@ -177,6 +177,22 @@ export const RU_SHOPS: RuShop[] = [
     method: "crawl_pompa",
     accessNote: "Обход каталога pompa.ru по воскресеньям (сумки, верхняя одежда); robots.txt разрешает каталог и ?PAGEN_1=; сайт медленный; цены не читаем",
   },
+  {
+    // robots.txt Askent закрывает /catalog, но магазин живёт в /cat/ — он открыт, как и ?PAGEN_3=.
+    sourceId: "S136",
+    name: "Askent",
+    brand: "ASKENT",
+    catalogBase: "https://askent.ru/cat/",
+    pageParam: "PAGEN_3",
+    parser: "askent",
+    via: "mini",
+    cardHref: "/cat/sumki/[a-z0-9_]+/",
+    sections: [{ direction: "bags", slug: "sumki/" }],
+    weekdaysUtc: [1, 4],
+    maxPages: 15,
+    method: "crawl_askent",
+    accessNote: "Обход каталога сумок askent.ru пн и чт (загрузчик на mini); robots.txt разрешает /cat/ и ?PAGEN_3=; цены не читаем",
+  },
 ];
 
 export function ruShopPageUrl(shop: Pick<RuShop, "catalogBase" | "pageParam">, slug: string, page: number): string {
@@ -192,6 +208,7 @@ export function parseShopCatalog(shop: Pick<RuShop, "parser">, html: string): Ma
     case "zarina": return parseZarina(html);
     case "sela": return parseSela(html);
     case "pompa": return parsePompa(html);
+    case "askent": return parseAskent(html);
   }
 }
 

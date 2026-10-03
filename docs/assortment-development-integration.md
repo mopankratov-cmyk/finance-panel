@@ -373,6 +373,11 @@ ffmpeg — это правка `package.json` и установка на mini, �
   не дошли до конца — новинкам не верим. Модель — артикул без цвета (befree
   `BF…`, Love Republic — `itemprop="sku"` до дефиса, ZARINA `ZR…`, Sela `SL…`,
   Pompa — число в начале артикула).
+- Askent (S136, только сумки): robots.txt закрывает `/catalog`, но магазин в
+  `/cat/` — открыт, как и `?PAGEN_3=`; данные карточки в `data-yandex`, модель —
+  артикул до материала и цвета (`S.171`). Через загрузчик на mini, пн и чт.
+  Ushatava не подключена: в HTML 4 сумки из раздела, остальное — «показать ещё»,
+  карты сайта нет.
 - Закрыты проверкой на бота — не трогаем: 12 STOREEZ, Gloria Jeans (ServicePipe),
   Ekonika (Qrator), Finn Flare, Mascotte (Яндекс SmartCaptcha). BAON — пустая
   оболочка без товаров в HTML.

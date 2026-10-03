@@ -114,6 +114,7 @@ test("Каталоги российских брендов: модель без 
     ["S133", "zarina.html", /^ZR\d+$/, /^https:\/\/zarina\.ru\/catalog\/product\//],
     ["S134", "sela.html", /^SL\d+$/, /^https:\/\/www\.sela\.ru\/eshop\//],
     ["S135", "pompa.html", /^\d{5,}$/, /^https:\/\/www\.pompa\.ru\/catalog\/product\/\d+\/$/],
+    ["S136", "askent.html", /^S\.\d+$/, /^https:\/\/askent\.ru\/cat\/sumki\/sumka_\d+\/$/],
   ];
   for (const [id, file, model, url] of cases) {
     const html = fixture(file);
@@ -134,7 +135,7 @@ test("Каталоги российских брендов: модель без 
 
 test("Российские магазины: свои дни, разрешённая постраничная выдача, закрытые не трогаем", () => {
   const ids = RU_SHOPS.map((s) => s.sourceId);
-  assert.deepEqual(ids, ["S130", "S131", "S132", "S133", "S134", "S135"]);
+  assert.deepEqual(ids, ["S130", "S131", "S132", "S133", "S134", "S135", "S136"]);
   assert.equal(ruShopPageUrl(shop("S135"), "outerwear/", 2), "https://www.pompa.ru/catalog/outerwear/?PAGEN_1=2");
   assert.equal(ruShopPageUrl(shop("S133"), "clothes/outwear/kurtki/", 3), "https://zarina.ru/catalog/clothes/outwear/kurtki/?page=3");
   const text = JSON.stringify(RU_SHOPS);
@@ -143,25 +144,25 @@ test("Российские магазины: свои дни, разрешённ
     assert.ok(s.sections.some((x) => x.direction === "bags") || s.sections.some((x) => x.direction === "jackets"));
     assert.ok(s.weekdaysUtc.length > 0 && s.maxPages <= 40);
   }
-  // В день — не больше двух магазинов: у крона на сайты брендов 150 с.
+  // В день — не больше двух магазинов на Vercel: у крона на сайты брендов 150 с (mini — отдельно).
   for (let day = 0; day < 7; day += 1) {
-    const shops = RU_SHOPS.filter((s) => s.weekdaysUtc.includes(day));
+    const shops = RU_SHOPS.filter((s) => s.via !== "mini" && s.weekdaysUtc.includes(day));
     assert.ok(shops.length <= 2, `день ${day}: ${shops.map((s) => s.name).join(", ")}`);
     if (shops.some((s) => s.sourceId === "S130" || s.sourceId === "S135")) assert.equal(shops.length, 1, "Lime и Pompa — по одному в день");
   }
 });
 
 test("Сайты, не пускающие облако, приносит загрузчик на mini; план — по дням магазина", () => {
-  assert.deepEqual(RU_SHOPS.filter((s) => s.via === "mini").map((s) => s.sourceId), ["S131", "S132", "S133", "S134"]);
+  assert.deepEqual(RU_SHOPS.filter((s) => s.via === "mini").map((s) => s.sourceId), ["S131", "S132", "S133", "S134", "S136"]);
   const tuesday = miniShopsPlan(new Date("2026-10-06T03:00:00Z"));
   assert.deepEqual(tuesday.map((s) => s.sourceId), ["S131", "S132"]);
   assert.equal(tuesday[0].sections[0].urls[1], "https://befree.ru/zhenskaya/zen-riukzaki-i-sumki?page=2");
   assert.equal(tuesday[0].sections[0].urls.length, shop("S131").maxPages);
-  assert.deepEqual(miniShopsPlan(new Date("2026-10-05T03:00:00Z")), [], "понедельник — день Lime, он на Vercel");
-  assert.equal(miniShopsPlan(new Date("2026-10-05T03:00:00Z"), { all: true }).length, 4);
+  assert.deepEqual(miniShopsPlan(new Date("2026-10-05T03:00:00Z")).map((s) => s.sourceId), ["S136"], "понедельник: Lime на Vercel, Askent — с mini");
+  assert.equal(miniShopsPlan(new Date("2026-10-05T03:00:00Z"), { all: true }).length, 5);
   assert.deepEqual(miniShopsPlan(new Date("2026-10-05T03:00:00Z"), { only: "S134" }).map((s) => s.sourceId), ["S134"]);
   for (const plan of miniShopsPlan(new Date(), { all: true })) {
-    const html = fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html" }[plan.sourceId]!);
+    const html = fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html", S136: "askent.html" }[plan.sourceId]!);
     assert.ok((html.match(new RegExp(plan.cardHref, "g")) ?? []).length >= 2, `${plan.name}: адрес карточки находится`);
   }
   const store = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");

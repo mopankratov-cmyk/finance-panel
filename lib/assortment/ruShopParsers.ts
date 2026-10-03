@@ -134,3 +134,34 @@ export function parsePompa(html: string, origin = "https://www.pompa.ru"): Mappe
   }
   return out;
 }
+
+/**
+ * Askent (сумки): `<a href="/cat/sumki/sumka_1146/" data-yandex='{"id":
+ * "S.171.bs.SAL/DIA-GR","name":…}' class="productItem">`, фото — `data-src`
+ * первой картинки (ленивая загрузка). Модель — артикул до материала и цвета
+ * («S.171»); нет данных карточки — номер из адреса. Цену из data-yandex не
+ * берём.
+ */
+export function parseAskent(html: string, origin = "https://askent.ru"): MappedRecord[] {
+  const out: MappedRecord[] = [];
+  for (const match of html.matchAll(/<a href="(\/cat\/[a-z0-9_/-]+\/)"([^>]*)class="productItem"[^>]*>([\s\S]*?)<\/a>/g)) {
+    const [, path, attrs, inner] = match;
+    let data: { id?: unknown; name?: unknown } = {};
+    const raw = attrs.match(/data-yandex='([^']+)'/)?.[1];
+    if (raw) {
+      try {
+        data = JSON.parse(raw.replace(/&quot;/g, "\"").replace(/&amp;/g, "&"));
+      } catch {
+        data = {};
+      }
+    }
+    const img = inner.match(/<img[^>]*data-src="(\/upload\/[^"]+)"[^>]*alt="([^"]*)"/) ?? inner.match(/<img[^>]*alt="([^"]*)"[^>]*data-src="(\/upload\/[^"]+)"/);
+    const [src, alt] = img ? (img[1].startsWith("/upload/") ? [img[1], img[2]] : [img[2], img[1]]) : [null, null];
+    const article = typeof data.id === "string" ? data.id.split(".").slice(0, 2).join(".") : null;
+    const id = article || path.match(/_(\d+)\/$/)?.[1];
+    const title = decodeHtml(typeof data.name === "string" ? data.name : (alt ?? "").replace(/\.\s*Вид\s*\d+$/i, ""));
+    if (!id || !title) continue;
+    out.push(record(id, `${origin}${path}`, title, "ASKENT", src ? [`${origin}${src}`] : []));
+  }
+  return out;
+}
