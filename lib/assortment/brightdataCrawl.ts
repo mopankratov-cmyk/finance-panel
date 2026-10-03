@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BrightDataError, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
+import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
 import { asCatalogItem, BRIGHTDATA_TARGETS, mapRecord, PENDING_TTL_MS, readPending, writePending, type MappedRecord, type PendingSnapshot } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
 import { classifyItem, crawlPlan } from "./crawl";
@@ -44,12 +44,18 @@ export async function triggerBrightData(db: SupabaseClient): Promise<BrightDataR
     try {
       const source = await readSource(db, sourceId);
       const pending = readPending(source.capabilities).filter((p) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS);
+      let started = 0;
       for (const target of targets) {
-        const snapshotId = await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
-        pending.push({ snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now });
+        if (target.weekdayUtc !== undefined && new Date().getUTCDay() !== target.weekdayUtc) continue;
+        const snapshotId = target.kind === "dataset"
+          ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
+          : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
+        pending.push({ snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind, trustDirection: target.trustDirection });
+        started += 1;
       }
+      if (started === 0) continue;
       await mark(db, sourceId, { capabilities: writePending(source.capabilities, pending), last_attempt_at: now, last_error: null });
-      results.push({ sourceId, phase: "trigger", ok: true, triggered: targets.length, pending: pending.length });
+      results.push({ sourceId, phase: "trigger", ok: true, triggered: started, pending: pending.length });
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 200) : "ошибка запуска";
       await mark(db, sourceId, { last_attempt_at: now, last_error: `Bright Data: ${message}` }).catch(() => undefined);
@@ -57,6 +63,27 @@ export async function triggerBrightData(db: SupabaseClient): Promise<BrightDataR
     }
   }
   return results;
+}
+
+/** Выборка готового набора: null — ещё собирается (Bright Data отвечает 202 или 400 «not ready»). */
+async function downloadDatasetRecords(snapshotId: string): Promise<unknown[] | null> {
+  const token = process.env.BRIGHTDATA_API_TOKEN;
+  if (!token) throw new BrightDataError("Ключ Bright Data не задан");
+  const response = await fetch(`${API}/datasets/snapshots/${snapshotId}/download?format=json`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(60_000),
+    cache: "no-store",
+  });
+  if (response.status === 202) return null;
+  const text = await response.text();
+  if (response.status === 400 && /not ready/i.test(text)) return null;
+  if (!response.ok) throw new BrightDataError(`выборка ${snapshotId}: HTTP ${response.status}`, response.status);
+  try {
+    const data = JSON.parse(text);
+    return Array.isArray(data) ? data.map(stripMoney) : [];
+  } catch {
+    return [];
+  }
 }
 
 async function downloadRecords(snapshotId: string): Promise<unknown[]> {
@@ -145,9 +172,12 @@ async function processSnapshot(
   source: { sourceId: string; name: string },
   snapshot: PendingSnapshot,
   deadline: number,
+  preloaded?: unknown[],
 ): Promise<{ collected: number; added: number; baseline: boolean }> {
-  const records = (await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
-  const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [snapshot.direction]) === snapshot.direction);
+  const records = (preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
+  const relevant = snapshot.trustDirection
+    ? records
+    : records.filter((r) => classifyItem(asCatalogItem(r), [snapshot.direction]) === snapshot.direction);
   const known = await knownIds(db, source.sourceId, snapshot.direction);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
   const fresh = new Set(plan.fresh.map((i) => i.sourceItemId));
@@ -194,6 +224,20 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
       for (const snapshot of readPending(source.capabilities)) {
         if (Date.now() > deadline) {
           left.push(snapshot);
+          continue;
+        }
+        if (snapshot.kind === "dataset") {
+          const rows = await downloadDatasetRecords(snapshot.snapshotId).catch((e) => { errors.push(String(e?.message ?? e).slice(0, 160)); return undefined; });
+          if (rows === undefined) continue;
+          if (rows === null) {
+            if (Date.now() - Date.parse(snapshot.triggeredAt) < PENDING_TTL_MS) left.push(snapshot);
+            else errors.push(`выборка ${snapshot.snapshotId} не готова за сутки`);
+            continue;
+          }
+          const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline, rows);
+          result.collected = (result.collected ?? 0) + done.collected;
+          result.added = (result.added ?? 0) + done.added;
+          result.baseline = result.baseline || done.baseline;
           continue;
         }
         const progress = await snapshotProgress(snapshot.snapshotId).catch((e) => ({ status: "error", error: String(e?.message ?? e) }));

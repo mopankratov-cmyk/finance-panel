@@ -54,12 +54,34 @@ test("Запущенные пробы хранятся в capabilities, оста
   assert.deepEqual(readPending(null), []);
 });
 
-test("Цели сбора: только ASOS и H&M паспорта, разумные лимиты, без Ozon", () => {
+test("Цели сбора: Zara (набор), ASOS и H&M паспорта, разумные лимиты, без Ozon", () => {
   const sources = new Set(BRIGHTDATA_TARGETS.map((t) => t.sourceId));
-  assert.deepEqual([...sources].sort(), ["S007", "S046"]);
-  const perRun = BRIGHTDATA_TARGETS.reduce((s, t) => s + t.limitPerInput * t.inputs.length, 0);
-  assert.ok(perRun <= 200, `за прогон ${perRun} записей`);
+  assert.deepEqual([...sources].sort(), ["S001", "S007", "S046"]);
+  const collect = BRIGHTDATA_TARGETS.filter((t) => t.kind !== "dataset").reduce((s, t) => s + t.limitPerInput * t.inputs.length, 0);
+  const dataset = BRIGHTDATA_TARGETS.filter((t) => t.kind === "dataset").reduce((s, t) => s + (t.recordsLimit ?? 0), 0);
+  assert.ok(collect <= 200, `сборщики: ${collect} записей за прогон`);
+  assert.ok(dataset <= 200, `наборы: ${dataset} записей в неделю`);
   assert.doesNotMatch(JSON.stringify(BRIGHTDATA_TARGETS), /ozon/i);
+});
+
+test("Zara — готовый набор раз в неделю: женское, без кардиганов, английская витрина", () => {
+  const zara = BRIGHTDATA_TARGETS.filter((t) => t.sourceId === "S001");
+  assert.ok(zara.every((t) => t.kind === "dataset" && t.weekdayUtc === 3 && t.trustDirection));
+  const text = JSON.stringify(zara.map((t) => t.filter));
+  assert.match(text, /"WOMAN"/);
+  assert.match(text, /CAZADORA/);
+  assert.match(text, /BOLSO/);
+  assert.doesNotMatch(text, /CHAQUETA/, "в CHAQUETA у Zara кардиганы");
+  assert.match(text, /"\/en\/"/);
+});
+
+test("Запись набора Zara: product_name, product_family, colour; цены вырезаны", () => {
+  const record = mapRecord(stripMoney({ product_id: 5070666, product_name: "BOMBER JACKET WITH TABS", url: "https://www.zara.com/us/en/bomber-jacket-with-tabs-p05070666.html", product_family: "CAZADORA", colour: "Ecru", image: ["https://static.zara.net/a.jpg"], price: 59.9 }))!;
+  assert.equal(record.title, "BOMBER JACKET WITH TABS");
+  assert.equal(record.category, "CAZADORA");
+  assert.equal(record.color, "Ecru");
+  assert.equal(record.sourceItemId, "5070666");
+  assert.doesNotMatch(JSON.stringify(record), /59\.9|price/);
 });
 
 test("Кроны: запуск ср и сб, два захода сбора; роут отвечает на GET", () => {

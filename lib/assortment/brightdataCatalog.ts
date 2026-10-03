@@ -17,7 +17,31 @@ export interface CollectionTarget {
   inputs: Array<Record<string, string>>;
   limitPerInput: number;
   method: string;
+  /**
+   * «dataset» — готовый набор Bright Data (собирают они, мы покупаем выборку
+   * по фильтру, $2.5 за 1 000 записей) вместо запуска сборщика.
+   */
+  kind?: "collect" | "dataset";
+  filter?: unknown;
+  recordsLimit?: number;
+  /** Запускать только в этот день недели (UTC, 0 — вс): наборы обновляются нечасто. */
+  weekdayUtc?: number;
+  /** Раздел задан фильтром набора — названия на разных языках, словарём не проверяем. */
+  trustDirection?: boolean;
 }
+
+/**
+ * Zara: свой сборщик Bright Data ломается на разборе карточки, а готовый набор
+ * «Zara - Products» работает (проба 03.10). Семейства — внутренние коды Zara:
+ * CAZADORA — куртки, ABRIGO — пальто, GABARDINA — тренчи, PLUMIFERO —
+ * пуховики, BOLSO — сумки. CHAQUETA не берём: там кардиганы. Английская
+ * витрина — чтобы названия были читаемыми.
+ */
+const ZARA_ENGLISH = { name: "url", operator: "includes", value: "/en/" };
+const zaraFilter = (families: string[]) => ({
+  operator: "and",
+  filters: [{ name: "section", operator: "=", value: "WOMAN" }, { name: "product_family", operator: "in", value: families }, ZARA_ENGLISH],
+});
 
 /**
  * ASOS — по запросам (раздел новинок с параметром в адресе сборщик не берёт),
@@ -43,6 +67,14 @@ export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
     inputs: [{ keyword: "mango jacket" }],
   },
   {
+    sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
+    kind: "dataset", filter: zaraFilter(["CAZADORA", "ABRIGO", "GABARDINA", "PLUMIFERO", "PARKA"]), recordsLimit: 100, weekdayUtc: 3, trustDirection: true,
+  },
+  {
+    sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "bags", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
+    kind: "dataset", filter: zaraFilter(["BOLSO", "BOLSOS"]), recordsLimit: 60, weekdayUtc: 3, trustDirection: true,
+  },
+  {
     sourceId: "S007", datasetId: "gd_lebec5ir293umvxh5g", direction: "bags", discoverBy: "category", limitPerInput: 40, method: "brightdata_hm",
     inputs: [{ category_url: "https://www2.hm.com/en_us/women/products/bags.html" }],
   },
@@ -58,6 +90,8 @@ export interface PendingSnapshot {
   direction: AssortmentDirection;
   method: string;
   triggeredAt: string;
+  kind?: "collect" | "dataset";
+  trustDirection?: boolean;
 }
 
 /** Запущенные пробы хранятся в capabilities источника — отдельной таблицы не заводим. */
@@ -144,14 +178,14 @@ export function mapRecord(raw: unknown): MappedRecord | null {
   const id = first(record, ["product_id", "product_code", "sku", "SKU", "id"]);
   const brandRaw = first(record, ["brand", "brand_name"]);
   const brand = typeof brandRaw === "string" ? brandRaw.trim() : str((brandRaw as { name?: unknown } | undefined)?.name);
-  const categoryRaw = first(record, ["category", "product_category"]);
+  const categoryRaw = first(record, ["category", "product_category", "product_family"]);
   return {
     sourceItemId: id != null ? String(id) : url.split("?")[0],
     url: url.split("?")[0],
     title,
     brand: brand || null,
     category: typeof categoryRaw === "string" ? categoryRaw : Array.isArray(categoryRaw) ? categoryRaw.map(String).join(" / ") : "",
-    color: str(first(record, ["color"])),
+    color: str(first(record, ["color", "colour"])),
     images: imageList(record),
     reviews: num(first(record, ["review_count", "reviews_count", "rating_count"])),
     rating: num(first(record, ["star_rating", "rating"])),
