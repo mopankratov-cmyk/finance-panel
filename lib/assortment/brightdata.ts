@@ -125,6 +125,35 @@ export async function filterDataset(datasetId: string, filter: unknown, recordsL
   return result.snapshot_id;
 }
 
+export interface DatasetSearchPage {
+  /** Сколько всего записей под фильтром — по нему видно, влезает ли раздел в выборку целиком. */
+  total: number;
+  hits: unknown[];
+  /** Курсор следующей страницы; приходит только при заданной сортировке. */
+  searchAfter: unknown[] | null;
+}
+
+/**
+ * Поиск по набору (синхронный, до 1 000 записей за вызов). Платим только за
+ * возвращённые записи по той же цене, пустой ответ бесплатен; `total` при
+ * size=1 — почти даровой счётчик раздела.
+ */
+export async function searchDataset(datasetId: string, filter: unknown, size: number, sort?: unknown, searchAfter?: unknown[] | null): Promise<DatasetSearchPage> {
+  if (!/^gd_[a-z0-9]+$/i.test(datasetId)) throw new BrightDataError("Неверный dataset_id.");
+  const body: Record<string, unknown> = { filter, size: Math.min(Math.max(1, size), 1000) };
+  if (sort) body.sort = sort;
+  if (searchAfter?.length) body.search_after = searchAfter;
+  const result = await call<{ hits?: unknown[]; total_hits?: unknown; search_after?: unknown }>(`/datasets/search/${datasetId}`, { method: "POST", body: JSON.stringify(body) });
+  const hits = Array.isArray(result?.hits) ? result.hits.map((hit) => stripMoney(hitSource(hit))) : [];
+  const total = typeof result?.total_hits === "number" ? result.total_hits : Number((result?.total_hits as { value?: unknown } | undefined)?.value ?? hits.length);
+  return { total: Number.isFinite(total) ? total : hits.length, hits, searchAfter: Array.isArray(result?.search_after) ? result.search_after : null };
+}
+
+/** Запись поиска — сама запись или обёртка Elasticsearch `{ _source }`. */
+function hitSource(hit: unknown): unknown {
+  return hit && typeof hit === "object" && "_source" in hit ? (hit as { _source: unknown })._source : hit;
+}
+
 /** Выборка набора: 202 — ещё собирается (вернём null). */
 export async function datasetSnapshotRecords(snapshotId: string, limit = 20): Promise<{ fields: string[]; records: unknown[] } | null> {
   if (!SNAPSHOT_ID.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");

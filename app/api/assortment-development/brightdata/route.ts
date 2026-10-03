@@ -3,7 +3,7 @@ import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { sessionRoles } from "@/lib/auth/session";
 import { audit } from "@/lib/audit/log";
-import { BrightDataError, datasetMetadata, datasetSnapshotRecords, filterDataset, hasBrightData, listDatasets, snapshotProgress, snapshotRecords, triggerCollection } from "@/lib/assortment/brightdata";
+import { BrightDataError, datasetMetadata, datasetSnapshotRecords, filterDataset, hasBrightData, listDatasets, searchDataset, snapshotProgress, snapshotRecords, triggerCollection } from "@/lib/assortment/brightdata";
 import { ASSORTMENT_ROLES } from "@/lib/assortment/constants";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +18,7 @@ export const maxDuration = 60;
  *     ?action=dataset_meta&dataset=gd_… | ?action=dataset_records&snapshot=s_…
  * POST { datasetId, inputs: [{url|keyword…}], discoverBy?, limitPerInput }
  *      { action: "filter", datasetId, filter, recordsLimit } — выборка готового набора
+ *      { action: "search", datasetId, filter, size? } — сколько записей под фильтром + до 20 штук
  */
 async function directorOnly() {
   const gate = await requireApiSession(ASSORTMENT_ROLES);
@@ -55,6 +56,16 @@ export async function POST(request: NextRequest) {
   const { error, session } = await directorOnly();
   if (error) return error;
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  if (body?.action === "search") {
+    try {
+      const size = Math.min(Math.max(1, Number(body.size) || 1), 20);
+      const page = await searchDataset(String(body.datasetId ?? ""), body.filter, size);
+      await audit(request, session, { action: "assortment.update", subject: "brightdata:dataset-search", after: { datasetId: body.datasetId, size, total: page.total } });
+      return NextResponse.json({ total: page.total, records: page.hits });
+    } catch (e) {
+      return failure(e);
+    }
+  }
   if (body?.action === "filter") {
     try {
       const snapshotId = await filterDataset(String(body.datasetId ?? ""), body.filter, Number(body.recordsLimit) || 10);
