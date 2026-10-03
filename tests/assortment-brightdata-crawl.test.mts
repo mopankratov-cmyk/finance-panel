@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripMoney } from "../lib/assortment/brightdata.ts";
-import { asCatalogItem, BRIGHTDATA_TARGETS, mapRecord, readPending, writePending } from "../lib/assortment/brightdataCatalog.ts";
+import { asCatalogItem, BRIGHTDATA_TARGETS, mapRecord, readPending, uniqueRecords, writePending } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
 
@@ -110,4 +110,14 @@ test("Фото магазинов — в высоком разрешении, а
   assert.equal(hiResImageUrl("https://cdn.shopify.com/s/files/a.png?v=1"), "https://cdn.shopify.com/s/files/a.png?v=1");
   const record = mapRecord({ url: "https://www.asos.com/x/prd/1", name: "Trench jacket", image: "https://images.asos-media.com/products/x/1-1-beige", additional_image_urls: ["https://images.asos-media.com/products/x/1-2?$n_240w$&wid=44&fit=constrain"] })!;
   assert.ok(record.images.every((u) => u.includes("wid=1200")));
+});
+
+test("Повтор товара в выборке (Zara по странам) — одна запись, с фото", () => {
+  const us = mapRecord({ product_id: 5070666, product_name: "BOMBER JACKET", url: "https://www.zara.com/us/en/bomber-jacket-p05070666.html" })!;
+  const uk = mapRecord({ product_id: 5070666, product_name: "BOMBER JACKET", url: "https://www.zara.com/uk/en/bomber-jacket-p05070666.html", image: ["https://static.zara.net/a.jpg"] })!;
+  const other = mapRecord({ product_id: 6318252, product_name: "LEATHER BOMBER", url: "https://www.zara.com/us/en/leather-bomber-p06318252.html" })!;
+  const unique = uniqueRecords([us, uk, other, uk]);
+  assert.equal(unique.length, 2);
+  assert.deepEqual(unique.map((r) => r.sourceItemId), ["5070666", "6318252"]);
+  assert.equal(unique[0].images.length, 1);
 });

@@ -192,6 +192,21 @@ export function mapRecord(raw: unknown): MappedRecord | null {
   };
 }
 
+/**
+ * Одна вещь — одна запись. В наборе Zara товар повторяется по странам витрины
+ * (us/en, uk/en…), а запись в базу одним пакетом не переносит один номер
+ * дважды — 03.10 первый сбор Zara упал именно на этом. Оставляем первую
+ * запись, но с фото, если у первой их не было.
+ */
+export function uniqueRecords(records: MappedRecord[]): MappedRecord[] {
+  const byId = new Map<string, MappedRecord>();
+  for (const record of records) {
+    const seen = byId.get(record.sourceItemId);
+    if (!seen || (seen.images.length === 0 && record.images.length > 0)) byId.set(record.sourceItemId, record);
+  }
+  return [...byId.values()];
+}
+
 export function asCatalogItem(record: MappedRecord): CatalogItem {
   return { sourceItemId: record.sourceItemId, handle: record.url, title: record.title, productType: record.category, tags: [], publishedAt: null };
 }

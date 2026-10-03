@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
-import { asCatalogItem, BRIGHTDATA_TARGETS, mapRecord, PENDING_TTL_MS, readPending, writePending, type MappedRecord, type PendingSnapshot } from "./brightdataCatalog";
+import { asCatalogItem, BRIGHTDATA_TARGETS, mapRecord, PENDING_TTL_MS, readPending, uniqueRecords, writePending, type MappedRecord, type PendingSnapshot } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
 import { classifyItem, crawlPlan } from "./crawl";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
@@ -177,7 +177,7 @@ async function processSnapshot(
   deadline: number,
   preloaded?: unknown[],
 ): Promise<{ collected: number; added: number; baseline: boolean }> {
-  const records = (preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
+  const records = uniqueRecords((preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r)));
   const relevant = snapshot.trustDirection
     ? records
     : records.filter((r) => classifyItem(asCatalogItem(r), [snapshot.direction]) === snapshot.direction);
