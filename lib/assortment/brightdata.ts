@@ -60,7 +60,7 @@ export interface DatasetInfo {
 }
 
 /** Что из каталога Bright Data относится к модулю: сайты одежды, сумок и соцсети. */
-export const RELEVANT_DATASET = /zara|mango|uniqlo|h&m|\bhm\b|cos\b|asos|farfetch|zalando|net-?a-?porter|shein|massimo|pull|bershka|instagram|tiktok|pinterest|vinted|vestiaire|lyst|nordstrom|ssense|mytheresa/i;
+export const RELEVANT_DATASET = /zara|mango|uniqlo|h&m|\bhm\b|cos\b|asos|farfetch|zalando|net-?a-?porter|shein|massimo|pull|bershka|instagram|tiktok|pinterest|vinted|vestiaire|lyst|nordstrom|ssense|mytheresa|lamoda|\blime\b|ozon|wildberries/i;
 
 export function relevantDatasets(list: unknown): DatasetInfo[] {
   if (!Array.isArray(list)) return [];
@@ -101,6 +101,53 @@ export async function snapshotProgress(snapshotId: string): Promise<{ status: st
   if (!SNAPSHOT_ID.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");
   const p = await call<Record<string, unknown>>(`/datasets/v3/progress/${snapshotId}`);
   return { status: String(p.status ?? "unknown"), records: typeof p.records === "number" ? p.records : null, errors: typeof p.errors === "number" ? p.errors : null };
+}
+
+/**
+ * Готовые наборы Bright Data (marketplace): данные собраны ими, мы покупаем
+ * выборку по фильтру — $2.5 за 1 000 записей, пустая выборка бесплатна.
+ */
+export async function datasetMetadata(datasetId: string): Promise<{ fields: string[]; raw: unknown }> {
+  if (!/^gd_[a-z0-9]+$/i.test(datasetId)) throw new BrightDataError("Неверный dataset_id.");
+  const meta = await call<Record<string, unknown>>(`/datasets/${datasetId}/metadata`);
+  const fieldsObj = (meta?.fields ?? {}) as Record<string, unknown>;
+  const fields = Array.isArray(meta?.fields) ? (meta.fields as unknown[]).map(String) : Object.keys(fieldsObj);
+  return { fields: fields.filter((f) => !MONEY_KEY.test(f)).sort(), raw: stripMoney({ ...meta, fields: undefined }) };
+}
+
+export async function filterDataset(datasetId: string, filter: unknown, recordsLimit: number): Promise<string> {
+  if (!/^gd_[a-z0-9]+$/i.test(datasetId)) throw new BrightDataError("Неверный dataset_id.");
+  const result = await call<{ snapshot_id?: string }>("/datasets/filter", {
+    method: "POST",
+    body: JSON.stringify({ dataset_id: datasetId, filter, records_limit: Math.min(Math.max(1, recordsLimit), 100) }),
+  });
+  if (!result?.snapshot_id) throw new BrightDataError("Bright Data не вернул snapshot_id.");
+  return result.snapshot_id;
+}
+
+/** Выборка набора: 202 — ещё собирается (вернём null). */
+export async function datasetSnapshotRecords(snapshotId: string, limit = 20): Promise<{ fields: string[]; records: unknown[] } | null> {
+  if (!SNAPSHOT_ID.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");
+  const token = process.env.BRIGHTDATA_API_TOKEN;
+  if (!token) throw new BrightDataError("Ключ Bright Data не задан в окружении панели.");
+  const response = await fetch(`${API}/datasets/snapshots/${snapshotId}/download?format=json`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
+    cache: "no-store",
+  });
+  if (response.status === 202) return null;
+  const text = await response.text();
+  if (!response.ok) throw new BrightDataError(`Bright Data ответил ${response.status}: ${text.slice(0, 300)}`, response.status);
+  let list: unknown[] = [];
+  try {
+    const parsed = JSON.parse(text);
+    list = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    list = text.split("\n").filter(Boolean).map((line) => { try { return JSON.parse(line); } catch { return null; } }).filter(Boolean);
+  }
+  const records = list.slice(0, limit).map(stripMoney);
+  const fields = [...new Set(records.flatMap((r) => (r && typeof r === "object" ? Object.keys(r as object) : [])))].sort();
+  return { fields, records };
 }
 
 export async function snapshotRecords(snapshotId: string, limit = 20): Promise<{ fields: string[]; records: unknown[] }> {
