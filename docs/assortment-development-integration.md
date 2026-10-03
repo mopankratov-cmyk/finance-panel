@@ -271,6 +271,7 @@ ffmpeg — это правка `package.json` и установка на mini, �
 | Похожие модели по фото (CLIP на mini, pgvector) | карточка | #1411–#1413 |
 | Bright Data: пилот (только руководитель) | `/api/assortment-development/brightdata` | #1414, #1418 |
 | Bright Data: сбор ASOS (вкл. Mango) и H&M | крон | #1419–#1422 |
+| Bright Data: готовые наборы Zara и Uniqlo, раздел целиком | крон (ср) | #1431–#1437 и PR «раздел целиком» (03.10) |
 | Признаки по фото — оценка ИИ | крон + кнопка в карточке | #1423 |
 
 **Расписание (UTC → МСК)**
@@ -278,7 +279,7 @@ ffmpeg — это правка `package.json` и установка на mini, �
 | Крон | Когда | Что |
 |---|---|---|
 | `/api/sync/assortment-crawl` | 03:30 ежедневно (06:30) | Shopify-бренды; первый проход — база; новинка = невиданный и опубликован ≤ 60 дней |
-| `/api/sync/assortment-brightdata?phase=trigger` | 05:00 ср, сб (08:00) | запуск проб ASOS и H&M (~180 записей) |
+| `/api/sync/assortment-brightdata?phase=trigger` | 05:00 ср, сб (08:00) | запуск проб ASOS и H&M (~180 записей); по средам — выборки наборов Zara и Uniqlo |
 | `…?phase=collect`, `…?phase=collect&retry=1` | 06:30 и 08:30 ср, сб | забрать готовые пробы; номера — в `assortment_sources.capabilities.brightdata_pending` |
 | `/api/sync/assortment-ai-attributes` | 09:00 ежедневно (12:00) | признаки по фото, не больше 20 моделей (`ASSORTMENT_AI_DAILY_LIMIT`) |
 | `/api/sync/assortment-digest` | 07:00 вс (10:00) | сводка в Telegram; `?dryRun=1` — только текст |
@@ -324,6 +325,29 @@ ffmpeg — это правка `package.json` и установка на mini, �
   по ссылкам.
 - Номера проб — `s_…` или `sd_…`; ключи API — формата UUID; аккаунт должен
   быть активирован (иначе «Customer is not active»).
+
+**Готовые наборы Bright Data (03.10)**
+
+- Выборка по фильтру (`/datasets/filter`, номер `snap_…`), $2.5 за 1 000
+  пришедших записей, пустая — бесплатно; пока строится — 400 «Snapshot not
+  ready» (у Zara ~40 минут). Поиск (`/datasets/search`, со счётчиком
+  `total_hits`) открыт только для трёх наборов самого Bright Data — для Zara и
+  Uniqlo нет.
+- **Раздел берётся целиком.** Новинка — то, чего не было в прошлых выборках;
+  обрезанная выборка выдала бы за новинки старые вещи. Поэтому фильтр узкий
+  (одна витрина, один размер), потолок с запасом; пришло ровно столько, сколько
+  потолок, — раздел обрезан: новинок из него нет, в «Источниках» предупреждение.
+  Сменился фильтр — первый сбор по нему становится базой раздела (отпечаток
+  фильтра в `capabilities.brightdata_coverage`).
+- Zara (`gd_lct4vafw1tgx27d4o0`): `section = WOMAN`, `product_family` (CAZADORA,
+  ABRIGO, GABARDINA, PLUMIFERO, PARKA; BOLSO), витрина `/us/en/`. Товар
+  повторяется по странам — перед записью дубли по номеру схлопываются (#1436).
+- Uniqlo (`gd_mosh3s7wdb7jafn85`): запись на цвет и размер, модель — `group_id`;
+  `store_country = ES`, `product_category` «WOMEN > Outerwear» без «Blazers»,
+  размер S (`item_id` содержит «-003»); сумки — «WOMEN > Accessories > Bags».
+- Massimo Dutti (`gd_lcxf9r252p7e46ul5b`) не подключён: в наборе нет пола
+  (мужские куртки вперемешку), разделы перепутаны («SKIRTS» у кожаной куртки),
+  часть записей без ссылки, вещи 2023–2024 годов.
 
 **Грабли, найденные живой проверкой**
 

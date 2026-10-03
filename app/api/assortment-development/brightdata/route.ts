@@ -68,8 +68,10 @@ export async function POST(request: NextRequest) {
   }
   if (body?.action === "filter") {
     try {
-      const snapshotId = await filterDataset(String(body.datasetId ?? ""), body.filter, Number(body.recordsLimit) || 10);
-      await audit(request, session, { action: "assortment.update", subject: "brightdata:dataset-filter", after: { datasetId: body.datasetId, recordsLimit: body.recordsLimit, snapshotId } });
+      // Проба руками — не больше 100 записей ($0,25); разделы целиком берёт плановый сбор.
+      const recordsLimit = Math.min(Number(body.recordsLimit) || 10, 100);
+      const snapshotId = await filterDataset(String(body.datasetId ?? ""), body.filter, recordsLimit);
+      await audit(request, session, { action: "assortment.update", subject: "brightdata:dataset-filter", after: { datasetId: body.datasetId, recordsLimit, snapshotId } });
       return NextResponse.json({ snapshotId });
     } catch (e) {
       return failure(e);

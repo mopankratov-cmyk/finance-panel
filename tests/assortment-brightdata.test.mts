@@ -41,9 +41,11 @@ test("Номера проб Bright Data: s_ и sd_, ничего лишнего"
   assert.ok(!SNAPSHOT_ID.test("gd_lct4vafw1tgx27d4o0"));
 });
 
-test("Готовые наборы: выборка не больше 100 записей, номера s_ и sd_", () => {
+test("Готовые наборы: плановая выборка до 1 000 записей, ручная проба до 100", () => {
   const source = readFileSync(join(root, "lib/assortment/brightdata.ts"), "utf8");
-  assert.match(source, /records_limit: Math\.min\(Math\.max\(1, recordsLimit\), 100\)/);
+  assert.match(source, /records_limit: Math\.min\(Math\.max\(1, recordsLimit\), 1000\)/);
+  const pilot = readFileSync(join(root, "app/api/assortment-development/brightdata/route.ts"), "utf8");
+  assert.match(pilot, /Math\.min\(Number\(body\.recordsLimit\) \|\| 10, 100\)/);
   assert.match(source, /\/datasets\/snapshots\/\$\{snapshotId\}\/download\?format=json/);
   assert.match(source, /if \(response\.status === 202\) return null/);
 });

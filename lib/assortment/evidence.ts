@@ -51,6 +51,8 @@ const METHOD_LABEL: Record<string, string> = {
   crawl_shopify: "автообход каталога",
   brightdata_asos: "сбор Bright Data с ASOS",
   brightdata_hm: "сбор Bright Data с H&M",
+  brightdata_zara: "набор Bright Data по Zara",
+  brightdata_uniqlo: "набор Bright Data по Uniqlo",
   mpstats_top: "MPSTATS: топ предмета WB",
   mpstats_brand: "MPSTATS: товары бренда на WB",
   mpstats_similar: "MPSTATS + сходство по фото",

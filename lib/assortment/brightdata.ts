@@ -119,7 +119,7 @@ export async function filterDataset(datasetId: string, filter: unknown, recordsL
   if (!/^gd_[a-z0-9]+$/i.test(datasetId)) throw new BrightDataError("Неверный dataset_id.");
   const result = await call<{ snapshot_id?: string }>("/datasets/filter", {
     method: "POST",
-    body: JSON.stringify({ dataset_id: datasetId, filter, records_limit: Math.min(Math.max(1, recordsLimit), 100) }),
+    body: JSON.stringify({ dataset_id: datasetId, filter, records_limit: Math.min(Math.max(1, recordsLimit), 1000) }),
   });
   if (!result?.snapshot_id) throw new BrightDataError("Bright Data не вернул snapshot_id.");
   return result.snapshot_id;
@@ -136,7 +136,9 @@ export interface DatasetSearchPage {
 /**
  * Поиск по набору (синхронный, до 1 000 записей за вызов). Платим только за
  * возвращённые записи по той же цене, пустой ответ бесплатен; `total` при
- * size=1 — почти даровой счётчик раздела.
+ * size=1 — почти даровой счётчик раздела. Открыт Bright Data не для всех
+ * наборов: 03.10 Zara и Uniqlo — 400 «dataset_id must be one of …» (три их
+ * собственных набора), поэтому полноту раздела сбор проверяет по выборке.
  */
 export async function searchDataset(datasetId: string, filter: unknown, size: number, sort?: unknown, searchAfter?: unknown[] | null): Promise<DatasetSearchPage> {
   if (!/^gd_[a-z0-9]+$/i.test(datasetId)) throw new BrightDataError("Неверный dataset_id.");

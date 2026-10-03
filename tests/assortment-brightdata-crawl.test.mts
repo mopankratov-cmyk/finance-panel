@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripMoney } from "../lib/assortment/brightdata.ts";
-import { asCatalogItem, BRIGHTDATA_TARGETS, mapRecord, readPending, uniqueRecords, writePending } from "../lib/assortment/brightdataCatalog.ts";
+import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, mapRecord, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
 
@@ -54,17 +54,19 @@ test("Запущенные пробы хранятся в capabilities, оста
   assert.deepEqual(readPending(null), []);
 });
 
-test("Цели сбора: Zara (набор), ASOS и H&M паспорта, разумные лимиты, без Ozon", () => {
+test("Цели сбора: Zara и Uniqlo (наборы), ASOS и H&M паспорта, разумные лимиты, без Ozon", () => {
   const sources = new Set(BRIGHTDATA_TARGETS.map((t) => t.sourceId));
-  assert.deepEqual([...sources].sort(), ["S001", "S007", "S046"]);
+  assert.deepEqual([...sources].sort(), ["S001", "S003", "S007", "S046"]);
   const collect = BRIGHTDATA_TARGETS.filter((t) => t.kind !== "dataset").reduce((s, t) => s + t.limitPerInput * t.inputs.length, 0);
   const dataset = BRIGHTDATA_TARGETS.filter((t) => t.kind === "dataset").reduce((s, t) => s + (t.recordsLimit ?? 0), 0);
   assert.ok(collect <= 200, `сборщики: ${collect} записей за прогон`);
-  assert.ok(dataset <= 200, `наборы: ${dataset} записей в неделю`);
+  // Потолок, а не расход: платим за пришедшие записи; 1 600 — это не больше $4 в неделю.
+  assert.ok(dataset <= 1600, `наборы: потолок ${dataset} записей в неделю`);
+  assert.ok(BRIGHTDATA_TARGETS.every((t) => t.kind !== "dataset" || ((t.recordsLimit ?? 0) > 0 && (t.recordsLimit ?? 0) <= 1000)), "выборка набора — до 1 000 записей");
   assert.doesNotMatch(JSON.stringify(BRIGHTDATA_TARGETS), /ozon/i);
 });
 
-test("Zara — готовый набор раз в неделю: женское, без кардиганов, английская витрина", () => {
+test("Zara — готовый набор раз в неделю: женское, без кардиганов, одна витрина", () => {
   const zara = BRIGHTDATA_TARGETS.filter((t) => t.sourceId === "S001");
   assert.ok(zara.every((t) => t.kind === "dataset" && t.weekdayUtc === 3 && t.trustDirection));
   const text = JSON.stringify(zara.map((t) => t.filter));
@@ -72,7 +74,7 @@ test("Zara — готовый набор раз в неделю: женское,
   assert.match(text, /CAZADORA/);
   assert.match(text, /BOLSO/);
   assert.doesNotMatch(text, /CHAQUETA/, "в CHAQUETA у Zara кардиганы");
-  assert.match(text, /"\/en\/"/);
+  assert.match(text, /"\/us\/en\/"/, "товар повторяется по странам — одна витрина, чтобы раздел влез целиком");
 });
 
 test("Запись набора Zara: product_name, product_family, colour; цены вырезаны", () => {
@@ -120,4 +122,53 @@ test("Повтор товара в выборке (Zara по странам) —
   assert.equal(unique.length, 2);
   assert.deepEqual(unique.map((r) => r.sourceItemId), ["5070666", "6318252"]);
   assert.equal(unique[0].images.length, 1);
+});
+
+test("Uniqlo — готовый набор по средам: женская верхняя одежда без блейзеров, размер S; сумки", () => {
+  const uniqlo = BRIGHTDATA_TARGETS.filter((t) => t.sourceId === "S003");
+  assert.deepEqual(uniqlo.map((t) => t.direction).sort(), ["bags", "jackets"]);
+  assert.ok(uniqlo.every((t) => t.kind === "dataset" && t.weekdayUtc === 3 && t.trustDirection && t.datasetId === "gd_mosh3s7wdb7jafn85"));
+  const jackets = JSON.stringify(uniqlo.find((t) => t.direction === "jackets")!.filter);
+  assert.match(jackets, /WOMEN > Outerwear/);
+  assert.match(jackets, /"not_includes","value":"Blazers"/);
+  assert.match(jackets, /"-003"/);
+  assert.match(jackets, /"ES"/);
+  assert.match(JSON.stringify(uniqlo.find((t) => t.direction === "bags")!.filter), /WOMEN > Accessories > Bags/);
+});
+
+test("Запись набора Uniqlo: модель по group_id, раздел, отзывы, фото 1200 px", () => {
+  const record = mapRecord(stripMoney({
+    title: "PUFFERTECH Compact Jacket", item_id: "469862-69-003", group_id: "E469862-000", brand: "UNIQLO",
+    product_category: "WOMEN > Outerwear > PUFFERTECH > PUFFERTECH Compact Jacket", url: "https://www.uniqlo.com/es/en/products/E469862-000/00",
+    image_url: "https://image.uniqlo.com/UQ/ST3/eu/imagesgoods/469862/item/eugoods_09_469862_3x4.jpg", review_count: 652, star_rating: 4.7, final_price: 49.9,
+  }))!;
+  assert.equal(record.sourceItemId, "E469862-000");
+  assert.equal(record.brand, "UNIQLO");
+  assert.match(record.category, /WOMEN > Outerwear/);
+  assert.equal(record.reviews, 652);
+  assert.equal(record.images[0], "https://image.uniqlo.com/UQ/ST3/eu/imagesgoods/469862/item/eugoods_09_469862_3x4.jpg?width=1200");
+  assert.doesNotMatch(JSON.stringify(record), /49\.9/);
+});
+
+test("Выборка набора: обрезанному разделу и смене фильтра новинки не верим", () => {
+  const snapshot = { recordsLimit: 400, coverage: filterSignature({ a: 1 }), direction: "jackets" as const };
+  const truncated = datasetVerdict(400, snapshot, snapshot.coverage);
+  assert.equal(truncated.quiet, true);
+  assert.equal(truncated.remember, false);
+  assert.match(truncated.warning ?? "", /куртки.*больше потолка/);
+  assert.deepEqual(datasetVerdict(180, snapshot, undefined), { quiet: true, remember: true, warning: null }, "охват ещё не запомнен — это база раздела");
+  assert.deepEqual(datasetVerdict(180, snapshot, filterSignature({ a: 2 })), { quiet: true, remember: true, warning: null }, "фильтр сменился — база заново");
+  assert.deepEqual(datasetVerdict(180, snapshot, snapshot.coverage), { quiet: false, remember: true, warning: null });
+  assert.deepEqual(datasetVerdict(60, { direction: "bags" }, undefined), { quiet: false, remember: false, warning: null }, "старые пробы без потолка — как раньше");
+});
+
+test("Охват разделов хранится в capabilities рядом с пробами", () => {
+  assert.equal(filterSignature({ a: [1, 2] }), filterSignature({ a: [1, 2] }));
+  assert.notEqual(filterSignature({ a: [1, 2] }), filterSignature({ a: [1, 3] }));
+  const key = coverageKey({ datasetId: "gd_x", direction: "bags" });
+  const caps = writeCoverage(writePending({ note: "x" }, []), { [key]: "abc" });
+  assert.equal(caps.note, "x");
+  assert.deepEqual(readCoverage(caps), { [key]: "abc" });
+  assert.deepEqual(readPending(caps), []);
+  assert.deepEqual(readCoverage({ brightdata_coverage: { [key]: 5 } }), {});
 });

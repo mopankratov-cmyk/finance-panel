@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
-import { asCatalogItem, BRIGHTDATA_TARGETS, mapRecord, PENDING_TTL_MS, readPending, uniqueRecords, writePending, type MappedRecord, type PendingSnapshot } from "./brightdataCatalog";
+import {
+  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, mapRecord, PENDING_TTL_MS, readCoverage, readPending,
+  uniqueRecords, writeCoverage, writePending, type MappedRecord, type PendingSnapshot,
+} from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
 import { classifyItem, crawlPlan } from "./crawl";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
@@ -53,7 +56,10 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
         const snapshotId = target.kind === "dataset"
           ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
           : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
-        pending.push({ snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind, trustDirection: target.trustDirection });
+        pending.push({
+          snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind, trustDirection: target.trustDirection,
+          ...(target.kind === "dataset" ? { recordsLimit: target.recordsLimit ?? 50, coverage: filterSignature(target.filter) } : {}),
+        });
         started += 1;
       }
       if (started === 0) continue;
@@ -176,6 +182,8 @@ async function processSnapshot(
   snapshot: PendingSnapshot,
   deadline: number,
   preloaded?: unknown[],
+  /** Новинкам выборки не верим (раздел обрезан или сменил охват) — всё новое ложится базой. */
+  quiet = false,
 ): Promise<{ collected: number; added: number; baseline: boolean }> {
   const records = uniqueRecords((preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r)));
   const relevant = snapshot.trustDirection
@@ -184,12 +192,13 @@ async function processSnapshot(
   const known = await knownIds(db, source.sourceId, snapshot.direction);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
   const fresh = new Set(plan.fresh.map((i) => i.sourceItemId));
+  const asBaseline = plan.baseline || quiet;
   const now = new Date().toISOString();
   const inserts: Array<Record<string, unknown>> = [];
   const updates: Array<Record<string, unknown>> = [];
   for (const r of relevant) {
     const row = { source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: snapshot.direction, last_seen_at: now };
-    if (plan.baseline || !known.has(r.sourceItemId)) inserts.push({ ...row, baseline: plan.baseline || !fresh.has(r.sourceItemId) });
+    if (plan.baseline || !known.has(r.sourceItemId)) inserts.push({ ...row, baseline: asBaseline || !fresh.has(r.sourceItemId) });
     else updates.push(row);
   }
   for (const rows of [inserts, updates]) {
@@ -198,7 +207,7 @@ async function processSnapshot(
     if (error) throw new Error(error.message);
   }
   let added = 0;
-  if (!plan.baseline) {
+  if (!asBaseline) {
     for (const r of relevant.filter((x) => fresh.has(x.sourceItemId))) {
       if (added >= NEW_PER_SOURCE || Date.now() > deadline) break;
       try {
@@ -210,7 +219,7 @@ async function processSnapshot(
       }
     }
   }
-  return { collected: relevant.length, added, baseline: plan.baseline };
+  return { collected: relevant.length, added, baseline: asBaseline };
 }
 
 /** Сбор готовых проб. Не готова — ждёт следующего захода; старше суток — снимается. */
@@ -224,6 +233,7 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
       const source = await readSource(db, sourceId);
       const left: PendingSnapshot[] = [];
       const errors: string[] = [];
+      const coverage = readCoverage(source.capabilities);
       for (const snapshot of readPending(source.capabilities)) {
         if (Date.now() > deadline) {
           left.push(snapshot);
@@ -237,7 +247,10 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
             else errors.push(`выборка ${snapshot.snapshotId} не готова за сутки`);
             continue;
           }
-          const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline, rows);
+          const verdict = datasetVerdict(rows.length, snapshot, coverage[coverageKey(snapshot)]);
+          const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline, rows, verdict.quiet);
+          if (verdict.remember && snapshot.coverage) coverage[coverageKey(snapshot)] = snapshot.coverage;
+          if (verdict.warning) errors.push(verdict.warning);
           result.collected = (result.collected ?? 0) + done.collected;
           result.added = (result.added ?? 0) + done.added;
           result.baseline = result.baseline || done.baseline;
@@ -258,7 +271,7 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
         }
       }
       result.pending = left.length;
-      const patch: Record<string, unknown> = { capabilities: writePending(source.capabilities, left), last_attempt_at: now, last_error: errors.length ? `Bright Data: ${errors.join("; ")}` : null };
+      const patch: Record<string, unknown> = { capabilities: writeCoverage(writePending(source.capabilities, left), coverage), last_attempt_at: now, last_error: errors.length ? `Bright Data: ${errors.join("; ")}` : null };
       if ((result.collected ?? 0) > 0) patch.last_success_at = now;
       await mark(db, sourceId, patch);
       if (errors.length) {

@@ -1,7 +1,7 @@
 /**
- * Сбор новинок через Bright Data (ASOS, H&M) — 2 раза в неделю, ср и сб
- * (решение владельца 02.10.2026). Чистые функции: цели сбора, разбор записей,
- * состояние запущенных проб.
+ * Сбор новинок через Bright Data: ASOS и H&M — сборщиками 2 раза в неделю, ср
+ * и сб (решение владельца 02.10.2026); Zara и Uniqlo — готовыми наборами по
+ * средам. Чистые функции: цели сбора, разбор записей, состояние проб.
  *
  * Только готовые сборщики Bright Data; цены вырезаются ещё в stripMoney.
  */
@@ -23,6 +23,12 @@ export interface CollectionTarget {
    */
   kind?: "collect" | "dataset";
   filter?: unknown;
+  /**
+   * Потолок выборки набора. Раздел обязан влезать целиком: новинка — то, чего
+   * не было в прошлых выборках, и обрезанная выборка выдаёт за новинки старые
+   * вещи, не попавшие в прошлый раз. Пришло ровно столько, сколько потолок, —
+   * раздел считаем обрезанным и новинок из него не показываем.
+   */
   recordsLimit?: number;
   /** Запускать только в этот день недели (UTC, 0 — вс): наборы обновляются нечасто. */
   weekdayUtc?: number;
@@ -34,13 +40,27 @@ export interface CollectionTarget {
  * Zara: свой сборщик Bright Data ломается на разборе карточки, а готовый набор
  * «Zara - Products» работает (проба 03.10). Семейства — внутренние коды Zara:
  * CAZADORA — куртки, ABRIGO — пальто, GABARDINA — тренчи, PLUMIFERO —
- * пуховики, BOLSO — сумки. CHAQUETA не берём: там кардиганы. Английская
- * витрина — чтобы названия были читаемыми.
+ * пуховики, BOLSO — сумки. CHAQUETA не берём: там кардиганы. Одна витрина
+ * (США, английский): товар в наборе повторяется по странам, и раздел всех
+ * витрин в выборку целиком не влезает.
  */
-const ZARA_ENGLISH = { name: "url", operator: "includes", value: "/en/" };
+const ZARA_US = { name: "url", operator: "includes", value: "/us/en/" };
 const zaraFilter = (families: string[]) => ({
   operator: "and",
-  filters: [{ name: "section", operator: "=", value: "WOMAN" }, { name: "product_family", operator: "in", value: families }, ZARA_ENGLISH],
+  filters: [{ name: "section", operator: "=", value: "WOMAN" }, { name: "product_family", operator: "in", value: families }, ZARA_US],
+});
+
+/**
+ * Uniqlo: готовый набор «Uniqlo Products» (проба 03.10) — запись на каждый
+ * цвет и размер, номер модели в group_id, пол и раздел в product_category
+ * («WOMEN > Outerwear > …»). Витрина одна — Испания, на английском. Куртки —
+ * только размер S (item_id «…-003»), иначе одна модель — десяток записей;
+ * жакеты-блейзеры не берём: это не верхняя одежда.
+ */
+const UNIQLO_SPAIN = { name: "store_country", operator: "=", value: "ES" };
+const uniqloFilter = (category: string, extra: unknown[] = []) => ({
+  operator: "and",
+  filters: [UNIQLO_SPAIN, { name: "product_category", operator: "includes", value: category }, ...extra],
 });
 
 /**
@@ -68,11 +88,24 @@ export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
   },
   {
     sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
-    kind: "dataset", filter: zaraFilter(["CAZADORA", "ABRIGO", "GABARDINA", "PLUMIFERO", "PARKA"]), recordsLimit: 100, weekdayUtc: 3, trustDirection: true,
+    kind: "dataset", filter: zaraFilter(["CAZADORA", "ABRIGO", "GABARDINA", "PLUMIFERO", "PARKA"]), recordsLimit: 600, weekdayUtc: 3, trustDirection: true,
   },
   {
     sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "bags", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
-    kind: "dataset", filter: zaraFilter(["BOLSO", "BOLSOS"]), recordsLimit: 60, weekdayUtc: 3, trustDirection: true,
+    kind: "dataset", filter: zaraFilter(["BOLSO", "BOLSOS"]), recordsLimit: 300, weekdayUtc: 3, trustDirection: true,
+  },
+  {
+    sourceId: "S003", datasetId: "gd_mosh3s7wdb7jafn85", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_uniqlo",
+    kind: "dataset", recordsLimit: 400, weekdayUtc: 3, trustDirection: true,
+    filter: uniqloFilter("WOMEN > Outerwear", [
+      { name: "product_category", operator: "not_includes", value: "Blazers" },
+      { name: "item_id", operator: "includes", value: "-003" },
+    ]),
+  },
+  {
+    sourceId: "S003", datasetId: "gd_mosh3s7wdb7jafn85", direction: "bags", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_uniqlo",
+    kind: "dataset", recordsLimit: 300, weekdayUtc: 3, trustDirection: true,
+    filter: uniqloFilter("WOMEN > Accessories > Bags"),
   },
   {
     sourceId: "S007", datasetId: "gd_lebec5ir293umvxh5g", direction: "bags", discoverBy: "category", limitPerInput: 40, method: "brightdata_hm",
@@ -92,6 +125,9 @@ export interface PendingSnapshot {
   triggeredAt: string;
   kind?: "collect" | "dataset";
   trustDirection?: boolean;
+  /** Для выборки набора: потолок и отпечаток фильтра — проверить полноту и смену охвата. */
+  recordsLimit?: number;
+  coverage?: string;
 }
 
 /** Запущенные пробы хранятся в capabilities источника — отдельной таблицы не заводим. */
@@ -107,6 +143,51 @@ export function writePending(capabilities: unknown, pending: PendingSnapshot[]):
   const base = capabilities && typeof capabilities === "object" && !Array.isArray(capabilities) ? { ...(capabilities as Record<string, unknown>) } : {};
   base.brightdata_pending = pending;
   return base;
+}
+
+/** Раздел набора в capabilities: набор + раздел (у источника их бывает несколько). */
+export function coverageKey(target: { datasetId: string; direction: AssortmentDirection }): string {
+  return `${target.datasetId}|${target.direction}`;
+}
+
+/** Отпечаток фильтра: сменился фильтр — сменился охват раздела. */
+export function filterSignature(filter: unknown): string {
+  const text = JSON.stringify(filter ?? null);
+  let hash = 0;
+  for (let i = 0; i < text.length; i += 1) hash = (Math.imul(hash, 31) + text.charCodeAt(i)) | 0;
+  return (hash >>> 0).toString(36);
+}
+
+export function readCoverage(capabilities: unknown): Record<string, string> {
+  const map = (capabilities as { brightdata_coverage?: unknown } | null)?.brightdata_coverage;
+  if (!map || typeof map !== "object" || Array.isArray(map)) return {};
+  return Object.fromEntries(Object.entries(map as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string"));
+}
+
+export function writeCoverage(capabilities: Record<string, unknown>, coverage: Record<string, string>): Record<string, unknown> {
+  return { ...capabilities, brightdata_coverage: coverage };
+}
+
+export interface DatasetVerdict {
+  /** Новинки из выборки не показываем: раздел обрезан или только что сменил охват. */
+  quiet: boolean;
+  /** Запомнить охват раздела — выборка полная. */
+  remember: boolean;
+  warning: string | null;
+}
+
+/**
+ * Можно ли верить новинкам выборки набора. Пришло столько, сколько потолок, —
+ * раздел обрезан: новинки там случайные. Фильтр сменился (или охват ещё не
+ * запомнен) — этот сбор становится базой раздела, новинки пойдут со следующего.
+ */
+export function datasetVerdict(rows: number, snapshot: Pick<PendingSnapshot, "recordsLimit" | "coverage" | "direction">, stored: string | undefined): DatasetVerdict {
+  const truncated = snapshot.recordsLimit !== undefined && rows >= snapshot.recordsLimit;
+  if (truncated) {
+    return { quiet: true, remember: false, warning: `раздел «${snapshot.direction === "bags" ? "сумки" : "куртки"}» больше потолка выборки (${rows}) — новинки не показываем, нужен фильтр уже или потолок выше` };
+  }
+  const changed = snapshot.coverage !== undefined && stored !== snapshot.coverage;
+  return { quiet: changed, remember: snapshot.coverage !== undefined, warning: null };
 }
 
 /** Проба висит дольше суток — её уже не ждём. */
@@ -148,6 +229,10 @@ export function hiResImageUrl(raw: string): string {
       url.searchParams.set("imwidth", "1200");
       return url.toString();
     }
+    if (url.hostname === "image.uniqlo.com") {
+      url.searchParams.set("width", "1200");
+      return url.toString();
+    }
     return raw;
   } catch {
     return raw;
@@ -167,7 +252,7 @@ function imageList(record: Record<string, unknown>): string[] {
   return out.slice(0, 4);
 }
 
-/** Запись Bright Data (ASOS или H&M) → поля находки. Ошибочные и без ссылки — null. */
+/** Запись Bright Data (ASOS, H&M, Zara, Uniqlo) → поля находки. Ошибочные и без ссылки — null. */
 export function mapRecord(raw: unknown): MappedRecord | null {
   if (!raw || typeof raw !== "object") return null;
   const record = raw as Record<string, unknown>;
@@ -175,7 +260,8 @@ export function mapRecord(raw: unknown): MappedRecord | null {
   const url = str(first(record, ["url", "product_url"]));
   const title = str(first(record, ["name", "product_name", "title"]));
   if (!url || !title || !/^https?:\/\//.test(url)) return null;
-  const id = first(record, ["product_id", "product_code", "sku", "SKU", "id"]);
+  // group_id — модель Uniqlo: в наборе запись на каждый цвет и размер.
+  const id = first(record, ["product_id", "product_code", "sku", "SKU", "id", "group_id"]);
   const brandRaw = first(record, ["brand", "brand_name"]);
   const brand = typeof brandRaw === "string" ? brandRaw.trim() : str((brandRaw as { name?: unknown } | undefined)?.name);
   const categoryRaw = first(record, ["category", "product_category", "product_family"]);
