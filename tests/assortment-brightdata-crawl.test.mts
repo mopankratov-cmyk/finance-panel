@@ -22,7 +22,10 @@ test("Запись ASOS: название, бренд, фото, отзывы �
   assert.ok(record);
   assert.equal(record.url, "https://www.asos.com/pull-bear/pull-bear-contrast-shopper-bag/prd/123");
   assert.equal(record.sourceItemId, "123");
-  assert.deepEqual(record.images, ["https://images.asos-media.com/a.jpg", "https://images.asos-media.com/b.jpg"]);
+  assert.deepEqual(record.images, [
+    "https://images.asos-media.com/a.jpg?$n_1920w$&wid=1200&fit=constrain",
+    "https://images.asos-media.com/b.jpg?$n_1920w$&wid=1200&fit=constrain",
+  ]);
   assert.equal(record.reviews, 152);
   assert.doesNotMatch(JSON.stringify(record), /29\.99|GBP|price/);
 });
@@ -75,4 +78,14 @@ test("База — по разделу: известные сумки не де�
   const source = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
   assert.match(source, /knownIds\(db, source\.sourceId, snapshot\.direction\)/);
   assert.match(source, /\.eq\("direction", direction\)/);
+});
+
+test("Фото магазинов — в высоком разрешении, а не превью 44 px", async () => {
+  const { hiResImageUrl } = await import("../lib/assortment/brightdataCatalog.ts");
+  assert.equal(hiResImageUrl("https://images.asos-media.com/products/x/210187178-2?$n_240w$&wid=44&fit=constrain"), "https://images.asos-media.com/products/x/210187178-2?$n_1920w$&wid=1200&fit=constrain");
+  assert.equal(hiResImageUrl("https://images.asos-media.com/products/x/210187178-1-beige"), "https://images.asos-media.com/products/x/210187178-1-beige?$n_1920w$&wid=1200&fit=constrain");
+  assert.match(hiResImageUrl("https://image.hm.com/assets/hm/1.jpg?imwidth=320"), /imwidth=1200/);
+  assert.equal(hiResImageUrl("https://cdn.shopify.com/s/files/a.png?v=1"), "https://cdn.shopify.com/s/files/a.png?v=1");
+  const record = mapRecord({ url: "https://www.asos.com/x/prd/1", name: "Trench jacket", image: "https://images.asos-media.com/products/x/1-1-beige", additional_image_urls: ["https://images.asos-media.com/products/x/1-2?$n_240w$&wid=44&fit=constrain"] })!;
+  assert.ok(record.images.every((u) => u.includes("wid=1200")));
 });

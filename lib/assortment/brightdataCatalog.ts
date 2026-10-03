@@ -97,10 +97,36 @@ const num = (value: unknown): number | null => {
 };
 const first = (record: Record<string, unknown>, keys: string[]) => keys.map((k) => record[k]).find((v) => v !== undefined && v !== null && v !== "");
 
+/**
+ * Фото магазинов — в высоком разрешении. Bright Data отдаёт ссылки ASOS с
+ * пресетом превью (`$n_240w$&wid=44` — 44 пикселя в ширину) или без
+ * параметров (маленькое превью по умолчанию): 03.10 карточки в ленте были
+ * размытыми. CDN магазинов сами отдают нужный размер по параметру.
+ */
+export function hiResImageUrl(raw: string): string {
+  try {
+    const url = new URL(raw);
+    if (url.hostname === "images.asos-media.com") {
+      url.search = "";
+      return `${url.toString()}?$n_1920w$&wid=1200&fit=constrain`;
+    }
+    if (url.hostname === "image.hm.com" || url.hostname.endsWith(".hm.com")) {
+      url.searchParams.set("imwidth", "1200");
+      return url.toString();
+    }
+    return raw;
+  } catch {
+    return raw;
+  }
+}
+
 function imageList(record: Record<string, unknown>): string[] {
   const out: string[] = [];
   const push = (value: unknown) => {
-    if (typeof value === "string" && /^https?:\/\//.test(value) && !out.includes(value)) out.push(value);
+    if (typeof value === "string" && /^https?:\/\//.test(value)) {
+      const url = hiResImageUrl(value);
+      if (!out.includes(url)) out.push(url);
+    }
     if (Array.isArray(value)) value.forEach(push);
   };
   for (const key of ["main_image", "image", "image_url", "image_urls", "additional_image_urls", "images"]) push(record[key]);
