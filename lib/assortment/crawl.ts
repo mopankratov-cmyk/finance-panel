@@ -41,9 +41,9 @@ export function parseCatalogPage(json: unknown): CatalogItem[] {
 }
 
 // \b в JS не видит границ кириллицы — русские основы идут без него.
-const BAGS = /\b(bag|bags|handbags?|tote|hobo|clutch|cross-?body|shoulder|satchel|bucket|backpack|baguette|messenger|duffel|weekender)\b|сумк/i;
-const NOT_BAGS = /\b(wallet|card ?holder|key ?ring|keychain|charm|strap|belt|scarf|glove|hat|cap|umbrella|socks?)\b|кошел/i;
-const JACKETS = /\b(jackets?|coats?|parka|puffer|anorak|trench|bomber|blazer|gilet|vest|windbreaker|shell|outerwear)\b|куртк|пальто|пуховик|ветровк/i;
+const BAGS = /\b(bag|bags|handbags?|tote|hobo|clutch|cross-?body|shoulder|satchel|bucket|backpack|baguette|messenger|duffel|weekender)\b|сумк|клатч|шопер|рюкзак|кросс-?боди|тоут|хобо|багет|бананк|саквояж/i;
+const NOT_BAGS = /\b(wallet|card ?holder|key ?ring|keychain|charm|strap|belt|scarf|glove|hat|cap|umbrella|socks?)\b|кошел|брелок|ремень|чехол/i;
+const JACKETS = /\b(jackets?|coats?|parka|puffer|anorak|trench|bomber|blazer|gilet|vest|windbreaker|shell|outerwear)\b|куртк|пальто|пуховик|ветровк|тренч|плащ|парка|бомбер|жилет|косух|дубл[её]нк|шуб[аы]|анорак/i;
 
 /**
  * К какому разделу относится товар; null — не наш (кошельки, шарфы, обувь).

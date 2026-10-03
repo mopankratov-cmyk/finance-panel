@@ -22,7 +22,7 @@ export const RU_SOURCES = {
     source_id: "S129",
     name: "Lime на Wildberries",
     source_group: "Рынок РФ",
-    access_note: "Ассортимент Lime на WB по MPSTATS (оценка продаж за 30 дней); сайт Lime закрыт антибот-проверкой — не обходим",
+    access_note: "Бренд «LIME» на WB по MPSTATS — продаж нет, это не тот Lime; сам Lime — источник S130 (сайт limestore.com)",
     seed_urls: [] as string[],
   },
 } as const;

@@ -186,19 +186,50 @@ async function processSnapshot(
   quiet = false,
   /** Готовый набор: слишком много новинок разом — пересборка набора, а не новинки. */
   churnGuard = false,
-): Promise<{ collected: number; added: number; baseline: boolean; churn: boolean }> {
-  const records = uniqueRecords((preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r)));
-  const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [snapshot.direction]) === snapshot.direction);
-  const known = await knownIds(db, source.sourceId, snapshot.direction);
+): Promise<IngestResult> {
+  const records = (preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
+  return ingestRecords(db, source, snapshot, records, deadline, { quiet, churnGuard });
+}
+
+export interface IngestResult {
+  collected: number;
+  added: number;
+  baseline: boolean;
+  churn: boolean;
+}
+
+/**
+ * Записи раздела источника → база сравнения и новинки в ленту. Общий путь для
+ * Bright Data и обхода каталогов сайтов (Lime): раздел проверяется по
+ * названию, новинка — невиданная раньше модель, первый сбор — база.
+ */
+export async function ingestRecords(
+  db: SupabaseClient,
+  source: { sourceId: string; name: string },
+  target: { direction: AssortmentDirection; method: string },
+  mapped: MappedRecord[],
+  deadline: number,
+  options: {
+    quiet?: boolean;
+    churnGuard?: boolean;
+    /** Кто вообще может быть новинкой (Lime — новые по карте сайта); остальное невиданное ложится базой. */
+    freshOnly?: Set<string>;
+  } = {},
+): Promise<IngestResult> {
+  const quiet = Boolean(options.quiet);
+  const churnGuard = Boolean(options.churnGuard);
+  const records = uniqueRecords(mapped);
+  const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [target.direction]) === target.direction);
+  const known = await knownIds(db, source.sourceId, target.direction);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
-  const fresh = new Set(plan.fresh.map((i) => i.sourceItemId));
-  const churn = churnGuard && !plan.baseline && !quiet && looksLikeChurn(plan.fresh.length, relevant.length);
+  const fresh = new Set(plan.fresh.map((i) => i.sourceItemId).filter((id) => !options.freshOnly || options.freshOnly.has(id)));
+  const churn = churnGuard && !plan.baseline && !quiet && looksLikeChurn(fresh.size, relevant.length);
   const asBaseline = plan.baseline || quiet || churn;
   const now = new Date().toISOString();
   const inserts: Array<Record<string, unknown>> = [];
   const updates: Array<Record<string, unknown>> = [];
   for (const r of relevant) {
-    const row = { source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: snapshot.direction, last_seen_at: now };
+    const row = { source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: target.direction, last_seen_at: now };
     if (plan.baseline || !known.has(r.sourceItemId)) inserts.push({ ...row, baseline: asBaseline || !fresh.has(r.sourceItemId) });
     else updates.push(row);
   }
@@ -212,7 +243,7 @@ async function processSnapshot(
     for (const r of relevant.filter((x) => fresh.has(x.sourceItemId))) {
       if (added >= NEW_PER_SOURCE || Date.now() > deadline) break;
       try {
-        const created = await createFromRecord(db, source, snapshot.direction, r, snapshot.method, deadline);
+        const created = await createFromRecord(db, source, target.direction, r, target.method, deadline);
         await db.from("assortment_source_items").update({ reference_id: created.referenceId }).eq("source_id", source.sourceId).eq("source_item_id", r.sourceItemId);
         if (created.created) added += 1;
       } catch {

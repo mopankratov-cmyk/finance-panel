@@ -102,7 +102,7 @@ test("Отзывы магазина попадают в «почему пока�
 
 test("База — по разделу: известные сумки не делают куртки новинками", () => {
   const source = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
-  assert.match(source, /knownIds\(db, source\.sourceId, snapshot\.direction\)/);
+  assert.match(source, /knownIds\(db, source\.sourceId, target\.direction\)/);
   assert.match(source, /\.eq\("direction", direction\)/);
 });
 
