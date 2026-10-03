@@ -46,14 +46,18 @@ async function ensureShop(db: SupabaseClient, shop: RuShop) {
   if (error) throw new Error(error.message);
 }
 
+/** Страница каталога: HTML или null — страниц больше нет (у загрузчика на mini кончились). */
+type PageSource = (slug: string, page: number) => Promise<string | null>;
+
 /** Страницы раздела подряд, пока не кончатся новые карточки; дошли до потолка — раздел обрезан. */
-async function crawlSection(shop: RuShop, slug: string, deadline: number): Promise<{ records: MappedRecord[]; pages: number; complete: boolean }> {
+async function crawlSection(shop: RuShop, slug: string, deadline: number, getPage: PageSource): Promise<{ records: MappedRecord[]; pages: number; complete: boolean }> {
   const byUrl = new Map<string, MappedRecord>();
   let pages = 0;
   for (let page = 1; page <= shop.maxPages; page += 1) {
     if (Date.now() > deadline) return { records: [...byUrl.values()], pages, complete: false };
-    if (page > 1) await sleep(PAGE_PAUSE_MS);
-    const cards = parseShopCatalog(shop, await fetchText(ruShopPageUrl(shop, slug, page), PAGE_MAX_BYTES));
+    const html = await getPage(slug, page);
+    if (html === null) return { records: [...byUrl.values()], pages, complete: false };
+    const cards = parseShopCatalog(shop, html);
     pages += 1;
     const fresh = cards.filter((c) => !byUrl.has(c.url));
     if (fresh.length === 0) return { records: [...byUrl.values()], pages, complete: true };
@@ -62,7 +66,19 @@ async function crawlSection(shop: RuShop, slug: string, deadline: number): Promi
   return { records: [...byUrl.values()], pages, complete: false };
 }
 
-async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: number): Promise<RuShopResult> {
+/** Загрузка с Vercel: вежливая пауза между страницами одного сайта. */
+function fetchPages(shop: RuShop): PageSource {
+  return async (slug, page) => {
+    if (page > 1) await sleep(PAGE_PAUSE_MS);
+    return fetchText(ruShopPageUrl(shop, slug, page), PAGE_MAX_BYTES);
+  };
+}
+
+/**
+ * Обход магазина: страницы берёт `getPage` (сам Vercel или посылка загрузчика
+ * с mini), разбор, база и новинки — здесь, одинаково для обоих путей.
+ */
+export async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: number, getPage: PageSource = fetchPages(shop)): Promise<RuShopResult> {
   const result: RuShopResult = { sourceId: shop.sourceId, name: shop.name, ok: false, pages: 0, collected: 0, added: 0, baseline: false, pending: 0, error: null };
   const now = new Date().toISOString();
   const warnings: string[] = [];
@@ -86,7 +102,7 @@ async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: number): Pr
     const byDirection = new Map<RuShop["sections"][number]["direction"], { records: MappedRecord[]; complete: boolean }>();
     const seen = new Set<string>();
     for (const section of shop.sections) {
-      const crawled = await crawlSection(shop, section.slug, deadline);
+      const crawled = await crawlSection(shop, section.slug, deadline, getPage);
       result.pages += crawled.pages;
       crawled.records.forEach((r) => seen.add(r.sourceItemId));
       if (!crawled.complete) warnings.push(`раздел ${section.slug}: обход не дошёл до конца (${crawled.pages} стр.)`);
@@ -127,12 +143,14 @@ async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: number): Pr
 
 /**
  * Обход сайтов российских брендов. Плановый — только в дни магазина;
- * `only` (ручной запуск одного источника) — в любой день.
+ * `only` (ручной запуск одного источника) — в любой день. Магазины, которые
+ * облако не пускает (`via: "mini"`), приносит загрузчик на mini — здесь их нет.
  */
 export async function runRuShopsCrawl(db: SupabaseClient, deadline: number, only?: string | null): Promise<RuShopResult[]> {
   const today = new Date().getUTCDay();
   const results: RuShopResult[] = [];
   for (const shop of RU_SHOPS) {
+    if (shop.via === "mini") continue;
     if (only ? shop.sourceId !== only : !shop.weekdaysUtc.includes(today)) continue;
     if (Date.now() > deadline) break;
     results.push(await crawlShop(db, shop, deadline));

@@ -41,7 +41,7 @@ test("Строка доказательств о похожих: не посчи
 });
 
 test("Роуты сборщика закрыты своим секретом, прокси пропускает только их", () => {
-  for (const path of ["app/api/assortment-collector/queue/route.ts", "app/api/assortment-collector/embeddings/route.ts"]) {
+  for (const path of ["app/api/assortment-collector/queue/route.ts", "app/api/assortment-collector/embeddings/route.ts", "app/api/assortment-collector/ru-shops/route.ts"]) {
     const source = read(path);
     assert.match(source, /checkAssortmentCollectorAuth\(request\)/, path);
     assert.doesNotMatch(source, /requireApiSession/, `${path}: сборщик безголовый`);
@@ -53,7 +53,8 @@ test("Роуты сборщика закрыты своим секретом, п
   const publicBlock = proxy.slice(proxy.indexOf("PUBLIC_API"), proxy.indexOf("SELLER_READ_API_EXACT"));
   assert.match(publicBlock, /\{ prefix: "\/api\/assortment-collector\/queue", methods: \["GET"\] \}/);
   assert.match(publicBlock, /\{ prefix: "\/api\/assortment-collector\/embeddings", methods: \["POST"\] \}/);
-  assert.equal((publicBlock.match(/\/api\/assortment-collector/g) ?? []).length, 2);
+  assert.match(publicBlock, /\{ prefix: "\/api\/assortment-collector\/ru-shops", methods: \["GET", "POST"\] \}/);
+  assert.equal((publicBlock.match(/\/api\/assortment-collector/g) ?? []).length, 3);
   assert.doesNotMatch(publicBlock, /\/api\/assortment-development/, "экраны модуля — только под сессией");
 });
 

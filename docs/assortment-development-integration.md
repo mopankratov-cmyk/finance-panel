@@ -378,6 +378,16 @@ ffmpeg — это правка `package.json` и установка на mini, �
   оболочка без товаров в HTML.
 - Обход представляется роботом честно (`FinancePanelAssortmentBot/1.0`):
   браузерному заголовку Lime включал проверку на бота.
+- befree, Love Republic, Sela отвечают Vercel 404, ZARINA — таймаутом (облако
+  AWS не пускают; с mini и обычного выхода — 200). Их страницы приносит
+  загрузчик на Mac mini: `~/assortment-embedder/src/ru-shops.js`, LaunchAgent
+  `com.financepanel.assortment-ru-shops` ежедневно в 06:10 МСК, лог
+  `logs/ru-shops.log`. Он ничего не разбирает: берёт у панели план
+  (`GET /api/assortment-collector/ru-shops`, `?all=1` / `?source=S131`),
+  листает страницы каталога, пока есть новые адреса карточек, и отдаёт их
+  сжатой посылкой (`POST` того же пути, gzip ≤ 4 МБ). Разбор, база и новинки —
+  в панели тем же кодом, пульс — `sync_log` «assortment-ru-shops». Ручной
+  запуск на mini: `node src/ru-shops.js --all`.
 - Бренд «LIME» на WB (S129) — не тот Lime: продаж нет.
 - Bright Data: Mango, Bershka, Pull&Bear — записи без пола и раздела, на
   разных языках; Lyst, Farfetch, SSENSE — агрегаторы, раздел целиком не взять;

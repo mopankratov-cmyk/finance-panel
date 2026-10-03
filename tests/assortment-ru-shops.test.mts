@@ -5,8 +5,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { asCatalogItem } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
+import { gzipSync } from "node:zlib";
 import {
-  limeImage, limeModelId, nextSitemapState, parseLimeCatalog, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds,
+  limeImage, limeModelId, miniShopsPlan, nextSitemapState, parseLimeCatalog, parseMiniShopPages, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl,
+  RuShopPagesError, sitemapDiff, sitemapModelIds,
 } from "../lib/assortment/ruShops.ts";
 
 const root = join(fileURLToPath(import.meta.url), "..", "..");
@@ -147,4 +149,37 @@ test("Российские магазины: свои дни, разрешённ
     assert.ok(shops.length <= 2, `день ${day}: ${shops.map((s) => s.name).join(", ")}`);
     if (shops.some((s) => s.sourceId === "S130" || s.sourceId === "S135")) assert.equal(shops.length, 1, "Lime и Pompa — по одному в день");
   }
+});
+
+test("Сайты, не пускающие облако, приносит загрузчик на mini; план — по дням магазина", () => {
+  assert.deepEqual(RU_SHOPS.filter((s) => s.via === "mini").map((s) => s.sourceId), ["S131", "S132", "S133", "S134"]);
+  const tuesday = miniShopsPlan(new Date("2026-10-06T03:00:00Z"));
+  assert.deepEqual(tuesday.map((s) => s.sourceId), ["S131", "S132"]);
+  assert.equal(tuesday[0].sections[0].urls[1], "https://befree.ru/zhenskaya/zen-riukzaki-i-sumki?page=2");
+  assert.equal(tuesday[0].sections[0].urls.length, shop("S131").maxPages);
+  assert.deepEqual(miniShopsPlan(new Date("2026-10-05T03:00:00Z")), [], "понедельник — день Lime, он на Vercel");
+  assert.equal(miniShopsPlan(new Date("2026-10-05T03:00:00Z"), { all: true }).length, 4);
+  assert.deepEqual(miniShopsPlan(new Date("2026-10-05T03:00:00Z"), { only: "S134" }).map((s) => s.sourceId), ["S134"]);
+  for (const plan of miniShopsPlan(new Date(), { all: true })) {
+    const html = fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html" }[plan.sourceId]!);
+    assert.ok((html.match(new RegExp(plan.cardHref, "g")) ?? []).length >= 2, `${plan.name}: адрес карточки находится`);
+  }
+  const store = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");
+  assert.match(store, /if \(shop\.via === "mini"\) continue;/, "крон на Vercel их не трогает");
+});
+
+test("Посылка загрузчика: только его магазины и разделы паспорта, не больше потолка", () => {
+  const ok = parseMiniShopPages({ sourceId: "S133", sections: [{ slug: "sumki-i-koshelki/", pages: ["<html>1</html>", "<html>2</html>"] }] });
+  assert.equal(ok.shop.name, "ZARINA");
+  assert.deepEqual(ok.pages.get("sumki-i-koshelki/"), ["<html>1</html>", "<html>2</html>"]);
+  assert.throws(() => parseMiniShopPages({ sourceId: "S130", sections: [{ slug: "women_bags", pages: [] }] }), RuShopPagesError, "Lime — не через mini");
+  assert.throws(() => parseMiniShopPages({ sourceId: "S133", sections: [{ slug: "../admin", pages: [] }] }), RuShopPagesError);
+  assert.throws(() => parseMiniShopPages({ sourceId: "S133", sections: [{ slug: "sumki-i-koshelki/", pages: Array(40).fill("x") }] }), RuShopPagesError);
+  assert.throws(() => parseMiniShopPages({ sourceId: "S133", sections: [] }), RuShopPagesError);
+  // Посылка сжата: страница в ~0,5 МБ HTML сжимается многократно.
+  const page = fixture("love-republic.html").repeat(30);
+  assert.ok(gzipSync(page).length * 5 < page.length);
+  const route = readFileSync(join(root, "app/api/assortment-collector/ru-shops/route.ts"), "utf8");
+  assert.match(route, /gunzipSync\(packed, \{ maxOutputLength: MAX_UNPACKED_BYTES \}\)/);
+  assert.match(route, /checkAssortmentCollectorAuth\(request\)/);
 });

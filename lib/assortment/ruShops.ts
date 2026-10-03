@@ -45,6 +45,18 @@ export interface RuShop {
   /** Параметр постраничной выдачи, разрешённый robots.txt сайта. */
   pageParam: string;
   parser: RuShopParser;
+  /**
+   * «mini» — сайт не пускает облако (Vercel работает на AWS: 04.10 befree,
+   * Love Republic и Sela отвечали ему 404, ZARINA — таймаутом, а с mini и
+   * отсюда — 200). Страницы приносит загрузчик на Mac mini, разбор — в панели.
+   */
+  via?: "mini";
+  /**
+   * Адрес карточки товара (регулярное выражение): загрузчик на mini листает
+   * страницы, пока на них есть новые такие адреса. Разбор и полнота раздела
+   * всё равно решаются в панели настоящим правилом сайта.
+   */
+  cardHref: string;
   sections: RuShopSection[];
   /** Дни обхода (UTC, 0 — вс): новинки у брендов выходят раз-два в неделю. */
   weekdaysUtc: number[];
@@ -63,6 +75,7 @@ export const RU_SHOPS: RuShop[] = [
     sitemapUrl: "https://limestore.com/sitemap.xml",
     pageParam: "page",
     parser: "lime",
+    cardHref: "/ru_ru/product/[^\"?#]+",
     sections: [
       { direction: "bags", slug: "women_bags" },
       { direction: "jackets", slug: "women_outerwear" },
@@ -80,6 +93,8 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://befree.ru/zhenskaya/",
     pageParam: "page",
     parser: "befree",
+    via: "mini",
+    cardHref: "/zhenskaya/product/[A-Z0-9]+/\\d+",
     sections: [
       { direction: "bags", slug: "zen-riukzaki-i-sumki" },
       { direction: "jackets", slug: "zen-verxniaia-odezda" },
@@ -96,6 +111,8 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://loverepublic.ru/catalog/",
     pageParam: "page",
     parser: "love_republic",
+    via: "mini",
+    cardHref: "/catalog/[a-z0-9_/-]+/\\d+/",
     sections: [
       { direction: "bags", slug: "sumki/" },
       { direction: "jackets", slug: "odezhda/verhnyaya-odezhda/" },
@@ -112,6 +129,8 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://zarina.ru/catalog/",
     pageParam: "page",
     parser: "zarina",
+    via: "mini",
+    cardHref: "/catalog/product/ZR[0-9A-Z]+-\\d+/",
     sections: [
       { direction: "bags", slug: "sumki-i-koshelki/" },
       { direction: "jackets", slug: "clothes/outwear/kurtki/" },
@@ -130,6 +149,8 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://www.sela.ru/eshop/women/",
     pageParam: "page",
     parser: "sela",
+    via: "mini",
+    cardHref: "/eshop/[a-z0-9_/-]+/SL\\d+_\\d+/",
     sections: [
       { direction: "bags", slug: "aksessuary/sumki/" },
       { direction: "jackets", slug: "verkhnyaya-odezhda/" },
@@ -146,6 +167,7 @@ export const RU_SHOPS: RuShop[] = [
     catalogBase: "https://www.pompa.ru/catalog/",
     pageParam: "PAGEN_1",
     parser: "pompa",
+    cardHref: "/catalog/product/\\d+/",
     sections: [
       { direction: "bags", slug: "aksessuary/sumki/" },
       { direction: "jackets", slug: "outerwear/" },
@@ -281,4 +303,54 @@ export function sitemapDiff(state: SitemapState, now: Set<string>, nowIso: strin
 export function nextSitemapState(now: Set<string>, diff: SitemapDiff, seenInCatalog: Set<string>): { models: string[]; pending: Record<string, string> } {
   const pending = Object.fromEntries(Object.entries(diff.pending).filter(([id]) => !seenInCatalog.has(id)));
   return { models: [...now].sort(), pending };
+}
+
+/** Пауза загрузчика на mini между страницами одного сайта. */
+export const MINI_PAGE_PAUSE_MS = 1_500;
+
+export interface MiniShopPlan {
+  sourceId: string;
+  name: string;
+  cardHref: string;
+  pauseMs: number;
+  sections: Array<{ slug: string; urls: string[] }>;
+}
+
+/** План загрузчику на mini: магазины «via: mini» в их дни (или все / один — вручную). */
+export function miniShopsPlan(now: Date, options: { all?: boolean; only?: string | null } = {}): MiniShopPlan[] {
+  return RU_SHOPS
+    .filter((shop) => shop.via === "mini")
+    .filter((shop) => (options.only ? shop.sourceId === options.only : options.all || shop.weekdaysUtc.includes(now.getUTCDay())))
+    .map((shop) => ({
+      sourceId: shop.sourceId,
+      name: shop.name,
+      cardHref: shop.cardHref,
+      pauseMs: MINI_PAGE_PAUSE_MS,
+      sections: shop.sections.map((section) => ({
+        slug: section.slug,
+        urls: Array.from({ length: shop.maxPages }, (_, i) => ruShopPageUrl(shop, section.slug, i + 1)),
+      })),
+    }));
+}
+
+export class RuShopPagesError extends Error {}
+
+const MAX_PAGE_CHARS = 4_000_000;
+
+/** Посылка загрузчика: магазин «via: mini», его разделы, не больше потолка страниц. */
+export function parseMiniShopPages(body: unknown): { shop: RuShop; pages: Map<string, string[]> } {
+  const data = body as { sourceId?: unknown; sections?: unknown } | null;
+  const shop = RU_SHOPS.find((s) => s.sourceId === data?.sourceId && s.via === "mini");
+  if (!shop) throw new RuShopPagesError("Магазин не из списка загрузчика на mini");
+  if (!Array.isArray(data?.sections) || data.sections.length === 0) throw new RuShopPagesError("Нет разделов");
+  const pages = new Map<string, string[]>();
+  for (const raw of data.sections as Array<{ slug?: unknown; pages?: unknown }>) {
+    const section = shop.sections.find((s) => s.slug === raw?.slug);
+    if (!section) throw new RuShopPagesError(`Раздел ${String(raw?.slug)} не из паспорта магазина`);
+    if (!Array.isArray(raw.pages) || raw.pages.length > shop.maxPages || raw.pages.some((p) => typeof p !== "string" || p.length > MAX_PAGE_CHARS)) {
+      throw new RuShopPagesError(`Раздел ${section.slug}: страницы не те или их больше ${shop.maxPages}`);
+    }
+    pages.set(section.slug, raw.pages as string[]);
+  }
+  return { shop, pages };
 }

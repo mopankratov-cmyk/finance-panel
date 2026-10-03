@@ -40,6 +40,10 @@ const PUBLIC_API: { prefix: string; methods?: string[] }[] = [
   // lib/assortment/collectorAuth.ts. Узко: два пути, по одному методу.
   { prefix: "/api/assortment-collector/queue", methods: ["GET"] },
   { prefix: "/api/assortment-collector/embeddings", methods: ["POST"] },
+  // Загрузчик каталогов российских брендов там же, на mini (сайты не пускают
+  // облако): GET — план страниц, POST — сжатая посылка страниц. Тот же
+  // само-гард collectorAuth; путь один.
+  { prefix: "/api/assortment-collector/ru-shops", methods: ["GET", "POST"] },
   // Браузерный сборщик выплат на Mac владельца: сам роут проверяет Bearer
   // FINANCE_MONITOR_SECRET (или CRON_SECRET). Без этой строки запрос умирал бы
   // здесь 401-м, не дойдя до само-гарда — гейт знает только CRON_SECRET.
