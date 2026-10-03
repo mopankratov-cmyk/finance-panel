@@ -94,8 +94,8 @@ export async function triggerCollection(input: TriggerInput): Promise<string> {
   return result.snapshot_id;
 }
 
-/** Номер пробы Bright Data: s_… или sd_… (живая проверка 02.10 вернула sd_). */
-export const SNAPSHOT_ID = /^sd?_[a-z0-9]+$/i;
+/** Номер пробы Bright Data: s_…, sd_… (сборщики, 02.10) или snap_… (выборка набора, 03.10). */
+export const SNAPSHOT_ID = /^(?:s|sd|snap)_[a-z0-9]+$/i;
 
 export async function snapshotProgress(snapshotId: string): Promise<{ status: string; records: number | null; errors: number | null }> {
   if (!SNAPSHOT_ID.test(snapshotId)) throw new BrightDataError("Неверный snapshot_id.");

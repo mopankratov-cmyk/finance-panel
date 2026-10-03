@@ -36,6 +36,7 @@ test("Пилот стоит денег — запускает только ру�
 test("Номера проб Bright Data: s_ и sd_, ничего лишнего", () => {
   assert.ok(SNAPSHOT_ID.test("sd_mur6qo0e2f4fiji7a8"));
   assert.ok(SNAPSHOT_ID.test("s_m1abc"));
+  assert.ok(SNAPSHOT_ID.test("snap_musn24i1c4aqeva9u"));
   assert.ok(!SNAPSHOT_ID.test("sd_../../x"));
   assert.ok(!SNAPSHOT_ID.test("gd_lct4vafw1tgx27d4o0"));
 });
