@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { asCatalogItem } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import {
-  limeImage, limeModelId, nextSitemapState, parseLimeCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds,
+  limeImage, limeModelId, nextSitemapState, parseLimeCatalog, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds,
 } from "../lib/assortment/ruShops.ts";
 
 const root = join(fileURLToPath(import.meta.url), "..", "..");
@@ -100,4 +100,51 @@ test("Крон автообхода: первым Lime в своём отрез�
   const route = readFileSync(join(root, "app/api/sync/assortment-crawl/route.ts"), "utf8");
   assert.match(route, /runRuShopsCrawl\(db, startedAt\.getTime\(\) \+ RU_SHOPS_BUDGET_MS, only\)/);
   assert.ok(route.indexOf("runRuShopsCrawl(") < route.indexOf("runCatalogCrawl("));
+});
+
+const fixture = (name: string) => readFileSync(join(root, "tests/fixtures/ru-shops", name), "utf8");
+const shop = (id: string) => RU_SHOPS.find((s) => s.sourceId === id)!;
+
+test("Каталоги российских брендов: модель без цвета, название, фото — без цены", () => {
+  const cases: Array<[string, string, RegExp, RegExp]> = [
+    ["S131", "befree.html", /^BF\d+$/, /^https:\/\/befree\.ru\/zhenskaya\/product\//],
+    ["S132", "love-republic.html", /^\d{9,}$/, /^https:\/\/loverepublic\.ru\/catalog\//],
+    ["S133", "zarina.html", /^ZR\d+$/, /^https:\/\/zarina\.ru\/catalog\/product\//],
+    ["S134", "sela.html", /^SL\d+$/, /^https:\/\/www\.sela\.ru\/eshop\//],
+    ["S135", "pompa.html", /^\d{5,}$/, /^https:\/\/www\.pompa\.ru\/catalog\/product\/\d+\/$/],
+  ];
+  for (const [id, file, model, url] of cases) {
+    const html = fixture(file);
+    const records = parseShopCatalog(shop(id), html);
+    assert.ok(records.length >= 2, `${file}: ${records.length} карточек`);
+    for (const r of records) {
+      assert.match(r.sourceItemId, model, `${file}: модель ${r.sourceItemId}`);
+      assert.match(r.url, url, `${file}: ссылка ${r.url}`);
+      assert.ok(r.title.length > 3 && !/₽|\d{3,} ?руб/.test(r.title), `${file}: название «${r.title}»`);
+      assert.match(r.images[0] ?? "", /^https:\/\//, `${file}: фото`);
+    }
+    assert.match(html, /₽|price/i, `${file}: в разметке рядом есть цена`);
+    assert.doesNotMatch(JSON.stringify(records), /price|₽/i, `${file}: в записи цены нет`);
+  }
+  assert.match(parseShopCatalog(shop("S131"), fixture("befree.html"))[0].images[0], /\/images\/1280\//, "befree — фото 1 280 px");
+  assert.doesNotMatch(parseShopCatalog(shop("S135"), fixture("pompa.html"))[0].title, / - \d+$/, "Pompa: номер из data-name срезан");
+});
+
+test("Российские магазины: свои дни, разрешённая постраничная выдача, закрытые не трогаем", () => {
+  const ids = RU_SHOPS.map((s) => s.sourceId);
+  assert.deepEqual(ids, ["S130", "S131", "S132", "S133", "S134", "S135"]);
+  assert.equal(ruShopPageUrl(shop("S135"), "outerwear/", 2), "https://www.pompa.ru/catalog/outerwear/?PAGEN_1=2");
+  assert.equal(ruShopPageUrl(shop("S133"), "clothes/outwear/kurtki/", 3), "https://zarina.ru/catalog/clothes/outwear/kurtki/?page=3");
+  const text = JSON.stringify(RU_SHOPS);
+  assert.doesNotMatch(text, /12storeez|gloria-jeans|ekonika|finn-flare|mascotte|lime-shop\.com/, "сайты с проверкой на бота не обходим");
+  for (const s of RU_SHOPS) {
+    assert.ok(s.sections.some((x) => x.direction === "bags") || s.sections.some((x) => x.direction === "jackets"));
+    assert.ok(s.weekdaysUtc.length > 0 && s.maxPages <= 40);
+  }
+  // В день — не больше двух магазинов: у крона на сайты брендов 150 с.
+  for (let day = 0; day < 7; day += 1) {
+    const shops = RU_SHOPS.filter((s) => s.weekdaysUtc.includes(day));
+    assert.ok(shops.length <= 2, `день ${day}: ${shops.map((s) => s.name).join(", ")}`);
+    if (shops.some((s) => s.sourceId === "S130" || s.sourceId === "S135")) assert.equal(shops.length, 1, "Lime и Pompa — по одному в день");
+  }
 });

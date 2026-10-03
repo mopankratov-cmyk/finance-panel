@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { MappedRecord } from "./brightdataCatalog";
 import { ingestRecords } from "./brightdataCrawl";
-import { nextSitemapState, parseLimeCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds, type RuShop } from "./ruShops";
+import { nextSitemapState, parseShopCatalog, readSitemapState, RU_SHOPS, ruShopPageUrl, sitemapDiff, sitemapModelIds, type RuShop, type SitemapDiff } from "./ruShops";
 import { ASSORTMENT_BOT_UA, safeFetch } from "./safeFetch";
 
 /** Пауза между страницами одного сайта — вежливо, не чаще запроса в секунду. */
@@ -53,7 +53,7 @@ async function crawlSection(shop: RuShop, slug: string, deadline: number): Promi
   for (let page = 1; page <= shop.maxPages; page += 1) {
     if (Date.now() > deadline) return { records: [...byUrl.values()], pages, complete: false };
     if (page > 1) await sleep(PAGE_PAUSE_MS);
-    const cards = parseLimeCatalog(await fetchText(ruShopPageUrl(shop, slug, page), PAGE_MAX_BYTES));
+    const cards = parseShopCatalog(shop, await fetchText(ruShopPageUrl(shop, slug, page), PAGE_MAX_BYTES));
     pages += 1;
     const fresh = cards.filter((c) => !byUrl.has(c.url));
     if (fresh.length === 0) return { records: [...byUrl.values()], pages, complete: true };
@@ -72,30 +72,44 @@ async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: number): Pr
     if (error) throw new Error(error.message);
     const capabilities = (row?.capabilities && typeof row.capabilities === "object" ? row.capabilities : {}) as Record<string, unknown>;
 
-    const models = sitemapModelIds(await fetchText(shop.sitemapUrl, SITEMAP_MAX_BYTES));
-    if (models.size === 0) throw new Error("карта сайта пуста — разметка поменялась?");
-    const diff = sitemapDiff(readSitemapState(capabilities), models, now);
-    if (diff.massChange) warnings.push("в карте сайта разом сотни новых моделей — похоже на перестройку сайта, обход лёг базой");
+    // Карта сайта — у тех, чей каталог отдаёт не всё (Lime).
+    let models: Set<string> | null = null;
+    let diff: SitemapDiff | null = null;
+    if (shop.sitemapUrl) {
+      models = sitemapModelIds(await fetchText(shop.sitemapUrl, SITEMAP_MAX_BYTES));
+      if (models.size === 0) throw new Error("карта сайта пуста — разметка поменялась?");
+      diff = sitemapDiff(readSitemapState(capabilities), models, now);
+      if (diff.massChange) warnings.push("в карте сайта разом сотни новых моделей — похоже на перестройку сайта, обход лёг базой");
+    }
 
+    // Разделы одного направления (куртки, пальто…) — одна выборка: база и новинки по направлению.
+    const byDirection = new Map<RuShop["sections"][number]["direction"], { records: MappedRecord[]; complete: boolean }>();
     const seen = new Set<string>();
     for (const section of shop.sections) {
       const crawled = await crawlSection(shop, section.slug, deadline);
       result.pages += crawled.pages;
       crawled.records.forEach((r) => seen.add(r.sourceItemId));
       if (!crawled.complete) warnings.push(`раздел ${section.slug}: обход не дошёл до конца (${crawled.pages} стр.)`);
-      const done = await ingestRecords(db, { sourceId: shop.sourceId, name: shop.name }, { direction: section.direction, method: shop.method }, crawled.records, deadline, {
-        quiet: diff.baseline || diff.massChange,
-        freshOnly: diff.fresh,
-      });
+      const bucket = byDirection.get(section.direction) ?? { records: [], complete: true };
+      bucket.records.push(...crawled.records);
+      bucket.complete = bucket.complete && crawled.complete;
+      byDirection.set(section.direction, bucket);
+    }
+    for (const [direction, bucket] of byDirection) {
+      const done = await ingestRecords(db, { sourceId: shop.sourceId, name: shop.name }, { direction, method: shop.method }, bucket.records, deadline, diff
+        ? { quiet: diff.baseline || diff.massChange, freshOnly: diff.fresh }
+        // Полный обход — новинка как у Shopify; не дошли до конца — новинкам не верим.
+        : { quiet: !bucket.complete, churnGuard: true });
+      if (done.churn) warnings.push(`${direction === "bags" ? "сумки" : "куртки"}: слишком много новых разом — похоже на перестройку каталога, обход лёг базой`);
       result.collected += done.collected;
       result.added += done.added;
       result.baseline = result.baseline || done.baseline;
     }
 
-    const next = nextSitemapState(models, diff, seen);
-    result.pending = Object.keys(next.pending).length;
+    const next = models && diff ? nextSitemapState(models, diff, seen) : null;
+    result.pending = next ? Object.keys(next.pending).length : 0;
     const patch: Record<string, unknown> = {
-      capabilities: { ...capabilities, sitemap: next },
+      capabilities: next ? { ...capabilities, sitemap: next } : capabilities,
       last_attempt_at: now,
       last_error: warnings.length ? warnings.join("; ") : null,
     };
@@ -112,7 +126,7 @@ async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: number): Pr
 }
 
 /**
- * Обход сайтов российских брендов (Lime). Плановый — только в дни магазина;
+ * Обход сайтов российских брендов. Плановый — только в дни магазина;
  * `only` (ручной запуск одного источника) — в любой день.
  */
 export async function runRuShopsCrawl(db: SupabaseClient, deadline: number, only?: string | null): Promise<RuShopResult[]> {

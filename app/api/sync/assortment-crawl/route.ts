@@ -12,7 +12,7 @@ export const maxDuration = 300;
 const JOB = "assortment-crawl";
 const BUDGET_MS = 240_000;
 /** Сайты российских брендов идут первыми и не дольше этого — остальное время Shopify. */
-const RU_SHOPS_BUDGET_MS = 110_000;
+const RU_SHOPS_BUDGET_MS = 150_000;
 
 /**
  * Ежедневный автообход каталогов Shopify-брендов модуля «Разработка

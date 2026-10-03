@@ -279,7 +279,7 @@ ffmpeg — это правка `package.json` и установка на mini, �
 
 | Крон | Когда | Что |
 |---|---|---|
-| `/api/sync/assortment-crawl` | 03:30 ежедневно (06:30) | Shopify-бренды; первый проход — база; новинка = невиданный и опубликован ≤ 60 дней. Пн и чт первым — Lime (до 110 с) |
+| `/api/sync/assortment-crawl` | 03:30 ежедневно (06:30) | Shopify-бренды; первый проход — база; новинка = невиданный и опубликован ≤ 60 дней. Первыми — сайты российских брендов (до 150 с): пн, чт Lime; вт, пт befree и Love Republic; ср, сб ZARINA и Sela; вс Pompa |
 | `/api/sync/assortment-brightdata?phase=trigger` | 05:00 ср, сб (08:00) | запуск проб ASOS и H&M (~180 записей); по средам — выборки наборов Zara и Uniqlo |
 | `…?phase=collect`, `…?phase=collect&retry=1` | 06:30 и 08:30 ср, сб | забрать готовые пробы; номера — в `assortment_sources.capabilities.brightdata_pending` |
 | `/api/sync/assortment-ai-attributes` | 09:00 ежедневно (12:00) | признаки по фото, не больше 20 моделей (`ASSORTMENT_AI_DAILY_LIMIT`) |
@@ -366,6 +366,18 @@ ffmpeg — это правка `package.json` и установка на mini, �
   карточки каталога (`women_bags`, `women_outerwear`), когда она там появится
   (ждём до 30 дней, `capabilities.sitemap.pending`). Сотни новых разом —
   перестройка сайта, обход ложится базой. Пауза между страницами 1,2 с.
+- befree (S131), Love Republic (S132), ZARINA (S133), Sela (S134), Pompa (S135):
+  каталог отдаётся сервером целиком (26–48 карточек на страницу), robots.txt
+  разрешает каталог и постраничную выдачу (`?page=`, у Pompa `?PAGEN_1=`).
+  Новинка — как у Shopify: невиданная модель в полностью обойдённом разделе;
+  не дошли до конца — новинкам не верим. Модель — артикул без цвета (befree
+  `BF…`, Love Republic — `itemprop="sku"` до дефиса, ZARINA `ZR…`, Sela `SL…`,
+  Pompa — число в начале артикула).
+- Закрыты проверкой на бота — не трогаем: 12 STOREEZ, Gloria Jeans (ServicePipe),
+  Ekonika (Qrator), Finn Flare, Mascotte (Яндекс SmartCaptcha). BAON — пустая
+  оболочка без товаров в HTML.
+- Обход представляется роботом честно (`FinancePanelAssortmentBot/1.0`):
+  браузерному заголовку Lime включал проверку на бота.
 - Бренд «LIME» на WB (S129) — не тот Lime: продаж нет.
 - Bright Data: Mango, Bershka, Pull&Bear — записи без пола и раздела, на
   разных языках; Lyst, Farfetch, SSENSE — агрегаторы, раздел целиком не взять;

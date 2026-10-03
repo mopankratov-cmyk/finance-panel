@@ -1,7 +1,15 @@
 /**
  * Российские бренды — обход каталогов их собственных сайтов (запрос владельца
- * 03.10.2026: «не забудь про лайм»). Чистые функции: паспорт, адреса страниц,
- * разбор карточек.
+ * 03.10.2026: «не забудь про лайм и другие магазины»). Чистые функции:
+ * паспорт, адреса страниц, разбор карточек, новинки по карте сайта.
+ *
+ * Новинка двумя способами. Сайт отдаёт раздел целиком (befree, Love Republic,
+ * ZARINA, Sela, Pompa) — как у Shopify: невиданная в полном разделе модель;
+ * обход не дошёл до конца — новинкам не верим. Отдаёт часть (Lime) — по
+ * карте сайта.
+ *
+ * Закрыты проверкой на бота (04.10, не трогаем): 12 STOREEZ, Gloria Jeans,
+ * Ekonika, Finn Flare, Mascotte.
  *
  * Только то, что сайт открыто отдаёт роботам. Lime (limestore.com, 03.10):
  * robots.txt разрешает каталог, постраничную выдачу `?page=` и карту сайта,
@@ -17,6 +25,7 @@
 
 import type { MappedRecord } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
+import { parseBefree, parseLoveRepublic, parsePompa, parseSela, parseZarina } from "./ruShopParsers";
 
 export interface RuShopSection {
   direction: AssortmentDirection;
@@ -24,12 +33,18 @@ export interface RuShopSection {
   slug: string;
 }
 
+export type RuShopParser = "lime" | "befree" | "love_republic" | "zarina" | "sela" | "pompa";
+
 export interface RuShop {
   sourceId: string;
   name: string;
   brand: string;
   catalogBase: string;
-  sitemapUrl: string;
+  /** Есть — новинки по карте сайта (каталог отдаёт не всё); нет — по полному обходу раздела. */
+  sitemapUrl?: string;
+  /** Параметр постраничной выдачи, разрешённый robots.txt сайта. */
+  pageParam: string;
+  parser: RuShopParser;
   sections: RuShopSection[];
   /** Дни обхода (UTC, 0 — вс): новинки у брендов выходят раз-два в неделю. */
   weekdaysUtc: number[];
@@ -46,6 +61,8 @@ export const RU_SHOPS: RuShop[] = [
     brand: "LIMÉ",
     catalogBase: "https://limestore.com/ru_ru/catalog/",
     sitemapUrl: "https://limestore.com/sitemap.xml",
+    pageParam: "page",
+    parser: "lime",
     sections: [
       { direction: "bags", slug: "women_bags" },
       { direction: "jackets", slug: "women_outerwear" },
@@ -55,10 +72,105 @@ export const RU_SHOPS: RuShop[] = [
     method: "crawl_lime",
     accessNote: "Обход limestore.com пн и чт: новинки по карте сайта, название и фото из каталога (сумки, верхняя одежда); robots.txt разрешает каталог, ?page= и карту; страницы товаров не открываем; цены не читаем",
   },
+  // Дни разведены: у крона на сайты брендов 150 с, Pompa отвечает ~14 с на страницу.
+  {
+    sourceId: "S131",
+    name: "befree",
+    brand: "befree",
+    catalogBase: "https://befree.ru/zhenskaya/",
+    pageParam: "page",
+    parser: "befree",
+    sections: [
+      { direction: "bags", slug: "zen-riukzaki-i-sumki" },
+      { direction: "jackets", slug: "zen-verxniaia-odezda" },
+    ],
+    weekdaysUtc: [2, 5],
+    maxPages: 20,
+    method: "crawl_befree",
+    accessNote: "Обход каталога befree.ru вт и пт (сумки и рюкзаки, верхняя одежда); robots.txt разрешает каталог и ?page=; цены не читаем",
+  },
+  {
+    sourceId: "S132",
+    name: "Love Republic",
+    brand: "Love Republic",
+    catalogBase: "https://loverepublic.ru/catalog/",
+    pageParam: "page",
+    parser: "love_republic",
+    sections: [
+      { direction: "bags", slug: "sumki/" },
+      { direction: "jackets", slug: "odezhda/verhnyaya-odezhda/" },
+    ],
+    weekdaysUtc: [2, 5],
+    maxPages: 12,
+    method: "crawl_love_republic",
+    accessNote: "Обход каталога loverepublic.ru вт и пт (сумки, верхняя одежда); robots.txt разрешает каталог и ?page=; цены не читаем",
+  },
+  {
+    sourceId: "S133",
+    name: "ZARINA",
+    brand: "ZARINA",
+    catalogBase: "https://zarina.ru/catalog/",
+    pageParam: "page",
+    parser: "zarina",
+    sections: [
+      { direction: "bags", slug: "sumki-i-koshelki/" },
+      { direction: "jackets", slug: "clothes/outwear/kurtki/" },
+      { direction: "jackets", slug: "clothes/outwear/palto/" },
+      { direction: "jackets", slug: "clothes/outwear/polupalto/" },
+    ],
+    weekdaysUtc: [3, 6],
+    maxPages: 12,
+    method: "crawl_zarina",
+    accessNote: "Обход каталога zarina.ru ср и сб (сумки, куртки, пальто, полупальто); robots.txt разрешает каталог и ?page=; цены не читаем",
+  },
+  {
+    sourceId: "S134",
+    name: "Sela",
+    brand: "Sela",
+    catalogBase: "https://www.sela.ru/eshop/women/",
+    pageParam: "page",
+    parser: "sela",
+    sections: [
+      { direction: "bags", slug: "aksessuary/sumki/" },
+      { direction: "jackets", slug: "verkhnyaya-odezhda/" },
+    ],
+    weekdaysUtc: [3, 6],
+    maxPages: 10,
+    method: "crawl_sela",
+    accessNote: "Обход каталога sela.ru ср и сб (женские сумки, верхняя одежда); robots.txt разрешает каталог и ?page=; цены не читаем",
+  },
+  {
+    sourceId: "S135",
+    name: "Pompa",
+    brand: "POMPA",
+    catalogBase: "https://www.pompa.ru/catalog/",
+    pageParam: "PAGEN_1",
+    parser: "pompa",
+    sections: [
+      { direction: "bags", slug: "aksessuary/sumki/" },
+      { direction: "jackets", slug: "outerwear/" },
+    ],
+    weekdaysUtc: [0],
+    maxPages: 8,
+    method: "crawl_pompa",
+    accessNote: "Обход каталога pompa.ru по воскресеньям (сумки, верхняя одежда); robots.txt разрешает каталог и ?PAGEN_1=; сайт медленный; цены не читаем",
+  },
 ];
 
-export function ruShopPageUrl(shop: Pick<RuShop, "catalogBase">, slug: string, page: number): string {
-  return page <= 1 ? `${shop.catalogBase}${slug}` : `${shop.catalogBase}${slug}?page=${page}`;
+export function ruShopPageUrl(shop: Pick<RuShop, "catalogBase" | "pageParam">, slug: string, page: number): string {
+  return page <= 1 ? `${shop.catalogBase}${slug}` : `${shop.catalogBase}${slug}?${shop.pageParam}=${page}`;
+}
+
+/** Карточки страницы каталога по правилу сайта. */
+export function parseShopCatalog(shop: Pick<RuShop, "parser">, html: string): MappedRecord[] {
+  switch (shop.parser) {
+    case "lime": return parseLimeCatalog(html);
+    case "befree": return parseBefree(html);
+    case "love_republic": return parseLoveRepublic(html);
+    case "zarina": return parseZarina(html);
+    case "sela": return parseSela(html);
+    case "pompa": return parsePompa(html);
+  }
 }
 
 /** Модель Lime — число в начале адреса: «37983-0302_553_610_krasnyi» → 37983 (цвета — одна модель). */
