@@ -24,6 +24,7 @@ import { isMissingColumnError } from "./errors";
 import { buildEvidence, type EvidenceObservation } from "./evidence";
 import { assembleDraft, lessonFor, type DraftResult } from "./learning";
 import { loadLearning } from "./learningStore";
+import { isRuSource, RU_SALES_SIGNAL } from "./ruMarket";
 import { cardSignal, type CardSignal } from "./signals";
 import { signedUrls } from "./storage";
 
@@ -533,7 +534,12 @@ export async function loadCandidates(db: SupabaseClient, collectionId: string): 
     const duplicate = sameConstruction(lites, { brand: r.brand ?? null, title: r.title ?? null, referenceId: id });
     const plain = attributeMap(attributes);
     const lesson = lessonFor({ referenceId: id, direction: collection.direction, brand: r.brand ?? null, title: r.title ?? null, attributes: plain }, learning.lessons, learning.ownIds);
-    const score = TONE_SCORE[signal.tone] + (STATUS_SCORE[status] ?? 0) - (duplicate ? 5 : 0) - (lesson?.penalty ?? 0);
+    // Учимся у рынка РФ: похожее по фото хорошо продаётся на WB — кандидат выше;
+    // сами позиции топа WB — ориентир, а не идея, поэтому ниже.
+    const ruSales = obs.filter((o) => o.metric === "ru_similar_sales" && o.value_num != null).map((o) => Number(o.value_num))[0] ?? 0;
+    const ruBoost = ruSales >= RU_SALES_SIGNAL ? 1.5 : 0;
+    const ruItself = isRuSource(r.source_id) ? 2 : 0;
+    const score = TONE_SCORE[signal.tone] + (STATUS_SCORE[status] ?? 0) + ruBoost - ruItself - (duplicate ? 5 : 0) - (lesson?.penalty ?? 0);
     return {
       id,
       title: String(r.title ?? ""),

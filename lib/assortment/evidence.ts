@@ -37,7 +37,11 @@ const METRIC_LABEL: Record<string, string> = {
   bestseller_badge: "Отметка бестселлера",
   reviews_count: "Отзывы на сайте магазина",
   rating: "Рейтинг на сайте магазина",
+  wb_sales_30d: "Продажи на WB за 30 дней",
+  ru_similar_sales: "Похожее продаётся на WB (30 дней)",
 };
+
+const UNIT: Record<string, string> = { wb_sales_30d: "шт", ru_similar_sales: "шт", reviews_count: "отзывов" };
 
 const BADGE_METRICS = new Set(["new_badge", "bestseller_badge"]);
 
@@ -47,6 +51,9 @@ const METHOD_LABEL: Record<string, string> = {
   crawl_shopify: "автообход каталога",
   brightdata_asos: "сбор Bright Data с ASOS",
   brightdata_hm: "сбор Bright Data с H&M",
+  mpstats_top: "MPSTATS: топ предмета WB",
+  mpstats_brand: "MPSTATS: товары бренда на WB",
+  mpstats_similar: "MPSTATS + сходство по фото",
   shopify_published_at: "дата публикации из карточки",
   shopify_tags: "теги карточки",
 };
@@ -67,7 +74,8 @@ export function ruDate(iso: string): string {
 }
 
 function rowFrom(o: EvidenceObservation): EvidenceRow {
-  const raw = o.value_text ?? (o.value_num != null ? String(o.value_num) : null);
+  const number = o.value_num != null ? `${o.value_num.toLocaleString("ru-RU")}${UNIT[o.metric] ? ` ${UNIT[o.metric]}` : ""}` : null;
+  const raw = o.metric === "ru_similar_sales" && number && o.value_text ? `${number} — ${o.value_text}` : o.value_text ?? number;
   const value = raw == null
     ? `нет данных${o.null_reason ? ` — ${o.null_reason}` : ""}`
     : DATE_METRICS.has(o.metric) ? ruDate(raw) : BADGE_METRICS.has(o.metric) ? cleanBadge(raw) : raw;
@@ -97,7 +105,9 @@ export function buildEvidence(observations: EvidenceObservation[], similarOtherB
     novelty.push(missing("Опубликовано на сайте", "неизвестно", "сайт не отдал дату публикации"));
   }
   const spread = by("spread");
-  if (spread.length === 0) {
+  // Строки-заглушки — каждая сама по себе: замер рынка РФ в группе не должен
+  // прятать «нет данных» по соцсетям и сходству.
+  {
     spread.push(missing("Независимые публикации", "нет данных", "соцсети пока не подключены"));
     if (similarOtherBrands === null) {
       spread.push(missing("Похожие модели у других брендов", "не проверялось", "отпечаток фото ещё не посчитан"));

@@ -4,10 +4,11 @@ import { isReferenceStatus, STATUS_LABEL } from "./decisions";
 import { formatValue, type Attributes } from "./attributes";
 import { lessonFor } from "./learning";
 import { loadLearning } from "./learningStore";
+import { RU_SOURCE_IDS } from "./ruMarket";
 import { cardSignal, type CardSignal, type ObservationLite } from "./signals";
 import { signedUrls } from "./storage";
 
-export type FeedView = "new" | "retail" | "hidden";
+export type FeedView = "new" | "retail" | "hidden" | "ru";
 
 export interface FeedCard {
   id: string;
@@ -37,6 +38,9 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
   query = view === "hidden"
     ? query.in("status", HIDDEN_STATUSES)
     : query.not("status", "in", `(${HIDDEN_STATUSES.join(",")})`);
+  // «Рынок РФ» — отдельная вкладка: топ WB и Lime не смешиваем с зарубежными находками.
+  if (view === "ru") query = query.in("source_id", RU_SOURCE_IDS);
+  else if (view !== "hidden") query = query.or(`source_id.is.null,source_id.not.in.(${RU_SOURCE_IDS.join(",")})`);
   const { data: refs, error } = await query
     .order("first_seen_at", { ascending: false })
     .limit(view === "retail" ? 300 : limit);

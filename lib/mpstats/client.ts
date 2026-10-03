@@ -206,3 +206,52 @@ export async function subjectAnnualSeasonality(subjectId: number | string): Prom
   const data = await get<SubjectAnnualSeasonality[]>(`/subject/season_effects/annual?path=${enc(String(subjectId))}&period=month`, 24 * 3600);
   return Array.isArray(data) ? data : [];
 }
+
+/**
+ * Товар предмета или бренда WB для модуля «Разработка ассортимента» — только
+ * поля без денег: цены, выручка и упущенная выручка сюда не попадают.
+ */
+export interface MarketItem {
+  id: number;
+  name: string;
+  brand: string | null;
+  color: string | null;
+  subject: string | null;
+  sales: number | null;
+  comments: number | null;
+  rating: number | null;
+  firstDate: string | null;
+}
+
+function toMarketItem(raw: Record<string, unknown>): MarketItem | null {
+  const id = Number(raw.id);
+  const name = typeof raw.name === "string" ? raw.name.trim() : "";
+  if (!Number.isFinite(id) || id <= 0 || !name) return null;
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : typeof v === "string" && v.trim() && Number.isFinite(Number(v)) ? Number(v) : null);
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  return {
+    id,
+    name,
+    brand: str(raw.brand),
+    color: str(raw.color),
+    subject: str(raw.subject),
+    sales: num(raw.sales),
+    comments: num(raw.comments),
+    rating: num(raw.rating),
+    firstDate: str(raw.sku_first_date) ?? str(raw.first_date),
+  };
+}
+
+const TOP_BY_SALES = (limit: number) => ({ startRow: 0, endRow: limit, filterModel: {}, sortModel: [{ colId: "sales", sort: "desc" }] });
+
+/** Топ товаров предмета WB по продажам за период. */
+export async function subjectTopItems(subjectId: number | string, d1: string, d2: string, limit = 30): Promise<MarketItem[]> {
+  const data = await post<{ data?: Array<Record<string, unknown>> }>("/subject/items", `d1=${d1}&d2=${d2}&path=${subjectId}&${WITH_FBS}`, TOP_BY_SALES(limit), 24 * 3600);
+  return (data?.data ?? []).map(toMarketItem).filter((i): i is MarketItem => Boolean(i));
+}
+
+/** Топ товаров бренда WB по продажам за период. */
+export async function brandTopItems(brand: string, d1: string, d2: string, limit = 100): Promise<MarketItem[]> {
+  const data = await post<{ data?: Array<Record<string, unknown>> }>("/brand/items", `d1=${d1}&d2=${d2}&path=${enc(brand)}&${WITH_FBS}`, TOP_BY_SALES(limit), 24 * 3600);
+  return (data?.data ?? []).map(toMarketItem).filter((i): i is MarketItem => Boolean(i));
+}

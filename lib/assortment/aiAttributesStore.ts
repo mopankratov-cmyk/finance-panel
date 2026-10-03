@@ -4,6 +4,7 @@ import { ANTHROPIC_MODEL } from "@/lib/ai/models";
 import { AI_META_KEY, aiPrompt, mergeAiAttributes, parseAiAttributes } from "./aiAttributes";
 import type { Attributes } from "./attributes";
 import type { AssortmentDirection } from "./constants";
+import { RU_SOURCE_IDS } from "./ruMarket";
 import { signedUrls } from "./storage";
 
 export class AiAttributesUnavailableError extends Error {}
@@ -93,6 +94,8 @@ export async function pendingForAi(db: SupabaseClient, limit: number): Promise<s
     .select("id")
     .is(`attributes->${AI_META_KEY}`, null)
     .not("status", "in", "(rejected,archived)")
+    // Топ WB и Lime — ориентир рынка, а не референс: ИИ на них не тратим.
+    .or(`source_id.is.null,source_id.not.in.(${RU_SOURCE_IDS.join(",")})`)
     .order("first_seen_at", { ascending: false })
     .limit(limit * 3);
   if (error) throw new Error(error.message);
