@@ -342,6 +342,8 @@ ffmpeg — это правка `package.json` и установка на mini, �
 - Zara (`gd_lct4vafw1tgx27d4o0`): `section = WOMAN`, `product_family` (CAZADORA,
   ABRIGO, GABARDINA, PLUMIFERO, PARKA; BOLSO), витрина `/us/en/`. Товар
   повторяется по странам — перед записью дубли по номеру схлопываются (#1436).
+  Запись — модель в цвете; набор хранит и распроданное: куртки витрины США не
+  влезли в 600 записей, поэтому в куртках `availability = true`.
 - Uniqlo (`gd_mosh3s7wdb7jafn85`): запись на цвет и размер, модель — `group_id`;
   `store_country = ES`, `product_category` «WOMEN > Outerwear» без «Blazers»,
   размер S (`item_id` содержит «-003»); сумки — «WOMEN > Accessories > Bags».

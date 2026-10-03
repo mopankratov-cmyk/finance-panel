@@ -42,12 +42,15 @@ export interface CollectionTarget {
  * CAZADORA — куртки, ABRIGO — пальто, GABARDINA — тренчи, PLUMIFERO —
  * пуховики, BOLSO — сумки. CHAQUETA не берём: там кардиганы. Одна витрина
  * (США, английский): товар в наборе повторяется по странам, и раздел всех
- * витрин в выборку целиком не влезает.
+ * витрин в выборку целиком не влезает. Записи — модель в цвете; набор хранит
+ * и распроданное (`availability: false`): куртки одной витрины не влезли и в
+ * 600 записей (03.10), поэтому в куртках только то, что в продаже.
  */
 const ZARA_US = { name: "url", operator: "includes", value: "/us/en/" };
-const zaraFilter = (families: string[]) => ({
+const ZARA_IN_STOCK = { name: "availability", operator: "=", value: true };
+const zaraFilter = (families: string[], extra: unknown[] = []) => ({
   operator: "and",
-  filters: [{ name: "section", operator: "=", value: "WOMAN" }, { name: "product_family", operator: "in", value: families }, ZARA_US],
+  filters: [{ name: "section", operator: "=", value: "WOMAN" }, { name: "product_family", operator: "in", value: families }, ZARA_US, ...extra],
 });
 
 /**
@@ -88,7 +91,7 @@ export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
   },
   {
     sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
-    kind: "dataset", filter: zaraFilter(["CAZADORA", "ABRIGO", "GABARDINA", "PLUMIFERO", "PARKA"]), recordsLimit: 600, weekdayUtc: 3, trustDirection: true,
+    kind: "dataset", filter: zaraFilter(["CAZADORA", "ABRIGO", "GABARDINA", "PLUMIFERO", "PARKA"], [ZARA_IN_STOCK]), recordsLimit: 600, weekdayUtc: 3, trustDirection: true,
   },
   {
     sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "bags", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",

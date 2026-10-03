@@ -75,6 +75,8 @@ test("Zara — готовый набор раз в неделю: женское,
   assert.match(text, /BOLSO/);
   assert.doesNotMatch(text, /CHAQUETA/, "в CHAQUETA у Zara кардиганы");
   assert.match(text, /"\/us\/en\/"/, "товар повторяется по странам — одна витрина, чтобы раздел влез целиком");
+  const jackets = JSON.stringify(zara.find((t) => t.direction === "jackets")!.filter);
+  assert.match(jackets, /"availability","operator":"=","value":true/, "куртки одной витрины с распроданным не влезли в 600 записей");
 });
 
 test("Запись набора Zara: product_name, product_family, colour; цены вырезаны", () => {
