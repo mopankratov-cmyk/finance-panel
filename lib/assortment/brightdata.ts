@@ -60,7 +60,7 @@ export interface DatasetInfo {
 }
 
 /** Что из каталога Bright Data относится к модулю: сайты одежды, сумок и соцсети. */
-export const RELEVANT_DATASET = /zara|mango|uniqlo|h&m|\bhm\b|cos\b|asos|farfetch|zalando|net-?a-?porter|shein|massimo|pull|bershka|instagram|tiktok|pinterest|vinted|vestiaire|lyst|nordstrom|ssense|mytheresa|lamoda|\blime\b|ozon|wildberries/i;
+export const RELEVANT_DATASET = /zara|mango|uniqlo|h&m|\bhm\b|cos\b|asos|farfetch|zalando|net-?a-?porter|shein|massimo|pull|bershka|instagram|tiktok|pinterest|vinted|vestiaire|lyst|nordstrom|ssense|mytheresa|\blime\b|wildberries/i;
 
 export function relevantDatasets(list: unknown): DatasetInfo[] {
   if (!Array.isArray(list)) return [];

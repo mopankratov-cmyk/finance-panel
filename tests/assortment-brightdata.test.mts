@@ -46,3 +46,8 @@ test("Готовые наборы: выборка не больше 100 запи
   assert.match(source, /\/datasets\/snapshots\/\$\{snapshotId\}\/download\?format=json/);
   assert.match(source, /if \(response\.status === 202\) return null/);
 });
+
+test("Каталог модуля не смотрит Ozon и Lamoda (граница ТЗ и решение владельца)", () => {
+  const list = relevantDatasets([{ id: "gd_1", name: "Ozon products" }, { id: "gd_2", name: "Lamoda products" }, { id: "gd_3", name: "Lime products" }]);
+  assert.deepEqual(list.map((d) => d.name), ["Lime products"]);
+});
