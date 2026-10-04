@@ -8,7 +8,7 @@ import { RU_SOURCE_IDS } from "./ruMarket";
 import { cardSignal, type CardSignal, type ObservationLite } from "./signals";
 import { signedUrls } from "./storage";
 
-export type FeedView = "new" | "retail" | "hidden" | "ru";
+export type FeedView = "new" | "retail" | "hidden" | "ru" | "work";
 
 export interface FeedCard {
   id: string;
@@ -29,20 +29,24 @@ export interface FeedCard {
 type Observation = ObservationLite & { reference_id: string; method: string };
 
 const HIDDEN_STATUSES = ["rejected", "archived"];
+/** «В работе»: отобранные, ждущие образца и уже в подборке — в «Новинках» их нет. */
+const WORK_STATUSES = ["selected", "sample_needed", "in_collection"];
 
 export async function loadFeed(db: SupabaseClient, direction: AssortmentDirection, view: FeedView, limit = 60): Promise<FeedCard[]> {
   let query = db
     .from("assortment_references")
     .select("id,title,brand,region,url,first_seen_at,status,version,attributes,source_id")
     .eq("direction", direction);
-  query = view === "hidden"
-    ? query.in("status", HIDDEN_STATUSES)
-    : query.not("status", "in", `(${HIDDEN_STATUSES.join(",")})`);
+  if (view === "hidden") query = query.in("status", HIDDEN_STATUSES);
+  else if (view === "work") query = query.in("status", WORK_STATUSES);
+  else if (view === "new") query = query.not("status", "in", `(${[...HIDDEN_STATUSES, ...WORK_STATUSES].join(",")})`);
+  else query = query.not("status", "in", `(${HIDDEN_STATUSES.join(",")})`);
   // «Рынок РФ» — отдельная вкладка: топ WB и Lime не смешиваем с зарубежными находками.
   if (view === "ru") query = query.in("source_id", RU_SOURCE_IDS);
-  else if (view !== "hidden") query = query.or(`source_id.is.null,source_id.not.in.(${RU_SOURCE_IDS.join(",")})`);
+  else if (view !== "hidden" && view !== "work") query = query.or(`source_id.is.null,source_id.not.in.(${RU_SOURCE_IDS.join(",")})`);
   const { data: refs, error } = await query
-    .order("first_seen_at", { ascending: false })
+    // «В работе» — по последнему решению, остальное — по дате находки.
+    .order(view === "work" ? "updated_at" : "first_seen_at", { ascending: false })
     .limit(view === "retail" ? 300 : limit);
   if (error) throw new Error(error.message);
   const rows = refs ?? [];

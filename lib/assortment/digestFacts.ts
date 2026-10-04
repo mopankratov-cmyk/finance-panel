@@ -56,6 +56,8 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
     const direction = ref.direction as AssortmentDirection;
     if (!directions[direction]) continue;
     const obs = observations.get(String(ref.id)) ?? [];
+    // Отобранное из каталога — выбор человека, а не новинка: оно уже среди решений «отобрано».
+    if (obs.some((o) => o.metric === "catalog_pick")) continue;
     const attributes = (ref.attributes ?? {}) as Attributes;
     const colors = Array.isArray(attributes.colors?.value) ? attributes.colors.value.length : 0;
     const manual = !ref.source_id || obs.some((o) => o.metric === "first_seen" && o.method === "import_manual");

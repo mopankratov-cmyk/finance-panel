@@ -128,6 +128,82 @@ test("Число для вкладки — обычным запросом, не
   assert.match(store, /const one = \{ \.\.\.query, offset: 0, limit: 1 \}/);
 });
 
+test("Отобранная из каталога модель: подпись «Из каталога бренда», не «пока одна находка»", async () => {
+  const { cardSignal } = await import("../lib/assortment/signals.ts");
+  const picked = cardSignal([{ group_kind: "novelty", metric: "catalog_pick", value_text: "2026-10-03T21:48:00Z", value_num: null, null_reason: null, status: "observed", observed_at: "2026-10-05T10:00:00Z" }], { manual: false, colors: 1 });
+  assert.equal(picked.label, "Из каталога бренда");
+  assert.equal(picked.tone, "manual");
+  assert.match(picked.why, /отобрано из каталога бренда, в каталоге с/);
+  assert.doesNotMatch(picked.why, /пока одна находка/);
+  const withBadge = cardSignal([
+    { group_kind: "novelty", metric: "catalog_pick", value_text: null, value_num: null, null_reason: null, status: "observed", observed_at: "2026-10-05T10:00:00Z" },
+    { group_kind: "retail", metric: "new_badge", value_text: "новинка", value_num: null, null_reason: null, status: "observed", observed_at: "2026-10-05T10:00:00Z" },
+  ], { manual: false, colors: 1 });
+  assert.equal(withBadge.tone, "retail", "метка сайта важнее: «Отмечено ритейлером»");
+});
+
+test("Отбор из каталога: идемпотентно, «Отобрана» решением человека, фото после ответа, сводка не считает это новинкой", () => {
+  const pick = readFileSync(join(root, "lib/assortment/catalogPick.ts"), "utf8");
+  assert.match(pick, /if \(row\.reference_id\) return \{ referenceId: row\.reference_id/, "повторное нажатие — та же находка");
+  assert.match(pick, /origin: "catalog_pick"/);
+  assert.match(pick, /cloudPhotos: false/, "фото не держат человека");
+  assert.match(pick, /const PICKABLE: ReferenceStatus\[\] = \["new", "watching"\]/, "двигаем вперёд только новую и отложенную — образец и подборку не откатываем");
+  assert.match(pick, /\.\.\.await selectIfPickable\(db, row\.reference_id, author\)/, "уже связанная находка тоже получает решение, а не молчаливое «Отобрана»");
+  assert.match(pick, /status: "retailer_claim"/, "метка сайта — заявление ритейлера");
+  const route = readFileSync(join(root, "app/api/assortment-development/catalog/pick/route.ts"), "utf8");
+  assert.match(route, /requireApiSession\(ASSORTMENT_ROLES\)/);
+  assert.match(route, /after\(\(\) => storePickPhotos/);
+  assert.match(route, /audit\(request, session, picked\.decided/, "журнал честный: «отобрано» только если решение применено");
+  assert.match(route, /statusLabel: STATUS_LABEL\[picked\.status\]/);
+  const hide = readFileSync(join(root, "app/api/assortment-development/catalog/hide/route.ts"), "utf8");
+  assert.match(hide, /requireApiSession\(ASSORTMENT_ROLES\)/);
+  assert.match(hide, /status: 409/, "до миграции — понятный отказ, а не 500");
+  const digest = readFileSync(join(root, "lib/assortment/digestFacts.ts"), "utf8");
+  assert.match(digest, /if \(obs\.some\(\(o\) => o\.metric === "catalog_pick"\)\) continue;/);
+  const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(crawl, /export async function createFromRecord\(/, "один путь создания находки для новинок и отбора");
+});
+
+test("«В работе» — отобранные, образцы, подборки; в «Новинках» их нет, «Вернуть в ленту» остаётся в «Новинках»", () => {
+  const feed = readFileSync(join(root, "lib/assortment/feed.ts"), "utf8");
+  assert.match(feed, /const WORK_STATUSES = \["selected", "sample_needed", "in_collection"\]/);
+  assert.match(feed, /view === "new"\) query = query\.not\("status", "in", `\(\$\{\[\.\.\.HIDDEN_STATUSES, \.\.\.WORK_STATUSES\]/);
+  assert.match(feed, /view === "work" \? "updated_at" : "first_seen_at"/);
+  assert.equal(sectionViewFrom({ view: "work" }), "work");
+  const section = readFileSync(join(root, "components/assortment/AssortmentSection.tsx"), "utf8");
+  assert.match(section, /\{ id: "work", label: "В работе"/);
+});
+
+test("Фото отобранных моделей сайтов через mini приносит mini", () => {
+  const store = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");
+  assert.match(store, /if \(shop\.via === "mini"\) result\.missingPhotos\.push\(\.\.\.await referencesWithoutPhotos/);
+  assert.match(store, /\.slice\(0, 20\)/, "не больше 20 за посылку");
+});
+
+test("В доказательствах модели отбор из каталога подписан по-человечески и с датой", async () => {
+  const evidence = readFileSync(join(root, "lib/assortment/evidence.ts"), "utf8");
+  assert.match(evidence, /catalog_pick: "Отобрано из каталога бренда; в каталоге с"/);
+  assert.match(evidence, /catalog_pick: "отбор из каталога бренда"/);
+  assert.match(evidence, /new Set\(\["first_seen", "published_at", "catalog_pick"\]\)/);
+});
+
+test("Карточка каталога: настоящий статус находки, своё «занято», ошибка в карточке, «Скрыто · Вернуть», без кеша браузера", () => {
+  const view = readFileSync(join(root, "components/assortment/CatalogView.tsx"), "utf8");
+  assert.match(view, /STATUS_LABEL\[card\.referenceStatus\]/, "не общее «В работе», а статус находки");
+  assert.match(view, /const canPick = \(card: CatalogCard\) => !card\.referenceId \|\| card\.referenceStatus === "new" \|\| card\.referenceStatus === "watching"/);
+  assert.match(view, /const busyRef = useRef<Set<string>>/, "у каждой карточки своё «занято»");
+  assert.match(view, /cardError\?\.key === cardKey\(card\)/, "ошибка — в самой карточке, а не за экраном");
+  assert.match(view, /Скрыто из каталога/);
+  assert.match(view, /setHidden\(card, false\)/, "«Не интересно» можно вернуть сразу");
+  assert.equal((view.match(/cache: "no-store"/g) ?? []).length, 2);
+  const api = readFileSync(join(root, "app/api/assortment-development/catalog/route.ts"), "utf8");
+  assert.doesNotMatch(api, /max-age=60/, "каталог меняется кнопками — браузеру не кешировать");
+  const store = readFileSync(join(root, "lib/assortment/catalogStore.ts"), "utf8");
+  assert.match(store, /from\("assortment_references"\)\.select\("id,status"\)\.in\("id", linked\)/);
+  const pick = readFileSync(join(root, "lib/assortment/catalogPick.ts"), "utf8");
+  assert.match(pick, /return data && data\.length > 0 \? "ok" : "not_found"/);
+});
+
 test("Число моделей склоняется: «2 334 модели», «1 447 моделей», «21 модель»", async () => {
   const { plural } = await import("../lib/warehouse/plural.ts");
   assert.equal(plural(2334, "модель", "модели", "моделей"), "модели");

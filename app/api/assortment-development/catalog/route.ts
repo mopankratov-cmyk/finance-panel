@@ -30,12 +30,13 @@ export async function GET(request: NextRequest) {
   try {
     const query = parseCatalogQuery(params, direction);
     if (params.get("count") === "1") {
-      return NextResponse.json({ total: await countCatalog(db, query, startedAt) }, { headers: { "Cache-Control": "private, max-age=60" } });
+      return NextResponse.json({ total: await countCatalog(db, query, startedAt) }, { headers: { "Cache-Control": "private, no-store" } });
     }
     const page = await loadCatalog(db, query, startedAt, mark);
     mark("total");
     const body = params.get("timings") === "1" ? { ...page, timings } : page;
-    return NextResponse.json(body, { headers: { "Cache-Control": "private, max-age=60" } });
+    // Каталог меняется кнопками («Отобрать», «Не интересно») — браузеру не кешировать.
+    return NextResponse.json(body, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (isMissingAssortmentSchema(error)) return NextResponse.json({ error: MIGRATION_HINT }, { status: 503 });
     return NextResponse.json({ error: error instanceof Error ? error.message : "Каталог не загрузился" }, { status: 500 });

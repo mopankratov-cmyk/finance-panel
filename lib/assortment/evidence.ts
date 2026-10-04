@@ -32,6 +32,7 @@ export const GROUP_LABEL: Record<EvidenceGroup, string> = {
 
 const METRIC_LABEL: Record<string, string> = {
   first_seen: "Впервые у нас",
+  catalog_pick: "Отобрано из каталога бренда; в каталоге с",
   published_at: "Опубликовано на сайте",
   new_badge: "Метка ритейлера",
   bestseller_badge: "Отметка бестселлера",
@@ -48,6 +49,7 @@ const BADGE_METRICS = new Set(["new_badge", "bestseller_badge"]);
 const METHOD_LABEL: Record<string, string> = {
   import_url: "добавлено по ссылке",
   import_manual: "добавлено по фото",
+  catalog_pick: "отбор из каталога бренда",
   crawl_shopify: "автообход каталога",
   brightdata_asos: "сбор Bright Data с ASOS",
   brightdata_hm: "сбор Bright Data с H&M",
@@ -69,7 +71,7 @@ const STATUS_LABEL: Record<string, string> = {
   manual: "ввод вручную",
 };
 
-const DATE_METRICS = new Set(["first_seen", "published_at"]);
+const DATE_METRICS = new Set(["first_seen", "published_at", "catalog_pick"]);
 
 export function ruDate(iso: string): string {
   const date = new Date(iso);

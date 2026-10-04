@@ -134,8 +134,11 @@ async function knownIds(db: SupabaseClient, sourceId: string, direction: Assortm
   }
 }
 
-/** Находка из записи Bright Data — без чтения страницы магазина (она закрыта для нас). */
-async function createFromRecord(
+/**
+ * Находка из записи обхода — без чтения страницы магазина (она закрыта для нас
+ * или запрещена robots.txt). Общая для новинок обходов и отбора из каталога.
+ */
+export async function createFromRecord(
   db: SupabaseClient,
   source: { sourceId: string; name: string },
   direction: AssortmentDirection,
@@ -151,6 +154,8 @@ async function createFromRecord(
     firstSeenAt?: string;
     /** false — фото облаку не отдадут (сайт через mini): не тратим время, их принесёт mini. */
     cloudPhotos?: boolean;
+    /** catalog_pick — человек отобрал модель из каталога бренда: это не новинка, а выбор. */
+    origin?: "novelty" | "catalog_pick";
   } = {},
 ): Promise<{ referenceId: string; created: boolean; photos: number }> {
   const normalized = normalizeProductUrl(record.url);
@@ -181,7 +186,9 @@ async function createFromRecord(
   const referenceId = String(inserted.id);
   const base = { reference_id: referenceId, method, source_url: record.url, observed_at: now, created_by: "crawler" };
   const observations: Array<Record<string, unknown>> = [
-    { ...base, group_kind: "novelty", metric: "first_seen", value_text: options.firstSeenAt ?? now, status: "observed" },
+    options.origin === "catalog_pick"
+      ? { ...base, group_kind: "novelty", metric: "catalog_pick", value_text: options.firstSeenAt ?? now, status: "observed" }
+      : { ...base, group_kind: "novelty", metric: "first_seen", value_text: options.firstSeenAt ?? now, status: "observed" },
   ];
   if (record.reviews != null) observations.push({ ...base, group_kind: "retail", metric: "reviews_count", value_num: record.reviews, unit: "отзывов", status: "observed" });
   if (record.rating != null && record.reviews) observations.push({ ...base, group_kind: "retail", metric: "rating", value_num: record.rating, status: "observed" });

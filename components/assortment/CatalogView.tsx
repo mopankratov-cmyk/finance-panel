@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { ExternalLink, ImageOff, LoaderCircle, Search } from "lucide-react";
+import { Check, EyeOff, ExternalLink, ImageOff, LoaderCircle, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import type { CatalogBrandStat, CatalogCard, CatalogFilters } from "@/lib/assortment/catalog";
 import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
+import { isReferenceStatus, STATUS_LABEL } from "@/lib/assortment/decisions";
 import { plural } from "@/lib/warehouse/plural";
 
 type State =
@@ -48,6 +49,67 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
   const [search, setSearch] = useState(initialFilters.q);
   const [state, setState] = useState<State>({ kind: "loading" });
   const [viewer, setViewer] = useState<CatalogCard | null>(null);
+  // «Занято» — у каждой карточки своё: второе нажатие на другой карточке не размораживает первую.
+  const busyRef = useRef<Set<string>>(new Set());
+  const [busy, setBusy] = useState<Set<string>>(new Set());
+  const [cardError, setCardError] = useState<{ key: string; message: string } | null>(null);
+  const cardKey = (c: CatalogCard) => `${c.sourceId}:${c.itemId}`;
+  const begin = (key: string) => {
+    if (busyRef.current.has(key)) return false;
+    busyRef.current.add(key);
+    setBusy(new Set(busyRef.current));
+    setCardError((e) => (e?.key === key ? null : e));
+    return true;
+  };
+  const end = (key: string) => {
+    busyRef.current.delete(key);
+    setBusy(new Set(busyRef.current));
+  };
+  const patchCard = (key: string, patch: Partial<CatalogCard>) => setState((cur) => (cur.kind === "ready"
+    ? { ...cur, cards: cur.cards.map((c) => (cardKey(c) === key ? { ...c, ...patch } : c)) }
+    : cur));
+
+  /** «Отобрать»: модель становится находкой со статусом «Отобрана» (или показывает свой настоящий статус). */
+  const pick = async (card: CatalogCard) => {
+    const key = cardKey(card);
+    if (!begin(key)) return;
+    try {
+      const response = await fetch("/api/assortment-development/catalog/pick", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId: card.sourceId, itemId: card.itemId }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok || typeof body?.referenceId !== "string") throw new Error(body?.error || `Не получилось отобрать (${response.status})`);
+      patchCard(key, { referenceId: body.referenceId, referenceStatus: typeof body.status === "string" ? body.status : null });
+    } catch (e) {
+      setCardError({ key, message: e instanceof Error ? e.message : "Не получилось отобрать" });
+    } finally {
+      end(key);
+    }
+  };
+
+  /** «Не интересно» и «Вернуть»: модель уходит из выдачи каталога (для всех) — с возможностью сразу вернуть. */
+  const setHidden = async (card: CatalogCard, hidden: boolean) => {
+    const key = cardKey(card);
+    if (!begin(key)) return;
+    try {
+      const response = await fetch("/api/assortment-development/catalog/hide", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceId: card.sourceId, itemId: card.itemId, hidden }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || `Не получилось (${response.status})`);
+      patchCard(key, { hiddenLocal: hidden });
+      setState((cur) => (cur.kind === "ready" ? { ...cur, total: Math.max(0, cur.total + (hidden ? -1 : 1)) } : cur));
+    } catch (e) {
+      setCardError({ key, message: e instanceof Error ? e.message : "Не получилось" });
+    } finally {
+      end(key);
+    }
+  };
+
   // Номер поколения фильтров: ответ «Показать ещё» от старых фильтров отбрасывается.
   const generation = useRef(0);
   const stateRef = useRef(state);
@@ -65,7 +127,7 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
     generation.current += 1;
     writeFilters(filters);
     setState((prev) => (prev.kind === "ready" ? { ...prev, loadingMore: true } : { kind: "loading" }));
-    fetch(query(direction, filters, 0, filters.photo))
+    fetch(query(direction, filters, 0, filters.photo), { cache: "no-store" })
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (cancelled) return;
@@ -98,7 +160,7 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
     const key = (c: CatalogCard) => `${c.sourceId}:${c.itemId}`;
     setState({ ...prev, loadingMore: true });
     // Режим фото — тот, что сервер выбрал для первой порции: страницы не должны разойтись.
-    fetch(query(direction, filters, prev.cards.length, prev.photo))
+    fetch(query(direction, filters, prev.cards.length, prev.photo), { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (gen !== generation.current) return;
@@ -207,7 +269,14 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
       {ready && ready.cards.length > 0 && (
         <>
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-            {ready.cards.map((card) => (
+            {ready.cards.map((card) => card.hiddenLocal ? (
+              <li key={`${card.sourceId}:${card.itemId}`} className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-3 py-6 text-center">
+                <span className="break-anywhere line-clamp-2 text-xs text-slate-500">{card.title}</span>
+                <span className="text-sm text-slate-700">Скрыто из каталога</span>
+                <button type="button" onClick={() => setHidden(card, false)} disabled={busy.has(cardKey(card))} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-xs text-slate-800 hover:bg-slate-50 disabled:opacity-60">Вернуть</button>
+                {cardError?.key === cardKey(card) && <span role="alert" className="text-xs text-red-700">{cardError.message}</span>}
+              </li>
+            ) : (
               <li key={`${card.sourceId}:${card.itemId}`} className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white" style={{ contentVisibility: "auto", containIntrinsicSize: "auto 420px" }}>
                 <div className="relative aspect-[3/4] bg-[#f4f2ee]">
                   {card.images.length > 0 ? (
@@ -230,9 +299,20 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
                   <div className="text-xs text-slate-500">{card.brand} · в каталоге с {day(card.firstSeenAt)}</div>
                   <div className="mt-auto flex flex-wrap gap-2 pt-1">
                     {card.referenceId && (
-                      <Link href={`${ASSORTMENT_BASE_PATH}/${direction}/${card.referenceId}`} className="inline-flex h-10 items-center rounded-lg bg-violet-50 px-3 text-xs font-medium text-violet-800 hover:bg-violet-100">
-                        Уже в работе · открыть
+                      <Link href={`${ASSORTMENT_BASE_PATH}/${direction}/${card.referenceId}`} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-violet-50 px-3 text-xs font-medium text-violet-800 hover:bg-violet-100">
+                        {isWork(card.referenceStatus) && <Check className="h-3.5 w-3.5" />}
+                        {isReferenceStatus(card.referenceStatus) ? STATUS_LABEL[card.referenceStatus] : "Находка"} · открыть
                       </Link>
+                    )}
+                    {canPick(card) && (
+                      <button type="button" onClick={() => pick(card)} disabled={busy.has(cardKey(card))} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-violet-700 px-3 text-xs font-medium text-white hover:bg-violet-800 disabled:opacity-60">
+                        {busy.has(cardKey(card)) ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Отобрать
+                      </button>
+                    )}
+                    {!card.referenceId && !ready.photosPending && (
+                      <button type="button" onClick={() => setHidden(card, true)} disabled={busy.has(cardKey(card))} aria-label={`Не интересно: ${card.title}`} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                        <EyeOff className="h-3.5 w-3.5" /> Не интересно
+                      </button>
                     )}
                     {card.productUrl && (
                       <a href={card.productUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-700 hover:bg-slate-50">
@@ -240,6 +320,7 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
                       </a>
                     )}
                   </div>
+                  {cardError?.key === cardKey(card) && <div role="alert" className="text-xs leading-5 text-red-700">{cardError.message}</div>}
                 </div>
               </li>
             ))}
@@ -277,6 +358,11 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
     </div>
   );
 }
+
+const WORK = new Set(["selected", "sample_needed", "in_collection"]);
+const isWork = (status: string | null | undefined) => Boolean(status && WORK.has(status));
+/** «Отобрать» — у модели, которой ещё нет среди находок, и у новой или отложенной находки. */
+const canPick = (card: CatalogCard) => !card.referenceId || card.referenceStatus === "new" || card.referenceStatus === "watching";
 
 function NoPhoto({ text }: { text: string }) {
   return (

@@ -47,6 +47,7 @@ export function cardSignal(observations: ObservationLite[], options: { manual: b
   const badge = observations.find((o) => o.group_kind === "retail" && o.metric === "new_badge" && o.value_text);
   const bestseller = observations.find((o) => o.group_kind === "retail" && o.metric === "bestseller_badge" && o.value_text);
   const published = observations.find((o) => o.metric === "published_at" && o.value_text);
+  const picked = observations.find((o) => o.metric === "catalog_pick");
   const spread = observations.filter((o) => o.group_kind === "spread" && (o.value_text || o.value_num != null));
   // Замеры повторяются (еженедельно) — берём самый свежий.
   const latest = (metric: string) => observations
@@ -56,6 +57,7 @@ export function cardSignal(observations: ObservationLite[], options: { manual: b
   const wbSales = latest("wb_sales_30d");
   const ruSimilar = latest("ru_similar_sales");
   const parts: string[] = [];
+  if (picked) parts.push(`отобрано из каталога бренда${picked.value_text ? `, в каталоге с ${ru(picked.value_text)}` : ""}`);
   if (badge) parts.push(`метка «${cleanBadge(badge.value_text ?? "")}» на сайте`);
   if (bestseller) parts.push("в разделе бестселлеров на сайте");
   if (wbSales?.value_num != null) parts.push(`продаж на WB за 30 дней: ${wbSales.value_num.toLocaleString("ru-RU")} (оценка MPSTATS)`);
@@ -63,12 +65,13 @@ export function cardSignal(observations: ObservationLite[], options: { manual: b
   if (reviews?.value_num) parts.push(`${wbSales ? "отзывов на WB" : "отзывов на сайте магазина"}: ${reviews.value_num}`);
   if (published?.value_text) parts.push(`опубликовано ${ru(published.value_text)}`);
   if (options.colors > 1) parts.push(`${options.colors} ${pluralColors(options.colors)} в одной модели`);
-  if (spread.length === 0 && !wbSales) parts.push("пока одна находка");
+  if (spread.length === 0 && !wbSales && !picked) parts.push("пока одна находка");
 
   const why = parts.length > 0 ? parts.join("; ") : "добавлено в ленту";
   if (wbSales) return { label: "Продаётся на WB", tone: "retail", why };
   if (badge) return { label: `Отмечено ритейлером: ${cleanBadge(badge.value_text ?? "")}`, tone: "retail", why };
   if (bestseller) return { label: "Отмечено ритейлером: бестселлер", tone: "retail", why };
+  if (picked) return { label: "Из каталога бренда", tone: "manual", why };
   if (options.manual) return { label: "Добавлено вручную", tone: "manual", why };
   if (published) return { label: "Новинка", tone: "novelty", why };
   return { label: "Пока одна находка", tone: "single", why };

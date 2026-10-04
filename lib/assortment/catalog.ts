@@ -119,6 +119,10 @@ export interface CatalogCard {
   isNew: boolean;
   badges: CatalogBadge[];
   referenceId: string | null;
+  /** Статус находки, если модель уже среди находок (новинка, отобрана, отклонена…). */
+  referenceStatus?: string | null;
+  /** Только на экране: модель скрыта кнопкой «Не интересно» (можно вернуть). */
+  hiddenLocal?: boolean;
 }
 
 /** Ссылка на товар: у Shopify в handle только slug, у остальных — полный адрес. */
@@ -215,9 +219,9 @@ export function catalogFiltersFrom(params: PageParams): CatalogFilters {
 }
 
 /** Вид раздела: лента находок или «Каталоги брендов». */
-export type SectionView = "new" | "retail" | "ru" | "hidden" | "catalog";
+export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog";
 
 export function sectionViewFrom(params: PageParams): SectionView {
   const view = one(params, "view");
-  return view === "catalog" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
+  return view === "catalog" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
 }

@@ -128,6 +128,9 @@ export async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: numb
       result.missingPhotos.push(...done.missingPhotos);
     }
 
+    // Сайт не пускает облако: фото и отобранных из каталога моделей приносит mini.
+    if (shop.via === "mini") result.missingPhotos.push(...await referencesWithoutPhotos(db, shop.sourceId, new Set(result.missingPhotos.map((m) => m.referenceId))));
+
     const next = models && diff ? nextSitemapState(models, diff, seen) : null;
     result.pending = next ? Object.keys(next.pending).length : 0;
     const patch: Record<string, unknown> = {
@@ -162,6 +165,29 @@ export async function runRuShopsCrawl(db: SupabaseClient, deadline: number, only
     results.push(await crawlShop(db, shop, deadline));
   }
   return results;
+}
+
+/**
+ * Находки магазина за 30 дней без единого фото (отобранные из каталога, новинки,
+ * чьё фото не долетело) — до 20 за посылку; ссылки на фото — из строк обхода.
+ */
+async function referencesWithoutPhotos(db: SupabaseClient, sourceId: string, already: Set<string>): Promise<Array<{ referenceId: string; urls: string[] }>> {
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  const { data: refs, error } = await db.from("assortment_references").select("id")
+    .eq("source_id", sourceId).eq("created_by", "crawler").gte("created_at", since)
+    .order("created_at", { ascending: false }).limit(60);
+  if (error || !refs?.length) return [];
+  const ids = refs.map((r) => String(r.id)).filter((id) => !already.has(id));
+  if (ids.length === 0) return [];
+  const { data: media } = await db.from("assortment_media").select("reference_id").in("reference_id", ids);
+  const withPhoto = new Set((media ?? []).map((m) => String(m.reference_id)));
+  const without = ids.filter((id) => !withPhoto.has(id)).slice(0, 20);
+  if (without.length === 0) return [];
+  const { data: rows, error: rowsError } = await db.from("assortment_source_items").select("reference_id,image_urls").eq("source_id", sourceId).in("reference_id", without);
+  if (rowsError) return [];
+  return ((rows ?? []) as Array<{ reference_id: string | null; image_urls: unknown }>)
+    .filter((r) => r.reference_id && Array.isArray(r.image_urls) && r.image_urls.length > 0)
+    .map((r) => ({ referenceId: String(r.reference_id), urls: (r.image_urls as unknown[]).filter((u): u is string => typeof u === "string").slice(0, 4) }));
 }
 
 export class MiniPhotoError extends Error {}

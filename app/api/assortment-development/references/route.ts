@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   const direction = parseDirection(request.nextUrl.searchParams.get("direction"));
   if (!direction) return NextResponse.json({ error: "direction должен быть jackets или bags" }, { status: 400 });
   const requested = request.nextUrl.searchParams.get("view");
-  const view: FeedView = requested === "retail" || requested === "hidden" || requested === "ru" ? requested : "new";
+  const view: FeedView = requested === "retail" || requested === "hidden" || requested === "ru" || requested === "work" ? requested : "new";
   try {
     return NextResponse.json({ cards: await loadFeed(db, direction, view) });
   } catch (error) {

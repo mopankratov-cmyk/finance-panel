@@ -90,6 +90,14 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   timing?.("items");
   const rows = (result.data ?? []) as unknown as CatalogRow[];
   const cards = rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs));
+  // Статус уже связанных находок — один запрос на порцию (до 96 id): карточка показывает правду.
+  const linked = [...new Set(cards.map((c) => c.referenceId).filter((id): id is string => Boolean(id)))];
+  if (linked.length) {
+    const { data: refs } = await db.from("assortment_references").select("id,status").in("id", linked);
+    const status = new Map((refs ?? []).map((r) => [String(r.id), String(r.status)]));
+    for (const card of cards) if (card.referenceId) card.referenceStatus = status.get(card.referenceId) ?? null;
+    timing?.("statuses");
+  }
   return { cards, total: result.count ?? cards.length, brands: query.offset === 0 ? brands : null, photo: photosPending ? "all" : photo, photosPending };
 }
 
