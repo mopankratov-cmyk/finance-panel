@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkAssortmentCollectorAuth } from "@/lib/assortment/collectorAuth";
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
 import { miniShopsPlan, parseMiniShopPages, RuShopPagesError } from "@/lib/assortment/ruShops";
+import { zalandoMiniPlan, ZALANDO_SOURCES } from "@/lib/assortment/zalando";
+import { ingestZalandoPages } from "@/lib/assortment/zalandoStore";
 import { attachMiniPhoto, crawlShop, MiniPhotoError } from "@/lib/assortment/ruShopsStore";
 import { ASSORTMENT_BOT_UA } from "@/lib/assortment/safeFetch";
 import { writeSyncLog } from "@/lib/sync/helpers";
@@ -18,6 +20,9 @@ const MAX_PACKED_BYTES = 4_000_000;
 const MAX_UNPACKED_BYTES = 60_000_000;
 
 /**
+ * Загрузчик каталогов на Mac mini: российские бренды и Zalando (его облако
+ * Vercel не пускает). `?zalando=1` — посылка страниц Zalando.
+ *
  * Загрузчик каталогов российских брендов на Mac mini (сайты, которые не пускают
  * облако). GET — план на сегодня: какие страницы скачать и как понять, что
  * страница пустая; `?all=1` или `?source=S131` — вне дней магазина. POST —
@@ -34,6 +39,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     userAgent: ASSORTMENT_BOT_UA,
     shops: miniShopsPlan(new Date(), { all: params.get("all") === "1", only: params.get("source") }),
+    // Zalando блокирует облако Vercel — его страницы тоже приносит загрузчик.
+    zalando: zalandoMiniPlan(new Date(), { all: params.get("all") === "1", only: params.get("source") }),
   });
 }
 
@@ -53,6 +60,30 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       if (error instanceof MiniPhotoError) return NextResponse.json({ error: error.message }, { status: 400 });
       return NextResponse.json({ error: error instanceof Error ? error.message : "Фото не сохранилось" }, { status: 500 });
+    }
+  }
+
+  if (request.nextUrl.searchParams.get("zalando") === "1") {
+    let data: { sourceId?: unknown; pages?: unknown };
+    try {
+      const packed = Buffer.from(await request.arrayBuffer());
+      if (packed.length > MAX_PACKED_BYTES) throw new RuShopPagesError("Посылка больше 4 МБ");
+      data = JSON.parse(gunzipSync(packed, { maxOutputLength: MAX_UNPACKED_BYTES }).toString("utf8"));
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof RuShopPagesError ? error.message : "Неверная посылка" }, { status: 400 });
+    }
+    const sourceId = typeof data.sourceId === "string" ? data.sourceId : "";
+    const pages = Array.isArray(data.pages) ? data.pages.filter((p): p is { url: string; html: string } => Boolean(p) && typeof p.url === "string" && typeof p.html === "string" && p.html.length <= 4_000_000) : [];
+    if (!ZALANDO_SOURCES.some((s) => s.sourceId === sourceId) || pages.length === 0 || pages.length > 4) {
+      return NextResponse.json({ error: "Неверная посылка Zalando" }, { status: 400 });
+    }
+    try {
+      const result = await ingestZalandoPages(db, { sourceId, pages }, startedAt.getTime() + BUDGET_MS);
+      await writeSyncLog(JOB, result.ok ? (result.error ? "partial" : "ok") : "error", result.added, result.error ? `${result.name}: ${result.error}` : null, startedAt);
+      return NextResponse.json({ ok: result.ok, result });
+    } catch (error) {
+      if (isMissingAssortmentSchema(error)) return NextResponse.json({ ok: true, skipped: "таблицы модуля не созданы" });
+      return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Приём не удался" }, { status: 502 });
     }
   }
 

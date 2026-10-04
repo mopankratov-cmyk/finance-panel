@@ -138,3 +138,30 @@ export function parseZalandoCatalog(html: string, target: Pick<ZalandoTarget, "b
   }
   return out;
 }
+
+/** Дни обхода Zalando (UTC): пн и чт. */
+export const ZALANDO_WEEKDAYS_UTC = [1, 4];
+
+export interface ZalandoPagePlan {
+  sourceId: string;
+  brand: string;
+  direction: AssortmentDirection;
+  url: string;
+}
+
+/**
+ * План для загрузчика на mini: Zalando блокирует облако Vercel (AWS), а mini
+ * (и обычный выход) пускает. Загрузчик скачивает эти страницы и отдаёт панели,
+ * разбор — на сервере. По дням источника, либо все (`all`) / один (`only`).
+ */
+export function zalandoMiniPlan(now: Date, options: { all?: boolean; only?: string | null } = {}): ZalandoPagePlan[] {
+  if (!options.all && !options.only && !ZALANDO_WEEKDAYS_UTC.includes(now.getUTCDay())) return [];
+  return ZALANDO_TARGETS
+    .filter((t) => (options.only ? t.sourceId === options.only : true))
+    .map((t) => ({ sourceId: t.sourceId, brand: t.brand, direction: t.direction, url: t.url }));
+}
+
+/** Цель Zalando по адресу страницы (для разбора присланной загрузчиком страницы). */
+export function zalandoTargetByUrl(url: string): ZalandoTarget | undefined {
+  return ZALANDO_TARGETS.find((t) => t.url === url);
+}

@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseZalandoCatalog, zalandoImage, zalandoModel, ZALANDO_SOURCES, ZALANDO_TARGETS } from "../lib/assortment/zalando.ts";
+import { parseZalandoCatalog, zalandoImage, zalandoMiniPlan, zalandoModel, zalandoTargetByUrl, ZALANDO_SOURCES, ZALANDO_TARGETS } from "../lib/assortment/zalando.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const fixture = (name: string) => readFileSync(join(root, "tests/fixtures/zalando", name), "utf8");
@@ -58,11 +58,22 @@ test("Косметички и кошельки под силуэтом BAG от�
   for (const d of dropped) assert.ok(!bags.some((b) => b.sourceItemId === zalandoModel(d.sku)));
 });
 
-test("Крон обхода зовёт Zalando из облака честным заголовком робота, пн и чт", () => {
+test("Zalando приносит загрузчик на mini (облако Vercel Zalando не пускает): план по дням, цель по адресу", () => {
+  const monday = zalandoMiniPlan(new Date("2026-10-05T03:00:00Z"));
+  assert.equal(monday.length, 6, "пн — все 6 страниц (3 бренда × 2 раздела)");
+  assert.deepEqual(zalandoMiniPlan(new Date("2026-10-06T03:00:00Z")), [], "вт — не день Zalando");
+  assert.equal(zalandoMiniPlan(new Date("2026-10-06T03:00:00Z"), { all: true }).length, 6);
+  assert.deepEqual(zalandoMiniPlan(new Date(), { only: "S138" }).map((p) => p.sourceId), ["S138", "S138"]);
+  const t = ZALANDO_TARGETS[0];
+  assert.equal(zalandoTargetByUrl(t.url)?.sourceId, t.sourceId);
+  assert.equal(zalandoTargetByUrl("https://evil.example/x"), undefined);
   const store = readFileSync(join(root, "lib/assortment/zalandoStore.ts"), "utf8");
-  assert.match(store, /userAgent: ASSORTMENT_BOT_UA/);
-  assert.match(store, /WEEKDAYS_UTC = \[1, 4\]/);
-  assert.doesNotMatch(store, /via.*mini/i, "Zalando — из облака, не с российского mini");
+  assert.doesNotMatch(store, /safeFetch/, "страницы приносит mini, сервер их не качает");
+  assert.match(store, /export async function ingestZalandoPages/);
   const route = readFileSync(join(root, "app/api/sync/assortment-crawl/route.ts"), "utf8");
-  assert.match(route, /runZalandoCrawl\(db,/);
+  assert.doesNotMatch(route, /runZalandoCrawl|zalando/i, "в кроне автообхода Zalando нет — он через загрузчик");
+  const collector = readFileSync(join(root, "app/api/assortment-collector/ru-shops/route.ts"), "utf8");
+  assert.match(collector, /zalando: zalandoMiniPlan/);
+  assert.match(collector, /get\("zalando"\) === "1"/);
+  assert.match(collector, /ingestZalandoPages\(db, \{ sourceId, pages \}/);
 });
