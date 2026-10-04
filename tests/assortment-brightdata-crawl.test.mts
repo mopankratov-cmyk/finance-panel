@@ -225,3 +225,38 @@ test("Мёртвые снимки Zara (`/photos///2023…`, 404) не сохр�
   const source = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
   assert.match(source, /imagesKnown: snapshot\.kind === "dataset"/, "у готовых наборов «фото нет» снимает старые мёртвые ссылки");
 });
+
+test("Фото Zara из «Zara.com products»: номер модели из адреса, витрина США, живые снимки, до 4 на модель", async () => {
+  const { ZARA_PHOTOS, zaraModelCode, zaraPhotoFilter, zaraPhotosByCode, readPhotoPending, writePhotoPending } = await import("../lib/assortment/brightdataCatalog.ts");
+  assert.equal(zaraModelCode("https://www.zara.com/us/en/cropped-suede-leather-jacket-p03833400.html"), "03833400");
+  assert.equal(zaraModelCode("https://www.zara.com/us/en/woman-jackets-l1114.html"), null);
+  const filter = JSON.stringify(zaraPhotoFilter(Array.from({ length: 500 }, (_, i) => String(i).padStart(8, "0"))));
+  assert.match(filter, /"store_country","operator":"=","value":"US"/);
+  assert.equal((filter.match(/"\d{8}"/g) ?? []).length, 400, "не больше 400 моделей за выборку");
+  assert.ok(ZARA_PHOTOS.recordsLimit <= 1000, "потолок выборки фото");
+  const photos = zaraPhotosByCode([
+    { group_id: "03833400", image_url: "https://static.zara.net/assets/public/a/1.jpg?ts=1&w=1920", additional_image_urls: ["https://static.zara.net/assets/public/a/2.jpg", "https://static.zara.net/photos///2024/V/x.jpg"] },
+    { group_id: "03833400", image_url: "https://static.zara.net/assets/public/a/3.jpg", additional_image_urls: ["https://static.zara.net/assets/public/a/4.jpg", "https://static.zara.net/assets/public/a/5.jpg"] },
+    { group_id: 695071, image_url: "https://static.zara.net/assets/public/b/1.jpg" },
+    { group_id: "00000001", image_url: "https://static.zara.net/photos///2023/I/dead.jpg" },
+  ]);
+  assert.deepEqual(photos.get("03833400"), ["https://static.zara.net/assets/public/a/1.jpg?ts=1&w=1920", "https://static.zara.net/assets/public/a/2.jpg", "https://static.zara.net/assets/public/a/3.jpg", "https://static.zara.net/assets/public/a/4.jpg"], "цвета модели сливаются, мёртвые отброшены, до 4");
+  assert.deepEqual(photos.get("00695071"), ["https://static.zara.net/assets/public/b/1.jpg"], "числовой номер дополняется нулями до 8 цифр");
+  assert.equal(photos.has("00000001"), false, "только мёртвые — модели нет");
+  const caps = writePhotoPending({ note: "x", brightdata_pending: [] }, [{ snapshotId: "snap_x", triggeredAt: "2026-10-04T10:00:00Z" }]);
+  assert.equal(caps.note, "x");
+  assert.deepEqual(readPhotoPending(caps), [{ snapshotId: "snap_x", triggeredAt: "2026-10-04T10:00:00Z" }]);
+});
+
+test("Фото Zara заказываются сами после сбора Zara и вручную ?phase=photos; применяются ближайшим сбором", () => {
+  const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(crawl, /if \(\(result\.collected \?\? 0\) > 0 && photoLeft\.length === 0\)/, "после свежего сбора Zara");
+  assert.match(crawl, /r\.image_urls\.every\(\(u\) => typeof u !== "string" \|\| isDeadImageUrl\(u\)\)/, "мёртвые ссылки в базе — как «фото нет»");
+  assert.match(crawl, /refs\.filter\(\(r\) => !withMedia\.has\(r\.id\)\)\.slice\(0, 20\)/, "потолок 20 — только по находкам без фото");
+  assert.match(crawl, /imagesKnown: options\.imagesKnown && !livePhotos\.has\(r\.sourceItemId\)/, "еженедельный сбор не стирает живые фото из второго набора — не покупаем их заново");
+  assert.match(crawl, /if \(isMissingColumnError\(error\)\) return \[\];\s*throw new Error\(error\.message\);/, "сбой базы не глотается");
+  assert.match(crawl, /photoLeft\.push\(pending\);/, "сбой применения — выборка остаётся в очереди");
+  assert.match(crawl, /if \(left\.length === 0\) \{\s*const next = await triggerZaraPhotos/, "вручную — новую выборку только если ждать нечего");
+  const route = readFileSync(join(root, "app/api/sync/assortment-brightdata/route.ts"), "utf8");
+  assert.match(route, /get\("phase"\) === "photos"/);
+});

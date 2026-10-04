@@ -349,3 +349,68 @@ export function novelCandidates(
   const freshIds = quiet ? [] : relevantIds.filter((id) => fresh.has(id) && !orphans.has(id));
   return { create: [...new Set([...live, ...freshIds])], expire };
 }
+
+/**
+ * Фото Zara. В основном наборе «Zara - Products» снимки старого вида удалены
+ * Zara (404), у части записей их нет вовсе. Набор «Zara.com products» отдаёт
+ * живые снимки `/assets/public/…`, но без пола и раздела. Поэтому список
+ * моделей — из основного набора, а фото — из второго по номеру модели:
+ * p-код из адреса (`…-p03833400.html`) = `group_id` (решение владельца 04.10,
+ * ≈ +$1–2 в неделю; дальше выборка только по моделям без фото).
+ */
+export const ZARA_PHOTOS = {
+  sourceId: "S001",
+  datasetId: "gd_mls18psj2jiho44xpy",
+  storeCountry: "US",
+  /** Потолок выборки: запись — модель в цвете, 2–3 на модель. */
+  recordsLimit: 900,
+  /** Моделей за одну выборку. */
+  maxCodes: 400,
+};
+
+/** Номер модели Zara из адреса карточки: «…-p03833400.html» → «03833400». */
+export function zaraModelCode(url: string | null | undefined): string | null {
+  return url?.match(/-p(\d{8})\.html/)?.[1] ?? null;
+}
+
+export function zaraPhotoFilter(codes: string[]) {
+  return {
+    operator: "and",
+    filters: [
+      { name: "store_country", operator: "=", value: ZARA_PHOTOS.storeCountry },
+      { name: "group_id", operator: "in", value: codes.slice(0, ZARA_PHOTOS.maxCodes) },
+    ],
+  };
+}
+
+/** Живые фото «Zara.com products» по номеру модели: главное + дополнительные, до 4. */
+export function zaraPhotosByCode(records: unknown[]): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const raw of records) {
+    const r = raw as { group_id?: unknown; image_url?: unknown; additional_image_urls?: unknown } | null;
+    const code = typeof r?.group_id === "string" ? r.group_id : typeof r?.group_id === "number" ? String(r.group_id).padStart(8, "0") : null;
+    if (!code) continue;
+    const urls = [r?.image_url, ...(Array.isArray(r?.additional_image_urls) ? r.additional_image_urls : [])]
+      .filter((u): u is string => typeof u === "string" && /^https:\/\//.test(u) && !isDeadImageUrl(u));
+    const prev = out.get(code) ?? [];
+    for (const u of urls) if (prev.length < 4 && !prev.includes(u)) prev.push(u);
+    if (prev.length) out.set(code, prev);
+  }
+  return out;
+}
+
+export interface PhotoPending {
+  snapshotId: string;
+  triggeredAt: string;
+}
+
+/** Выборки фото — отдельно от проб разделов: у них нет раздела и свой разбор. */
+export function readPhotoPending(capabilities: unknown): PhotoPending[] {
+  const list = (capabilities as { brightdata_photo_pending?: unknown } | null)?.brightdata_photo_pending;
+  if (!Array.isArray(list)) return [];
+  return list.filter((p): p is PhotoPending => Boolean(p) && typeof p.snapshotId === "string" && typeof p.triggeredAt === "string");
+}
+
+export function writePhotoPending(capabilities: Record<string, unknown>, pending: PhotoPending[]): Record<string, unknown> {
+  return { ...capabilities, brightdata_photo_pending: pending };
+}

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasBrightData } from "@/lib/assortment/brightdata";
-import { collectBrightData, triggerBrightData } from "@/lib/assortment/brightdataCrawl";
+import { collectBrightData, requestZaraPhotos, triggerBrightData } from "@/lib/assortment/brightdataCrawl";
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -17,6 +17,7 @@ const BUDGET_MS = 240_000;
  * `?phase=trigger` в 08:00 МСК запускает пробы, `?phase=collect` в 09:30 и
  * 11:30 МСК забирает готовые. Первый сбор — база, в ленту не пишет.
  * Ручной запуск одного источника вне его дня: `?phase=trigger&source=S001&force=1`.
+ * Фото Zara из второго набора — сами после сбора Zara; вручную: `?phase=photos`.
  */
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
@@ -25,6 +26,13 @@ export async function GET(request: NextRequest) {
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 503 });
   if (!hasBrightData()) return NextResponse.json({ ok: true, skipped: "ключ Bright Data не задан" });
+  if (request.nextUrl.searchParams.get("phase") === "photos") {
+    try {
+      return NextResponse.json({ ok: true, phase: "photos", results: [await requestZaraPhotos(db, startedAt.getTime() + BUDGET_MS)] });
+    } catch (error) {
+      return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : "Не получилось" }, { status: 502 });
+    }
+  }
   const phase = request.nextUrl.searchParams.get("phase") === "collect" ? "collect" : "trigger";
   const job = `assortment-brightdata-${phase}`;
   try {

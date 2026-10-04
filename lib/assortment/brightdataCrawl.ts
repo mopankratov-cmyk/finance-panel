@@ -2,10 +2,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
 import {
   asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, PENDING_TTL_MS, readCoverage, readPending,
-  uniqueRecords, writeCoverage, writePending, type MappedRecord, type PendingSnapshot,
+  isDeadImageUrl, readPhotoPending, uniqueRecords, writeCoverage, writePending, writePhotoPending, ZARA_PHOTOS, zaraModelCode, zaraPhotoFilter, zaraPhotosByCode,
+  type MappedRecord, type PendingSnapshot, type PhotoPending,
 } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
 import { classifyItem, crawlPlan } from "./crawl";
+import { isMissingColumnError } from "./errors";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
 import { remoteImage, storeImages, type ImageBytes } from "./importer";
 import { catalogFields, upsertSourceItems } from "./sourceItems";
@@ -23,6 +25,8 @@ export interface BrightDataRunResult {
   added?: number;
   baseline?: boolean;
   pending?: number;
+  /** Фото Zara из второго набора: сколько моделей каталога получили фото. */
+  photos?: number;
   error?: string;
 }
 
@@ -114,23 +118,31 @@ async function downloadRecords(snapshotId: string): Promise<unknown[]> {
  * источнику: первый сбор 02.10 положил сумки ASOS базой, а куртки, разобранные
  * следом, посчитал новинками — 7 штук ушли в ленту.
  */
-async function knownIds(db: SupabaseClient, sourceId: string, direction: AssortmentDirection): Promise<{ known: Set<string>; orphans: Map<string, string> }> {
+async function knownIds(db: SupabaseClient, sourceId: string, direction: AssortmentDirection): Promise<{ known: Set<string>; orphans: Map<string, string>; livePhotos: Set<string> }> {
   const known = new Set<string>();
   // Сироты: новинки прошлых сборов без находки (потолок за прогон, сбой записи).
   const orphans = new Map<string, string>();
+  // У кого в базе уже есть живые фото (например, Zara — из второго набора): «фото нет» в записи их не стирает.
+  const livePhotos = new Set<string>();
+  let columns = "source_item_id,baseline,reference_id,first_seen_at,image_urls";
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from("assortment_source_items")
-      .select("source_item_id,baseline,reference_id,first_seen_at")
+    let { data, error } = await db.from("assortment_source_items")
+      .select(columns)
       .eq("source_id", sourceId).eq("direction", direction)
       .order("source_item_id", { ascending: true })
       .range(from, from + 999);
+    if (error && isMissingColumnError(error) && columns.endsWith(",image_urls")) {
+      columns = "source_item_id,baseline,reference_id,first_seen_at";
+      ({ data, error } = await db.from("assortment_source_items").select(columns).eq("source_id", sourceId).eq("direction", direction).order("source_item_id", { ascending: true }).range(from, from + 999));
+    }
     if (error) throw new Error(error.message);
-    for (const row of data ?? []) {
+    for (const row of (data ?? []) as unknown as Array<{ source_item_id: string; baseline: boolean; reference_id: string | null; first_seen_at: string; image_urls?: unknown }>) {
       const id = String(row.source_item_id);
       known.add(id);
       if (row.baseline === false && !row.reference_id && typeof row.first_seen_at === "string") orphans.set(id, row.first_seen_at);
+      if (Array.isArray(row.image_urls) && row.image_urls.some((u) => typeof u === "string" && !isDeadImageUrl(u))) livePhotos.add(id);
     }
-    if (!data || data.length < 1000) return { known, orphans };
+    if (!data || data.length < 1000) return { known, orphans, livePhotos };
   }
 }
 
@@ -260,7 +272,7 @@ export async function ingestRecords(
   const churnGuard = Boolean(options.churnGuard);
   const records = uniqueRecords(mapped);
   const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [target.direction]) === target.direction);
-  const { known, orphans } = await knownIds(db, source.sourceId, target.direction);
+  const { known, orphans, livePhotos } = await knownIds(db, source.sourceId, target.direction);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
   const fresh = new Set(plan.fresh.map((i) => i.sourceItemId).filter((id) => !options.freshOnly || options.freshOnly.has(id)));
   const churn = churnGuard && !plan.baseline && !quiet && looksLikeChurn(fresh.size, relevant.length);
@@ -271,7 +283,8 @@ export async function ingestRecords(
   for (const r of relevant) {
     const row = {
       source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: target.direction, last_seen_at: now,
-      ...catalogFields({ images: r.images, imagesKnown: options.imagesKnown, brand: r.brand ?? source.name }),
+      // «Фото нет» в полной записи набора снимает только мёртвые ссылки — живые (из второго набора Zara) не трогаем.
+      ...catalogFields({ images: r.images, imagesKnown: options.imagesKnown && !livePhotos.has(r.sourceItemId), brand: r.brand ?? source.name }),
     };
     if (plan.baseline || !known.has(r.sourceItemId)) inserts.push({ ...row, baseline: asBaseline || !fresh.has(r.sourceItemId) });
     else updates.push(row);
@@ -305,6 +318,68 @@ export async function ingestRecords(
     }
   }
   return { collected: relevant.length, added, baseline: asBaseline, churn, missingPhotos };
+}
+
+const ZARA_ROW_COLUMNS = "source_item_id,handle,reference_id,image_urls";
+
+/**
+ * Модели Zara в каталоге без живых фото (за 30 дней): фото нет вовсе или все
+ * ссылки — удалённые Zara снимки старого вида (их база хранит до следующего сбора).
+ */
+async function zaraRowsWithoutPhotos(db: SupabaseClient): Promise<Array<{ source_item_id: string; handle: string | null; reference_id: string | null }>> {
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  // Устойчивый порядок: модели за пределами 400 за выборку получат фото в следующие недели.
+  const { data, error } = await db.from("assortment_source_items").select(ZARA_ROW_COLUMNS)
+    .eq("source_id", ZARA_PHOTOS.sourceId).not("direction", "is", null).gte("last_seen_at", since)
+    .order("source_item_id", { ascending: true })
+    .limit(1000);
+  if (error) {
+    if (isMissingColumnError(error)) return [];
+    throw new Error(error.message);
+  }
+  return ((data ?? []) as Array<{ source_item_id: string; handle: string | null; reference_id: string | null; image_urls: unknown }>)
+    .filter((r) => !Array.isArray(r.image_urls) || r.image_urls.every((u) => typeof u !== "string" || isDeadImageUrl(u)));
+}
+
+/** Выборка фото Zara из «Zara.com products» по моделям без фото; null — просить нечего. */
+export async function triggerZaraPhotos(db: SupabaseClient): Promise<PhotoPending | null> {
+  const codes = [...new Set((await zaraRowsWithoutPhotos(db)).map((r) => zaraModelCode(r.handle)).filter((c): c is string => Boolean(c)))];
+  if (codes.length === 0) return null;
+  const snapshotId = await filterDataset(ZARA_PHOTOS.datasetId, zaraPhotoFilter(codes), ZARA_PHOTOS.recordsLimit);
+  return { snapshotId, triggeredAt: new Date().toISOString() };
+}
+
+/** Фото из выборки — в строки каталога Zara; находкам Zara без снимков — скачать (CDN Zara облако пускает). */
+async function applyZaraPhotos(db: SupabaseClient, records: unknown[], deadline: number): Promise<number> {
+  const byCode = zaraPhotosByCode(records);
+  if (byCode.size === 0) return 0;
+  const rows = await zaraRowsWithoutPhotos(db);
+  const updates: Array<Record<string, unknown>> = [];
+  const refs: Array<{ id: string; urls: string[] }> = [];
+  for (const row of rows) {
+    const urls = byCode.get(zaraModelCode(row.handle) ?? "");
+    if (!urls) continue;
+    updates.push({ source_id: ZARA_PHOTOS.sourceId, source_item_id: row.source_item_id, image_urls: urls });
+    if (row.reference_id) refs.push({ id: row.reference_id, urls });
+  }
+  await upsertSourceItems(db, updates);
+  // Сначала — какие находки действительно без фото, потом потолок 20 скачиваний.
+  const withMedia = new Set<string>();
+  for (let i = 0; i < refs.length; i += 200) {
+    const { data: media, error: mediaError } = await db.from("assortment_media").select("reference_id").in("reference_id", refs.slice(i, i + 200).map((r) => r.id));
+    if (mediaError) throw new Error(mediaError.message);
+    for (const m of media ?? []) withMedia.add(String(m.reference_id));
+  }
+  for (const ref of refs.filter((r) => !withMedia.has(r.id)).slice(0, 20)) {
+    if (Date.now() > deadline) break;
+    const images: ImageBytes[] = [];
+    for (const url of ref.urls.slice(0, 2)) {
+      const image = await remoteImage(url);
+      if (image) images.push(image);
+    }
+    if (images.length) await storeImages(db, ref.id, images, false);
+  }
+  return updates.length;
 }
 
 /** Сбор готовых проб. Не готова — ждёт следующего захода; старше суток — снимается. */
@@ -356,8 +431,32 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
           errors.push(`проба ${snapshot.snapshotId} не готова за сутки`);
         }
       }
-      result.pending = left.length;
-      const patch: Record<string, unknown> = { capabilities: writeCoverage(writePending(source.capabilities, left), coverage), last_attempt_at: now, last_error: errors.length ? `Bright Data: ${errors.join("; ")}` : null };
+      // Фото Zara: применить готовую выборку; после свежего сбора Zara — заказать фото тем, у кого их нет.
+      let photoLeft: PhotoPending[] = [];
+      if (sourceId === ZARA_PHOTOS.sourceId) {
+        for (const pending of readPhotoPending(source.capabilities)) {
+          const rows = Date.now() > deadline ? null : await downloadDatasetRecords(pending.snapshotId).catch((e) => { errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`); return undefined; });
+          if (rows === undefined) continue;
+          if (rows === null) {
+            if (Date.now() - Date.parse(pending.triggeredAt) < PENDING_TTL_MS) photoLeft.push(pending);
+            continue;
+          }
+          try {
+            result.photos = (result.photos ?? 0) + await applyZaraPhotos(db, rows, deadline);
+          } catch (e) {
+            // Оплаченная выборка не пропадает: остаётся в очереди, ошибка — в «Источниках».
+            errors.push(`фото Zara: ${String((e as Error)?.message ?? e).slice(0, 120)}`);
+            photoLeft.push(pending);
+          }
+        }
+        if ((result.collected ?? 0) > 0 && photoLeft.length === 0) {
+          const next = await triggerZaraPhotos(db).catch((e) => { errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`); return null; });
+          if (next) photoLeft = [next];
+        }
+      }
+      result.pending = left.length + photoLeft.length;
+      const caps = writeCoverage(writePending(source.capabilities, left), coverage);
+      const patch: Record<string, unknown> = { capabilities: sourceId === ZARA_PHOTOS.sourceId ? writePhotoPending(caps, photoLeft) : caps, last_attempt_at: now, last_error: errors.length ? `Bright Data: ${errors.join("; ")}` : null };
       if ((result.collected ?? 0) > 0) patch.last_success_at = now;
       await mark(db, sourceId, patch);
       if (errors.length) {
@@ -372,4 +471,38 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
     results.push(result);
   }
   return results;
+}
+
+/**
+ * Ручной запуск фото Zara (?phase=photos): готовую выборку — применить сразу;
+ * неготовую свежую — ждать; новую заказать, только если ждать нечего (не
+ * покупаем те же записи дважды).
+ */
+export async function requestZaraPhotos(db: SupabaseClient, deadline: number): Promise<BrightDataRunResult> {
+  const source = await readSource(db, ZARA_PHOTOS.sourceId);
+  const caps = (source.capabilities && typeof source.capabilities === "object" ? source.capabilities : {}) as Record<string, unknown>;
+  const result: BrightDataRunResult = { sourceId: ZARA_PHOTOS.sourceId, phase: "trigger", ok: true, triggered: 0, photos: 0 };
+  const left: PhotoPending[] = [];
+  for (const pending of readPhotoPending(caps)) {
+    const rows = await downloadDatasetRecords(pending.snapshotId).catch(() => undefined);
+    if (rows === undefined) {
+      left.push(pending);
+      continue;
+    }
+    if (rows === null) {
+      if (Date.now() - Date.parse(pending.triggeredAt) < PENDING_TTL_MS) left.push(pending);
+      continue;
+    }
+    result.photos = (result.photos ?? 0) + await applyZaraPhotos(db, rows, deadline);
+  }
+  if (left.length === 0) {
+    const next = await triggerZaraPhotos(db);
+    if (next) {
+      left.push(next);
+      result.triggered = 1;
+    }
+  }
+  result.pending = left.length;
+  await mark(db, ZARA_PHOTOS.sourceId, { capabilities: writePhotoPending(caps, left) });
+  return result;
 }
