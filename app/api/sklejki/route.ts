@@ -33,7 +33,10 @@ const MAX_DB_PAGES = 30;
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 
-async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions, period: SklejkiPeriod) {
+type Timed = <T>(name: string, promise: Promise<T> | PromiseLike<T>) => Promise<T>;
+const untimed: Timed = (_name, promise) => Promise.resolve(promise);
+
+async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions, period: SklejkiPeriod, timed: Timed = untimed) {
   return loadHourlyDashboard(
     "wb-sklejki",
     // Дефолтный период уходит в ключ как undefined: hourlyDashboardIdentity такие
@@ -42,7 +45,7 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
     async () => {
   // 1) Один общий часовой снимок карточек для PIM, поставок и склеек.
   //    У scoped-кабинетов он ищет только разрешённые nmID, не обходит весь чужой каталог.
-  const cardsPromise = loadCabinetPimRowsHourly(cabinetId).then((rows): WbCard[] => rows.map((row) => ({
+  const cardsPromise = timed("cards", loadCabinetPimRowsHourly(cabinetId)).then((rows): WbCard[] => rows.map((row) => ({
     nmID: row.nmId,
     imtID: row.imtId,
     vendorCode: row.article,
@@ -98,18 +101,18 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
     throw new Error(`Реклама WB превысила безопасный лимит ${PAGE_SIZE * MAX_DB_PAGES} строк`);
   };
   const metricsPromise = Promise.all([
-    loadFunnelRows(),
-    loadAdRows(),
+    timed("funnel", loadFunnelRows()),
+    timed("ads", loadAdRows()),
     // Месячные агрегаты товаров — тот же тяжёлый источник, что и на «Рекламе»
     // (10+ секунд, под нагрузкой упирается в statement timeout). Читаем из
     // общего снимка с фоновым освежением — у кабинета он обычно уже тёплый
     // после экрана «Рекламы», и холодный билд склеек не тащит RPC вживую.
-    loadCachedAdvertReportRows<RpcTotal>(cabinetId, "full", () =>
-      loadRnpReportRows<RpcTotal>(db, cabinetId, {
+    timed("report", loadCachedAdvertReportRows<RpcTotal>(cabinetId, "full", () =>
+      timed("report_rpc", loadRnpReportRows<RpcTotal>(db, cabinetId, {
         label: "Склейки WB: товары",
-      })),
-    db.from("product_costs").select("article, warehouse_expenses"),
-    loadSklejkiCommissionForCabinet(cabinetId),
+      })))),
+    timed("costs", db.from("product_costs").select("article, warehouse_expenses")),
+    timed("commission", loadSklejkiCommissionForCabinet(cabinetId)),
   ]);
 
   const [cards, metricsRes] = await Promise.all([
@@ -144,7 +147,7 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
       }
       throw new Error(`Отзывы WB превысили безопасный лимит ${PAGE_SIZE * MAX_DB_PAGES} строк на партию`);
     };
-    for (const rows of await Promise.all(chunks.map(loadChunk))) {
+    for (const rows of await timed("feedbacks", Promise.all(chunks.map(loadChunk)))) {
       for (const r of rows) {
         const nm = r.nm_id;
         const e = ratingAgg.get(nm) ?? { sum: 0, count: 0 };
@@ -285,10 +288,25 @@ export async function GET(request: NextRequest) {
     forceRefresh: params.get("refresh") === "1",
     backgroundRefresh: params.get("background") === "1",
   };
+  // ?timings=1 — длительности источников в ответе, чтобы мерить узкие места
+  // прямо на проде. Этапы снимка попадают сюда, только если снимок собирался
+  // в этом запросе: пустой набор при долгом total — значит, ждали не сборку.
+  const wantTimings = params.get("timings") === "1";
+  const timings: Record<string, number> = {};
+  const timed: Timed = (name, promise) => {
+    if (!wantTimings) return Promise.resolve(promise);
+    const startedAt = Date.now();
+    const record = () => { timings[name] = Date.now() - startedAt; };
+    return Promise.resolve(promise).then(
+      (value) => { record(); return value; },
+      (error) => { record(); throw error; },
+    );
+  };
   try {
     if (cabinetId) {
-      const payload = await loadSklejkiSnapshot(cabinetId, cacheOptions, period);
-      return NextResponse.json({ ...payload, period: periodPayload }, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
+      const payload = await timed("total", loadSklejkiSnapshot(cabinetId, cacheOptions, period, timed));
+      const body = { ...payload, period: periodPayload };
+      return NextResponse.json(wantTimings ? { ...body, timings } : body, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
     }
     const cabinets = await getActiveWbCabinets();
     const results = await Promise.allSettled(cabinets.map((cabinet) => loadSklejkiSnapshot(cabinet.id, cacheOptions, period)));
