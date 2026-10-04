@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Database, Layers, Shirt, ShoppingBag } from "lucide-react";
+import { Home, Database, Layers, Shirt, ShoppingBag, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ASSORTMENT_BASE_PATH } from "@/lib/assortment/constants";
@@ -18,6 +18,7 @@ export const ASSORTMENT_NAV: NavItem[] = [
   { label: "Куртки", href: `${ASSORTMENT_BASE_PATH}/jackets`, icon: Shirt },
   { label: "Сумки", href: `${ASSORTMENT_BASE_PATH}/bags`, icon: ShoppingBag },
   { label: "Подборки", href: `${ASSORTMENT_BASE_PATH}/collections`, icon: Layers },
+  { label: "Профили брендов", href: `${ASSORTMENT_BASE_PATH}/profiles`, icon: UserRound },
   { label: "Источники", href: `${ASSORTMENT_BASE_PATH}/sources`, icon: Database },
 ];
 

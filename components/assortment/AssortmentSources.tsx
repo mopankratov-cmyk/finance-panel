@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { ACCESS_STATUS_LABEL, DIRECTION_LABEL, type AccessStatus, type AssortmentDirection } from "@/lib/assortment/constants";
+import { ObservationState } from "./ObservationState";
 import { SourcesList } from "./SourcesList";
 import { useAssortmentSources } from "./useAssortmentSources";
 
@@ -63,6 +64,7 @@ export function AssortmentSources() {
                 <span key={status}>{ACCESS_STATUS_LABEL[status]}: <b className="text-slate-900">{counts.get(status)}</b></span>
               ))}
             </div>
+            <ObservationState sources={state.sources} />
             <SourcesList sources={state.sources} />
           </>
         )}

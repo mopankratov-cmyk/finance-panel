@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
 import type { FormRow, FormsReport } from "@/lib/assortment/forms";
+import { fitFor, type BrandProfile } from "@/lib/assortment/brandProfiles";
 import type { FormDemandReport } from "@/lib/assortment/wbQueries";
 import { FormDemand } from "./FormDemand";
 import { plural } from "@/lib/warehouse/plural";
@@ -11,7 +12,7 @@ import { plural } from "@/lib/warehouse/plural";
 type State =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; report: FormsReport; demand: FormDemandReport | null };
+  | { kind: "ready"; report: FormsReport; demand: FormDemandReport | null; profiles: BrandProfile[] };
 
 const num = (n: number) => n.toLocaleString("ru-RU");
 const pct = (n: number) => `${n.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
@@ -34,7 +35,7 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
           setState({ kind: "error", message: body?.error || `Формы не загрузились (${response.status})` });
           return;
         }
-        setState({ kind: "ready", report: body.report as FormsReport, demand: (body.demand as FormDemandReport | null) ?? null });
+        setState({ kind: "ready", report: body.report as FormsReport, demand: (body.demand as FormDemandReport | null) ?? null, profiles: Array.isArray(body.profiles) ? (body.profiles as BrandProfile[]) : [] });
       })
       .catch(() => {
         if (!cancelled) setState({ kind: "error", message: "Нет связи с сервером" });
@@ -51,11 +52,11 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>;
   }
 
-  return <FormsReportView report={state.report} demand={state.demand} />;
+  return <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} />;
 }
 
 /** Отчёт по формам — отдельно от загрузки: его можно показать на любых данных. */
-export function FormsReportView({ report, demand = null }: { report: FormsReport; demand?: FormDemandReport | null }) {
+export function FormsReportView({ report, demand = null, profiles = [] }: { report: FormsReport; demand?: FormDemandReport | null; profiles?: BrandProfile[] }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [showUnrecognized, setShowUnrecognized] = useState(false);
   if (report.models === 0) {
@@ -96,7 +97,7 @@ export function FormsReportView({ report, demand = null }: { report: FormsReport
           <span className="text-right" title="Каждый источник весит одинаково: большой каталог не делает форму «сильнее»">Средняя по источникам</span>
           <span className="text-right">Источников</span>
         </div>
-        {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} />)}
+        {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} profiles={profiles} />)}
       </section>
 
       <FormDemand report={report} demand={demand} />
@@ -139,8 +140,9 @@ export function FormsReportView({ report, demand = null }: { report: FormsReport
   );
 }
 
-function FormLine({ row, max, open, onToggle }: { row: FormRow; max: number; open: boolean; onToggle: () => void }) {
+function FormLine({ row, max, open, onToggle, profiles }: { row: FormRow; max: number; open: boolean; onToggle: () => void; profiles: BrandProfile[] }) {
   const top = row.perSource[0];
+  const decisions = profiles.map((p) => ({ profile: p, fit: fitFor(p, row.key) })).filter((d) => d.fit !== null);
   return (
     <div className={`rounded-xl border bg-white ${row.generic ? "border-dashed border-slate-300" : "border-slate-200"}`}>
       <button type="button" onClick={onToggle} aria-expanded={open} className="flex w-full flex-col gap-2 px-3 py-3 text-left md:grid md:grid-cols-[minmax(0,1.6fr)_72px_84px_104px_80px] md:items-center md:gap-3">
@@ -160,6 +162,19 @@ function FormLine({ row, max, open, onToggle }: { row: FormRow; max: number; ope
           <span className="md:text-right"><span className="text-xs text-slate-400 md:hidden">Источников </span>{row.sources}</span>
         </span>
       </button>
+      {decisions.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 px-3 pb-2">
+          {decisions.map(({ profile, fit }) => (
+            <span
+              key={profile.brandKey}
+              title={profile.status === "confirmed" ? "Профиль подтверждён владельцем" : "Профиль — черновик, владелец ещё не подтвердил"}
+              className={`rounded-full px-2.5 py-0.5 text-xs ${fit === "fit" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}
+            >
+              {profile.displayName}: {fit === "fit" ? "подходит" : "не подходит"}{profile.status === "confirmed" ? "" : " (черновик)"}
+            </span>
+          ))}
+        </div>
+      )}
       {row.concentrated && top && (
         <p className="px-3 pb-2 text-xs leading-5 text-amber-800">
           Почти всё у одного источника: {top.name} — {pct(row.topSourceShare)}. Это ассортимент бренда, а не распространение формы.
