@@ -18,6 +18,8 @@ interface Cabinet {
   has_advert: boolean;
   has_content: boolean;
   has_feedbacks: boolean;
+  /** Какие бренды кабинета нужны панели; пустой — все. */
+  brand_filters?: string[];
 }
 
 type Scope = "statistics" | "analytics" | "advert" | "content" | "prices" | "feedbacks" | "documents";
@@ -147,6 +149,23 @@ export default function CabinetsPage() {
   const remove = async (id: string, label: string) => {
     if (!confirm(`Удалить кабинет «${label}»?`)) return;
     await fetch(`/api/cabinets/${id}`, { method: "DELETE" });
+    await load();
+  };
+
+  // Бренды задавались только при сохранении кабинета вместе с токеном — у уже
+  // добавленного кабинета поменять их было нечем.
+  const editBrands = async (c: Cabinet) => {
+    const current = (c.brand_filters ?? []).join(", ");
+    const input = window.prompt(`Бренды кабинета «${c.name}» через запятую. Пусто — все бренды кабинета.`, current);
+    if (input === null) return;
+    const brandFilters = input.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean);
+    const response = await fetch(`/api/cabinets/${c.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brand_filters: brandFilters }),
+    });
+    const body = await response.json().catch(() => null) as { error?: string } | null;
+    if (!response.ok) window.alert(body?.error || `Не удалось сохранить бренды (${response.status})`);
     await load();
   };
 
@@ -333,6 +352,14 @@ export default function CabinetsPage() {
                     {c.marketplace === "ozon" ? `Client-Id ${c.client_id} · Api-Key ${c.token_mask}` : `sid ${c.seller_id?.slice(0, 8)}… · ${c.inn ? `ИНН ${c.inn} · ` : ""}токен ${c.token_mask}`}
                     {c.has_advert && " · +Продвижение"}{c.has_content && " · +Контент"}{c.has_feedbacks && " · +Отзывы"}
                   </div>
+                  {c.marketplace === "wb" ? <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
+                    <span className={c.brand_filters?.length ? "font-medium text-violet-700" : "text-gray-400"}>
+                      Бренды: {c.brand_filters?.length ? c.brand_filters.join(", ") : "все"}
+                    </span>
+                    <button type="button" onClick={() => void editBrands(c)} className="rounded px-1 font-medium text-violet-600 hover:bg-violet-50">
+                      {c.brand_filters?.length ? "изменить" : "ограничить"}
+                    </button>
+                  </div> : null}
                   {c.marketplace === "wb" && existingScopes[c.id] ? <div className={`mt-1 text-xs font-semibold ${existingScopes[c.id].scopes.documents === true ? "text-emerald-700" : existingScopes[c.id].scopes.documents === false ? "text-red-700" : "text-amber-700"}`}>
                     Основной токен · Документы: {existingScopes[c.id].scopes.documents === true ? "доступ есть" : existingScopes[c.id].scopes.documents === false ? "доступа нет — перевыпустите токен" : "WB не дал проверить"}
                   </div> : null}

@@ -3,20 +3,32 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { audit, redactSecrets } from "@/lib/audit/log";
+import { cabinetBrandFilters, normalizeBrandFilters } from "@/lib/wb/productScope";
 
 export const dynamic = "force-dynamic";
 
-// PATCH — переименовать / вкл-выкл кабинет: {name?, is_active?}.
+// PATCH — переименовать / вкл-выкл кабинет / задать бренды: {name?, is_active?, brand_filters?}.
+//
+// brand_filters — какие бренды кабинета нужны панели (пустой список — все).
+// Раньше их можно было задать только при сохранении кабинета вместе с токеном
+// WB; у уже добавленного кабинета (04.10.2026 «ЗОРИ»: нужны только HEATON и
+// NORVIA) поменять их было нечем.
 export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const gate = await requireApiSession(["director"]);
   if (gate) return gate;
   const { id } = await ctx.params;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 500 });
-  const b = (await request.json().catch(() => ({}))) as { name?: string; is_active?: boolean };
+  const b = (await request.json().catch(() => ({}))) as { name?: string; is_active?: boolean; brand_filters?: unknown };
   const patch: Record<string, unknown> = {};
   if (typeof b.name === "string" && b.name.trim()) patch.name = b.name.trim();
   if (typeof b.is_active === "boolean") patch.is_active = b.is_active;
+  if (b.brand_filters !== undefined) {
+    if (!Array.isArray(b.brand_filters) || b.brand_filters.some((item) => typeof item !== "string") || b.brand_filters.length > 50) {
+      return NextResponse.json({ error: "brand_filters — список названий брендов (до 50)" }, { status: 400 });
+    }
+    patch.brand_filters = normalizeBrandFilters(b.brand_filters);
+  }
   if (!Object.keys(patch).length) return NextResponse.json({ error: "Нечего обновлять" }, { status: 400 });
   // Update-by-id молча даёт error:null, даже если строка не найдена (опечатка
   // в id, устаревшая ссылка в UI, гонка с чужим удалением) — читаем строку ДО
@@ -24,6 +36,16 @@ export async function PATCH(request: NextRequest, ctx: { params: Promise<{ id: s
   const { data: existing, error: existingError } = await db.from("wb_cabinets").select("*").eq("id", id).maybeSingle();
   if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
   if (!existing) return NextResponse.json({ error: "Кабинет не найден" }, { status: 404 });
+  if (patch.brand_filters !== undefined) {
+    if (existing.marketplace !== "wb") return NextResponse.json({ error: "Бренды задаются только у кабинетов WB" }, { status: 400 });
+    // У «Оптимы» и Retail Family набор брендов зашит в код и сильнее настройки:
+    // сохранить другой — значит показать в форме то, что панель не применит.
+    const name = `${String(patch.name ?? existing.name ?? "")} ${String(existing.trade_mark ?? "")}`;
+    const effective = cabinetBrandFilters(name, patch.brand_filters);
+    if (effective.join(",") !== (patch.brand_filters as string[]).join(",")) {
+      return NextResponse.json({ error: `У этого кабинета бренды зашиты в коде: ${effective.join(", ")}` }, { status: 409 });
+    }
+  }
   const { error } = await db.from("wb_cabinets").update(patch).eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   const session = await getServerSession();
