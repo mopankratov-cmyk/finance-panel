@@ -27,6 +27,8 @@ export interface BrightDataRunResult {
   pending?: number;
   /** Фото Zara из второго набора: сколько моделей каталога получили фото. */
   photos?: number;
+  /** Что с выборками фото: номер и состояние (для ручной проверки). */
+  detail?: string[];
   error?: string;
 }
 
@@ -90,8 +92,10 @@ async function downloadDatasetRecords(snapshotId: string): Promise<unknown[] | n
   });
   if (response.status === 202) return null;
   const text = await response.text();
-  if (response.status === 400 && /not ready/i.test(text)) return null;
-  if (!response.ok) throw new BrightDataError(`выборка ${snapshotId}: HTTP ${response.status}`, response.status);
+  if (response.status === 400 && /not ready|building|in progress/i.test(text)) return null;
+  // Под фильтр ничего не подошло — выборка пустая (и бесплатная): применять нечего.
+  if (response.status === 400 && /empty|no (data|records)/i.test(text)) return [];
+  if (!response.ok) throw new BrightDataError(`выборка ${snapshotId}: HTTP ${response.status} ${text.slice(0, 160)}`, response.status);
   try {
     const data = JSON.parse(text);
     return Array.isArray(data) ? data.map(stripMoney) : [];
@@ -484,17 +488,28 @@ export async function requestZaraPhotos(db: SupabaseClient, deadline: number): P
   const result: BrightDataRunResult = { sourceId: ZARA_PHOTOS.sourceId, phase: "trigger", ok: true, triggered: 0, photos: 0 };
   const left: PhotoPending[] = [];
   const waiting = readPhotoPending(caps);
+  const fresh = (p: PhotoPending) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS;
+  result.detail = [];
   for (const pending of waiting) {
-    const rows = await downloadDatasetRecords(pending.snapshotId).catch(() => undefined);
-    if (rows === undefined) {
-      left.push(pending);
+    let rows: unknown[] | null;
+    try {
+      rows = await downloadDatasetRecords(pending.snapshotId);
+    } catch (e) {
+      // Выборка не удалась у Bright Data — снимаем (иначе висела бы вечно и не давала заказать новую); сбой связи — ждём до суток.
+      const message = String((e as Error)?.message ?? e).slice(0, 200);
+      const failed = e instanceof BrightDataError && e.status !== undefined && e.status < 500;
+      if (!failed && fresh(pending)) left.push(pending);
+      result.detail.push(`${pending.snapshotId}: ${failed ? "снята" : "ждём"} — ${message}`);
       continue;
     }
     if (rows === null) {
-      if (Date.now() - Date.parse(pending.triggeredAt) < PENDING_TTL_MS) left.push(pending);
+      if (fresh(pending)) left.push(pending);
+      result.detail.push(`${pending.snapshotId}: ещё собирается${fresh(pending) ? "" : " больше суток — снята"}`);
       continue;
     }
-    result.photos = (result.photos ?? 0) + await applyZaraPhotos(db, rows, deadline);
+    const applied = await applyZaraPhotos(db, rows, deadline);
+    result.photos = (result.photos ?? 0) + applied;
+    result.detail.push(`${pending.snapshotId}: записей ${rows.length}, фото получили ${applied}`);
   }
   // Новую выборку — только если ничего не ждало: применили готовую — на этом всё (повторный вызов не покупает ещё одну).
   if (waiting.length === 0) {

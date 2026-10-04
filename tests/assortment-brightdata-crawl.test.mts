@@ -260,3 +260,10 @@ test("Фото Zara заказываются сами после сбора Zara
   const route = readFileSync(join(root, "app/api/sync/assortment-brightdata/route.ts"), "utf8");
   assert.match(route, /get\("phase"\) === "photos"/);
 });
+
+test("Выборка фото не зависает: пустая — применять нечего, не удавшаяся у Bright Data — снимается, состояние видно", () => {
+  const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(crawl, /if \(response\.status === 400 && \/empty\|no \(data\|records\)\/i\.test\(text\)\) return \[\];/);
+  assert.match(crawl, /const failed = e instanceof BrightDataError && e\.status !== undefined && e\.status < 500;/);
+  assert.match(crawl, /result\.detail\.push\(/, "в ответе ручного запуска — номер выборки и её состояние");
+});
