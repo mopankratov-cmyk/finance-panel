@@ -4,6 +4,7 @@ import { catalogUrl, classifyItem, collectionHandles, collectionUrl, crawlPlan, 
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { importReference } from "./importer";
 import { safeFetch, SafeFetchError } from "./safeFetch";
+import { catalogFields, upsertSourceItems } from "./sourceItems";
 
 /** Новых моделей на источник за прогон: остальное — очередь на следующий. */
 const NEW_PER_SOURCE = 8;
@@ -104,17 +105,17 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
     for (const item of fetched) {
       const direction = classifyItem(item, categories);
       if (direction) result.relevant += 1;
-      const row = { source_id: source.source_id, source_item_id: item.sourceItemId, handle: item.handle, title: item.title, product_type: item.productType, direction, published_at: item.publishedAt, last_seen_at: now };
+      const row = {
+        source_id: source.source_id, source_item_id: item.sourceItemId, handle: item.handle, title: item.title, product_type: item.productType, direction, published_at: item.publishedAt, last_seen_at: now,
+        // Каталог брендов — только у наших разделов: ссылки на фото, бренд, метки.
+        ...(direction ? catalogFields({ images: item.images, brand: item.vendor ?? source.name, badges: item.badges, badgesKnown: true }) : {}),
+      };
       if (plan.baseline || late.has(item.sourceItemId)) inserts.push({ ...row, baseline: true });
       else if (fresh.has(item.sourceItemId)) inserts.push({ ...row, baseline: false });
       else updates.push(row);
     }
-    for (const rows of [inserts, updates]) {
-      for (let i = 0; i < rows.length; i += 500) {
-        const { error } = await db.from("assortment_source_items").upsert(rows.slice(i, i + 500), { onConflict: "source_id,source_item_id", defaultToNull: false });
-        if (error) throw new Error(error.message);
-      }
-    }
+    await upsertSourceItems(db, inserts, { fresh: true });
+    await upsertSourceItems(db, updates);
     if (!plan.baseline) {
       const { data: queue, error } = await db.from("assortment_source_items")
         .select("source_item_id,handle,direction")

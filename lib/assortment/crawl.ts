@@ -1,12 +1,14 @@
 /**
  * Автообход каталогов Shopify-брендов (этап 2, пункт 4). Чистые функции.
  *
- * Берём из `/products.json` только идентификатор, handle, название, тип, теги
- * и дату публикации — цены и варианты отбрасываются здесь же (граница ТЗ).
- * Первый обход источника — база сравнения: в ленту не пишем ничего.
+ * Берём из `/products.json` только идентификатор, handle, название, тип, теги,
+ * дату публикации, бренд и ссылки на фото — цены и варианты отбрасываются здесь
+ * же (граница ТЗ). Первый обход источника — база сравнения: в ленту не пишем
+ * ничего, но модели видны в «Каталогах брендов» (ссылки на фото, без копий).
  */
 
 import type { AssortmentDirection } from "./constants";
+import type { CatalogBadge } from "./sourceItems";
 
 export interface CatalogItem {
   sourceItemId: string;
@@ -15,6 +17,40 @@ export interface CatalogItem {
   productType: string;
   tags: string[];
   publishedAt: string | null;
+  /** Каталог брендов: ссылки на фото с сайта (до 4), бренд, метки сайта. */
+  images?: string[];
+  vendor?: string | null;
+  badges?: CatalogBadge[];
+}
+
+const MAX_ITEM_IMAGES = 4;
+
+const NOT_BADGE = /(^|[^a-z])(not|no|non)[\s_:-]*(new|best)|[:=_-](false|no|0)$/;
+const NEW_TAG = /^(new|new[\s_-]?(arrivals?|in|season|collection|product|products)|newproduct|(label|badge|tag|filter)[:_-]new)$|^новинк/;
+const BESTSELLER_TAG = /^(best[\s_-]?sell(er|ers|ing)?|(label|badge|tag|filter)[:_-]best[\s_-]?sell\w*|bestsellers?[\s_-][a-z-]+)$|^бестселлер/;
+
+/**
+ * Метки сайта по тегам Shopify: «новинка», «бестселлер». Строже, чем разбор
+ * одной карточки при импорте: на весь каталог «not-new», «new-false» или
+ * «newsletter» дали бы ложные метки.
+ */
+export function badgesFromTags(tags: string[]): CatalogBadge[] {
+  const normalized = tags.map((t) => t.toLowerCase().trim()).filter((t) => t && !NOT_BADGE.test(t));
+  const out: CatalogBadge[] = [];
+  if (normalized.some((t) => NEW_TAG.test(t))) out.push("new");
+  if (normalized.some((t) => BESTSELLER_TAG.test(t))) out.push("bestseller");
+  return out;
+}
+
+function imageUrls(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[] = [];
+  for (const image of raw as Array<{ src?: unknown } | string>) {
+    const src = typeof image === "string" ? image : typeof image?.src === "string" ? image.src : null;
+    if (src && /^https:\/\//.test(src) && !out.includes(src)) out.push(src);
+    if (out.length >= MAX_ITEM_IMAGES) break;
+  }
+  return out;
 }
 
 export const CATALOG_PAGE_SIZE = 250;
@@ -35,6 +71,9 @@ export function parseCatalogPage(json: unknown): CatalogItem[] {
       productType: typeof raw.product_type === "string" ? raw.product_type.trim() : "",
       tags,
       publishedAt: typeof raw.published_at === "string" ? raw.published_at : null,
+      images: imageUrls(raw.images),
+      vendor: typeof raw.vendor === "string" && raw.vendor.trim() ? raw.vendor.trim() : null,
+      badges: badgesFromTags(tags),
     });
   }
   return out;

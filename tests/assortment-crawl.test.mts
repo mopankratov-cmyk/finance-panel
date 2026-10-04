@@ -14,15 +14,24 @@ import { crawlStatus } from "../lib/assortment/coverage.ts";
 const root = fileURLToPath(new URL("..", import.meta.url));
 const item = (patch: Partial<CatalogItem>): CatalogItem => ({ sourceItemId: "1", handle: "h", title: "", productType: "", tags: [], publishedAt: null, ...patch });
 
-test("Страница каталога: только ID, handle, название, тип, теги, дата — без цен и вариантов", () => {
+test("Страница каталога: ID, handle, название, тип, теги, дата, бренд, ссылки на фото, метки — без цен и вариантов", () => {
   const items = parseCatalogPage({ products: [
-    { id: 11, handle: "boky-textured-camel", title: " Boky - Textured Camel ", product_type: "Handbags", tags: ["LABEL:NEW", "family_boky"], published_at: "2026-09-15T00:00:00+02:00", variants: [{ price: "450.00" }] },
+    {
+      id: 11, handle: "boky-textured-camel", title: " Boky - Textured Camel ", product_type: "Handbags", vendor: "Polène", tags: ["LABEL:NEW", "family_boky", "bestsellers-bags"], published_at: "2026-09-15T00:00:00+02:00",
+      variants: [{ price: "450.00", compare_at_price: "500.00" }],
+      images: [{ src: "https://cdn.shopify.com/s/files/1/boky-1.jpg?v=1" }, { src: "http://insecure/x.jpg" }, { src: "https://cdn.shopify.com/s/files/1/boky-2.jpg?v=1" }, { src: "https://cdn.shopify.com/s/files/1/boky-1.jpg?v=1" }],
+    },
     { id: 12, title: "без handle" },
     { handle: "без id" },
   ] });
   assert.equal(items.length, 1);
-  assert.deepEqual(items[0], { sourceItemId: "11", handle: "boky-textured-camel", title: "Boky - Textured Camel", productType: "Handbags", tags: ["LABEL:NEW", "family_boky"], publishedAt: "2026-09-15T00:00:00+02:00" });
-  assert.doesNotMatch(JSON.stringify(items), /price|450/);
+  assert.deepEqual(items[0], {
+    sourceItemId: "11", handle: "boky-textured-camel", title: "Boky - Textured Camel", productType: "Handbags", tags: ["LABEL:NEW", "family_boky", "bestsellers-bags"], publishedAt: "2026-09-15T00:00:00+02:00",
+    images: ["https://cdn.shopify.com/s/files/1/boky-1.jpg?v=1", "https://cdn.shopify.com/s/files/1/boky-2.jpg?v=1"],
+    vendor: "Polène",
+    badges: ["new", "bestseller"],
+  });
+  assert.doesNotMatch(JSON.stringify(items), /price|450|500/);
   assert.deepEqual(parseCatalogPage({ error: "x" }), []);
 });
 
@@ -91,4 +100,13 @@ test("Коллекции новинок из паспорта, их адреса
   assert.equal(collectionUrl("https://www.jwpei.com/", "topnew-in-bags", 1), "https://www.jwpei.com/collections/topnew-in-bags/products.json?limit=250&page=1");
   const merged = mergeCatalog([item({ sourceItemId: "1", title: "из коллекции" })], [item({ sourceItemId: "1", title: "из каталога" }), item({ sourceItemId: "2" })]);
   assert.deepEqual(merged.map((i) => [i.sourceItemId, i.title]), [["1", "из коллекции"], ["2", ""]]);
+});
+
+test("Метки сайта по тегам — строго: «not-new», «new:false», «newsletter» не метки", async () => {
+  const { badgesFromTags } = await import("../lib/assortment/crawl.ts");
+  assert.deepEqual(badgesFromTags(["LABEL:NEW"]), ["new"]);
+  assert.deepEqual(badgesFromTags(["New Arrivals", "bestsellers-bags"]), ["new", "bestseller"]);
+  assert.deepEqual(badgesFromTags(["Новинки"]), ["new"]);
+  assert.deepEqual(badgesFromTags(["not-new", "new:false", "newsletter", "renewed", "new_york", "no-bestseller"]), []);
+  assert.deepEqual(badgesFromTags([]), []);
 });

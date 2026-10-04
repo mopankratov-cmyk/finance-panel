@@ -8,6 +8,7 @@ import type { AssortmentDirection } from "./constants";
 import { classifyItem, crawlPlan } from "./crawl";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
 import { remoteImage, storeImages, type ImageBytes } from "./importer";
+import { catalogFields, upsertSourceItems } from "./sourceItems";
 
 /** Новых находок на источник за один сбор: остальное — очередь до следующего. */
 const NEW_PER_SOURCE = 15;
@@ -231,15 +232,15 @@ export async function ingestRecords(
   const inserts: Array<Record<string, unknown>> = [];
   const updates: Array<Record<string, unknown>> = [];
   for (const r of relevant) {
-    const row = { source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: target.direction, last_seen_at: now };
+    const row = {
+      source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: target.direction, last_seen_at: now,
+      ...catalogFields({ images: r.images, brand: r.brand ?? source.name }),
+    };
     if (plan.baseline || !known.has(r.sourceItemId)) inserts.push({ ...row, baseline: asBaseline || !fresh.has(r.sourceItemId) });
     else updates.push(row);
   }
-  for (const rows of [inserts, updates]) {
-    if (rows.length === 0) continue;
-    const { error } = await db.from("assortment_source_items").upsert(rows, { onConflict: "source_id,source_item_id", defaultToNull: false });
-    if (error) throw new Error(error.message);
-  }
+  await upsertSourceItems(db, inserts, { fresh: true });
+  await upsertSourceItems(db, updates);
   let added = 0;
   const missingPhotos: IngestResult["missingPhotos"] = [];
   if (!asBaseline) {
