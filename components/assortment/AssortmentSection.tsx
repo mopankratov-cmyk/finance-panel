@@ -13,6 +13,8 @@ import {
 import { summarizeCoverage } from "@/lib/assortment/coverage";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
 import { AddFindingModal } from "./AddFindingModal";
+import { DEFAULT_CATALOG_FILTERS, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
+import { CatalogView } from "./CatalogView";
 import { FeedGrid } from "./FeedGrid";
 import { useAssortmentSources } from "./useAssortmentSources";
 
@@ -35,10 +37,45 @@ const VIEWS: Array<{ id: FeedView; label: string; empty: string }> = [
 
 const MAX_COMPARE = 6;
 
+
 /** Раздел модуля «Разработка ассортимента»: лента находок. */
-export function AssortmentSection({ direction }: { direction: AssortmentDirection }) {
+export function AssortmentSection({
+  direction,
+  initialView = "new",
+  initialCatalogFilters = DEFAULT_CATALOG_FILTERS,
+}: {
+  direction: AssortmentDirection;
+  /** Вид и фильтры каталога из адреса — их читает серверная страница: без лишнего запроса и мигания. */
+  initialView?: SectionView;
+  initialCatalogFilters?: CatalogFilters;
+}) {
   const sources = useAssortmentSources(direction);
-  const [view, setView] = useState<FeedView>("new");
+  const [view, setViewState] = useState<SectionView>(initialView);
+  const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
+
+  // Вид — в адресе (?view=catalog): после карточки модели возвращаемся туда же.
+  const setView = (next: SectionView) => {
+    setViewState(next);
+    const url = new URL(window.location.href);
+    if (next === "new") url.searchParams.delete("view");
+    else url.searchParams.set("view", next);
+    if (next !== "catalog") for (const key of ["source", "q", "fresh", "badge", "photo"]) url.searchParams.delete(key);
+    window.history.replaceState(null, "", url);
+  };
+
+  // Сколько моделей в каталогах брендов раздела — для вкладки (нет моделей — нет вкладки).
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/assortment-development/catalog?direction=${direction}&count=1&photo=all`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!cancelled && typeof body?.total === "number") setCatalogTotal(body.total);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [direction]);
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -87,6 +124,7 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
   }, [direction]);
 
   useEffect(() => {
+    if (view === "catalog") return;
     let cancelled = false;
     setFeed((prev) => (prev.kind === "ready" ? prev : { kind: "loading" }));
     fetch(`/api/assortment-development/references?direction=${direction}&view=${view}`)
@@ -109,6 +147,11 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
 
   const coverage = sources.kind === "ready" ? summarizeCoverage(sources.sources) : null;
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
+  // Вкладка каталога — в конце ряда: появляется после подсчёта и ничего не сдвигает под пальцем.
+  const tabs: Array<{ id: SectionView; label: string }> = [
+    ...VIEWS,
+    ...(catalogTotal || view === "catalog" ? [{ id: "catalog" as const, label: catalogTotal ? `Каталоги брендов · ${catalogTotal.toLocaleString("ru-RU")}` : "Каталоги брендов" }] : []),
+  ];
 
   return (
     <div className="px-3 pb-16 pt-4 sm:px-6 md:pb-6">
@@ -141,7 +184,7 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
         )}
 
         <div role="tablist" aria-label="Вид ленты" className="-mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:px-0">
-          {VIEWS.map((v) => (
+          {tabs.map((v) => (
             <button
               key={v.id}
               type="button"
@@ -155,14 +198,23 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
           ))}
         </div>
 
-        {feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
-        {feed.kind === "error" && (
+        {view === "catalog" && <CatalogView direction={direction} initialFilters={initialCatalogFilters} />}
+        {view !== "catalog" && feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
+        {view !== "catalog" && feed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{feed.message}</div>
         )}
         {actionError && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{actionError}</div>
         )}
-        {feed.kind === "ready" && feed.cards.length > 0 && (
+        {view === "new" && catalogTotal ? (
+          <p className="text-sm leading-6 text-slate-600">
+            Здесь только то, что появилось у брендов после первого обхода.{" "}
+            <button type="button" onClick={() => setView("catalog")} className="font-medium text-violet-700 hover:text-violet-900">
+              Весь ассортимент брендов — {catalogTotal.toLocaleString("ru-RU")} моделей
+            </button>
+          </p>
+        ) : null}
+        {view !== "catalog" && feed.kind === "ready" && feed.cards.length > 0 && (
           <FeedGrid
             cards={feed.cards}
             direction={direction}
@@ -173,7 +225,7 @@ export function AssortmentSection({ direction }: { direction: AssortmentDirectio
             onQuickAction={quickAction}
           />
         )}
-        {feed.kind === "ready" && feed.cards.length === 0 && (
+        {view !== "catalog" && feed.kind === "ready" && feed.cards.length === 0 && (
           <section className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
             <div className="text-base font-semibold text-slate-900">Находок пока нет</div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">{current.empty}</p>

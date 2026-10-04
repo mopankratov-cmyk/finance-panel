@@ -1,0 +1,113 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  brandStats, CATALOG_FRESH_DAYS, CATALOG_SEEN_DAYS, ilikePattern, resolvePhotoMode, toCatalogCard,
+  type CatalogBrandStat, type CatalogCard, type CatalogQuery, type CatalogRow,
+} from "./catalog";
+import { isMissingColumnError } from "./errors";
+
+export interface CatalogPage {
+  cards: CatalogCard[];
+  total: number;
+  /** Счётчики брендов — только на первой порции; null, если представления ещё нет. */
+  brands: CatalogBrandStat[] | null;
+  /** Какой режим фото действует на самом деле (в т.ч. выбранный сервером при «auto»). */
+  photo: "with" | "all";
+  /** Миграции 202610040001 нет: фото и фильтры каталога появятся после неё. */
+  photosPending: boolean;
+}
+
+const BASE_COLUMNS = "source_id,source_item_id,handle,title,product_type,first_seen_at,last_seen_at,baseline,reference_id";
+const CATALOG_COLUMNS = `${BASE_COLUMNS},image_urls,brand,badges`;
+
+/** Паспорт источников (названия, адреса сайтов) меняется редко — держим 10 минут. */
+let sourcesCache: { at: number; map: Map<string, { name: string; seedUrl: string | null }> } | null = null;
+
+async function sourcesMap(db: SupabaseClient, nowMs: number) {
+  if (sourcesCache && nowMs - sourcesCache.at < 10 * 60 * 1000) return sourcesCache.map;
+  const { data, error } = await db.from("assortment_sources").select("source_id,name,seed_urls");
+  if (error) throw new Error(error.message);
+  const map = new Map<string, { name: string; seedUrl: string | null }>();
+  for (const row of (data ?? []) as Array<{ source_id: string; name: string | null; seed_urls: unknown }>) {
+    const seeds = Array.isArray(row.seed_urls) ? row.seed_urls.filter((s): s is string => typeof s === "string" && /^https?:\/\//.test(s)) : [];
+    map.set(row.source_id, { name: row.name ?? row.source_id, seedUrl: seeds[0] ?? null });
+  }
+  sourcesCache = { at: nowMs, map };
+  return map;
+}
+
+function select(db: SupabaseClient, query: CatalogQuery, nowMs: number, withCatalogColumns: boolean, photo: "with" | "all", head = false) {
+  const seenSince = new Date(nowMs - CATALOG_SEEN_DAYS * 24 * 3600 * 1000).toISOString();
+  let q = db.from("assortment_source_items")
+    .select(withCatalogColumns ? CATALOG_COLUMNS : BASE_COLUMNS, { count: "exact", head })
+    .eq("direction", query.direction)
+    .gte("last_seen_at", seenSince);
+  if (withCatalogColumns) {
+    q = q.is("hidden_at", null);
+    if (photo === "with") q = q.not("image_urls", "is", null);
+    if (query.badge) q = q.not("badges", "is", null);
+  }
+  if (query.sourceId) q = q.eq("source_id", query.sourceId);
+  if (query.search) {
+    const pattern = ilikePattern(query.search);
+    q = withCatalogColumns ? q.or(`title.ilike.${pattern},brand.ilike.${pattern}`) : q.ilike("title", pattern);
+  }
+  if (query.fresh) q = q.eq("baseline", false).gte("first_seen_at", new Date(nowMs - CATALOG_FRESH_DAYS * 24 * 3600 * 1000).toISOString());
+  return q
+    .order("first_seen_at", { ascending: false })
+    .order("source_id", { ascending: true })
+    .order("source_item_id", { ascending: true })
+    .range(query.offset, query.offset + query.limit - 1);
+}
+
+async function loadStats(db: SupabaseClient, query: CatalogQuery, names: Map<string, string>): Promise<CatalogBrandStat[] | null> {
+  const { data, error } = await db.from("assortment_catalog_stats").select("source_id,direction,models,with_photo,new_7d").eq("direction", query.direction);
+  if (error) return null;
+  return brandStats((data ?? []) as Array<{ source_id: string; direction: string; models: number; with_photo: number; new_7d: number }>, query.direction, names);
+}
+
+/**
+ * Порция каталога: один запрос к базе обхода (индекс по разделу и дате), без
+ * подписанных ссылок и без списков id; счётчики брендов — параллельно. До
+ * миграции — те же модели без фото.
+ */
+export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs: number, timing?: (name: string) => void): Promise<CatalogPage> {
+  const sources = await sourcesMap(db, nowMs);
+  timing?.("sources");
+  const names = new Map([...sources].map(([id, s]) => [id, s.name]));
+  // Режим фото «auto» решают счётчики — тогда они нужны до выборки; иначе — параллельно.
+  const needStats = query.offset === 0 || query.photo === "auto";
+  const statsPromise = needStats ? loadStats(db, query, names) : Promise.resolve(null);
+  const stats = query.photo === "auto" ? await statsPromise : null;
+  const photo = resolvePhotoMode(query.photo, stats, query.sourceId);
+  let photosPending = false;
+  let [result, brands] = await Promise.all([select(db, query, nowMs, true, photo), statsPromise]);
+  if (result.error && isMissingColumnError(result.error)) {
+    photosPending = true;
+    brands = null;
+    result = await select(db, query, nowMs, false, "all");
+  }
+  if (result.error) throw new Error(result.error.message);
+  timing?.("items");
+  const rows = (result.data ?? []) as unknown as CatalogRow[];
+  const cards = rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs));
+  return { cards, total: result.count ?? cards.length, brands: query.offset === 0 ? brands : null, photo: photosPending ? "all" : photo, photosPending };
+}
+
+/** Только число моделей раздела (для вкладки): без строк и без счётчиков брендов. */
+export async function countCatalog(db: SupabaseClient, query: CatalogQuery, nowMs: number): Promise<number> {
+  let result = await select(db, query, nowMs, true, "all", true);
+  if (result.error && isMissingColumnError(result.error)) result = await select(db, query, nowMs, false, "all", true);
+  if (result.error) throw new Error(result.error.message);
+  return result.count ?? 0;
+}
+
+/** Ссылка на фото строки — для запасного пути, когда браузер не смог открыть её сам. */
+export async function catalogImageUrl(db: SupabaseClient, sourceId: string, itemId: string, index: number): Promise<string | null> {
+  const { data, error } = await db.from("assortment_source_items").select("image_urls").eq("source_id", sourceId).eq("source_item_id", itemId).maybeSingle();
+  if (error) {
+    if (isMissingColumnError(error)) return null;
+    throw new Error(error.message);
+  }
+  const urls = (data as { image_urls?: unknown } | null)?.image_urls;
+  return Array.isArray(urls) && typeof urls[index] === "string" ? urls[index] : null;
+}
