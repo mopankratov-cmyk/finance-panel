@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Check, ChevronDown, Layers3, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Building2, Check, ChevronDown, Layers3, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useWbCabinet } from "./WbCabinetContext";
 
@@ -13,9 +13,12 @@ export function WbCabinetSwitcher() {
     error,
     canUseAll,
     setCabinetId,
+    moveCabinet,
     refreshCabinets,
   } = useWbCabinet();
   const [open, setOpen] = useState(false);
+  // Режим «Порядок»: строки перестают выбирать кабинет и получают стрелки.
+  const [reordering, setReordering] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -39,7 +42,10 @@ export function WbCabinetSwitcher() {
     <div ref={rootRef} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          setOpen((value) => !value);
+          setReordering(false);
+        }}
         aria-haspopup="listbox"
         aria-expanded={open}
         className="flex h-11 min-w-[140px] items-center gap-2 rounded-lg border border-violet-200 bg-violet-50 px-2.5 text-left text-[11px] font-semibold text-violet-700 transition hover:border-violet-300 hover:bg-violet-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 lg:h-8 lg:min-w-[154px]"
@@ -60,11 +66,13 @@ export function WbCabinetSwitcher() {
         >
           <div className="border-b border-slate-100 px-3 py-2">
             <div className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">Кабинет данных</div>
-            <div className="mt-0.5 text-[11px] text-slate-500">Меняет срез на всех экранах WB</div>
+            <div className="mt-0.5 text-[11px] text-slate-500">
+              {reordering ? "Стрелками поставьте кабинет выше или ниже" : "Меняет срез на всех экранах WB"}
+            </div>
           </div>
 
           <div className="max-h-72 overflow-y-auto p-1.5">
-            {canUseAll && cabinets.length > 1 && (
+            {!reordering && canUseAll && cabinets.length > 1 && (
               <button
                 type="button"
                 role="option"
@@ -81,8 +89,36 @@ export function WbCabinetSwitcher() {
               </button>
             )}
 
-            {cabinets.map((cabinet) => {
+            {cabinets.map((cabinet, index) => {
               const selected = cabinet.id === cabinetId;
+              if (reordering) {
+                return (
+                  <div
+                    key={cabinet.id}
+                    className={`flex min-h-11 w-full items-center gap-1 rounded-lg py-1 pl-2.5 pr-1 ${selected ? "bg-violet-50 text-violet-700" : "text-slate-600"}`}
+                  >
+                    <span className="w-4 shrink-0 text-center text-[10px] font-semibold text-slate-400">{index + 1}</span>
+                    <span className="min-w-0 flex-1 truncate text-xs font-semibold">{cabinet.name}</span>
+                    {/* Крайним стрелкам двигать некуда — прячем, а не серим; место держим, чтобы стрелки не прыгали. */}
+                    <button
+                      type="button"
+                      onClick={() => moveCabinet(cabinet.id, "up")}
+                      aria-label={`Поднять ${cabinet.name} выше`}
+                      className={`tap flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-violet-100 hover:text-violet-700 ${index === 0 ? "invisible" : ""}`}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => moveCabinet(cabinet.id, "down")}
+                      aria-label={`Опустить ${cabinet.name} ниже`}
+                      className={`tap flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-slate-500 hover:bg-violet-100 hover:text-violet-700 ${index === cabinets.length - 1 ? "invisible" : ""}`}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                );
+              }
               return (
                 <button
                   key={cabinet.id}
@@ -116,13 +152,27 @@ export function WbCabinetSwitcher() {
 
           <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/80 px-3 py-2">
             <span className="text-[10px] text-slate-400">{cabinets.length} подключено</span>
-            <button
-              type="button"
-              onClick={refreshCabinets}
-              className="inline-flex min-h-11 items-center gap-1 px-2 text-[10px] font-semibold text-slate-500 hover:text-violet-700 lg:min-h-8"
-            >
-              <RefreshCw className="h-3 w-3" /> Обновить
-            </button>
+            <span className="flex items-center">
+              {cabinets.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => setReordering((value) => !value)}
+                  aria-pressed={reordering}
+                  className={`inline-flex min-h-11 items-center gap-1 px-2 text-[10px] font-semibold hover:text-violet-700 lg:min-h-8 ${reordering ? "text-violet-700" : "text-slate-500"}`}
+                >
+                  {reordering ? <><Check className="h-3 w-3" /> Готово</> : <><ArrowUpDown className="h-3 w-3" /> Порядок</>}
+                </button>
+              )}
+              {!reordering && (
+                <button
+                  type="button"
+                  onClick={refreshCabinets}
+                  className="inline-flex min-h-11 items-center gap-1 px-2 text-[10px] font-semibold text-slate-500 hover:text-violet-700 lg:min-h-8"
+                >
+                  <RefreshCw className="h-3 w-3" /> Обновить
+                </button>
+              )}
+            </span>
           </div>
         </div>
       )}

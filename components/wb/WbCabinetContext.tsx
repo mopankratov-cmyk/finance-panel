@@ -13,6 +13,12 @@ import {
 import type { Role } from "@/lib/auth/session";
 import { isCabinetScopedRole } from "@/lib/auth/permissions";
 import { confirmDiscardUnsavedChanges } from "@/lib/planning/unsavedChangesGuard";
+import {
+  applyCabinetOrder,
+  CABINET_ORDER_STORAGE_KEY,
+  moveCabinet as moveCabinetInOrder,
+  parseCabinetOrder,
+} from "@/lib/wb/cabinetOrder";
 
 export interface WbCabinet {
   id: string;
@@ -56,6 +62,8 @@ interface WbCabinetContextValue {
   /** Уровень в кабинете: manager, lead или null (действует глобальная роль). */
   cabinetLevel: string | null;
   setCabinetId: (cabinetId: string) => void;
+  /** Сдвинуть кабинет в переключателе на позицию выше/ниже (порядок хранится в браузере). */
+  moveCabinet: (cabinetId: string, direction: "up" | "down") => void;
   refreshCabinets: () => void;
 }
 
@@ -67,7 +75,8 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedCabinet = searchParams.get("cabinet");
-  const [cabinets, setCabinets] = useState<WbCabinet[]>([]);
+  const [serverCabinets, setCabinets] = useState<WbCabinet[]>([]);
+  const [cabinetOrder, setCabinetOrder] = useState<string[]>([]);
   const [user, setUser] = useState<SessionUser | null>(null);
   const [cabinetId, setCabinetIdState] = useState("");
   const [loading, setLoading] = useState(true);
@@ -113,6 +122,31 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
 
     return () => controller.abort();
   }, [refreshKey]);
+
+  useEffect(() => {
+    try {
+      setCabinetOrder(parseCabinetOrder(localStorage.getItem(CABINET_ORDER_STORAGE_KEY)));
+    } catch {
+      // localStorage выключен — остаётся серверный порядок.
+    }
+  }, []);
+
+  // Ручной порядок — для всех потребителей контекста, а не только для
+  // переключателя: первый кабинет списка — ещё и кабинет по умолчанию.
+  const cabinets = useMemo(() => applyCabinetOrder(serverCabinets, cabinetOrder), [serverCabinets, cabinetOrder]);
+
+  const moveCabinet = useCallback(
+    (id: string, direction: "up" | "down") => {
+      const next = moveCabinetInOrder(cabinets.map((cabinet) => cabinet.id), id, direction);
+      setCabinetOrder(next);
+      try {
+        localStorage.setItem(CABINET_ORDER_STORAGE_KEY, JSON.stringify(next));
+      } catch {
+        // Не сохранилось — порядок продержится до перезагрузки страницы.
+      }
+    },
+    [cabinets],
+  );
 
   const canUseAll = !(
     user?.role === "seller"
@@ -253,6 +287,7 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
       canOperate: hasExactCabinet && (rights ? rights.canOperate : user?.role !== "seller"),
       cabinetLevel: rights?.level ?? null,
       setCabinetId,
+      moveCabinet,
       refreshCabinets: () => setRefreshKey((key) => key + 1),
     }),
     [
@@ -263,6 +298,7 @@ export function WbCabinetProvider({ children }: { children: React.ReactNode }) {
       error,
       hasExactCabinet,
       loading,
+      moveCabinet,
       ready,
       // Без rights значение контекста замерзало на состоянии «прав ещё нет»:
       // ответ сервера приходил, но до интерфейса не доезжал никогда. Из-за
