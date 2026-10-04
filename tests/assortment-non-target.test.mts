@@ -17,6 +17,11 @@ const GARBAGE = [
   "Ophelia One-shoulder Embroidered Iace Dress Suit - White",
   // сайты РФ: головное слово не куртка
   "Брюки прямые", "Платье миди", "Юбка плиссе", "Джинсы клеш", "Футболка оверсайз",
+  // Хвост после существительного (цвет, размер, «Set», разделитель) не прячет мусор: решает САМОЕ ПРАВОЕ известное слово.
+  "Puffer Pants Black", "Puffer Pants XS", "Puffer Pants Set", "Puffer Pants / Black", "Puffer Pants: Black", "(NEW) Puffer Pants", "Puffer Pants - Чёрный",
+  // Модификатор «shoulder»/«shell»/«puffer»/«bomber»/«bucket» — не форма: топ, украшение, головной убор, обувь, аксессуары к сумке.
+  "Off-Shoulder Top", "Bershka cold shoulder top", "Shell Necklace", "Bomber Cap", "Puffer Joggers", "Bucket Loafers", "Backpack Rain Cover",
+  "Tote Bag Organizer", "Laptop Sleeve", "Shoulder Pads", "Bag Hook", "Bag Strap",
 ];
 
 // Эти названия содержат «стоп-слова», но главное слово — куртка или сумка. Ложное исключение прячет настоящую модель.
@@ -27,7 +32,14 @@ const KEEP = [
   "Mango faux croc leather jacket in black", "Hana Large Tote Bag - Dark Brown", "Jenny Human-shaped Handle Handbag - Black",
   "Джинсовая куртка", "Джинсовая куртка из хлопка и лиоцелла", "Куртка-толстовка плюшевая с воротником-стойкой",
   "Толстовка-бомбер из ткани интерлок", "Шерстяное полупальто с шарфом и рукавами-кейп", "Куртка стеганая утепленная с проволокой и шарфик",
-  "Сумка с ремнём", "Шуба из искусственного меха",
+  "Сумка с ремнём", "Шуба из искусственного меха", "Сумка для обуви", "Жакет", "Пиджак двубортный",
+  // Слова «belt», «strap», «hat», «scarf», «wallet» в названии СУМКИ — деталь, а не предмет (раньше такие сумки терялись целиком).
+  "Belt Bag", "ASOS DESIGN bum bag with belt detail in black", "Bag with chain strap", "Mini Shoulder Bag with Detachable Strap",
+  "Hat Box Bag", "Shoulder Bag with Scarf", "Tote Bag with Hat", "Wallet on Chain Bag", "Fanny Pack", "Bag for Shoes", "Garment Bag for Dresses",
+  // Нераспознанные разделители («w/», «+», «&») не должны делать главным словом хвост.
+  "Jacket w/ Belt", "Trench Coat + Belt", "Coat & Scarf",
+  // Куртка с «shoulder»/«duffel»/«bag» в названии — куртка, а не сумка.
+  "Duffel Coat", "Blazer with Shoulder Pads", "Sleeping bag puffer coat", "Drop Shoulder Wool Coat", "Puffer Overshirt",
 ];
 
 test("Мусор в «куртках» и «сумках» (штаны, платья, посуда, ремни, чехлы) определяется по главному слову", () => {
@@ -54,4 +66,19 @@ test("classifyItem: слово «puffer» или «shoulder» больше не 
   assert.equal(classifyItem(item({ title: "Cosima Vanity Case - Chocolate Brown", productType: "Handbags" }), ["bags"]), "bags");
   assert.equal(classifyItem(item({ title: "Джинсовая куртка" }), ["jackets"]), "jackets");
   assert.equal(classifyItem(item({ title: "Shell Bag Large" }), ["jackets", "bags"]), "bags", "прежнее правило: «Shell Bag» — сумка");
+});
+
+test("Главное слово решает раздел: куртка со «shoulder» или «duffel» — не сумка, сумка с «belt» — не мусор", () => {
+  const both: Array<"jackets" | "bags"> = ["jackets", "bags"];
+  assert.equal(classifyItem(item({ title: "Duffel Coat" }), both), "jackets", "duffel coat — пальто, а не дафл-сумка");
+  assert.equal(classifyItem(item({ title: "Blazer with Shoulder Pads" }), both), "jackets");
+  assert.equal(classifyItem(item({ title: "ASOS DESIGN padded shoulder blazer in black" }), ["bags"]), null, "пиджак при поиске сумок — не наш раздел, а не сумка");
+  assert.equal(classifyItem(item({ title: "Belt Bag" }), ["bags"]), "bags", "поясная сумка — сумка, а не ремень");
+  assert.equal(classifyItem(item({ title: "Bag with chain strap" }), ["bags"]), "bags");
+  assert.equal(classifyItem(item({ title: "Zara SHOULDER BAG WITH CHAIN STRAP", productType: "BOLSO" }), ["bags"]), "bags");
+  assert.equal(classifyItem(item({ title: "Jacket w/ Belt" }), both), "jackets");
+  assert.equal(classifyItem(item({ title: "Puffer Pants Black" }), both), null);
+  assert.equal(classifyItem(item({ title: "Fanny Pack" }), ["bags"]), "bags");
+  assert.equal(classifyItem(item({ title: "Жакет" }), ["jackets"]), "jackets");
+  assert.equal(classifyItem(item({ title: "Card Holder", productType: "Small leather goods" }), ["bags"]), null, "тип и теги по-прежнему решают, когда слово не распознано");
 });

@@ -80,49 +80,74 @@ export function parseCatalogPage(json: unknown): CatalogItem[] {
 }
 
 // \b в JS не видит границ кириллицы — русские основы идут без него.
-const BAGS = /\b(bag|bags|handbags?|tote|hobo|clutch|cross-?body|shoulder|satchel|bucket|backpack|baguette|messenger|duffel|weekender)\b|сумк|клатч|шопер|рюкзак|кросс-?боди|тоут|хобо|багет|бананк|саквояж/i;
+const BAGS = /\b(bag|bags|handbags?|tote|hobo|clutch|cross-?body|shoulder|satchel|bucket|backpack|baguette|messenger|duffel|weekender|pouch|purse|fanny|sling|wristlet)\b|сумк|клатч|шопер|шоппер|рюкзак|кросс-?боди|тоут|хобо|багет|бананк|саквояж/i;
 const NOT_BAGS = /\b(wallet|card ?holder|key ?ring|keychain|charm|strap|belt|scarf|glove|hat|cap|umbrella|socks?)\b|кошел|брелок|ремень|чехол/i;
-const JACKETS = /\b(jackets?|coats?|parka|puffer|anorak|trench|bomber|blazer|gilet|vest|windbreaker|shell|outerwear)\b|куртк|пальто|пуховик|ветровк|тренч|плащ|парка|бомбер|жилет|косух|дубл[её]нк|шуб[аы]|анорак/i;
+const JACKETS = /\b(jackets?|coats?|parka|puffer|anorak|trench|bomber|blazer|gilet|vest|windbreaker|shell|outerwear|overshirt|shacket)\b|куртк|пальто|пуховик|ветровк|тренч|плащ|парка|бомбер|жилет|косух|дубл[её]нк|шуб[аы]|анорак|жакет|пиджак|блейзер/i;
 
 /**
- * Главное существительное названия — не куртка и не сумка. Слова вроде
- * «puffer» или «shoulder» попадают в списки выше и тащили в каталог штаны
- * («Sarna Puffer Pants»), платья («Off-Shoulder Maxi Dress» — сорок три в
- * «сумках» JW PEI), термосы, кружки и чехлы для ноутбука, ремни и юбки. Такой
- * мусор перекосил бы любую долю формы, поэтому решает именно главное слово, а
- * не любое: «Short coat», «Trench jacket with belt», «Shirt trench coat»,
- * «Джинсовая куртка» — куртки.
+ * Главное существительное названия — куртка, сумка или что-то другое. Слова-
+ * модификаторы вроде «puffer» или «shoulder» лежат в списках выше и тащили в
+ * каталог штаны («Sarna Puffer Pants»), платья («Off-Shoulder Maxi Dress» —
+ * сорок три в «сумках» JW PEI), термосы, кружки, чехлы для ноутбука, ремни и
+ * юбки. Такой мусор перекосил бы любую долю формы, поэтому решает главное
+ * слово, а не любое: «Short coat», «Trench jacket with belt», «Belt Bag»,
+ * «Джинсовая куртка» — куртки и сумки.
  *
- * Английский: главное слово — последнее перед « - цвет», «with», «in» и скобкой
- * (слова с цифрами — размеры, пропускаем). Русский: слово из списка в начале
- * названия и ни одного слова куртки/сумки в нём. Чехол — только для техники и
- * очков: «Vanity Case» (сумка-бокс) остаётся. Без \b — он не видит кириллицу.
+ * Английский: фраза — название до « - цвет», «with», «in», «for», «w/», « + »,
+ * « & », « / », «:», запятой и скобки; главное слово — САМОЕ ПРАВОЕ из известных
+ * существительных (куртка, сумка или не наше), а не буквально последнее слово:
+ * цвет и размер без тире («Puffer Pants Black») его не прячут. Слова с цифрами
+ * (размеры) пропускаем. Русский: слово из списка в начале названия и ни одного
+ * слова куртки/сумки во фразе. Чехол — только для техники и очков: «Vanity Case»
+ * (сумка-бокс) остаётся. Без \b для кириллицы — он её не видит.
  */
-const NON_TARGET_EN = /^(?:pants?|trousers?|jeans|shorts|skirts?|dress(?:es)?|leggings?|jumpsuits?|overalls?|tumblers?|flasks?|bottles?|mugs?|cups?|socks?|pyjamas?|pajamas?|sweaters?|jumpers?|t-?shirts?|shirts?|blouses?|bodysuits?|swimsuits?|bikinis?|towels?|blankets?|pillows?|candles?|hats?|beanies?|scarves|scarf|gloves?|belts?|shoes?|boots?|sneakers?|sandals?|slippers?|suits?)$/i;
-const NON_TARGET_CASE = /(?:laptop|phone|glasses|sunglasses|card|key|passport|tablet|airpods|ipad)\s+cases?$/i;
-const NON_TARGET_RU = new Set(["брюки", "штаны", "юбка", "платье", "джинсы", "шорты", "футболка", "свитер", "джемпер", "худи", "толстовка", "термос", "бутылка", "носки", "шапка", "шарф", "перчатки", "ремень", "обувь", "кроссовки", "ботинки", "сапоги", "костюм", "топ", "майка", "рубашка", "блузка", "лонгслив"]);
-const TARGET_WORD_RU = /куртк|пальто|пуховик|ветровк|тренч|плащ|парка|бомбер|жилет|косух|дубл[её]нк|шуб[аы]|анорак|сумк|клатч|шопер|рюкзак|кросс-?боди|тоут|хобо|багет|бананк|саквояж/i;
+const JACKET_NOUN = /^(?:jackets?|coats?|parkas?|puffers?|anoraks?|trench(?:es|coats?)?|bombers?|blazers?|gilets?|vests?|windbreakers?|overcoats?|raincoats?|capes?|ponchos?|overshirts?|shackets?)$/;
+const BAG_NOUN = /^(?:bags?|handbags?|totes?|hobos?|clutch(?:es)?|cross-?body|backpacks?|rucksacks?|satchels?|purses?|pouch(?:es)?|baguettes?|duffel|duffle|weekender|shoppers?|bumbag|fanny|wristlets?|minaudieres?|bucket)$/;
+const NON_TARGET_EN = /^(?:pants?|trousers?|jeans|shorts|skirts?|dress(?:es)?|leggings?|jumpsuits?|overalls?|tumblers?|flasks?|bottles?|mugs?|cups?|plates?|bowls?|socks?|pyjamas?|pajamas?|sweaters?|jumpers?|t-?shirts?|shirts?|blouses?|bodysuits?|swimsuits?|bikinis?|towels?|blankets?|pillows?|candles?|hats?|caps?|beanies?|scarves|scarf|gloves?|belts?|shoes?|boots?|sneakers?|sandals?|loafers?|slippers?|suits?|tops?|tanks?|camis?|camisoles?|cardigans?|hoodies?|sweatshirts?|rompers?|playsuits?|gowns?|kaftans?|tunics?|joggers|sweatpants|tights|corsets?|bras?|bralettes?|necklaces?|earrings?|bracelets?|rings?|hangers?|covers?|sleeves?|organi[sz]ers?|inserts?|straps?|charms?|wallets?|holders?|keyrings?|keychains?|pads?|hooks?)$/;
+const NON_TARGET_CASE = /(?:laptop|phone|glasses|sunglasses|card|key|passport|tablet|airpods|ipad)\s+cases?$/;
+const NON_TARGET_RU = new Set(["брюки", "штаны", "юбка", "платье", "джинсы", "шорты", "футболка", "свитер", "джемпер", "худи", "толстовка", "термос", "бутылка", "носки", "шапка", "шарф", "перчатки", "ремень", "обувь", "кроссовки", "ботинки", "сапоги", "костюм", "топ", "майка", "рубашка", "блузка", "лонгслив", "комбинезон", "кардиган", "туника", "сарафан", "леггинсы", "колготки", "боди", "купальник", "халат", "пижама", "водолазка", "поло", "кофта"]);
+const TARGET_WORD_RU = /куртк|пальто|пуховик|ветровк|тренч|плащ|парка|бомбер|жилет|косух|дубл[её]нк|шуб[аы]|анорак|жакет|пиджак|блейзер|сумк|клатч|шопер|шоппер|рюкзак|кросс-?боди|тоут|хобо|багет|бананк|саквояж/;
+const PHRASE_SPLIT = /\s+[-–—|/+&]\s+|\s*:\s+|\s+(?:with|in|and|for|by|from|w\/|для|с)\s+|\s*[,;]\s+/;
 
-export function nonTargetHead(title: string | null | undefined): boolean {
-  const lower = (title ?? "").toLowerCase().replace(/ё/g, "е").trim();
-  if (!lower) return false;
-  const phrase = lower.split(/\s+[-–—|]\s+|,\s+|\s+(?:with|in|and|для|с)\s+|\(/)[0].trim();
-  if (/[а-я]/.test(lower)) {
-    const tokens = phrase.split(/\s+/);
-    return tokens.some((t) => NON_TARGET_RU.has(t)) && !TARGET_WORD_RU.test(phrase);
+export type HeadKind = "jacket" | "bag" | "other";
+
+/** Главное слово названия: куртка, сумка, не наше; null — по названию не понять (решают тип и теги). */
+export function headKind(title: string | null | undefined): HeadKind | null {
+  const lower = (title ?? "").toLowerCase().replace(/ё/g, "е").replace(/\([^)]*\)/g, " ").replace(/\s+/g, " ").trim();
+  if (!lower) return null;
+  const phrase = lower.split(PHRASE_SPLIT)[0].trim();
+  if (!phrase) return null;
+  if (/[а-я]/.test(phrase)) {
+    const parts = phrase.split(/\s+/).flatMap((t) => t.split("-"));
+    return parts.some((t) => NON_TARGET_RU.has(t)) && !TARGET_WORD_RU.test(phrase) ? "other" : null;
   }
   const words = phrase.split(/\s+/).filter((w) => !/\d/.test(w));
-  if (NON_TARGET_CASE.test(words.join(" "))) return true;
-  return words.length > 0 && NON_TARGET_EN.test(words[words.length - 1]);
+  if (NON_TARGET_CASE.test(words.join(" "))) return "other";
+  for (let i = words.length - 1; i >= 0; i--) {
+    const word = words[i];
+    if (NON_TARGET_EN.test(word)) return "other";
+    if (JACKET_NOUN.test(word)) return "jacket";
+    if (BAG_NOUN.test(word)) return "bag";
+  }
+  return null;
+}
+
+/** Главное слово — не куртка и не сумка (штаны, платья, посуда, ремни, чехлы). */
+export function nonTargetHead(title: string | null | undefined): boolean {
+  return headKind(title) === "other";
 }
 
 /**
  * К какому разделу относится товар; null — не наш (кошельки, шарфы, обувь,
- * штаны, платья, посуда — см. nonTargetHead).
- * Сумка в названии или типе важнее куртки: «Shell Bag» у Rains — сумка.
+ * штаны, платья, посуда — см. headKind). Главное слово решает раздел:
+ * «Shell Bag» у Rains — сумка, «Duffel Coat» — куртка, а не сумка. Если слово
+ * не понять по названию — старый путь: тип товара, затем теги.
  */
 export function classifyItem(item: CatalogItem, categories: AssortmentDirection[]): AssortmentDirection | null {
-  if (nonTargetHead(item.title)) return null;
+  const kind = headKind(item.title);
+  if (kind === "other") return null;
+  if (kind === "bag") return categories.includes("bags") ? "bags" : null;
+  if (kind === "jacket") return categories.includes("jackets") ? "jackets" : null;
   const head = `${item.productType} ${item.title}`;
   const bagAllowed = categories.includes("bags") && !NOT_BAGS.test(head);
   if (bagAllowed && BAGS.test(head)) return "bags";
