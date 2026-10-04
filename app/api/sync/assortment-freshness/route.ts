@@ -12,6 +12,10 @@ import {
   type SourceFact,
 } from "@/lib/assortment/freshness";
 import { isMissingColumnError } from "@/lib/assortment/errors";
+import {
+  jobsAlertPlan, jobsFreshness, jobsRecoveredTelegram, jobsStallMessage, jobsStallTelegram, JOBS_ALERT_PREFIX, JOBS_STALL_ACTION, WATCHED_JOB_NAMES,
+  type JobRun,
+} from "@/lib/assortment/jobsWatch";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -35,6 +39,45 @@ const JOB = "assortment-freshness";
  *
  * `?dryRun=1` — только посчитать, ничего не отправлять и не отмечать.
  */
+/**
+ * Второй сторож — служебные задачи движка (недельные срезы спроса WB, признаки по
+ * фото): они пишут в свои таблицы, а об отказах — только в sync_log. Свои тревоги и
+ * свой ключ; сбой этого сторожа основной (по источникам) не ломает.
+ */
+async function watchJobs(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, now: Date, dryRun: boolean) {
+  try {
+    const since = new Date(now.getTime() - 30 * 24 * 3600 * 1000).toISOString();
+    const { data, error } = await db.from("sync_log").select("job,status,error,started_at").in("job", WATCHED_JOB_NAMES).gte("started_at", since).order("started_at", { ascending: false }).limit(600);
+    if (error) throw new Error(error.message);
+    const freshness = jobsFreshness((data ?? []) as JobRun[], now.getTime());
+    const open = await db.from("finance_alerts").select("alert_key").like("alert_key", `${JOBS_ALERT_PREFIX}%`).eq("status", "open");
+    if (open.error) throw new Error(open.error.message);
+    const plan = jobsAlertPlan(freshness, (open.data ?? []).map((row) => String(row.alert_key)));
+    if (dryRun) return { freshness, plan };
+    if (plan.send === "stalled") await sendTelegramMessage(jobsStallTelegram(freshness));
+    if (plan.send === "recovered") await sendTelegramMessage(jobsRecoveredTelegram());
+    if (plan.openKey) {
+      const upserted = await db.from("finance_alerts").upsert({
+        alert_key: plan.openKey,
+        severity: "warning",
+        title: "Задачи движка тенденций остановились",
+        message: jobsStallMessage(freshness),
+        action: JOBS_STALL_ACTION,
+        status: "open",
+        last_seen_at: now.toISOString(),
+      }, { onConflict: "alert_key" });
+      if (upserted.error) throw new Error(upserted.error.message);
+    }
+    if (plan.resolveKeys.length) {
+      const resolved = await db.from("finance_alerts").update({ status: "resolved", last_seen_at: now.toISOString() }).in("alert_key", plan.resolveKeys);
+      if (resolved.error) throw new Error(resolved.error.message);
+    }
+    return { freshness, plan };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "сторож задач не отработал" };
+  }
+}
+
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
   if (authError) return authError;
@@ -73,7 +116,7 @@ export async function GET(request: NextRequest) {
   const openResult = await db.from("finance_alerts").select("alert_key").like("alert_key", `${ASSORTMENT_ALERT_PREFIX}%`).eq("status", "open");
   if (openResult.error) return fail(`Не прочитались открытые тревоги: ${openResult.error.message}`);
   const plan = assortmentAlertPlan(freshness, (openResult.data ?? []).map((row) => String(row.alert_key)));
-  if (dryRun) return NextResponse.json({ ok: true, dryRun: true, freshness, plan });
+  if (dryRun) return NextResponse.json({ ok: true, dryRun: true, freshness, plan, jobs: await watchJobs(db, startedAt, true) });
 
   try {
     if (plan.send === "stalled") await sendTelegramMessage(assortmentStallTelegram(freshness));
@@ -102,5 +145,6 @@ export async function GET(request: NextRequest) {
   // Молчание — ещё и красная строка в журнале синхронизаций.
   const stalled = freshness.state === "stalled";
   await writeSyncLog(JOB, stalled ? "error" : "ok", freshness.stalled.length, stalled ? assortmentStallMessage(freshness) : null, startedAt);
-  return NextResponse.json({ ok: true, freshness, sent: plan.send });
+  const jobs = await watchJobs(db, startedAt, false);
+  return NextResponse.json({ ok: true, freshness, sent: plan.send, jobs });
 }
