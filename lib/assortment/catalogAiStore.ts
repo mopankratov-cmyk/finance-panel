@@ -24,6 +24,8 @@ const HEADS_VIEW = "assortment_catalog_heads";
 const MAX_IMAGES = 2;
 /** Сколько пачек подряд без успеха — это уже не «плохие фото», а сбой. */
 const DEAD_BATCHES_STOP = 4;
+/** Сколько моделей источника подряд без единого успеха в прогоне — и источник в этом прогоне пропускаем (фото не скачиваются). */
+const SOURCE_DEAD_FAILS = 6;
 
 export class CatalogAiTableMissingError extends Error {}
 
@@ -253,6 +255,8 @@ export interface RunSummary {
   stoppedBy: "budget" | "time" | "auth" | "billing" | "rate_limit" | "config" | "errors" | null;
   /** Временные сбои (перегрузка, сеть): попытка модели не потрачена, она в очереди снова. */
   transient: number;
+  /** Источники, пропущенные в этом прогоне: шесть моделей подряд без успеха (фото не скачиваются у Anthropic). */
+  deadSources: string[];
   spend: Spend | null;
   stopMessage: string | null;
 }
@@ -283,32 +287,35 @@ export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Pro
   const startBudget = options.startBudgetMs ?? 150_000;
   const runCap = options.runCap ?? 120;
   const parallel = Math.max(1, options.parallel ?? 3);
-  const summary: RunSummary = { skipped: null, candidates: 0, allowed: 0, allowReason: "ok", done: 0, failed: 0, transient: 0, costUsd: 0, stoppedBy: null, spend: null, stopMessage: null };
+  const summary: RunSummary = { skipped: null, candidates: 0, allowed: 0, allowReason: "ok", done: 0, failed: 0, transient: 0, deadSources: [], costUsd: 0, stoppedBy: null, spend: null, stopMessage: null };
 
   if (!config.enabled) return { ...summary, skipped: "выключено (ASSORTMENT_CATALOG_AI=off)" };
   if (!config.price) return { ...summary, skipped: `нет цены модели ${config.model}: бюджет нечем считать — задайте ASSORTMENT_CATALOG_AI_PRICE_IN/OUT` };
 
   const spend = await loadSpend(db, startedAt);
-  const existing = await loadExisting(db);
-  if (!spend || !existing) return { ...summary, skipped: "нет таблиц признаков (миграция 202610050005)" };
-  const heads = await loadCatalogHeads(db, null, startedAt);
-  if (!heads) return { ...summary, skipped: "нет вида каталога (миграция 202610050002)" };
-
+  if (!spend) return { ...summary, skipped: "нет таблиц признаков (миграция 202610050005)" };
   summary.spend = spend;
-  const queue = pickCandidates(heads, existing, startedAt, Number.MAX_SAFE_INTEGER);
-  summary.candidates = queue.length;
   const first = allowance(config, spend.weekUsd, spend.callsToday, runCap);
-  summary.allowed = Math.min(first.models, queue.length);
   summary.allowReason = first.reason;
-  if (options.dryRun || queue.length === 0) return summary;
-  if (first.models === 0) return { ...summary, stoppedBy: first.reason === "run_cap" ? null : "budget" };
+  // Бюджет недели или потолок суток исчерпаны — каталог и таблицу результатов не читаем вовсе (за сутки таких прогонов
+  // до десяти): ни тяжёлых выборок, ни замка, ни строки в журнале.
+  if (!options.dryRun && first.models === 0) return { ...summary, stoppedBy: first.reason === "run_cap" ? null : "budget" };
 
-  const lease = await acquireLease(db, startedAt);
+  // Замок берём до чтения очереди: иначе прогон, стартовавший в конце чужого, читает уже устаревший расход и результаты.
+  const lease = options.dryRun ? "dry" : await acquireLease(db, startedAt);
   if (!lease) return { ...summary, skipped: "уже идёт другой прогон" };
   try {
+    const existing = await loadExisting(db);
+    if (!existing) return { ...summary, skipped: "нет таблиц признаков (миграция 202610050005)" };
+    const heads = await loadCatalogHeads(db, null, startedAt);
+    if (!heads) return { ...summary, skipped: "нет вида каталога (миграция 202610050002)" };
+    const queue = pickCandidates(heads, existing, startedAt, Number.MAX_SAFE_INTEGER);
+    summary.candidates = queue.length;
+    summary.allowed = Math.min(first.models, queue.length);
+    if (options.dryRun || queue.length === 0) return summary;
     return await processQueue(db, queue, existing, config, options, summary, spend, { startedAt, startBudget, runCap, parallel, now });
   } finally {
-    await releaseLease(db, startedAt, lease);
+    if (lease !== "dry") await releaseLease(db, startedAt, lease);
   }
 }
 
@@ -322,7 +329,15 @@ async function processQueue(
   let callsToday = spend.callsToday;
   let doneInRun = 0;
   let deadBatches = 0;
-  for (let i = 0; i < queue.length; i += parallel) {
+  // Источник, у которого в этом прогоне шесть моделей подряд не разобрались (фото не скачиваются), пропускаем до конца
+  // прогона: иначе он съедает пачки, а остальные источники ждут. Временные сбои (сеть, перегрузка) источник не «убивают».
+  const lanes = new Map<string, { ok: number; failed: number }>();
+  const isDead = (sourceId: string) => {
+    const lane = lanes.get(sourceId);
+    return Boolean(lane) && lane!.ok === 0 && lane!.failed >= SOURCE_DEAD_FAILS;
+  };
+  let cursor = 0;
+  while (cursor < queue.length) {
     if (now() - startedAt > startBudget) {
       summary.stoppedBy = "time";
       break;
@@ -333,8 +348,21 @@ async function processQueue(
       summary.stoppedBy = left.reason === "run_cap" ? null : "budget";
       break;
     }
-    const batch = queue.slice(i, i + Math.min(parallel, left.models));
+    const batch: CatalogHead[] = [];
+    while (cursor < queue.length && batch.length < Math.min(parallel, left.models)) {
+      const next = queue[cursor];
+      cursor += 1;
+      if (!isDead(next.sourceId)) batch.push(next);
+    }
+    if (batch.length === 0) break;
     const outcomes = await Promise.all(batch.map((head) => analyzeOne(db, head, existing, config, options.ask, now)));
+    batch.forEach((head, index) => {
+      const outcome = outcomes[index];
+      const lane = lanes.get(head.sourceId) ?? { ok: 0, failed: 0 };
+      if (outcome.status === "ok") lane.ok += 1;
+      else if (!outcome.transient && !outcome.stop) lane.failed += 1;
+      lanes.set(head.sourceId, lane);
+    });
     let batchCost = 0;
     let batchTokens = { in: 0, out: 0 };
     let ok = 0;
@@ -383,6 +411,7 @@ async function processQueue(
       break;
     }
   }
+  summary.deadSources = [...lanes.keys()].filter(isDead).sort();
   summary.spend = { weekUsd, callsToday };
   return summary;
 }

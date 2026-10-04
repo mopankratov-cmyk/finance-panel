@@ -147,7 +147,27 @@ export function pickCandidates(heads: CatalogHead[], existing: Map<string, Exist
     } else if (prev.promptVersion !== PROMPT_VERSION && nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) stale.push(head);
   }
   const newestFirst = (a: CatalogHead, b: CatalogHead) => b.firstSeenAt.localeCompare(a.firstSeenAt) || a.sourceId.localeCompare(b.sourceId) || a.modelKey.localeCompare(b.modelKey);
-  return [...fresh.sort(newestFirst), ...retry.sort(newestFirst), ...stale.sort(newestFirst)].slice(0, Math.max(0, limit));
+  return [...byTurns(fresh.sort(newestFirst)), ...byTurns(retry.sort(newestFirst)), ...byTurns(stale.sort(newestFirst))].slice(0, Math.max(0, limit));
+}
+
+/**
+ * По кругу между источниками: по одной модели от каждого, внутри источника — свежие первыми. Источник, чьи фото
+ * Anthropic не может скачать (сайты за защитой от облаков), иначе стоял бы в голове очереди целиком и съедал каждый
+ * прогон, не пуская остальные.
+ */
+function byTurns(sorted: CatalogHead[]): CatalogHead[] {
+  const bySource = new Map<string, CatalogHead[]>();
+  for (const head of sorted) {
+    const list = bySource.get(head.sourceId) ?? [];
+    list.push(head);
+    bySource.set(head.sourceId, list);
+  }
+  const lanes = [...bySource.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([, list]) => list);
+  const out: CatalogHead[] = [];
+  for (let round = 0; out.length < sorted.length; round += 1) {
+    for (const lane of lanes) if (round < lane.length) out.push(lane[round]);
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

@@ -358,17 +358,75 @@ test("Временные сбои (перегрузка, 5xx, сеть) не т�
   assert.equal(tables.assortment_model_attributes.find((r) => r.model_key === "S1|a")?.attempts, 1);
 });
 
-test("Системный сбой: 12 моделей подряд без успеха (4 пачки) — стоп; мёртвые фото отдельных моделей и успех между ними — не стоп", async () => {
-  const heads = Array.from({ length: 30 }, (_, i) => headRow("S1", `m${String(i).padStart(2, "0")}`, { model_first_seen_at: `2026-10-03T00:${String(59 - i).padStart(2, "0")}:00Z` }));
+test("Системный сбой: 12 моделей подряд без успеха из разных источников (4 пачки) — стоп; мёртвые фото и успех между ними — не стоп", async () => {
+  // четыре источника по пять моделей: ни у одного нет шести провалов подряд, а все пачки мёртвые
+  const heads = ["S1", "S2", "S3", "S4"].flatMap((id) => Array.from({ length: 5 }, (_, i) => headRow(id, `m${i}`, { model_first_seen_at: `2026-10-03T00:0${i}:00Z` })));
   const dead: AskVision = async () => { throw new Error("Unable to download the file"); };
   const a = await runCatalogAi(fakeDb({ heads }).db, { ask: dead, config: cfg, now: clock, parallel: 3 });
   assert.equal(a.stoppedBy, "errors");
-  assert.equal(a.failed, 12, "четыре пачки по три — и стоп, а не тридцать пустых попыток");
+  assert.equal(a.failed, 12, "четыре пачки по три — и стоп, а не двадцать пустых попыток");
   let n = 0;
   const flaky: AskVision = async () => { n += 1; if (n % 4 === 0) return { text: GOOD, inputTokens: 100, outputTokens: 10 }; throw new Error("Unable to download the file"); };
   const b = await runCatalogAi(fakeDb({ heads }).db, { ask: flaky, config: cfg, now: clock, parallel: 1 });
   assert.equal(b.stoppedBy, null, "успех раз в четыре модели — это плохие фото, а не сбой");
-  assert.equal(b.done + b.failed, 30);
+  assert.equal(b.done + b.failed, 20);
+});
+
+test("Источник с недоступными фото не съедает прогон: очередь идёт по кругу, а после шести провалов подряд источник пропускается", async () => {
+  const dead = Array.from({ length: 20 }, (_, i) => headRow("S131", `d${String(i).padStart(2, "0")}`, { model_first_seen_at: `2026-10-05T10:${String(59 - i).padStart(2, "0")}:00Z` }));
+  const good = Array.from({ length: 5 }, (_, i) => headRow("S001", `g${i}`, { model_first_seen_at: `2026-10-03T00:0${i}:00Z` }));
+  const { db, tables } = fakeDb({ heads: [...dead, ...good] });
+  const order: string[] = [];
+  const ask: AskVision = async (_d, urls) => {
+    const id = urls[0].match(/img\/([a-z0-9]+)-/)![1];
+    order.push(id);
+    if (id.startsWith("d")) throw new Error("Unable to download the file");
+    return { text: GOOD, inputTokens: 100, outputTokens: 10 };
+  };
+  const out = await runCatalogAi(db, { ask, config: cfg, now: clock, parallel: 1 });
+  assert.equal(out.done, 5, "все модели «хорошего» источника разобраны, хотя дохлый свежее и его больше");
+  assert.deepEqual(out.deadSources, ["S131"]);
+  assert.equal(new Set(order.filter((x) => x.startsWith("d"))).size, 6, "дохлому источнику — ровно шесть моделей, остальные четырнадцать пропущены");
+  assert.ok(order.slice(0, 6).some((x) => x.startsWith("g")), "хорошие модели не ждут конца дохлых");
+  assert.equal(tables.assortment_model_attributes.filter((r) => r.status === "failed").length, 6, "попытка записана только тем шести, на которых реально пробовали");
+  // порядок очереди — чистой функцией
+  const picked = pickCandidates([...dead, ...good].map((h) => ({ sourceId: String(h.source_id), sourceItemId: String(h.source_item_id), modelKey: String(h.model_key), direction: "jackets" as const, title: "", imageUrls: ["https://x/1"], firstSeenAt: String(h.model_first_seen_at) })), new Map(), NOW, 100);
+  const lanes = picked.slice(0, 6).map((h) => h.sourceId);
+  assert.deepEqual(lanes, ["S001", "S131", "S001", "S131", "S001", "S131"], "источники чередуются");
+});
+
+test("Источник «мёртвый» только если в прогоне не было ни одного успеха; временные сбои источник не убивают", async () => {
+  const heads = Array.from({ length: 12 }, (_, i) => headRow("S1", `m${String(i).padStart(2, "0")}`, { model_first_seen_at: `2026-10-03T00:${String(59 - i).padStart(2, "0")}:00Z` }));
+  // один успех, дальше фото не скачиваются: источник «живой», пробуем все модели
+  let n = 0;
+  const onceThenDead: AskVision = async () => { n += 1; if (n === 1) return { text: GOOD, inputTokens: 100, outputTokens: 10 }; throw new Error("Unable to download the file"); };
+  const a = await runCatalogAi(fakeDb({ heads }).db, { ask: onceThenDead, config: cfg, now: clock, parallel: 3 });
+  assert.deepEqual([a.done, a.failed], [1, 11]);
+  assert.deepEqual(a.deadSources, [], "после одного успеха источник не объявляется мёртвым");
+  // перегрузка Anthropic — не вина источника: он не «мёртвый», стоп — глобальный (системный сбой)
+  const overloaded: AskVision = async () => { throw Object.assign(new Error("Overloaded"), { status: 529 }); };
+  const b = await runCatalogAi(fakeDb({ heads }).db, { ask: overloaded, config: cfg, now: clock, parallel: 3 });
+  assert.deepEqual(b.deadSources, []);
+  assert.equal(b.stoppedBy, "errors");
+  assert.equal(b.transient, 12);
+});
+
+test("Бюджет исчерпан — каталог и результаты не читаются, замок не берётся (раньше такие прогоны грузили весь каталог по десять раз в сутки)", async () => {
+  const { db, writes } = fakeDb({ heads: [headRow("S1", "a")], usage: [{ day: "2026-10-04", kind: "catalog_attributes", calls: 100, cost_usd: 20 }] });
+  const out = await runCatalogAi(db, { ask: okAsk(), config: cfg, now: clock });
+  assert.equal(out.stoppedBy, "budget");
+  assert.equal(out.candidates, 0, "очередь не строилась");
+  assert.equal(writes.filter((w) => w.table === "assortment_ai_usage").length, 0, "замок не брался");
+});
+
+test("Замок берётся ДО чтения очереди: второй прогон не читает расход и результаты, пока идёт первый", async () => {
+  const reads: string[] = [];
+  const heads = [headRow("S1", "a")];
+  const { db } = fakeDb({ heads, usage: [{ day: "2026-10-06", kind: "lock:catalog_attributes", updated_at: new Date(NOW - 60_000).toISOString() }] });
+  const spy = new Proxy(db as object, { get: (target, prop) => (prop === "from" ? (table: string) => { reads.push(table); return (target as { from: (t: string) => unknown }).from(table); } : (target as Record<string, unknown>)[prop as string]) });
+  const out = await runCatalogAi(spy as never, { ask: okAsk(), config: cfg, now: clock });
+  assert.match(out.skipped ?? "", /другой прогон/);
+  assert.ok(!reads.includes("assortment_model_attributes") && !reads.includes("assortment_catalog_heads"), "каталог и результаты не читались");
 });
 
 test("Неверное имя модели (config) останавливает прогон на первой же пачке", async () => {
@@ -413,6 +471,24 @@ test("Крон: ровно один, GET, за секретом, запас по
   assert.match(route, /checkCronAuth/);
   assert.match(route, /ASSORTMENT_CATALOG_AI=off/);
   assert.match(route, /нет ключа Anthropic/);
+  // нет ключа при непустой очереди — строка-ошибка в журнале (сторож скажет в Telegram), а не тишина
+  assert.match(route, /writeSyncLog\(JOB, "error", null, `нет ключа Anthropic/);
+  assert.match(route, /keyConfigured/, "dryRun показывает, есть ли ключ");
+  // лимит запросов при уже разобранных моделях — не «сломалось»
+  assert.match(route, /rateLimited && summary\.done === 0/);
+});
+
+test("Миграция-исправление 202610050006: модель — база, только если все расцветки базовые (bool_and); фото головы из соседних расцветок; ключи H&M", () => {
+  const root = join(import.meta.dirname, "..");
+  const sql = readFileSync(join(root, "supabase/migrations/202610050006_assortment_model_baseline_fix.sql"), "utf8").split("\n").filter((line) => !line.trim().startsWith("--")).join("\n");
+  assert.match(sql, /bool_and\(baseline\)\s+as baseline/, "счётчик new_7d");
+  assert.match(sql, /bool_and\(i\.baseline\)\s+over w as model_baseline/, "вид голов");
+  assert.doesNotMatch(sql, /bool_or\((i\.)?baseline\)/, "прежний агрегат — ошибка: новая многоцветная модель становилась «базой»");
+  assert.match(sql, /coalesce\(i\.image_urls, first_value\(i\.image_urls\) over wp\)/, "фото головы — из соседних расцветок");
+  assert.match(sql, /update public\.assortment_source_items[\s\S]*where source_id = 'S007'/, "ключи H&M приведены к виду кода");
+  assert.match(sql, /notify pgrst, 'reload schema'/);
+  const m002 = readFileSync(join(root, "supabase/migrations/202610050002_assortment_model_key.sql"), "utf8");
+  assert.doesNotMatch(m002, /c\.source_id in \([^)]*'S007'/, "обратное заполнение 002 не клеит H&M (код его не клеит)");
 });
 
 // --- по независимому ревью ---

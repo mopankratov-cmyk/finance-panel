@@ -37,7 +37,7 @@ create index if not exists assortment_source_items_model_idx
 -- Обратное заполнение. Те же правила, что у constructionHead/modelKey в коде:
 -- нижний регистр, ё→е, голова названия до « - Цвет» / « | » / запятой, срез
 -- «in <цвет>» (если останется хотя бы три слова). Источники «цвет = строка»:
--- S014 Rains, S024 Polène, S026 Songmont, S027 JW PEI, S046 ASOS, S007 H&M.
+-- S014 Rains, S024 Polène, S026 Songmont, S027 JW PEI, S046 ASOS. H&M (S007) не склеивается: у него общие названия (исправлено 202610050006).
 -- Повторный запуск безопасен (меняет только отличающиеся строки); следующие
 -- обходы перепишут ключ кодом.
 update public.assortment_source_items i
@@ -45,7 +45,7 @@ set model_key = k.key
 from (
   select c.source_id, c.source_item_id,
     case
-      when c.source_id in ('S014','S024','S026','S027','S046','S007') and length(c.head) >= 3
+      when c.source_id in ('S014','S024','S026','S027','S046') and length(c.head) >= 3
         then c.source_id || '|' || c.head
       else c.source_id || '|' || c.source_item_id
     end as key

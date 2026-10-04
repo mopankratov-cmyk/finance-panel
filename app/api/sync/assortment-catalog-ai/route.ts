@@ -29,22 +29,37 @@ export async function GET(request: NextRequest) {
   const dryRun = request.nextUrl.searchParams.get("dryRun") === "1";
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 503 });
-  if (!aiKeyConfigured() && !dryRun) return NextResponse.json({ ok: true, skipped: "нет ключа Anthropic (ANTHROPIC_API_KEY)" });
+  const keyConfigured = aiKeyConfigured();
 
   try {
     const config = catalogAiConfig();
+    if (!keyConfigured && !dryRun) {
+      // Без ключа платить нечем, но молчать нельзя: если очередь не пуста, это строка-ошибка в журнале — и сторож
+      // служебных задач скажет в Telegram через три прогона, а не «выложили, а признаков нет».
+      const probe = await runCatalogAi(db, { ask: askAnthropicVision, config, dryRun: true });
+      if (!probe.skipped && probe.allowed > 0) {
+        await writeSyncLog(JOB, "error", null, `нет ключа Anthropic (ANTHROPIC_API_KEY): ${probe.candidates} моделей ждут разбора`, startedAt);
+      }
+      return NextResponse.json({ ok: true, skipped: "нет ключа Anthropic (ANTHROPIC_API_KEY)", waiting: probe.candidates });
+    }
     const summary = await runCatalogAi(db, { ask: askAnthropicVision, config, dryRun });
-    if (dryRun || summary.skipped || summary.candidates === 0) return NextResponse.json({ ok: true, dryRun, config: { model: config.model, weeklyBudgetUsd: config.weeklyBudgetUsd, dailyLimit: config.dailyLimit, enabled: config.enabled, priced: Boolean(config.price) }, ...summary });
+    if (dryRun || summary.skipped || summary.candidates === 0) {
+      return NextResponse.json({ ok: true, dryRun, keyConfigured, config: { model: config.model, weeklyBudgetUsd: config.weeklyBudgetUsd, dailyLimit: config.dailyLimit, enabled: config.enabled, priced: Boolean(config.price) }, ...summary });
+    }
 
-    const hardStop = summary.stoppedBy === "auth" || summary.stoppedBy === "billing" || summary.stoppedBy === "rate_limit" || summary.stoppedBy === "config" || summary.stoppedBy === "errors";
+    // Лимит запросов при уже разобранных моделях — это «медленнее», а не «сломалось» (низкий тариф Anthropic упирается в
+    // токены в минуту): прогон «partial» и три таких подряд тревогу не дают. Без единой разобранной — «error».
+    const rateLimited = summary.stoppedBy === "rate_limit";
+    const hardStop = summary.stoppedBy === "auth" || summary.stoppedBy === "billing" || summary.stoppedBy === "config" || summary.stoppedBy === "errors" || (rateLimited && summary.done === 0);
     const note = [
       summary.stopMessage,
       summary.failed > 0 ? `не разобрано: ${summary.failed}` : null,
       summary.transient > 0 ? `временных сбоев (перегрузка, сеть): ${summary.transient}` : null,
+      summary.deadSources.length > 0 ? `фото не скачиваются, источники пропущены: ${summary.deadSources.join(", ")}` : null,
       summary.stoppedBy === "budget" ? "дошли до бюджета недели или потолка суток" : null,
     ].filter(Boolean).join(". ");
     // «error» — ИИ не принял ключ/нет денег/лимит или не вышло ничего; упёрлись во время или в бюджет — ожидаемо, «partial»/«ok».
-    const status = hardStop || (summary.done === 0 && summary.failed + summary.transient > 0) ? "error" : summary.failed > 0 || summary.stoppedBy === "time" ? "partial" : "ok";
+    const status = hardStop || (summary.done === 0 && summary.failed + summary.transient > 0) ? "error" : summary.failed > 0 || summary.stoppedBy === "time" || rateLimited || summary.deadSources.length > 0 ? "partial" : "ok";
     await writeSyncLog(JOB, status, summary.done, note || null, startedAt);
     return NextResponse.json({ ok: status !== "error", ...summary }, { status: status === "error" ? 502 : 200 });
   } catch (error) {

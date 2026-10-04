@@ -284,6 +284,9 @@ ffmpeg — это правка `package.json` и установка на mini, �
 | `…?phase=collect`, `…?phase=collect&retry=1` | 06:30 и 08:30 ср, сб | забрать готовые пробы; номера — в `assortment_sources.capabilities.brightdata_pending` |
 | `/api/sync/assortment-ai-attributes` | 09:00 ежедневно (12:00) | признаки по фото, не больше 20 моделей (`ASSORTMENT_AI_DAILY_LIMIT`) |
 | `/api/sync/assortment-digest` | 07:00 вс (10:00) | сводка в Telegram; `?dryRun=1` — только текст |
+| `/api/sync/assortment-freshness` | 09:30 ежедневно (12:30) | сторож в Telegram: молчащие сборщики источников и остановившиеся служебные задачи движка (срезы WB, признаки по фото); `?dryRun=1` — только проверка |
+| `/api/sync/assortment-wb-queries` | каждые 6 ч, :15 | недельные срезы частотности запросов WB (MPSTATS) по 11 предметам-силуэтам → `assortment_wb_query_snapshot`; снимает только то, что пора (раз в 7 дней на предмет), по одному предмету за раз; `?dryRun=1` — план без вызовов MPSTATS |
+| `/api/sync/assortment-catalog-ai` | каждые 2 ч, :40 | признаки каталога по фото (Haiku, ≤ 2 фото на модель) → `assortment_model_attributes`; расход считается в `assortment_ai_usage`; `?dryRun=1` — очередь и разрешённый объём без вызовов, показывает `keyConfigured` |
 
 Все кроны можно вызвать вручную под сессией руководителя (GET в браузере).
 Пульс каждого — строка `sync_log` (job `assortment-*`) и у источников
@@ -307,8 +310,13 @@ ffmpeg — это правка `package.json` и установка на mini, �
 `ANTHROPIC_API_KEY` (основной ИИ, модель `ANTHROPIC_MODEL`), `POLZA_API_KEY`
 (резерв), `FINANCE_TELEGRAM_BOT_TOKEN` / `FINANCE_TELEGRAM_CHAT_ID`,
 `FINANCE_PANEL_URL` (ссылки в сводке; по умолчанию finance-panel-two),
-`ASSORTMENT_AI_DAILY_LIMIT` (по умолчанию 20). Переменная, добавленная после
-сборки, видна только после редеплоя.
+`ASSORTMENT_AI_DAILY_LIMIT` (по умолчанию 20; это старый разбор находок на основной модели, в учёт расхода каталога не входит).
+Разбор каталога по фото (`assortment-catalog-ai`): `ASSORTMENT_CATALOG_AI=off` — выключатель;
+`ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD` (по умолчанию 20 — бюджет недели только этого сборщика; из $30 на весь движок);
+`ASSORTMENT_CATALOG_AI_DAILY_LIMIT` (по умолчанию 300 моделей в сутки; 0 — остановить); `ASSORTMENT_CATALOG_AI_MODEL`
+(по умолчанию `claude-haiku-4-5-20251001`; для другой модели обязательны `ASSORTMENT_CATALOG_AI_PRICE_IN` и
+`ASSORTMENT_CATALOG_AI_PRICE_OUT` — $ за млн токенов, иначе сборщик не запускается: бюджет нечем считать).
+Переменная, добавленная после сборки, видна только после редеплоя.
 
 **Bright Data — что выяснили пилотом (02.10)**
 
