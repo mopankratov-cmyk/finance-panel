@@ -25,6 +25,9 @@ export function SourcesList({ sources }: { sources: AssortmentSource[] }) {
           <span className={`self-start rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[source.accessStatus]}`}>
             {ACCESS_STATUS_LABEL[source.accessStatus]}
           </span>
+          {source.declaredAccessStatus && (
+            <span className="text-xs leading-5 text-slate-500">В паспорте записано: «{ACCESS_STATUS_LABEL[source.declaredAccessStatus]}» — показано по факту работы сборщика.</span>
+          )}
           {source.accessNote && <span className="text-xs leading-5 text-slate-600">{source.accessNote}</span>}
           {(() => {
             const status = crawlStatus(source);

@@ -203,3 +203,31 @@ test("Фото, которые облаку не отдали, приносит 
   const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
   assert.match(crawl, /created\.photos === 0 && r\.images\.length > 0\) missingPhotos\.push/);
 });
+
+// --- полнота обхода раздела: «пусто» — это сбой, а не «в разделе ничего нет» ---
+
+test("crawlSection: заглушка или антибот-страница с кодом 200 на первой странице — обход НЕ полный", async () => {
+  const { crawlSection } = await import("../lib/assortment/ruShopsStore.ts");
+  const befree = shop("S131");
+  const stub = await crawlSection(befree, "zen-riukzaki-i-sumki", Date.now() + 60_000, async () => "<html><body>Проверка браузера…</body></html>");
+  assert.equal(stub.records.length, 0);
+  assert.equal(stub.complete, false, "ноль карточек на первой странице — не «раздел пуст», а сбой: «полный» обход стёр бы раздел из истории");
+  assert.equal(stub.pages, 1);
+});
+
+test("crawlSection: раздел кончился после карточек — полный; упёрлись в потолок страниц — нет", async () => {
+  const { crawlSection } = await import("../lib/assortment/ruShopsStore.ts");
+  const befree = shop("S131");
+  const html = fixture("befree.html");
+  // Страница 1 — карточки, страница 2 — те же (новых нет): раздел закончился.
+  const ended = await crawlSection(befree, "x", Date.now() + 60_000, async () => html);
+  assert.ok(ended.records.length >= 2);
+  assert.equal(ended.complete, true);
+  assert.equal(ended.pages, 2);
+  // Потолок в одну страницу: новые карточки ещё были — раздел обрезан.
+  const capped = await crawlSection({ ...befree, maxPages: 1 }, "x", Date.now() + 60_000, async () => html);
+  assert.equal(capped.complete, false);
+  // Дедлайн и «страница не отдалась» — тоже неполный обход.
+  assert.equal((await crawlSection(befree, "x", Date.now() - 1, async () => html)).complete, false);
+  assert.equal((await crawlSection(befree, "x", Date.now() + 60_000, async () => null)).complete, false);
+});

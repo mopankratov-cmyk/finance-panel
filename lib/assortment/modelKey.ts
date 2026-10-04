@@ -21,8 +21,9 @@ export const COLOR_VARIANT_SOURCES: ReadonlySet<string> = new Set([
   "S024", // Polène (Shopify): «Модель - Материал Цвет»
   "S026", // Songmont (Shopify): расцветки с одним названием
   "S027", // JW PEI (Shopify): «Модель - Цвет»
-  "S046", // ASOS: «… in black» — отдельная карточка на цвет
-  "S007", // H&M: карточка на цвет
+  "S046", // ASOS: «… in black» — отдельная карточка на цвет; бренд и модель — в названии
+  // H&M (S007) НЕ здесь: названия у них общие («Padded jacket» у разных артикулов), и склейка
+  // по названию слила бы разные модели — а это хуже незамеченного дубля (по ревью 04.10).
 ]);
 
 /**
@@ -37,4 +38,30 @@ export function modelKey(input: { sourceId: string; sourceItemId: string; title:
     if (head.length >= 3) return `${input.sourceId}|${head}`;
   }
   return `${input.sourceId}|${input.sourceItemId}`;
+}
+
+/**
+ * Новые строки обхода → новые МОДЕЛИ. Расцветка уже известной модели — не
+ * новинка: иначе каждый новый цвет Polène или JW PEI был бы отдельной «новинкой» в
+ * ленте и отдельной находкой, хотя в каталоге модель одна. Две новые расцветки
+ * ещё не виденной модели в одном обходе — тоже одна новинка, а не две.
+ *
+ * `sameModel` — строки, которые ложатся базой (не новинкой): расцветки известной
+ * модели и повторы внутри обхода. Источники «одна строка = модель» не затронуты:
+ * ключ новой строки у них уникален.
+ */
+export function newModelsOnly<T>(fresh: readonly T[], keyOf: (item: T) => string, knownKeys: ReadonlySet<string>): { fresh: T[]; sameModel: T[] } {
+  const seen = new Set(knownKeys);
+  const kept: T[] = [];
+  const sameModel: T[] = [];
+  for (const item of fresh) {
+    const key = keyOf(item);
+    if (seen.has(key)) {
+      sameModel.push(item);
+      continue;
+    }
+    seen.add(key);
+    kept.push(item);
+  }
+  return { fresh: kept, sameModel };
 }

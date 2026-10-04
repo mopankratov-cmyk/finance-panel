@@ -71,7 +71,7 @@ export async function ingestZalandoPages(
         warnings.push(`${target.direction}: страница без товаров — разметка Zalando могла поменяться`);
         continue;
       }
-      const done = await ingestRecords(db, { sourceId: source.sourceId, name: source.name }, { direction: target.direction, method: "crawl_zalando" }, records, deadline, { churnGuard: true });
+      const done = await ingestRecords(db, { sourceId: source.sourceId, name: source.name }, { direction: target.direction, method: "crawl_zalando" }, records, deadline, { churnGuard: true, coverage: "window" });
       result.collected += done.collected;
       result.added += done.added;
       result.baseline = result.baseline || done.baseline;

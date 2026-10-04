@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Check, EyeOff, ExternalLink, ImageOff, LoaderCircle, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import type { CatalogBrandStat, CatalogCard, CatalogFilters } from "@/lib/assortment/catalog";
+import { loadedOnServer, type CatalogBrandStat, type CatalogCard, type CatalogFilters } from "@/lib/assortment/catalog";
 import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
 import { isReferenceStatus, STATUS_LABEL } from "@/lib/assortment/decisions";
 import { plural } from "@/lib/warehouse/plural";
@@ -155,12 +155,12 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
 
   const loadMore = useCallback(() => {
     const prev = stateRef.current;
-    if (prev.kind !== "ready" || prev.loadingMore || prev.cards.length >= prev.total) return;
+    if (prev.kind !== "ready" || prev.loadingMore || loadedOnServer(prev.cards) >= prev.total) return;
     const gen = generation.current;
     const key = (c: CatalogCard) => `${c.sourceId}:${c.itemId}`;
     setState({ ...prev, loadingMore: true });
     // Режим фото — тот, что сервер выбрал для первой порции: страницы не должны разойтись.
-    fetch(query(direction, filters, prev.cards.length, prev.photo), { cache: "no-store" })
+    fetch(query(direction, filters, loadedOnServer(prev.cards), prev.photo), { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
         if (gen !== generation.current) return;
@@ -329,8 +329,8 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
             ))}
           </ul>
           <div ref={sentinel} className="flex flex-col items-center gap-2 py-2 text-sm text-slate-500">
-            <span>Показано {ready.cards.length.toLocaleString("ru-RU")} из {ready.total.toLocaleString("ru-RU")}</span>
-            {ready.cards.length < ready.total && (
+            <span>Показано {loadedOnServer(ready.cards).toLocaleString("ru-RU")} из {ready.total.toLocaleString("ru-RU")}</span>
+            {loadedOnServer(ready.cards) < ready.total && (
               <button type="button" onClick={loadMore} disabled={ready.loadingMore} className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60">
                 {ready.loadingMore && <LoaderCircle className="h-4 w-4 animate-spin" />} Показать ещё
               </button>

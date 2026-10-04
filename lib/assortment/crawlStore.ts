@@ -3,10 +3,10 @@ import type { AssortmentDirection } from "./constants";
 import { catalogUrl, classifyItem, collectionHandles, collectionUrl, crawlPlan, isShopifyCrawlable, MAX_CATALOG_PAGES, mergeCatalog, parseCatalogPage, productUrl, CATALOG_PAGE_SIZE, type CatalogItem } from "./crawl";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { importReference } from "./importer";
-import { modelKey } from "./modelKey";
+import { modelKey, newModelsOnly } from "./modelKey";
 import { recordObservation, type SnapshotItem } from "./observationLog";
 import { safeFetch, SafeFetchError } from "./safeFetch";
-import { catalogFields, upsertSourceItems } from "./sourceItems";
+import { catalogFields, loadKnownModelKeys, upsertSourceItems } from "./sourceItems";
 
 /** Новых моделей на источник за прогон: остальное — очередь на следующий. */
 const NEW_PER_SOURCE = 8;
@@ -31,17 +31,31 @@ export class CrawlTableMissingError extends Error {
 
 type SourceRow = { source_id: string; name: string; categories: string[]; access_status: string; access_note: string | null; seed_urls: string[] };
 
-async function fetchPages(urlFor: (page: number) => string, maxPages: number, deadline: number): Promise<CatalogItem[]> {
+/** Чем закончился обход страниц: дошли до конца каталога, упёрлись в потолок страниц или в дедлайн. */
+export type PagesEnd = "end" | "cap" | "deadline";
+
+async function fetchPages(urlFor: (page: number) => string, maxPages: number, deadline: number): Promise<{ items: CatalogItem[]; end: PagesEnd }> {
   const items: CatalogItem[] = [];
   for (let page = 1; page <= maxPages; page++) {
-    if (Date.now() > deadline) break;
+    if (Date.now() > deadline) return { items, end: "deadline" };
     const response = await safeFetch(urlFor(page), { maxBytes: 12 * 1024 * 1024, timeoutMs: 20_000, accept: "application/json" });
     const batch = parseCatalogPage(JSON.parse(response.body.toString("utf8")));
     items.push(...batch);
-    if (batch.length < CATALOG_PAGE_SIZE) break;
+    if (batch.length < CATALOG_PAGE_SIZE) return { items, end: "end" };
     await new Promise((r) => setTimeout(r, 800));
   }
-  return items;
+  // Все страницы полные: каталог может быть больше потолка — мы видим только его начало.
+  return { items, end: "cap" };
+}
+
+/**
+ * Полнота обхода каталога — от неё зависит доверие к «появилось/пропало»:
+ * full — дошли до конца; window — упёрлись в потолок страниц (каталог больше,
+ * у JW PEI больше двух тысяч товаров; новинки видны через коллекции); partial —
+ * оборвались по дедлайну.
+ */
+export function coverageOf(end: PagesEnd): "full" | "window" | "partial" {
+  return end === "end" ? "full" : end === "cap" ? "window" : "partial";
 }
 
 /**
@@ -49,17 +63,17 @@ async function fetchPages(urlFor: (page: number) => string, maxPages: number, de
  * бывает больше предела (у JW PEI — больше 2000 товаров), и новинки за ним
  * видны только через коллекции. Недоступная коллекция не роняет обход.
  */
-async function fetchCatalog(seed: string, note: string | null, deadline: number): Promise<CatalogItem[]> {
+async function fetchCatalog(seed: string, note: string | null, deadline: number): Promise<{ items: CatalogItem[]; end: PagesEnd }> {
   const collections: CatalogItem[][] = [];
   for (const handle of collectionHandles(note)) {
     try {
-      collections.push(await fetchPages((page) => collectionUrl(seed, handle, page), 2, deadline));
+      collections.push((await fetchPages((page) => collectionUrl(seed, handle, page), 2, deadline)).items);
     } catch {
       // коллекцию переименовали или закрыли — весь каталог всё равно обойдём
     }
   }
   const all = await fetchPages((page) => catalogUrl(seed, page), MAX_CATALOG_PAGES, deadline);
-  return mergeCatalog(...collections, all);
+  return { items: mergeCatalog(...collections, all.items), end: all.end };
 }
 
 async function knownIds(db: SupabaseClient, sourceId: string): Promise<Set<string>> {
@@ -91,17 +105,20 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
   const categories = source.categories.filter((c): c is AssortmentDirection => c === "jackets" || c === "bags");
   try {
     const known = await knownIds(db, source.source_id);
-    const fetched = await fetchCatalog(seed, source.access_note, deadline);
+    const catalog = await fetchCatalog(seed, source.access_note, deadline);
+    const fetched = catalog.items;
     result.fetched = fetched.length;
-    // Полнота обхода — до разбора карточек: если выборка оборвалась по дедлайну,
-    // раздел неполный (и «пропажа» товара ниже недостоверна).
-    const fetchedComplete = Date.now() <= deadline;
+    // Полнота обхода: дедлайн — partial, потолок страниц — window, конец каталога — full.
+    const coverage = coverageOf(catalog.end);
     if (fetched.length === 0) throw new Error("каталог пуст — сайт мог сменить устройство");
     const plan = crawlPlan(known, fetched);
     result.baseline = plan.baseline;
     const now = new Date().toISOString();
-    const fresh = new Set(plan.fresh.map((i) => i.sourceItemId));
-    const late = new Set(plan.late.map((i) => i.sourceItemId));
+    // Новинка — новая МОДЕЛЬ: расцветка уже известной модели (у Shopify — отдельный товар) ложится базой, а не отдельной находкой.
+    const knownModels = plan.baseline ? new Set<string>() : await loadKnownModelKeys(db, source.source_id);
+    const split = newModelsOnly(plan.fresh, (i) => modelKey({ sourceId: source.source_id, sourceItemId: i.sourceItemId, title: i.title }), knownModels);
+    const fresh = new Set(split.fresh.map((i) => i.sourceItemId));
+    const late = new Set([...plan.late, ...split.sameModel].map((i) => i.sourceItemId));
     // Новые вставляются со своим флагом базы, известные только обновляют
     // last_seen_at и описание. Две пачки, потому что supabase-js в пачке с
     // разным набором полей проставит отсутствующие как null — и затёр бы baseline.
@@ -149,7 +166,7 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
     // Слой наблюдений: журнал прогона + снимок присутствия раздела (куртки и
     // сумки одним обходом — раздел несёт каждый снимок).
     await recordObservation(db, {
-      sourceId: source.source_id, direction: null, coverage: fetchedComplete ? "full" : "partial",
+      sourceId: source.source_id, direction: null, coverage,
       seen: result.relevant, added: result.added, startedAt: now,
     }, snapItems);
     result.ok = true;

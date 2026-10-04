@@ -27,6 +27,9 @@ export interface SourceFact {
   lastAttemptAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
+  /** Паспорт: по нему Shopify-источник, подключённый после таблицы расписаний, тоже под присмотром. */
+  accessStatus?: string | null;
+  accessNote?: string | null;
 }
 
 /** ok — собирает; stalled — молчит дольше порога или не работал вовсе; awaiting — ещё нечего судить. */
@@ -51,22 +54,22 @@ export interface AssortmentFreshness {
 const DAY_MS = 24 * 3600 * 1000;
 
 /** Только источники с настоящим сборщиком и не из исключений. */
-export function isWatched(sourceId: string): boolean {
-  return hasScheduledCollector(sourceId) && !WATCH_EXCLUDED.has(sourceId);
+export function isWatched(sourceId: string, hint?: { accessStatus?: string | null; accessNote?: string | null }): boolean {
+  return hasScheduledCollector(sourceId, hint) && !WATCH_EXCLUDED.has(sourceId);
 }
 
 export function sourceFreshness(fact: SourceFact, nowMs = Date.now()): SourceFreshness {
   const base = { sourceId: fact.sourceId, name: fact.name, lastSuccessAt: fact.lastSuccessAt, lastError: fact.lastError };
   if (fact.lastSuccessAt) {
     const silentMs = nowMs - new Date(fact.lastSuccessAt).getTime();
-    return { ...base, state: silentMs > staleAfterMs(fact.sourceId) ? "stalled" : "ok", silentDays: Math.floor(silentMs / DAY_MS) };
+    return { ...base, state: silentMs > staleAfterMs(fact.sourceId, fact) ? "stalled" : "ok", silentDays: Math.floor(silentMs / DAY_MS) };
   }
   // Успешных сборов не было. Пытался и получал ошибку — не работает; не пытался вовсе — судить рано.
   return { ...base, state: fact.lastAttemptAt && fact.lastError ? "stalled" : "awaiting", silentDays: null };
 }
 
 export function assortmentFreshness(facts: SourceFact[], nowMs = Date.now()): AssortmentFreshness {
-  const sources = facts.filter((f) => isWatched(f.sourceId)).map((f) => sourceFreshness(f, nowMs)).sort((a, b) => a.sourceId.localeCompare(b.sourceId));
+  const sources = facts.filter((f) => isWatched(f.sourceId, f)).map((f) => sourceFreshness(f, nowMs)).sort((a, b) => a.sourceId.localeCompare(b.sourceId));
   const stalled = sources.filter((s) => s.state === "stalled");
   return { state: stalled.length ? "stalled" : "ok", stalled, sources };
 }

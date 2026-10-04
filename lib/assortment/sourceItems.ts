@@ -156,3 +156,39 @@ export function resetCatalogColumnsFlag(): void {
   catalogColumnsMissingAt = 0;
   modelKeyMissingAt = 0;
 }
+
+/**
+ * Ключи моделей, которые источник уже отдавал (колонка model_key, миграция
+ * 202610050002). Нет колонки — пустое множество: до миграции каждая расцветка
+ * по-прежнему считается отдельной строкой.
+ */
+export async function loadKnownModelKeys(db: SupabaseClient, sourceId: string, direction?: string): Promise<Set<string>> {
+  const keys = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    let query = db.from("assortment_source_items").select("model_key").eq("source_id", sourceId).not("model_key", "is", null);
+    if (direction) query = query.eq("direction", direction);
+    const { data, error } = await query.order("source_item_id", { ascending: true }).range(from, from + 999);
+    if (error) {
+      if (isMissingColumnError(error)) return keys;
+      throw new Error(error.message);
+    }
+    for (const row of (data ?? []) as unknown as Array<{ model_key: string | null }>) if (row.model_key) keys.add(String(row.model_key));
+    if (!data || data.length < 1000) return keys;
+  }
+}
+
+/**
+ * Строки, которые теперь не наши (штаны, платья, посуда по новому классификатору):
+ * снимаем раздел, и они уходят из каталога сразу, а не через 30 дней без показа.
+ * Сама строка остаётся в базе сравнения — повторно новинкой не станет.
+ */
+export async function clearDirection(db: SupabaseClient, sourceId: string, itemIds: readonly string[]): Promise<number> {
+  let cleared = 0;
+  for (let i = 0; i < itemIds.length; i += 200) {
+    const chunk = itemIds.slice(i, i + 200);
+    const { error } = await db.from("assortment_source_items").update({ direction: null }).eq("source_id", sourceId).in("source_item_id", chunk);
+    if (error) throw new Error(error.message);
+    cleared += chunk.length;
+  }
+  return cleared;
+}

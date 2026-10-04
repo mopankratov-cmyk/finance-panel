@@ -106,7 +106,7 @@ export async function recordObservation(
     const { error: runError } = await db.from("assortment_run").insert(runRow(runId, observedOn, input));
     if (runError) {
       // Таблиц ещё нет — ожидаемо до применения миграции, молчим.
-      if (isMissingAssortmentSchema(runError)) return null;
+      if (isMissingAssortmentSchema(new Error(runError.message))) return null;
       throw new Error(runError.message);
     }
     const rows = snapshotRows(runId, input.sourceId, observedOn, items);
@@ -115,14 +115,22 @@ export async function recordObservation(
         .from("assortment_item_snapshot")
         .upsert(rows.slice(i, i + SNAPSHOT_BATCH), { onConflict: "source_id,source_item_id,run_id", ignoreDuplicates: true });
       if (error) {
-        if (isMissingAssortmentSchema(error)) return runId;
+        if (isMissingAssortmentSchema(new Error(error.message))) return runId;
         throw new Error(error.message);
       }
     }
     return runId;
-  } catch {
-    // Снимок — вспомогательный: его сбой не роняет обход. Пульс источника
-    // (last_error) и sync_log прогон всё равно зафиксируют отдельно.
+  } catch (error) {
+    // Снимок — вспомогательный: его сбой не роняет обход. Но строка прогона уже
+    // записана с заявленной полнотой, а снимок лёг не весь: помечаем прогон
+    // неполным, иначе «нет снимка в полном прогоне» объявит живые товары снятыми.
+    try {
+      await db.from("assortment_run")
+        .update({ coverage: "partial", error: `снимок записан не полностью: ${error instanceof Error ? error.message : "сбой записи"}`.slice(0, 400) })
+        .eq("run_id", runId);
+    } catch {
+      // Не вышло пометить — обход всё равно не роняем.
+    }
     return null;
   }
 }

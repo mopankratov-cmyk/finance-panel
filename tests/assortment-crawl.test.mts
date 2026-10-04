@@ -110,3 +110,10 @@ test("Метки сайта по тегам — строго: «not-new», «new
   assert.deepEqual(badgesFromTags(["not-new", "new:false", "newsletter", "renewed", "new_york", "no-bestseller"]), []);
   assert.deepEqual(badgesFromTags([]), []);
 });
+
+test("Shopify: полнота обхода — конец каталога full, потолок страниц window, дедлайн partial", async () => {
+  const { coverageOf } = await import("../lib/assortment/crawlStore.ts");
+  assert.equal(coverageOf("end"), "full");
+  assert.equal(coverageOf("cap"), "window", "JW PEI: каталог больше 8 × 250 — видим только начало, «пропал» судить нельзя");
+  assert.equal(coverageOf("deadline"), "partial");
+});

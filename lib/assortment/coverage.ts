@@ -39,11 +39,12 @@ export function effectiveAccessStatus(
 ): AccessStatus {
   const declared = source.accessStatus;
   if (declared === "disabled" || declared === "unavailable") return declared;
-  const shopify = declared === "auto_verified" && /products\.json/i.test(source.accessNote ?? "");
-  if (!hasScheduledCollector(source.sourceId) && !shopify) {
+  const hint = { accessStatus: declared, accessNote: source.accessNote };
+  if (!hasScheduledCollector(source.sourceId, hint)) {
     return declared === "auto_verified" ? "manual_only" : declared;
   }
-  const recent = source.lastSuccessAt && nowMs - new Date(source.lastSuccessAt).getTime() <= 3 * staleAfterMs(source.sourceId);
+  // Порог — тот же, что у сторожа (freshness.ts): экран не должен писать «работает» там, где сторож уже кричит.
+  const recent = source.lastSuccessAt && nowMs - new Date(source.lastSuccessAt).getTime() <= staleAfterMs(source.sourceId, hint);
   if (recent) return "auto_verified";
   // Сборщик есть, но давно ничего не собрал: «проверен» фактом не подтверждено.
   return declared === "auto_verified" ? "partial" : declared;
@@ -58,8 +59,15 @@ export function crawlStatus(source: Pick<AssortmentSource, "lastAttemptAt" | "la
     return { text: `Автообход не удался ${when(source.lastAttemptAt)}: ${source.lastError}; ${since}`, failing: true };
   }
   // Порог — по расписанию источника: у недельных он больше, чем у ежедневных.
-  const stale = nowMs - new Date(source.lastAttemptAt).getTime() > staleAfterMs(source.sourceId ?? "");
-  return { text: `Автообход ${when(source.lastAttemptAt)}${stale ? " — давно не запускался" : ""}`, failing: stale };
+  const limit = staleAfterMs(source.sourceId ?? "");
+  const stale = nowMs - new Date(source.lastAttemptAt).getTime() > limit;
+  if (stale) return { text: `Автообход ${when(source.lastAttemptAt)} — давно не запускался`, failing: true };
+  // Запускается, а собирать перестал: успешного сбора давно нет (сайт сменил разметку и отдаёт ноль).
+  // Без этой проверки экран зелёный, пока сторож уже пишет в Telegram.
+  if (source.lastSuccessAt && nowMs - new Date(source.lastSuccessAt).getTime() > limit) {
+    return { text: `Автообход ${when(source.lastAttemptAt)}, но ничего не собрано с ${when(source.lastSuccessAt)}`, failing: true };
+  }
+  return { text: `Автообход ${when(source.lastAttemptAt)}`, failing: false };
 }
 
 /** Сначала то, что реально работает, затем по приоритету проверки и ID. */

@@ -40,7 +40,8 @@ test("Ключ не пересекает источники и не склеив
 });
 
 test("Источники «цвет = строка» — именно те, что нашёл аудит", () => {
-  assert.deepEqual([...COLOR_VARIANT_SOURCES].sort(), ["S007", "S014", "S024", "S026", "S027", "S046"]);
+  assert.deepEqual([...COLOR_VARIANT_SOURCES].sort(), ["S014", "S024", "S026", "S027", "S046"]);
+  assert.notEqual(key("S007", "1", "Padded jacket"), key("S007", "2", "Padded jacket"), "H&M: общее название у разных артикулов — не склеиваем");
 });
 
 test("constructionHead — общее правило: ключ конструкции подборок не изменился", () => {

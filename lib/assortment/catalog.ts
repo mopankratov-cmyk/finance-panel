@@ -234,3 +234,14 @@ export function sectionViewFrom(params: PageParams): SectionView {
   const view = one(params, "view");
   return view === "catalog" || view === "forms" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
 }
+
+/**
+ * Сколько карточек из загруженных реально есть в выдаче сервера. Скрытая
+ * кнопкой «Не интересно» карточка остаётся на экране плейсхолдером, а сервер её
+ * уже исключил из выдачи: считать по длине массива — значит «Показать ещё»
+ * запросит страницу со сдвигом и молча пропустит модели (и напишет «Показано 48
+ * из 47»). Возвращённая («Вернуть») снова в выдаче.
+ */
+export function loadedOnServer(cards: ReadonlyArray<{ hiddenLocal?: boolean }>): number {
+  return cards.filter((card) => !card.hiddenLocal).length;
+}

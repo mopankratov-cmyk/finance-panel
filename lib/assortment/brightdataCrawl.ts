@@ -10,9 +10,9 @@ import { classifyItem, crawlPlan } from "./crawl";
 import { isMissingColumnError } from "./errors";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
 import { remoteImage, storeImages, type ImageBytes } from "./importer";
-import { modelKey } from "./modelKey";
+import { modelKey, newModelsOnly } from "./modelKey";
 import { recordObservation, type RunCoverage, type SnapshotItem } from "./observationLog";
-import { catalogFields, upsertSourceItems } from "./sourceItems";
+import { catalogFields, clearDirection, loadKnownModelKeys, upsertSourceItems } from "./sourceItems";
 
 /** Новых находок на источник за один сбор: остальное — очередь до следующего. */
 const NEW_PER_SOURCE = 15;
@@ -287,8 +287,14 @@ export async function ingestRecords(
   const records = uniqueRecords(mapped);
   const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [target.direction]) === target.direction);
   const { known, orphans, livePhotos } = await knownIds(db, source.sourceId, target.direction);
+  // Строки, которые прежде попали в раздел, а теперь не наши (штаны, платья, посуда): снимаем раздел.
+  const dropped = records.filter((r) => known.has(r.sourceItemId) && classifyItem(asCatalogItem(r), ["jackets", "bags"]) === null).map((r) => r.sourceItemId);
+  if (dropped.length) await clearDirection(db, source.sourceId, dropped).catch(() => 0);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
-  const fresh = new Set(plan.fresh.map((i) => i.sourceItemId).filter((id) => !options.freshOnly || options.freshOnly.has(id)));
+  const unseen = plan.fresh.filter((i) => !options.freshOnly || options.freshOnly.has(i.sourceItemId));
+  // Новинка — новая МОДЕЛЬ: расцветка уже известной модели (ASOS, H&M) ложится базой, а не отдельной находкой.
+  const knownModels = plan.baseline ? new Set<string>() : await loadKnownModelKeys(db, source.sourceId, target.direction);
+  const fresh = new Set(newModelsOnly(unseen, (i) => modelKey({ sourceId: source.sourceId, sourceItemId: i.sourceItemId, title: i.title }), knownModels).fresh.map((i) => i.sourceItemId));
   const churn = churnGuard && !plan.baseline && !quiet && looksLikeChurn(fresh.size, relevant.length);
   const asBaseline = plan.baseline || quiet || churn;
   const now = new Date().toISOString();
@@ -334,9 +340,10 @@ export async function ingestRecords(
     }
   }
   // Слой наблюдений: журнал прогона + снимок присутствия раздела на сегодня.
-  // Доверие к новизне: база — полный раздел; иначе берём переданное, иначе по
-  // quiet (обрезанная выдача/упёршийся набор — окно, не полный раздел).
-  const coverage: RunCoverage = plan.baseline ? "full" : (options.coverage ?? (quiet ? "window" : "full"));
+  // Доверие к новизне — от вызывающего; иначе по quiet (обрезанная выдача или
+  // упёршийся набор — окно, не полный раздел).
+  // Полнота — от вызывающего: первый проход (база) её не повышает, окно остаётся окном.
+  const coverage: RunCoverage = options.coverage ?? (quiet ? "window" : "full");
   const items: SnapshotItem[] = relevant.map((r) => ({ sourceItemId: r.sourceItemId, direction: target.direction, title: r.title, brand: r.brand ?? source.name, images: r.images }));
   await recordObservation(db, {
     sourceId: source.sourceId, direction: target.direction, coverage,

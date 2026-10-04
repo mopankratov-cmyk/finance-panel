@@ -65,14 +65,31 @@ export function longestGapDays(weekdays: readonly number[]): number {
   return max;
 }
 
-/** Есть ли сборщик у источника в коде (по таблице расписаний). */
-export function hasScheduledCollector(sourceId: string): boolean {
-  return Object.prototype.hasOwnProperty.call(COLLECTION_WEEKDAYS, sourceId);
+/** Подсказка из паспорта: Shopify-источник (products.json в заметке и автосбор проверен) обходится ежедневно. */
+export interface ScheduleHint {
+  accessStatus?: string | null;
+  accessNote?: string | null;
+}
+
+/**
+ * В какие дни источник собирается; null — сборщика нет. Источники из таблицы —
+ * по таблице; Shopify-источник, подключённый позже (по products.json в паспорте), —
+ * ежедневно, без ручной записи: иначе «подключил и забыл» оставил бы его без сторожа.
+ */
+export function weekdaysOf(sourceId: string, hint?: ScheduleHint): readonly number[] | null {
+  if (Object.prototype.hasOwnProperty.call(COLLECTION_WEEKDAYS, sourceId)) return COLLECTION_WEEKDAYS[sourceId];
+  if (hint?.accessStatus === "auto_verified" && /products\.json/i.test(hint.accessNote ?? "")) return EVERY_DAY;
+  return null;
+}
+
+/** Есть ли сборщик у источника в коде. */
+export function hasScheduledCollector(sourceId: string, hint?: ScheduleHint): boolean {
+  return weekdaysOf(sourceId, hint) !== null;
 }
 
 /** Через сколько миллисекунд молчания источник считаем «давно не запускался». */
-export function staleAfterMs(sourceId: string): number {
-  const weekdays = COLLECTION_WEEKDAYS[sourceId];
+export function staleAfterMs(sourceId: string, hint?: ScheduleHint): number {
+  const weekdays = weekdaysOf(sourceId, hint);
   if (!weekdays) return DEFAULT_STALE_DAYS * DAY_MS;
   return Math.max(DEFAULT_STALE_DAYS, longestGapDays(weekdays) + SLACK_DAYS) * DAY_MS;
 }

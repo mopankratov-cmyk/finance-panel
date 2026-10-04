@@ -112,3 +112,19 @@ test("Таблица расписаний сверена с Zalando и Bright Da
   const market = vercel.crons.find((c) => c.path === "/api/sync/assortment-ru-market");
   assert.deepEqual(COLLECTION_WEEKDAYS.S128, [Number(market?.schedule.split(" ")[4])], "«Рынок РФ» — по понедельникам");
 });
+
+test("Экран и сторож говорят одно: тишина дольше порога — и «не работает» на экране, и «молчит» у сторожа", () => {
+  // Запускается (попытка 1 ч назад, ошибки нет), а успешный сбор был давно: сайт сменил разметку, ноль карточек.
+  const attempts = { lastAttemptAt: ago(HOURS), lastError: null };
+  for (const [sourceId, silentDays] of [["S001", 9], ["S001", 20], ["S014", 3], ["S014", 7], ["S131", 9]] as const) {
+    const lastSuccessAt = ago(silentDays * DAY);
+    const status = crawlStatus({ sourceId, ...attempts, lastSuccessAt }, now);
+    assert.equal(status?.failing, true, `${sourceId}: ${silentDays} сут без успеха — экран красный`);
+    assert.match(status?.text ?? "", /ничего не собрано/);
+    assert.notEqual(effectiveAccessStatus({ sourceId, accessStatus: "auto_verified", accessNote: "Shopify products.json", lastSuccessAt }, now), "auto_verified", `${sourceId}: не «работает»`);
+  }
+  // И обратное: свежий успех — зелёный и «работает».
+  const fresh = { sourceId: "S001", ...attempts, lastSuccessAt: ago(4 * DAY) };
+  assert.equal(crawlStatus(fresh, now)?.failing, false);
+  assert.equal(effectiveAccessStatus({ sourceId: "S001", accessStatus: "partial", accessNote: null, lastSuccessAt: fresh.lastSuccessAt }, now), "auto_verified");
+});

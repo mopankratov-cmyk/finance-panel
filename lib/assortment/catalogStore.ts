@@ -124,10 +124,14 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   const stats = query.photo === "auto" ? await statsPromise : null;
   const photo = resolvePhotoMode(query.photo, stats, query.sourceId);
   let photosPending = false;
-  let [result, brands] = headsLikelyMissing()
-    ? [await select(db, query, nowMs, true, photo), await statsPromise]
-    : await Promise.all([selectHeads(db, query, nowMs, photo), statsPromise]);
-  if (result.error && headsUnavailable(result.error) && !headsLikelyMissing()) {
+  // Откат решает ошибка САМОГО запроса к виду, а не общий флаг: два запроса
+  // уходят одновременно (счётчик вкладки и первая порция), и пока один выставил
+  // флаг «вида нет», второй обязан откатиться тоже — иначе ложная ошибка.
+  const triedHeads = !headsLikelyMissing();
+  let [result, brands] = triedHeads
+    ? await Promise.all([selectHeads(db, query, nowMs, photo), statsPromise])
+    : [await select(db, query, nowMs, true, photo), await statsPromise];
+  if (triedHeads && result.error && headsUnavailable(result.error)) {
     headsMissingAt = Date.now();
     result = await select(db, query, nowMs, true, photo);
   }
@@ -158,8 +162,9 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
  */
 export async function countCatalog(db: SupabaseClient, query: CatalogQuery, nowMs: number): Promise<number> {
   const one = { ...query, offset: 0, limit: 1 };
-  let result = headsLikelyMissing() ? await select(db, one, nowMs, true, "all") : await selectHeads(db, one, nowMs, "all");
-  if (result.error && headsUnavailable(result.error) && !headsLikelyMissing()) {
+  const triedHeads = !headsLikelyMissing();
+  let result = triedHeads ? await selectHeads(db, one, nowMs, "all") : await select(db, one, nowMs, true, "all");
+  if (triedHeads && result.error && headsUnavailable(result.error)) {
     headsMissingAt = Date.now();
     result = await select(db, one, nowMs, true, "all");
   }

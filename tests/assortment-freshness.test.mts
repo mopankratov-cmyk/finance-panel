@@ -129,3 +129,14 @@ test("Сообщение: названия с & экранируются, спи
   assert.equal(assortmentStallMessage(f), "Молчат сборщики ассортимента (2): H&M, Pull&Bear (Zalando)");
   assert.match(assortmentRecoveredTelegram(), /снова идёт/);
 });
+
+test("Shopify-источник, подключённый позже таблицы расписаний (products.json в паспорте), тоже под сторожем — ежедневно", () => {
+  const hint = { accessStatus: "auto_verified", accessNote: "Shopify products.json; коллекции new" };
+  assert.equal(isWatched("S150"), false, "без подсказки неизвестный источник не сторожим");
+  assert.equal(isWatched("S150", hint), true);
+  const late = { ...fact("S150", { lastSuccessAt: ago(4 * DAY) }), ...hint };
+  assert.equal(sourceFreshness(late, now).state, "stalled", "ежедневный: 4 суток без успеха — молчит");
+  assert.equal(sourceFreshness({ ...late, lastSuccessAt: ago(DAY) }, now).state, "ok");
+  const f = assortmentFreshness([late, fact("S028", { lastSuccessAt: null, lastAttemptAt: null })], now);
+  assert.deepEqual(f.sources.map((s) => s.sourceId), ["S150"], "Charles & Keith (нет обходчика) по-прежнему не сторожится");
+});

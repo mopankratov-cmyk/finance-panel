@@ -216,3 +216,11 @@ test("Число моделей склоняется: «2 334 модели», «
     assert.doesNotMatch(readFileSync(join(root, file), "utf8"), /toLocaleString\("ru-RU"\)\} моделей/, `${file}: число без склонения`);
   }
 });
+
+test("«Показать ещё» после «Не интересно»: сервер уже исключил скрытые модели — смещение считаем без них", async () => {
+  const { loadedOnServer } = await import("../lib/assortment/catalog.ts");
+  const cards = [{}, {}, { hiddenLocal: true }, {}, { hiddenLocal: true }, { hiddenLocal: false }];
+  assert.equal(loadedOnServer(cards), 4, "два скрытых плейсхолдера не считаются: иначе страница сдвинется и пропустит модели");
+  assert.equal(loadedOnServer([]), 0);
+  assert.equal(loadedOnServer([{ hiddenLocal: true }]), 0, "всё загруженное скрыто — следующая порция с начала выдачи");
+});

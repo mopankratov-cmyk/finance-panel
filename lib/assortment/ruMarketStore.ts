@@ -150,8 +150,12 @@ export async function collectRuMarket(db: SupabaseClient, deadline: number): Pro
         for (const item of items) picks.push({ direction: ruDirection(item.subject ?? resolved.name, item.name) ?? direction, item });
       }
     }
-    results.push(await storeAll(db, RU_SOURCES.wb.source_id, picks, "mpstats_top", deadline, budget));
-    await mark(db, RU_SOURCES.wb.source_id, true, null);
+    const stored = await storeAll(db, RU_SOURCES.wb.source_id, picks, "mpstats_top", deadline, budget);
+    results.push(stored);
+    // Успех — только если что-то собрано: пустой замер (MPSTATS отдал ноль позиций) не должен
+    // обновлять «последний успешный сбор», иначе сторож не заметит тишину.
+    if (stored.items > 0) await mark(db, RU_SOURCES.wb.source_id, true, null);
+    else await mark(db, RU_SOURCES.wb.source_id, false, "MPSTATS: замер пуст — ни одной позиции");
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 200) : "ошибка";
     await mark(db, RU_SOURCES.wb.source_id, false, `MPSTATS: ${message}`);

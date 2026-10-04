@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
   let freshness: AssortmentFreshness;
   try {
     const run = (columns: string) => db.from("assortment_sources").select(columns);
-    const { data, error } = await run("source_id,name,last_attempt_at,last_success_at,last_error");
+    const { data, error } = await run("source_id,name,access_status,access_note,last_attempt_at,last_success_at,last_error");
     // Колонки пульса — из миграции 202610020002; без неё судить не по чему.
     if (error && isMissingColumnError(error)) return NextResponse.json({ ok: true, skipped: "нет колонок пульса (миграция 202610020002)" });
     if (error) throw new Error(error.message);
@@ -62,6 +62,8 @@ export async function GET(request: NextRequest) {
       lastAttemptAt: typeof row.last_attempt_at === "string" ? row.last_attempt_at : null,
       lastSuccessAt: typeof row.last_success_at === "string" ? row.last_success_at : null,
       lastError: typeof row.last_error === "string" ? row.last_error : null,
+      accessStatus: typeof row.access_status === "string" ? row.access_status : null,
+      accessNote: typeof row.access_note === "string" ? row.access_note : null,
     }));
     freshness = assortmentFreshness(facts, startedAt.getTime());
   } catch (error) {

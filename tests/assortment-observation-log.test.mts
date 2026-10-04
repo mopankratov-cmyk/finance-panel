@@ -100,3 +100,31 @@ test("recordObservation: сбой снимка не роняет обход (п�
   assert.equal(runId, null, "снимок не лёг — возвращаем null, но без исключения");
   assert.equal(runs.length, 1, "журнал прогона при этом записан");
 });
+
+test("recordObservation: снимок лёг не весь — прогон помечается неполным (иначе живые товары «пропали» бы в полном прогоне)", async () => {
+  const runUpdates: Array<Record<string, unknown>> = [];
+  let snapshotCalls = 0;
+  const db = {
+    from: (table: string) => ({
+      insert: async () => ({ error: null }),
+      upsert: async () => {
+        if (table === "assortment_item_snapshot") {
+          snapshotCalls += 1;
+          if (snapshotCalls === 2) return { error: { message: "statement timeout" } };
+        }
+        return { error: null };
+      },
+      update: (patch: Record<string, unknown>) => {
+        runUpdates.push(patch);
+        return { eq: () => Promise.resolve({ error: null }) };
+      },
+    }),
+  } as never;
+  const items = Array.from({ length: 1200 }, (_, i) => ({ sourceItemId: `id${i}`, direction: "bags" as const, title: `Bag ${i}` }));
+  const runId = await recordObservation(db, { sourceId: "S001", direction: "bags", coverage: "full", seen: 1200, added: 0 }, items);
+  assert.equal(runId, null, "сбой не роняет обход");
+  assert.equal(snapshotCalls, 2, "первая пачка легла, вторая упала");
+  assert.equal(runUpdates.length, 1, "прогон исправлен");
+  assert.equal(runUpdates[0].coverage, "partial");
+  assert.match(String(runUpdates[0].error), /снимок записан не полностью: statement timeout/);
+});

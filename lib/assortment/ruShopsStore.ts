@@ -55,7 +55,7 @@ async function ensureShop(db: SupabaseClient, shop: RuShop) {
 type PageSource = (slug: string, page: number) => Promise<string | null>;
 
 /** Страницы раздела подряд, пока не кончатся новые карточки; дошли до потолка — раздел обрезан. */
-async function crawlSection(shop: RuShop, slug: string, deadline: number, getPage: PageSource): Promise<{ records: MappedRecord[]; pages: number; complete: boolean }> {
+export async function crawlSection(shop: RuShop, slug: string, deadline: number, getPage: PageSource): Promise<{ records: MappedRecord[]; pages: number; complete: boolean }> {
   const byUrl = new Map<string, MappedRecord>();
   let pages = 0;
   for (let page = 1; page <= shop.maxPages; page += 1) {
@@ -65,7 +65,10 @@ async function crawlSection(shop: RuShop, slug: string, deadline: number, getPag
     const cards = parseShopCatalog(shop, html);
     pages += 1;
     const fresh = cards.filter((c) => !byUrl.has(c.url));
-    if (fresh.length === 0) return { records: [...byUrl.values()], pages, complete: true };
+    // Раздел кончился, когда новых карточек нет ПОСЛЕ того, как они были. Пустая первая
+    // страница (заглушка, антибот-страница с кодом 200, смена разметки) — это не «в разделе
+    // пусто», а сбой: «полный» обход без единой модели стёр бы раздел из истории наблюдений.
+    if (fresh.length === 0) return { records: [...byUrl.values()], pages, complete: byUrl.size > 0 };
     for (const card of fresh) byUrl.set(card.url, card);
   }
   return { records: [...byUrl.values()], pages, complete: false };
