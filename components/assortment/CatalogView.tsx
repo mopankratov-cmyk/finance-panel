@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import type { CatalogBrandStat, CatalogCard, CatalogFilters } from "@/lib/assortment/catalog";
 import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
+import { plural } from "@/lib/warehouse/plural";
 
 type State =
   | { kind: "loading" }
@@ -194,7 +195,7 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
           <div className="text-base font-semibold text-slate-900">Ничего не нашлось</div>
           {hiddenWithoutPhoto > 0 ? (
             <>
-              <p className="max-w-xl text-sm leading-6 text-slate-600">Ещё {hiddenWithoutPhoto.toLocaleString("ru-RU")} моделей пока без фото — обходы ещё не принесли их.</p>
+              <p className="max-w-xl text-sm leading-6 text-slate-600">Ещё {hiddenWithoutPhoto.toLocaleString("ru-RU")} {plural(hiddenWithoutPhoto, "модель", "модели", "моделей")} пока без фото — обходы ещё не принесли их.</p>
               <button type="button" onClick={() => setFilters((f) => ({ ...f, photo: "all" }))} className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50">Показать без фото</button>
             </>
           ) : (

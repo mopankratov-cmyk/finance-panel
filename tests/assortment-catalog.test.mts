@@ -127,3 +127,13 @@ test("Число для вкладки — обычным запросом, не
   assert.doesNotMatch(store, /head: ?true|head \}/, "HEAD-запрос теряет текст ошибки — откат не сработает");
   assert.match(store, /const one = \{ \.\.\.query, offset: 0, limit: 1 \}/);
 });
+
+test("Число моделей склоняется: «2 334 модели», «1 447 моделей», «21 модель»", async () => {
+  const { plural } = await import("../lib/warehouse/plural.ts");
+  assert.equal(plural(2334, "модель", "модели", "моделей"), "модели");
+  assert.equal(plural(1447, "модель", "модели", "моделей"), "моделей");
+  assert.equal(plural(21, "модель", "модели", "моделей"), "модель");
+  for (const file of ["components/assortment/AssortmentSection.tsx", "components/assortment/CatalogView.tsx"]) {
+    assert.doesNotMatch(readFileSync(join(root, file), "utf8"), /toLocaleString\("ru-RU"\)\} моделей/, `${file}: число без склонения`);
+  }
+});

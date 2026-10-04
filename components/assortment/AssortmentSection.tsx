@@ -11,6 +11,7 @@ import {
   type AssortmentDirection,
 } from "@/lib/assortment/constants";
 import { summarizeCoverage } from "@/lib/assortment/coverage";
+import { plural } from "@/lib/warehouse/plural";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
 import { AddFindingModal } from "./AddFindingModal";
 import { DEFAULT_CATALOG_FILTERS, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
@@ -210,7 +211,7 @@ export function AssortmentSection({
           <p className="text-sm leading-6 text-slate-600">
             Здесь только то, что появилось у брендов после первого обхода.{" "}
             <button type="button" onClick={() => setView("catalog")} className="font-medium text-violet-700 hover:text-violet-900">
-              Весь ассортимент брендов — {catalogTotal.toLocaleString("ru-RU")} моделей
+              Весь ассортимент брендов — {catalogTotal.toLocaleString("ru-RU")} {plural(catalogTotal, "модель", "модели", "моделей")}
             </button>
           </p>
         ) : null}
