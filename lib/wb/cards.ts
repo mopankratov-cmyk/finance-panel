@@ -246,9 +246,14 @@ export function loadCabinetPimRowsHourly(
           // Виртуальные кабинеты могут принадлежать одному продавцу и делить
           // лимит Content API. Последовательный прогрев не создаёт «стадо»
           // одновременных 429 и всё равно укладывается в 300-секундный cron.
+          // Флаги освежения сюда НЕ передаются: этот вызов вложен в снимок
+          // «Все кабинеты», а revalidateTag внутри unstable_cache Next 16
+          // запрещает (бросает ошибку). Из-за этого прогрев карточек в кроне
+          // падал каждый час. Вложенный unstable_cache и так не читает кэш —
+          // кабинетные снимки здесь всегда пересобираются и перезаписываются.
           const rows: PimRow[] = [];
           for (const cabinet of cabinets) {
-            rows.push(...await loadCabinetPimRowsHourly(cabinet.id, cacheOptions));
+            rows.push(...await loadCabinetPimRowsHourly(cabinet.id));
           }
           return rows;
         }

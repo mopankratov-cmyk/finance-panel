@@ -8,7 +8,11 @@ import test from "node:test";
 test("Sklejki opens with stale-while-revalidate cache and keeps force refresh explicit", async () => {
   const source = await readFile(new URL("../components/wb/WbSklejkiPage.tsx", import.meta.url), "utf8");
 
-  assert.match(source, /background=1/);
-  assert.match(source, /refresh=1/);
+  // background=1 сбрасывал тег снимка ДО чтения, а Next 16 в том же запросе такой
+  // снимок не отдаёт: «отдай устаревший и освежи в фоне» стало блокирующей
+  // пересборкой на каждое открытие (05.10.2026, 55 с). Обычное открытие —
+  // простое чтение: устаревший снимок Next отдаёт сразу и освежает сам.
+  assert.doesNotMatch(source, /"background=1"|&background=1/);
+  assert.match(source, /const mode = forceRefreshRef\.current \? "&refresh=1&cards=live" : "";/);
   assert.match(source, /forceRefreshRef\.current = false/);
 });

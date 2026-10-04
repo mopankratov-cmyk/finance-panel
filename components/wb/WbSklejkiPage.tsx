@@ -203,11 +203,18 @@ export function WbSklejkiPage() {
     const current = ++requestId.current;
     setLoading(true);
     setError(null);
-    const mode = forceRefreshRef.current ? "refresh=1" : "background=1";
+    // Обычное открытие — простое чтение часового снимка. Раньше здесь всегда
+    // уходил background=1, а он сбрасывал тег снимка ДО чтения: Next 16 в том
+    // же запросе такой снимок не отдаёт, и каждое открытие было полной
+    // пересборкой (55 с у Retail Family). Устаревший снимок Next и так
+    // освежает в фоне по revalidate; пересборка руками — кнопкой «Обновить»,
+    // и она же перечитывает карточки у WB (cards=live): после склейки в
+    // кабинете часовой снимок карточек показал бы старые группы.
+    const mode = forceRefreshRef.current ? "&refresh=1&cards=live" : "";
     forceRefreshRef.current = false;
     const custom = dateFrom !== defaultRange.from || dateTo !== defaultRange.to;
     const periodQuery = custom ? `&date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}` : "";
-    fetch(`/api/sklejki?cabinet=${encodeURIComponent(cabinetId || "all")}&${mode}${periodQuery}`, { cache: "no-store", signal: controller.signal })
+    fetch(`/api/sklejki?cabinet=${encodeURIComponent(cabinetId || "all")}${mode}${periodQuery}`, { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const body = (await response.json()) as SklejkiData;
         if (!response.ok) throw new Error(body.error || `Ошибка ${response.status}`);

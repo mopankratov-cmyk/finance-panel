@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import { NextRequest, NextResponse } from "next/server";
 import { hasCabinetAccess } from "@/lib/auth/cabinetAccess";
 import { wbCardImageUrl } from "@/lib/wb/cardImage";
@@ -5,7 +6,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveShopCabinet } from "@/lib/rnp/resolveShop";
 import { isoDateRange, loadSklejkiCommissionForCabinet, mapSklejkiMarginBeforeDrr, mergeSklejkiPayloads, resolveSklejkiPeriod, sklejkiSpendWindowStart, type SklejkiPayload, type SklejkiPeriod } from "@/lib/wb/sklejki";
 import { loadHourlyDashboard, type HourlyDashboardCacheOptions } from "@/lib/cache/hourlyDashboard";
-import { loadCabinetPimRowsHourly } from "@/lib/wb/cards";
+import { fetchCabinetPimRows, loadCabinetPimRowsHourly } from "@/lib/wb/cards";
 import { getActiveWbCabinets } from "@/lib/wb/cabinetTokens";
 import { loadRnpReportRows } from "@/lib/rnp/rpcLoaders";
 import { loadCachedAdvertReportRows } from "@/lib/adverts/reportCache";
@@ -36,7 +37,29 @@ const r1 = (v: number) => Math.round(v * 10) / 10;
 type Timed = <T>(name: string, promise: Promise<T> | PromiseLike<T>) => Promise<T>;
 const untimed: Timed = (_name, promise) => Promise.resolve(promise);
 
-async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashboardCacheOptions, period: SklejkiPeriod, timed: Timed = untimed) {
+async function loadSklejkiSnapshot(
+  cabinetId: string,
+  cacheOptions: HourlyDashboardCacheOptions,
+  period: SklejkiPeriod,
+  timed: Timed = untimed,
+  liveCards = false,
+) {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Supabase не настроен");
+  // Карточки и месячные агрегаты товаров — свои часовые снимки (unstable_cache).
+  // Вызванные из колбэка снимка склеек как есть, они считаются ВЛОЖЕННЫМИ, и
+  // Next 16 не читает для них кэш вовсе (isNestedUnstableCache): каждая
+  // пересборка шла в Content API вживую, а у кабинета с брендом это запрос на
+  // КАЖДЫЙ артикул с паузой 600 мс. Замер на проде 05.10.2026 (Retail Family,
+  // 64 SKU): карточки 54,6 с из 54,8 с сборки, при том что /api/pim отдавал их
+  // из снимка за 0,4 с.
+  //
+  // Поэтому источники зовём через снимок контекста ЗАПРОСА: в нём рабочий
+  // контекст — «запрос», а не «unstable-cache», и снимки читаются обычно. Зовём
+  // их внутри колбэка, а не заранее: тёплый снимок склеек не должен трогать
+  // карточки и агрегаты вовсе (устаревший снимок запустил бы фоновый обход
+  // Content API, который никто не ждёт).
+  const inRequest = AsyncLocalStorage.snapshot();
   return loadHourlyDashboard(
     "wb-sklejki",
     // Дефолтный период уходит в ключ как undefined: hourlyDashboardIdentity такие
@@ -45,7 +68,12 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
     async () => {
   // 1) Один общий часовой снимок карточек для PIM, поставок и склеек.
   //    У scoped-кабинетов он ищет только разрешённые nmID, не обходит весь чужой каталог.
-  const cardsPromise = timed("cards", loadCabinetPimRowsHourly(cabinetId)).then((rows): WbCard[] => rows.map((row) => ({
+  //
+  //    Кнопка «Обновить» (liveCards) читает карточки у WB, а не из снимка: склейка
+  //    в кабинете WB меняет imtID, и часовой снимок показал бы старые группы.
+  //    Только для одного кабинета: «Все кабинеты» параллельно ходили бы в Content
+  //    API по всем кабинетам разом (429).
+  const cardsPromise = timed("cards", liveCards ? fetchCabinetPimRows(cabinetId) : inRequest(() => loadCabinetPimRowsHourly(cabinetId))).then((rows): WbCard[] => rows.map((row) => ({
     nmID: row.nmId,
     imtID: row.imtId,
     vendorCode: row.article,
@@ -56,8 +84,6 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
 
   // 2) метрики воронки/рекламы по nm (7д и 14д) из синка — не зависят от карточек,
   //    запускаем ОДНОВРЕМЕННО с их фетчем, а не после.
-  const db = getSupabaseAdmin();
-  if (!db) throw new Error("Supabase не настроен");
   const windowDates = new Set(isoDateRange(period.start, period.end));
   const spendStart = sklejkiSpendWindowStart(period);
   const loadFunnelRows = async () => {
@@ -105,12 +131,11 @@ async function loadSklejkiSnapshot(cabinetId: string, cacheOptions: HourlyDashbo
     timed("ads", loadAdRows()),
     // Месячные агрегаты товаров — тот же тяжёлый источник, что и на «Рекламе»
     // (10+ секунд, под нагрузкой упирается в statement timeout). Читаем из
-    // общего снимка с фоновым освежением — у кабинета он обычно уже тёплый
-    // после экрана «Рекламы», и холодный билд склеек не тащит RPC вживую.
-    timed("report", loadCachedAdvertReportRows<RpcTotal>(cabinetId, "full", () =>
+    // общего снимка с фоновым освежением — живой RPC здесь не нужен.
+    timed("report", inRequest(() => loadCachedAdvertReportRows<RpcTotal>(cabinetId, "full", () =>
       timed("report_rpc", loadRnpReportRows<RpcTotal>(db, cabinetId, {
         label: "Склейки WB: товары",
-      })))),
+      }))))),
     timed("costs", db.from("product_costs").select("article, warehouse_expenses")),
     timed("commission", loadSklejkiCommissionForCabinet(cabinetId)),
   ]);
@@ -292,6 +317,8 @@ export async function GET(request: NextRequest) {
   // прямо на проде. Этапы снимка попадают сюда, только если снимок собирался
   // в этом запросе: пустой набор при долгом total — значит, ждали не сборку.
   const wantTimings = params.get("timings") === "1";
+  // cards=live присылает только кнопка «Обновить» (крон шлёт один refresh=1).
+  const liveCards = cacheOptions.forceRefresh === true && params.get("cards") === "live";
   const timings: Record<string, number> = {};
   const timed: Timed = (name, promise) => {
     if (!wantTimings) return Promise.resolve(promise);
@@ -304,7 +331,7 @@ export async function GET(request: NextRequest) {
   };
   try {
     if (cabinetId) {
-      const payload = await timed("total", loadSklejkiSnapshot(cabinetId, cacheOptions, period, timed));
+      const payload = await timed("total", loadSklejkiSnapshot(cabinetId, cacheOptions, period, timed, liveCards));
       const body = { ...payload, period: periodPayload };
       return NextResponse.json(wantTimings ? { ...body, timings } : body, { headers: { "X-Dashboard-Cache": "hourly-snapshot" } });
     }

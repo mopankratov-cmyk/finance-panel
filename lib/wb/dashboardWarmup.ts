@@ -56,7 +56,10 @@ async function fetchWarmSnapshot(url: string): Promise<WarmCallResult & { body?:
 
 async function warmPimCards(scope: WbDashboardScope): Promise<WarmCallResult> {
   try {
-    await loadCabinetPimRowsHourly(scope.cabinetId, { forceRefresh: true });
+    // Без forceRefresh: снимок «Все кабинеты» вложенно перечитывает каждый
+    // кабинет, а revalidateTag внутри unstable_cache Next 16 запрещает —
+    // принудительный прогрев падал каждый час, и крон отвечал 502.
+    await loadCabinetPimRowsHourly(scope.cabinetId);
     return { ok: true, status: 200 };
   } catch (error) {
     return { ok: false, status: 0, error: error instanceof Error ? error.message : "Карточки WB не загружены" };
