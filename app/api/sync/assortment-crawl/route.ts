@@ -3,6 +3,7 @@ import { CrawlTableMissingError, runCatalogCrawl } from "@/lib/assortment/crawlS
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
 import { RU_SHOPS } from "@/lib/assortment/ruShops";
 import { runRuShopsCrawl } from "@/lib/assortment/ruShopsStore";
+import { runZalandoCrawl } from "@/lib/assortment/zalandoStore";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -35,10 +36,13 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ ok: false, error: "Supabase не настроен" }, { status: 503 });
   const only = request.nextUrl.searchParams.get("source");
   try {
+    const zalandoIds = ["S138", "S139", "S140"];
     const ruOnly = only ? RU_SHOPS.some((s) => s.sourceId === only) : null;
-    const ruShops = ruOnly === false ? [] : await runRuShopsCrawl(db, startedAt.getTime() + RU_SHOPS_BUDGET_MS, only);
-    const shopify = ruOnly ? [] : await runCatalogCrawl(db, startedAt.getTime() + BUDGET_MS, only);
-    const results = [...ruShops, ...shopify];
+    const isZalando = only ? zalandoIds.includes(only) : null;
+    const zalando = isZalando === false ? [] : await runZalandoCrawl(db, startedAt.getTime() + RU_SHOPS_BUDGET_MS + 60_000, only);
+    const ruShops = ruOnly === false || isZalando ? [] : await runRuShopsCrawl(db, startedAt.getTime() + RU_SHOPS_BUDGET_MS, only);
+    const shopify = ruOnly || isZalando ? [] : await runCatalogCrawl(db, startedAt.getTime() + BUDGET_MS, only);
+    const results = [...zalando.map((z) => ({ ...z, fetched: 0, relevant: z.collected, queued: 0 })), ...ruShops, ...shopify];
     const failed = results.filter((r) => !r.ok);
     const added = results.reduce((s, r) => s + r.added, 0);
     const status = failed.length === 0 ? "ok" : failed.length < results.length ? "partial" : "error";
