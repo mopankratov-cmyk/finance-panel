@@ -624,11 +624,20 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                             chosen && pickModel
                               ? `Кампания ${chosen.advertId} · ${CTR_MODEL_LABEL[pickModel]} · ${fmt(chosen.views)} показов, ${fmt(chosen.spent)} ₽`
                               : null,
+                            // Почему клетка пуста. Раньше всегда писалось «ни одна не
+                            // потратила 100 ₽» и «меньше 50 показов» — а у кабинета на
+                            // одних ЕРК кампании тратили тысячи и крутили десятки тысяч
+                            // показов (Retail Family, 05.10.2026): подсказка врала.
+                            // Причина — правило: CTR ЕРК не считается (другая шкала).
                             pick && !chosen
-                              ? `Рабочей кампании нет: ${ctrModel === "any" ? "ни одна не потратила" : `${CTR_MODEL_LABEL[ctrModel as "cpc" | "cpm"]} не потратила`} ${CTR_MIN_CAMPAIGN_SPEND} ₽ за день`
+                              ? ctrModel === "any"
+                                ? pick.dropped > 0
+                                  ? `Рабочей кампании нет: все кампании дня (${pick.dropped}) вне расчёта — CTR ЕРК по правилу не считается, остальные без разметки или потратили меньше ${CTR_MIN_CAMPAIGN_SPEND} ₽. Разбор по кампаниям — по нажатию`
+                                  : "Кампаний с показами в этот день нет"
+                                : `Рабочей кампании нет: ${CTR_MODEL_LABEL[ctrModel as "cpc" | "cpm"]} не потратила ${CTR_MIN_CAMPAIGN_SPEND} ₽ за день`
                               : null,
-                            pick && pick.dropped > 0 ? `Отброшено кампаний: ${pick.dropped} (ЕРК, неразмеченные и нерабочие)` : null,
-                            тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит` : null,
+                            chosen && pick && pick.dropped > 0 ? `Отброшено кампаний: ${pick.dropped} (ЕРК, неразмеченные и нерабочие)` : null,
+                            chosen && тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит` : null,
                             "Нажмите: разбор по кампаниям, заметка и цвет",
                           ].filter(Boolean).join(" · ")}
                           className={`tap-hit inline-flex min-h-7 min-w-[66px] items-center justify-center gap-1 rounded-md px-1 font-semibold tabular-nums hover:ring-1 hover:ring-violet-300 max-lg:underline max-lg:decoration-violet-300 max-lg:decoration-dotted max-lg:underline-offset-2 ${markClass ?? (тонкийЗамер ? "text-slate-300" : cellTone(metric, shown))}`}
