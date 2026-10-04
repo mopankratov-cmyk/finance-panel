@@ -135,12 +135,21 @@ export async function storePickPhotos(db: SupabaseClient, referenceId: string, u
   return images.length ? storeImages(db, referenceId, images, false) : 0;
 }
 
-/** «Не интересно»: модель уходит из выдачи каталога, но остаётся в базе сравнения. */
+/**
+ * «Не интересно»: модель уходит из выдачи каталога, но остаётся в базе сравнения.
+ * Скрывается МОДЕЛЬ целиком — все её расцветки (ключ модели, миграция
+ * 202610050002), иначе скрытый цвет заменил бы собой соседний. Нет ключа (миграции
+ * нет или строка из источника «одна строка = модель») — скрываем одну строку.
+ */
 export async function hideCatalogItem(db: SupabaseClient, input: { sourceId: string; itemId: string; hidden: boolean }): Promise<"ok" | "not_found" | "migration_missing"> {
-  const { data, error } = await db.from("assortment_source_items")
-    .update({ hidden_at: input.hidden ? new Date().toISOString() : null })
-    .eq("source_id", input.sourceId).eq("source_item_id", input.itemId)
-    .select("source_id");
+  const patch = { hidden_at: input.hidden ? new Date().toISOString() : null };
+  const keyed = await db.from("assortment_source_items").select("model_key,direction").eq("source_id", input.sourceId).eq("source_item_id", input.itemId).maybeSingle();
+  const key = !keyed.error ? (keyed.data as { model_key?: string | null; direction?: string | null } | null) : null;
+  if (keyed.error && !isMissingColumnError(keyed.error)) throw new Error(keyed.error.message);
+  const modelKeyValue = key?.model_key ?? null;
+  const { data, error } = modelKeyValue && key?.direction
+    ? await db.from("assortment_source_items").update(patch).eq("source_id", input.sourceId).eq("direction", key.direction).eq("model_key", modelKeyValue).select("source_id")
+    : await db.from("assortment_source_items").update(patch).eq("source_id", input.sourceId).eq("source_item_id", input.itemId).select("source_id");
   if (error && isMissingColumnError(error)) return "migration_missing";
   if (error) throw new Error(error.message);
   return data && data.length > 0 ? "ok" : "not_found";

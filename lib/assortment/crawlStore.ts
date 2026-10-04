@@ -3,6 +3,7 @@ import type { AssortmentDirection } from "./constants";
 import { catalogUrl, classifyItem, collectionHandles, collectionUrl, crawlPlan, isShopifyCrawlable, MAX_CATALOG_PAGES, mergeCatalog, parseCatalogPage, productUrl, CATALOG_PAGE_SIZE, type CatalogItem } from "./crawl";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { importReference } from "./importer";
+import { modelKey } from "./modelKey";
 import { recordObservation, type SnapshotItem } from "./observationLog";
 import { safeFetch, SafeFetchError } from "./safeFetch";
 import { catalogFields, upsertSourceItems } from "./sourceItems";
@@ -115,6 +116,8 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
       }
       const row = {
         source_id: source.source_id, source_item_id: item.sourceItemId, handle: item.handle, title: item.title, product_type: item.productType, direction, published_at: item.publishedAt, last_seen_at: now,
+        // Расцветка — отдельный товар у Shopify: ключ склеивает её с моделью.
+        model_key: modelKey({ sourceId: source.source_id, sourceItemId: item.sourceItemId, title: item.title }),
         // Каталог брендов — только у наших разделов: ссылки на фото, бренд, метки.
         ...(direction ? catalogFields({ images: item.images, brand: item.vendor ?? source.name, badges: item.badges, badgesKnown: true }) : {}),
       };

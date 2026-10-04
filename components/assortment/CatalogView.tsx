@@ -296,7 +296,7 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
                 </div>
                 <div className="flex flex-1 flex-col gap-1.5 px-3 pb-3 pt-2">
                   <div className="break-anywhere line-clamp-2 text-sm font-medium leading-5 text-slate-900">{card.title}</div>
-                  <div className="text-xs text-slate-500">{card.brand} · в каталоге с {day(card.firstSeenAt)}</div>
+                  <div className="text-xs text-slate-500">{card.brand} · в каталоге с {day(card.firstSeenAt)}{card.variants > 1 ? ` · ${card.variants} ${plural(card.variants, "вариант", "варианта", "вариантов")}` : ""}</div>
                   <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                     {card.referenceId && (
                       <Link href={`${ASSORTMENT_BASE_PATH}/${direction}/${card.referenceId}`} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-violet-50 px-3 text-xs font-medium text-violet-800 hover:bg-violet-100">

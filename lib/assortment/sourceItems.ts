@@ -12,6 +12,13 @@ import { isMissingColumnError } from "./errors";
 /** Колонки каталога из миграции 202610040001. */
 export const CATALOG_COLUMNS = ["image_urls", "brand", "badges"] as const;
 
+/**
+ * Ключ модели (миграция 202610050002): расцветки одной модели — один ключ. Свой
+ * флаг отката: нет этой колонки ≠ нет колонок каталога, фото и бренд при этом
+ * писать надо по-прежнему.
+ */
+export const MODEL_KEY_COLUMNS = ["model_key"] as const;
+
 export type CatalogBadge = "new" | "bestseller";
 
 const MAX_IMAGE_URLS = 4;
@@ -59,26 +66,38 @@ export function groupBySameKeys<T extends Record<string, unknown>>(rows: T[]): T
 }
 
 /**
- * Колонок каталога ещё нет (миграция не применена): узнали — 10 минут пишем
- * без них, потом проверяем снова (миграцию могли применить, а экземпляр
- * функции живёт долго).
+ * Колонок ещё нет (миграция не применена): узнали — 10 минут пишем без них,
+ * потом проверяем снова (миграцию могли применить, а экземпляр функции живёт
+ * долго). Две независимые группы: колонки каталога и ключ модели.
  */
 let catalogColumnsMissingAt = 0;
+let modelKeyMissingAt = 0;
 const MISSING_RECHECK_MS = 10 * 60 * 1000;
-const catalogColumnsLikelyMissing = () => Date.now() - catalogColumnsMissingAt < MISSING_RECHECK_MS;
+const likelyMissing = (at: number) => Date.now() - at < MISSING_RECHECK_MS;
+
+interface Strip {
+  catalog: boolean;
+  modelKey: boolean;
+}
 
 /**
- * Ошибка именно про колонку каталога, а не про любую другую: PostgREST пишет
+ * Ошибка именно про колонку из группы, а не про любую другую: PostgREST пишет
  * «Could not find the 'image_urls' column…», Postgres — «column "image_urls"…».
  */
-function namesCatalogColumn(message: string | null | undefined): boolean {
+function namesColumn(message: string | null | undefined, columns: readonly string[]): boolean {
   const text = (message ?? "").toLowerCase();
-  return CATALOG_COLUMNS.some((c) => text.includes(`'${c}'`) || text.includes(`"${c}"`));
+  return columns.some((c) => text.includes(`'${c}'`) || text.includes(`"${c}"`));
 }
 
 export function withoutCatalogColumns<T extends Record<string, unknown>>(row: T): T {
   const copy = { ...row };
   for (const column of CATALOG_COLUMNS) delete copy[column];
+  return copy;
+}
+
+export function withoutModelKey<T extends Record<string, unknown>>(row: T): T {
+  const copy = { ...row };
+  for (const column of MODEL_KEY_COLUMNS) delete copy[column];
   return copy;
 }
 
@@ -93,13 +112,23 @@ export interface UpsertOptions {
 }
 
 /**
- * Записать строки обхода. До миграции 202610040001 обход не падает: поля
- * каталога отбрасываются, и запись повторяется.
+ * Записать строки обхода. До миграций 202610040001 и 202610050002 обход не
+ * падает: недостающие поля отбрасываются, и запись повторяется.
  */
-export async function upsertSourceItems(db: SupabaseClient, rows: Array<Record<string, unknown>>, options: UpsertOptions = {}, strip = catalogColumnsLikelyMissing()): Promise<void> {
+export async function upsertSourceItems(
+  db: SupabaseClient,
+  rows: Array<Record<string, unknown>>,
+  options: UpsertOptions = {},
+  strip: Strip = { catalog: likelyMissing(catalogColumnsMissingAt), modelKey: likelyMissing(modelKeyMissingAt) },
+): Promise<void> {
   if (rows.length === 0) return;
-  let prepared = strip ? rows.map(withoutCatalogColumns) : rows;
-  if (options.fresh && !strip) prepared = prepared.map((row) => ({ ...Object.fromEntries(CATALOG_COLUMNS.map((c) => [c, null])), ...row }));
+  let prepared = rows;
+  if (strip.catalog) prepared = prepared.map(withoutCatalogColumns);
+  if (strip.modelKey) prepared = prepared.map(withoutModelKey);
+  if (options.fresh) {
+    const nulls: Array<string> = [...(strip.catalog ? [] : CATALOG_COLUMNS), ...(strip.modelKey ? [] : MODEL_KEY_COLUMNS)];
+    prepared = prepared.map((row) => ({ ...Object.fromEntries(nulls.map((c) => [c, null])), ...row }));
+  }
   const groups = options.fresh ? [prepared] : groupBySameKeys(prepared);
   for (const group of groups) {
     // Новые строки — одной записью (до 1 000: больше бывает только у первой базы огромного каталога).
@@ -107,9 +136,15 @@ export async function upsertSourceItems(db: SupabaseClient, rows: Array<Record<s
     for (let i = 0; i < group.length; i += size) {
       const { error } = await db.from("assortment_source_items").upsert(group.slice(i, i + size), { onConflict: "source_id,source_item_id", defaultToNull: false });
       if (!error) continue;
-      if (!strip && isMissingColumnError(error) && namesCatalogColumn(error.message)) {
-        catalogColumnsMissingAt = Date.now();
-        return upsertSourceItems(db, rows, options, true);
+      if (isMissingColumnError(error)) {
+        if (!strip.catalog && namesColumn(error.message, CATALOG_COLUMNS)) {
+          catalogColumnsMissingAt = Date.now();
+          return upsertSourceItems(db, rows, options, { ...strip, catalog: true });
+        }
+        if (!strip.modelKey && namesColumn(error.message, MODEL_KEY_COLUMNS)) {
+          modelKeyMissingAt = Date.now();
+          return upsertSourceItems(db, rows, options, { ...strip, modelKey: true });
+        }
       }
       throw new Error(error.message);
     }
@@ -119,4 +154,5 @@ export async function upsertSourceItems(db: SupabaseClient, rows: Array<Record<s
 /** Для тестов: забыть, что колонок не было. */
 export function resetCatalogColumnsFlag(): void {
   catalogColumnsMissingAt = 0;
+  modelKeyMissingAt = 0;
 }

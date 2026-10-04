@@ -3,7 +3,7 @@ import {
   brandStats, CATALOG_FRESH_DAYS, CATALOG_SEEN_DAYS, ilikePattern, resolvePhotoMode, toCatalogCard,
   type CatalogBrandStat, type CatalogCard, type CatalogQuery, type CatalogRow,
 } from "./catalog";
-import { isMissingColumnError } from "./errors";
+import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 
 export interface CatalogPage {
   cards: CatalogCard[];
@@ -14,6 +14,21 @@ export interface CatalogPage {
   photo: "with" | "all";
   /** Миграции 202610040001 нет: фото и фильтры каталога появятся после неё. */
   photosPending: boolean;
+}
+
+/**
+ * Вид «голов» моделей (миграция 202610050002): одна карточка на модель, дата и
+ * «новинка» — по самой ранней расцветке. Нет вида — читаем таблицу строк, как раньше.
+ */
+const HEADS_VIEW = "assortment_catalog_heads";
+const HEADS_COLUMNS = "source_id,source_item_id,handle,title,product_type,first_seen_at:model_first_seen_at,last_seen_at:model_last_seen_at,baseline:model_baseline,reference_id,image_urls,brand,badges,variants";
+const HEADS_RECHECK_MS = 10 * 60 * 1000;
+let headsMissingAt = 0;
+const headsLikelyMissing = () => Date.now() - headsMissingAt < HEADS_RECHECK_MS;
+
+/** Сброс признака «вида нет» — для тестов. */
+export function resetHeadsFlag(): void {
+  headsMissingAt = 0;
 }
 
 const BASE_COLUMNS = "source_id,source_item_id,handle,title,product_type,first_seen_at,last_seen_at,baseline,reference_id";
@@ -33,6 +48,35 @@ async function sourcesMap(db: SupabaseClient, nowMs: number) {
   }
   sourcesCache = { at: nowMs, map };
   return map;
+}
+
+function selectHeads(db: SupabaseClient, query: CatalogQuery, nowMs: number, photo: "with" | "all") {
+  const seenSince = new Date(nowMs - CATALOG_SEEN_DAYS * 24 * 3600 * 1000).toISOString();
+  let q = db.from(HEADS_VIEW)
+    .select(HEADS_COLUMNS, { count: "exact" })
+    .eq("direction", query.direction)
+    .gte("model_last_seen_at", seenSince)
+    .is("model_hidden_at", null);
+  if (photo === "with") q = q.not("image_urls", "is", null);
+  if (query.badge) q = q.not("badges", "is", null);
+  if (query.sourceId) q = q.eq("source_id", query.sourceId);
+  if (query.search) {
+    const pattern = ilikePattern(query.search);
+    q = q.or(`title.ilike.${pattern},brand.ilike.${pattern}`);
+  }
+  // Новинка — по самой ранней расцветке модели: новый цвет старой модели новинкой не становится.
+  if (query.fresh) q = q.eq("model_baseline", false).gte("model_first_seen_at", new Date(nowMs - CATALOG_FRESH_DAYS * 24 * 3600 * 1000).toISOString());
+  return q
+    .order("model_first_seen_at", { ascending: false })
+    .order("source_id", { ascending: true })
+    .order("source_item_id", { ascending: true })
+    .range(query.offset, query.offset + query.limit - 1);
+}
+
+/** Ошибка «вида (или его колонки) ещё нет» — миграцию 202610050002 не применили. */
+function headsUnavailable(error: { code?: string | null; message?: string | null } | null | undefined): boolean {
+  if (!error) return false;
+  return isMissingAssortmentSchema(new Error(error.message ?? "")) || isMissingColumnError(error) || error.code === "PGRST205" || error.code === "42P01";
 }
 
 function select(db: SupabaseClient, query: CatalogQuery, nowMs: number, withCatalogColumns: boolean, photo: "with" | "all") {
@@ -80,7 +124,13 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   const stats = query.photo === "auto" ? await statsPromise : null;
   const photo = resolvePhotoMode(query.photo, stats, query.sourceId);
   let photosPending = false;
-  let [result, brands] = await Promise.all([select(db, query, nowMs, true, photo), statsPromise]);
+  let [result, brands] = headsLikelyMissing()
+    ? [await select(db, query, nowMs, true, photo), await statsPromise]
+    : await Promise.all([selectHeads(db, query, nowMs, photo), statsPromise]);
+  if (result.error && headsUnavailable(result.error) && !headsLikelyMissing()) {
+    headsMissingAt = Date.now();
+    result = await select(db, query, nowMs, true, photo);
+  }
   if (result.error && isMissingColumnError(result.error)) {
     photosPending = true;
     brands = null;
@@ -108,7 +158,11 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
  */
 export async function countCatalog(db: SupabaseClient, query: CatalogQuery, nowMs: number): Promise<number> {
   const one = { ...query, offset: 0, limit: 1 };
-  let result = await select(db, one, nowMs, true, "all");
+  let result = headsLikelyMissing() ? await select(db, one, nowMs, true, "all") : await selectHeads(db, one, nowMs, "all");
+  if (result.error && headsUnavailable(result.error) && !headsLikelyMissing()) {
+    headsMissingAt = Date.now();
+    result = await select(db, one, nowMs, true, "all");
+  }
   if (result.error && isMissingColumnError(result.error)) result = await select(db, one, nowMs, false, "all");
   if (result.error) throw new Error(result.error.message);
   return result.count ?? 0;

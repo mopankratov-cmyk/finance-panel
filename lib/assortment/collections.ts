@@ -101,9 +101,16 @@ export function isValidPeriod(kind: CollectionKind, period: string): boolean {
  * «Boky - Textured Camel» и «Boky - Textured Black» у Polène — одна идея.
  */
 export function constructionKey(ref: { brand: string | null; title: string | null }): string {
-  const title = (ref.title ?? "").toLowerCase().replace(/ё/g, "е");
-  const head = stripColorTail(title.split(/\s+[-–—|]\s+|,\s+/)[0].replace(/\s+/g, " ").trim());
-  return `${(ref.brand ?? "").toLowerCase().trim()}|${head}`;
+  return `${(ref.brand ?? "").toLowerCase().trim()}|${constructionHead(ref.title)}`;
+}
+
+/**
+ * Название модели без расцветки: до « - Black», до запятой, без «in black».
+ * Общее правило для ключа конструкции (подборки, уроки) и ключа модели каталога.
+ */
+export function constructionHead(title: string | null | undefined): string {
+  const lower = (title ?? "").toLowerCase().replace(/ё/g, "е");
+  return stripColorTail(lower.split(/\s+[-–—|]\s+|,\s+/)[0].replace(/\s+/g, " ").trim());
 }
 
 /**

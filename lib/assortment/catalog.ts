@@ -108,6 +108,8 @@ export interface CatalogRow {
   image_urls?: string[] | null;
   brand?: string | null;
   badges?: string[] | null;
+  /** Сколько расцветок модели видел обход (вид assortment_catalog_heads); у строки таблицы — нет. */
+  variants?: number | null;
 }
 
 export interface CatalogCard {
@@ -122,6 +124,8 @@ export interface CatalogCard {
   /** Новинка, которую обход заметил после базы, — за последние 7 дней. */
   isNew: boolean;
   badges: CatalogBadge[];
+  /** Расцветок одной модели (карточка — одна на модель; цвета склеены ключом модели). */
+  variants: number;
   referenceId: string | null;
   /** Статус находки, если модель уже среди находок (новинка, отобрана, отклонена…). */
   referenceStatus?: string | null;
@@ -154,6 +158,7 @@ export function toCatalogCard(row: CatalogRow, source: { name: string; seedUrl: 
     lastSeenAt: row.last_seen_at,
     isNew: !row.baseline && Date.parse(row.first_seen_at) >= freshSince,
     badges: (row.badges ?? []).filter((b): b is CatalogBadge => b === "new" || b === "bestseller"),
+    variants: Math.max(1, Math.trunc(Number(row.variants) || 1)),
     referenceId: row.reference_id,
   };
 }

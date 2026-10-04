@@ -10,6 +10,7 @@ import { classifyItem, crawlPlan } from "./crawl";
 import { isMissingColumnError } from "./errors";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
 import { remoteImage, storeImages, type ImageBytes } from "./importer";
+import { modelKey } from "./modelKey";
 import { recordObservation, type RunCoverage, type SnapshotItem } from "./observationLog";
 import { catalogFields, upsertSourceItems } from "./sourceItems";
 
@@ -296,6 +297,8 @@ export async function ingestRecords(
   for (const r of relevant) {
     const row = {
       source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: target.direction, last_seen_at: now,
+      // ASOS и H&M — карточка на цвет: ключ склеивает расцветки одной модели.
+      model_key: modelKey({ sourceId: source.sourceId, sourceItemId: r.sourceItemId, title: r.title }),
       // «Фото нет» в полной записи набора снимает только мёртвые ссылки — живые (из второго набора Zara) не трогаем.
       ...catalogFields({ images: r.images, imagesKnown: options.imagesKnown && !livePhotos.has(r.sourceItemId), brand: r.brand ?? source.name }),
     };

@@ -66,7 +66,7 @@ test("Новые строки (база) — одной записью с одн
     { source_id: "S1", source_item_id: "3", baseline: true },
   ], { fresh: true });
   assert.equal(calls.length, 1);
-  assert.deepEqual(calls[0].map((r) => Object.keys(r).sort().join(",")), Array(3).fill("badges,baseline,brand,image_urls,source_id,source_item_id"));
+  assert.deepEqual(calls[0].map((r) => Object.keys(r).sort().join(",")), Array(3).fill("badges,baseline,brand,image_urls,model_key,source_id,source_item_id"), "ключ модели — в том же едином наборе полей: недописанная половина не появляется");
   assert.equal(calls[0][1].image_urls, null);
   assert.deepEqual(calls[0][0].image_urls, ["https://a"]);
 });
