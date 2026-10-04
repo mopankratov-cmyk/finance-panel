@@ -3,6 +3,7 @@ import type { AssortmentDirection } from "./constants";
 import { catalogUrl, classifyItem, collectionHandles, collectionUrl, crawlPlan, isShopifyCrawlable, MAX_CATALOG_PAGES, mergeCatalog, parseCatalogPage, productUrl, CATALOG_PAGE_SIZE, type CatalogItem } from "./crawl";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { importReference } from "./importer";
+import { recordObservation, type SnapshotItem } from "./observationLog";
 import { safeFetch, SafeFetchError } from "./safeFetch";
 import { catalogFields, upsertSourceItems } from "./sourceItems";
 
@@ -91,6 +92,9 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
     const known = await knownIds(db, source.source_id);
     const fetched = await fetchCatalog(seed, source.access_note, deadline);
     result.fetched = fetched.length;
+    // Полнота обхода — до разбора карточек: если выборка оборвалась по дедлайну,
+    // раздел неполный (и «пропажа» товара ниже недостоверна).
+    const fetchedComplete = Date.now() <= deadline;
     if (fetched.length === 0) throw new Error("каталог пуст — сайт мог сменить устройство");
     const plan = crawlPlan(known, fetched);
     result.baseline = plan.baseline;
@@ -102,9 +106,13 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
     // разным набором полей проставит отсутствующие как null — и затёр бы baseline.
     const inserts: Array<Record<string, unknown>> = [];
     const updates: Array<Record<string, unknown>> = [];
+    const snapItems: SnapshotItem[] = [];
     for (const item of fetched) {
       const direction = classifyItem(item, categories);
-      if (direction) result.relevant += 1;
+      if (direction) {
+        result.relevant += 1;
+        snapItems.push({ sourceItemId: item.sourceItemId, direction, title: item.title, brand: item.vendor ?? source.name, images: item.images, badges: item.badges });
+      }
       const row = {
         source_id: source.source_id, source_item_id: item.sourceItemId, handle: item.handle, title: item.title, product_type: item.productType, direction, published_at: item.publishedAt, last_seen_at: now,
         // Каталог брендов — только у наших разделов: ссылки на фото, бренд, метки.
@@ -135,6 +143,12 @@ async function crawlSource(db: SupabaseClient, source: SourceRow, deadline: numb
       }
       result.queued = Math.max(0, (queue ?? []).length - result.added);
     }
+    // Слой наблюдений: журнал прогона + снимок присутствия раздела (куртки и
+    // сумки одним обходом — раздел несёт каждый снимок).
+    await recordObservation(db, {
+      sourceId: source.source_id, direction: null, coverage: fetchedComplete ? "full" : "partial",
+      seen: result.relevant, added: result.added, startedAt: now,
+    }, snapItems);
     result.ok = true;
     await markSource(db, source.source_id, true, null);
   } catch (error) {

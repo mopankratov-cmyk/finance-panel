@@ -118,9 +118,10 @@ export async function crawlShop(db: SupabaseClient, shop: RuShop, deadline: numb
     }
     for (const [direction, bucket] of byDirection) {
       const done = await ingestRecords(db, { sourceId: shop.sourceId, name: shop.name }, { direction, method: shop.method }, bucket.records, deadline, diff
-        ? { quiet: diff.baseline || diff.massChange, freshOnly: diff.fresh, cloudPhotos: shop.via !== "mini", drainOrphans: true }
+        // Lime: каталог в HTML отдаёт лишь часть, новинки — по карте сайта → окно.
+        ? { coverage: "window", quiet: diff.baseline || diff.massChange, freshOnly: diff.fresh, cloudPhotos: shop.via !== "mini", drainOrphans: true }
         // Полный обход — новинка как у Shopify; не дошли до конца — новинкам не верим.
-        : { quiet: !bucket.complete, churnGuard: true, cloudPhotos: shop.via !== "mini", drainOrphans: true });
+        : { coverage: bucket.complete ? "full" : "partial", quiet: !bucket.complete, churnGuard: true, cloudPhotos: shop.via !== "mini", drainOrphans: true });
       if (done.churn) warnings.push(`${direction === "bags" ? "сумки" : "куртки"}: слишком много новых разом — похоже на перестройку каталога, обход лёг базой`);
       result.collected += done.collected;
       result.added += done.added;

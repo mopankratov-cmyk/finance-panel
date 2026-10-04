@@ -10,6 +10,7 @@ import { classifyItem, crawlPlan } from "./crawl";
 import { isMissingColumnError } from "./errors";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
 import { remoteImage, storeImages, type ImageBytes } from "./importer";
+import { recordObservation, type RunCoverage, type SnapshotItem } from "./observationLog";
 import { catalogFields, upsertSourceItems } from "./sourceItems";
 
 /** Новых находок на источник за один сбор: остальное — очередь до следующего. */
@@ -232,7 +233,10 @@ async function processSnapshot(
   churnGuard = false,
 ): Promise<IngestResult> {
   const records = (preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
-  return ingestRecords(db, source, snapshot, records, deadline, { quiet, churnGuard, drainOrphans: snapshot.kind === "dataset", imagesKnown: snapshot.kind === "dataset" });
+  // Готовый набор — полный раздел (упёрся в потолок → только окно); сборщик по
+  // слову/топу раздела (ASOS, H&M) видит лишь верх выдачи — всегда окно.
+  const coverage: RunCoverage = snapshot.kind === "dataset" ? (quiet ? "window" : "full") : "window";
+  return ingestRecords(db, source, snapshot, records, deadline, { coverage, quiet, churnGuard, drainOrphans: snapshot.kind === "dataset", imagesKnown: snapshot.kind === "dataset" });
 }
 
 export interface IngestResult {
@@ -256,6 +260,11 @@ export async function ingestRecords(
   mapped: MappedRecord[],
   deadline: number,
   options: {
+    /**
+     * Насколько полно увидели раздел — для журнала прогонов (слой наблюдений).
+     * По умолчанию выводится из quiet; база всегда полная.
+     */
+    coverage?: RunCoverage;
     quiet?: boolean;
     churnGuard?: boolean;
     /** Кто вообще может быть новинкой (Lime — новые по карте сайта); остальное невиданное ложится базой. */
@@ -321,6 +330,15 @@ export async function ingestRecords(
       }
     }
   }
+  // Слой наблюдений: журнал прогона + снимок присутствия раздела на сегодня.
+  // Доверие к новизне: база — полный раздел; иначе берём переданное, иначе по
+  // quiet (обрезанная выдача/упёршийся набор — окно, не полный раздел).
+  const coverage: RunCoverage = plan.baseline ? "full" : (options.coverage ?? (quiet ? "window" : "full"));
+  const items: SnapshotItem[] = relevant.map((r) => ({ sourceItemId: r.sourceItemId, direction: target.direction, title: r.title, brand: r.brand ?? source.name, images: r.images }));
+  await recordObservation(db, {
+    sourceId: source.sourceId, direction: target.direction, coverage,
+    seen: relevant.length, added, startedAt: now, snapshotId: (target as { snapshotId?: string }).snapshotId ?? null,
+  }, items);
   return { collected: relevant.length, added, baseline: asBaseline, churn, missingPhotos };
 }
 
