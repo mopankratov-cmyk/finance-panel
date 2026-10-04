@@ -92,3 +92,14 @@ test("Коллекции новинок из паспорта, их адреса
   const merged = mergeCatalog([item({ sourceItemId: "1", title: "из коллекции" })], [item({ sourceItemId: "1", title: "из каталога" }), item({ sourceItemId: "2" })]);
   assert.deepEqual(merged.map((i) => [i.sourceItemId, i.title]), [["1", "из коллекции"], ["2", ""]]);
 });
+
+test("Миграция каталога: только ссылки на фото, бренд, метки и «не интересно» — без цен, закрыта от anon", () => {
+  const sql = readFileSync(join(root, "supabase/migrations/202610040001_assortment_catalog.sql"), "utf8");
+  const columns = [...sql.matchAll(/add column if not exists (\w+)/g)].map((m) => m[1]);
+  assert.deepEqual(columns, ["image_urls", "brand", "badges", "hidden_at"]);
+  for (const c of columns) assert.doesNotMatch(c, /price|cost|margin|currency|spp|moq|budget/i, c);
+  assert.doesNotMatch(sql.replace(/^--.*$/gm, ""), /price|cost|margin|currency/i, "в исполняемой части про деньги ни слова");
+  assert.match(sql, /with \(security_invoker = true\)/);
+  assert.match(sql, /revoke all on public\.assortment_catalog_stats from anon, authenticated/);
+  assert.doesNotMatch(sql, /plpgsql|create (or replace )?function|drop /i, "ни функций, ни удалений");
+});
