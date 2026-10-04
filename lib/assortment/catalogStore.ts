@@ -35,10 +35,10 @@ async function sourcesMap(db: SupabaseClient, nowMs: number) {
   return map;
 }
 
-function select(db: SupabaseClient, query: CatalogQuery, nowMs: number, withCatalogColumns: boolean, photo: "with" | "all", head = false) {
+function select(db: SupabaseClient, query: CatalogQuery, nowMs: number, withCatalogColumns: boolean, photo: "with" | "all") {
   const seenSince = new Date(nowMs - CATALOG_SEEN_DAYS * 24 * 3600 * 1000).toISOString();
   let q = db.from("assortment_source_items")
-    .select(withCatalogColumns ? CATALOG_COLUMNS : BASE_COLUMNS, { count: "exact", head })
+    .select(withCatalogColumns ? CATALOG_COLUMNS : BASE_COLUMNS, { count: "exact" })
     .eq("direction", query.direction)
     .gte("last_seen_at", seenSince);
   if (withCatalogColumns) {
@@ -93,10 +93,15 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   return { cards, total: result.count ?? cards.length, brands: query.offset === 0 ? brands : null, photo: photosPending ? "all" : photo, photosPending };
 }
 
-/** Только число моделей раздела (для вкладки): без строк и без счётчиков брендов. */
+/**
+ * Только число моделей раздела (для вкладки): одна строка и подсчёт, без
+ * счётчиков брендов. Не HEAD: у HEAD нет тела, и ошибка «нет колонки» до
+ * миграции приходит пустой — откат её не узнаёт (04.10 вкладка не появилась).
+ */
 export async function countCatalog(db: SupabaseClient, query: CatalogQuery, nowMs: number): Promise<number> {
-  let result = await select(db, query, nowMs, true, "all", true);
-  if (result.error && isMissingColumnError(result.error)) result = await select(db, query, nowMs, false, "all", true);
+  const one = { ...query, offset: 0, limit: 1 };
+  let result = await select(db, one, nowMs, true, "all");
+  if (result.error && isMissingColumnError(result.error)) result = await select(db, one, nowMs, false, "all");
   if (result.error) throw new Error(result.error.message);
   return result.count ?? 0;
 }

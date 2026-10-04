@@ -121,3 +121,9 @@ test("Экран каталога: начальный вид — с сервер
   assert.match(view, /aria-pressed=/);
   assert.doesNotMatch(view, /useSearchParams/, "без границы Suspense в пререндере");
 });
+
+test("Число для вкладки — обычным запросом, не HEAD: до миграции ошибка «нет колонки» должна прийти с текстом", () => {
+  const store = readFileSync(join(root, "lib/assortment/catalogStore.ts"), "utf8");
+  assert.doesNotMatch(store, /head: ?true|head \}/, "HEAD-запрос теряет текст ошибки — откат не сработает");
+  assert.match(store, /const one = \{ \.\.\.query, offset: 0, limit: 1 \}/);
+});
