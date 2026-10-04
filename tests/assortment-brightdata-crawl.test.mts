@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripMoney } from "../lib/assortment/brightdata.ts";
-import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
+import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
 
@@ -189,4 +189,29 @@ test("Пересборка набора: много «новых» разом �
   assert.equal(looksLikeChurn(10, 20), false, "до десяти моделей верим");
   assert.equal(looksLikeChurn(40, 120), true);
   assert.equal(looksLikeChurn(12, 30), true);
+});
+
+test("Застрявшие новинки (сверх 15 за прогон, сбой записи) не теряются: идут первыми, от старых к новым", () => {
+  const now = Date.parse("2026-11-10T00:00:00Z");
+  const orphans = new Map([["b", "2026-11-08T00:00:00Z"], ["a", "2026-11-03T00:00:00Z"], ["old", "2026-09-20T00:00:00Z"], ["gone", "2026-11-05T00:00:00Z"]]);
+  const r = novelCandidates(["x", "b", "a", "old", "y"], new Set(["x", "y"]), orphans, now, false);
+  assert.deepEqual(r.create, ["a", "b", "x", "y"], "сироты от старых к новым, потом свежие; ушедшая с сайта сирота («gone») не в этом сборе");
+  assert.deepEqual(r.expire, ["old"], "старше 30 дней — в базу, в каталог");
+  const quiet = novelCandidates(["x", "b", "a"], new Set(["x"]), orphans, now, true);
+  assert.deepEqual(quiet.create, ["a", "b"], "сбор лёг базой (обрезан, пересборка) — свежим не верим, а сиротам — да: их новизну подтвердил прошлый сбор");
+  assert.deepEqual(novelCandidates([], new Set(), new Map(), now, false), { create: [], expire: [] });
+  const legacy = novelCandidates(["z"], new Set(), new Map([["z", "2026-10-03T21:00:00Z"]]), Date.parse("2026-10-07T00:00:00Z"), false);
+  assert.deepEqual(legacy, { create: [], expire: ["z"] }, "хвосты старых ошибок (до 04.10) — в базу, не в ленту");
+});
+
+test("Сироты разбираются только у полных разделов; дата находки — сегодня, исходная — в наблюдении", () => {
+  const source = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(source, /row\.baseline === false && !row\.reference_id/);
+  assert.match(source, /firstSeenAt: orphans\.get\(id\)/);
+  assert.doesNotMatch(source, /first_seen_at: options\.firstSeenAt/, "дата находки — сегодняшняя: иначе мимо сводки и верха ленты");
+  assert.match(source, /value_text: options\.firstSeenAt \?\? now/, "исходная дата — в наблюдении");
+  assert.match(source, /drainOrphans: snapshot\.kind === "dataset"/, "ASOS и H&M (обрезанная выдача) хвост не разбирают");
+  assert.match(source, /options\.cloudPhotos === false \? \[\] : record\.images/, "сайты через mini — облако фото не тянет");
+  const ru = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");
+  assert.equal((ru.match(/cloudPhotos: shop\.via !== "mini", drainOrphans: true/g) ?? []).length, 2);
 });

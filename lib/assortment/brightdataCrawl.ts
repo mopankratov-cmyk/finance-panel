@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
 import {
-  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, PENDING_TTL_MS, readCoverage, readPending,
+  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, PENDING_TTL_MS, readCoverage, readPending,
   uniqueRecords, writeCoverage, writePending, type MappedRecord, type PendingSnapshot,
 } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
@@ -114,13 +114,23 @@ async function downloadRecords(snapshotId: string): Promise<unknown[]> {
  * источнику: первый сбор 02.10 положил сумки ASOS базой, а куртки, разобранные
  * следом, посчитал новинками — 7 штук ушли в ленту.
  */
-async function knownIds(db: SupabaseClient, sourceId: string, direction: AssortmentDirection): Promise<Set<string>> {
-  const ids = new Set<string>();
+async function knownIds(db: SupabaseClient, sourceId: string, direction: AssortmentDirection): Promise<{ known: Set<string>; orphans: Map<string, string> }> {
+  const known = new Set<string>();
+  // Сироты: новинки прошлых сборов без находки (потолок за прогон, сбой записи).
+  const orphans = new Map<string, string>();
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await db.from("assortment_source_items").select("source_item_id").eq("source_id", sourceId).eq("direction", direction).range(from, from + 999);
+    const { data, error } = await db.from("assortment_source_items")
+      .select("source_item_id,baseline,reference_id,first_seen_at")
+      .eq("source_id", sourceId).eq("direction", direction)
+      .order("source_item_id", { ascending: true })
+      .range(from, from + 999);
     if (error) throw new Error(error.message);
-    for (const row of data ?? []) ids.add(String(row.source_item_id));
-    if (!data || data.length < 1000) return ids;
+    for (const row of data ?? []) {
+      const id = String(row.source_item_id);
+      known.add(id);
+      if (row.baseline === false && !row.reference_id && typeof row.first_seen_at === "string") orphans.set(id, row.first_seen_at);
+    }
+    if (!data || data.length < 1000) return { known, orphans };
   }
 }
 
@@ -132,6 +142,16 @@ async function createFromRecord(
   record: MappedRecord,
   method: string,
   deadline: number,
+  options: {
+    /**
+     * Когда обход впервые увидел модель — в наблюдение «впервые замечено». Дата
+     * самой находки — сегодняшняя: иначе застрявшая новинка не попала бы ни в
+     * воскресную сводку, ни в верх ленты.
+     */
+    firstSeenAt?: string;
+    /** false — фото облаку не отдадут (сайт через mini): не тратим время, их принесёт mini. */
+    cloudPhotos?: boolean;
+  } = {},
 ): Promise<{ referenceId: string; created: boolean; photos: number }> {
   const normalized = normalizeProductUrl(record.url);
   const region = regionFromUrl(record.url);
@@ -161,14 +181,14 @@ async function createFromRecord(
   const referenceId = String(inserted.id);
   const base = { reference_id: referenceId, method, source_url: record.url, observed_at: now, created_by: "crawler" };
   const observations: Array<Record<string, unknown>> = [
-    { ...base, group_kind: "novelty", metric: "first_seen", value_text: now, status: "observed" },
+    { ...base, group_kind: "novelty", metric: "first_seen", value_text: options.firstSeenAt ?? now, status: "observed" },
   ];
   if (record.reviews != null) observations.push({ ...base, group_kind: "retail", metric: "reviews_count", value_num: record.reviews, unit: "отзывов", status: "observed" });
   if (record.rating != null && record.reviews) observations.push({ ...base, group_kind: "retail", metric: "rating", value_num: record.rating, status: "observed" });
   await db.from("assortment_observations").insert(observations);
 
   const images: ImageBytes[] = [];
-  for (const url of record.images) {
+  for (const url of options.cloudPhotos === false ? [] : record.images) {
     if (Date.now() > deadline) break;
     const image = await remoteImage(url);
     if (image) images.push(image);
@@ -189,7 +209,7 @@ async function processSnapshot(
   churnGuard = false,
 ): Promise<IngestResult> {
   const records = (preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
-  return ingestRecords(db, source, snapshot, records, deadline, { quiet, churnGuard });
+  return ingestRecords(db, source, snapshot, records, deadline, { quiet, churnGuard, drainOrphans: snapshot.kind === "dataset" });
 }
 
 export interface IngestResult {
@@ -217,13 +237,21 @@ export async function ingestRecords(
     churnGuard?: boolean;
     /** Кто вообще может быть новинкой (Lime — новые по карте сайта); остальное невиданное ложится базой. */
     freshOnly?: Set<string>;
+    /** false — сайт не пускает облако (магазины через mini): фото принесёт mini. */
+    cloudPhotos?: boolean;
+    /**
+     * Разбирать застрявшие новинки прошлых сборов — только где раздел берётся
+     * целиком (готовые наборы, сайты РФ). Выдача поиска ASOS и раздела H&M сама
+     * обрезана: «невиданное» там — не обязательно новое, хвост не разбираем.
+     */
+    drainOrphans?: boolean;
   } = {},
 ): Promise<IngestResult> {
   const quiet = Boolean(options.quiet);
   const churnGuard = Boolean(options.churnGuard);
   const records = uniqueRecords(mapped);
   const relevant = records.filter((r) => classifyItem(asCatalogItem(r), [target.direction]) === target.direction);
-  const known = await knownIds(db, source.sourceId, target.direction);
+  const { known, orphans } = await knownIds(db, source.sourceId, target.direction);
   const plan = crawlPlan(known, relevant.map(asCatalogItem));
   const fresh = new Set(plan.fresh.map((i) => i.sourceItemId).filter((id) => !options.freshOnly || options.freshOnly.has(id)));
   const churn = churnGuard && !plan.baseline && !quiet && looksLikeChurn(fresh.size, relevant.length);
@@ -243,16 +271,27 @@ export async function ingestRecords(
   await upsertSourceItems(db, updates);
   let added = 0;
   const missingPhotos: IngestResult["missingPhotos"] = [];
-  if (!asBaseline) {
-    for (const r of relevant.filter((x) => fresh.has(x.sourceItemId))) {
+  // Первая база — находок нет. Иначе сначала застрявшие новинки прошлых сборов
+  // (даже если этот сбор лёг базой), затем свежие — если сбору верим.
+  if (!plan.baseline) {
+    const byId = new Map(relevant.map((r) => [r.sourceItemId, r]));
+    const { create, expire } = novelCandidates(relevant.map((r) => r.sourceItemId), fresh, options.drainOrphans ? orphans : new Map(), Date.now(), asBaseline);
+    if (expire.length) {
+      for (let i = 0; i < expire.length; i += 200) {
+        await db.from("assortment_source_items").update({ baseline: true }).eq("source_id", source.sourceId).in("source_item_id", expire.slice(i, i + 200));
+      }
+    }
+    for (const id of create) {
+      const r = byId.get(id);
+      if (!r) continue;
       if (added >= NEW_PER_SOURCE || Date.now() > deadline) break;
       try {
-        const created = await createFromRecord(db, source, target.direction, r, target.method, deadline);
+        const created = await createFromRecord(db, source, target.direction, r, target.method, deadline, { firstSeenAt: orphans.get(id), cloudPhotos: options.cloudPhotos });
         await db.from("assortment_source_items").update({ reference_id: created.referenceId }).eq("source_id", source.sourceId).eq("source_item_id", r.sourceItemId);
         if (created.created) added += 1;
         if (created.created && created.photos === 0 && r.images.length > 0) missingPhotos.push({ referenceId: created.referenceId, urls: r.images });
       } catch {
-        // одна запись не легла — остальные идут; эта останется в очереди без reference_id
+        // одна запись не легла — остальные идут; эта останется сиротой и пойдёт первой в следующий сбор
       }
     }
   }

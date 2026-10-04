@@ -309,3 +309,34 @@ export function uniqueRecords(records: MappedRecord[]): MappedRecord[] {
 export function asCatalogItem(record: MappedRecord): CatalogItem {
   return { sourceItemId: record.sourceItemId, handle: record.url, title: record.title, productType: record.category, tags: [], publishedAt: null };
 }
+
+/** Новинка, застрявшая без находки дольше этого, — уже не новинка: уходит в базу (каталог брендов). */
+export const ORPHAN_DAYS = 30;
+
+/**
+ * Сироты раньше этой даты — хвосты старых ошибок (база по источнику до #1420,
+ * пересборка Zara до предохранителя #1440), а не новинки: в базу, не в ленту.
+ */
+export const ORPHANS_SINCE = Date.parse("2026-10-04T00:00:00Z");
+
+/**
+ * Кого превращать в находки в этом сборе. «Сироты» — новинки прошлых сборов,
+ * не ставшие находками (потолок 15 за прогон, сбой записи): их новизну уже
+ * подтвердил прошлый доверенный сбор, поэтому они идут первыми (от старых к
+ * новым) и даже тогда, когда этот сбор лёг базой. Затем — свежие. Сироты
+ * старше 30 дней и записанные до ORPHANS_SINCE — в базу.
+ */
+export function novelCandidates(
+  relevantIds: string[],
+  fresh: Set<string>,
+  orphans: Map<string, string>,
+  nowMs: number,
+  quiet: boolean,
+): { create: string[]; expire: string[] } {
+  const cutoff = Math.max(nowMs - ORPHAN_DAYS * 24 * 3600 * 1000, ORPHANS_SINCE);
+  const present = relevantIds.filter((id) => orphans.has(id));
+  const expire = present.filter((id) => Date.parse(orphans.get(id)!) < cutoff);
+  const live = present.filter((id) => !expire.includes(id)).sort((a, b) => Date.parse(orphans.get(a)!) - Date.parse(orphans.get(b)!));
+  const freshIds = quiet ? [] : relevantIds.filter((id) => fresh.has(id) && !orphans.has(id));
+  return { create: [...new Set([...live, ...freshIds])], expire };
+}
