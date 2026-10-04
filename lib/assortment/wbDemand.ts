@@ -29,6 +29,8 @@ export interface SubjectDemand {
   total: number;
   totalBefore: number;
   growthPct: number | null;
+  /** Есть ли у предмета прошлый срез: без него «новый в топе» писать нельзя — сравнивать не с чем. */
+  compared: boolean;
 }
 
 export interface DemandResult {
@@ -40,6 +42,29 @@ export interface DemandResult {
 }
 
 const norm = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+
+/**
+ * Рост по запросам не показываем, если «до» меньше этого: проценты на малых
+ * числах («кейп» 60 → 300 = «+400%») шум, а не тенденция.
+ */
+export const MIN_GROWTH_BASE = 1000;
+
+/** Для сравнения слов: дефис = пробел, повторные буквы схлопнуты («шоппер» = «шопер»). */
+const fold = (value: string) => norm(value).replace(/-/g, " ").replace(/\s+/g, " ").replace(/(.)\1+/g, "$1");
+
+/**
+ * Совпадение запроса с термином: каждое слово термина есть в запросе; кроме того,
+ * слитное и раздельное написание считаются одним («кросс-боди» = «кроссбоди» = «кросс боди»).
+ */
+export function termMatcher(term: string): (queryWord: string) => boolean {
+  const folded = fold(term);
+  const words = folded.split(" ").filter(Boolean);
+  const compact = folded.replace(/ /g, "");
+  return (queryWord) => {
+    const text = fold(queryWord);
+    return words.every((w) => text.includes(w)) || (compact.length >= 4 && text.replace(/ /g, "").includes(compact));
+  };
+}
 
 /** Слово для поиска: «Запрос на WB» из признаков, иначе силуэт сумки или подтип куртки. */
 export function demandTerm(direction: AssortmentDirection, attributes: Record<string, string | null>): string | null {
@@ -57,11 +82,8 @@ export function growth(now: number, before: number): number | null {
 
 /** Запросы предмета, где встречается каждое слово термина. */
 export function matchDemand(subject: string, term: string, current: KeywordRow[], previous: KeywordRow[]): SubjectDemand {
-  const words = norm(term).split(" ").filter(Boolean);
-  const hits = (row: KeywordRow) => {
-    const text = norm(row.word);
-    return words.every((w) => text.includes(w));
-  };
+  const matches = termMatcher(term);
+  const hits = (row: KeywordRow) => matches(row.word);
   const before = new Map(previous.filter(hits).map((r) => [norm(r.word), r.wb_count]));
   const queries = current.filter(hits)
     .map((r) => ({ word: r.word, now: Number(r.wb_count) || 0, before: before.get(norm(r.word)) ?? null, items: r.items_count != null ? Number(r.items_count) : null }))
@@ -72,7 +94,11 @@ export function matchDemand(subject: string, term: string, current: KeywordRow[]
   const both = queries.filter((q) => q.before != null);
   const totalBefore = both.reduce((s, q) => s + (q.before ?? 0), 0);
   const totalNowBoth = both.reduce((s, q) => s + q.now, 0);
-  return { subject, queries: queries.slice(0, 8), total, totalBefore, growthPct: growth(totalNowBoth, totalBefore) };
+  return {
+    subject, queries: queries.slice(0, 8), total, totalBefore,
+    growthPct: totalBefore >= MIN_GROWTH_BASE ? growth(totalNowBoth, totalBefore) : null,
+    compared: previous.length > 0,
+  };
 }
 
 export interface SubjectKeywords {
@@ -88,11 +114,8 @@ export interface SubjectKeywords {
  */
 export function demandForTerm(term: string, subjects: SubjectKeywords[]): DemandResult {
   const perSubject = subjects.map((s) => matchDemand(s.subject, term, s.current, s.previous)).filter((s) => s.queries.length > 0).sort((a, b) => b.total - a.total);
-  const words = norm(term).split(" ").filter(Boolean);
-  const hits = (row: KeywordRow) => {
-    const text = norm(row.word);
-    return words.every((w) => text.includes(w));
-  };
+  const matches = termMatcher(term);
+  const hits = (row: KeywordRow) => matches(row.word);
   const now = new Map<string, number>();
   const before = new Map<string, number>();
   for (const s of subjects) {
@@ -110,7 +133,7 @@ export function demandForTerm(term: string, subjects: SubjectKeywords[]): Demand
       beforeBoth += prev;
     }
   }
-  return { term, subjects: perSubject, total, growthPct: growth(nowBoth, beforeBoth), found: perSubject.length > 0 };
+  return { term, subjects: perSubject, total, growthPct: beforeBoth >= MIN_GROWTH_BASE ? growth(nowBoth, beforeBoth) : null, found: perSubject.length > 0 };
 }
 
 export const DIRECTION_WB_BRANDS: Record<AssortmentDirection, string[]> = {

@@ -9,7 +9,9 @@ import {
   addDays, compactQueries, daysBetween, demandByForm, distinctQueries, expandQueries, pickPrevious, planSnapshots,
   subjectsFor, WB_SUBJECTS, type SnapshotTask, type SubjectQueries,
 } from "../lib/assortment/wbQueries.ts";
-import { collectWbQuerySnapshots } from "../lib/assortment/wbQueriesStore.ts";
+import { collectWbQuerySnapshots, readDemandSubjects } from "../lib/assortment/wbQueriesStore.ts";
+import { excludedReason, splitLagging } from "../lib/assortment/wbQueries.ts";
+import { formOf } from "../lib/assortment/forms.ts";
 
 /** Спрос WB как собственная история: сжатие ответа MPSTATS, план недельных снимков, спрос по формам. */
 
@@ -151,7 +153,8 @@ test("Спрос и каталоги: две доли среди названн�
   ];
   const supply = buildFormsReport("jackets", models);
   const demand = demandByForm("jackets", [subject("Куртки", [["куртка", 50000], ["бомбер", 1000], ["пуховик", 3000]])])!;
-  const rows = compareSupplyDemand(supply, demand);
+  const { rows, basis } = compareSupplyDemand(supply, demand);
+  assert.equal(basis, "normalized", "источник с каталогом от 10 моделей есть");
   assert.deepEqual(rows.map((r) => r.key), ["puffer", "bomber"], "по числу поисков; общая «куртка» не входит");
   const puffer = rows[0];
   assert.equal(puffer.supplyShare, 25, "2 из 8 моделей с названной формой");
@@ -235,4 +238,156 @@ test("Крон сборщика: ровно один, GET-роут сущест�
   assert.match(route, /checkCronAuth/, "крон-роут за секретом");
   assert.match(route, /maxDuration = 300/, "ответ MPSTATS — до 100 с, по умолчанию функция не дождётся");
   assert.match(route, /subjectKeywordsFull/);
+});
+
+// --- по независимому ревью ---
+
+test("План: очередь сдвигается с каждым окном — предмет, что не снимается, не стоит в голове каждого запуска", () => {
+  const order = (rotation: number) => planSnapshots([], TODAY, WB_SUBJECTS, rotation).filter((t) => t.kind === "current").map((t) => t.subject.id);
+  assert.equal(order(0)[0], 168);
+  assert.equal(order(1)[0], 172, "следующее окно начинается со второго предмета");
+  assert.equal(order(WB_SUBJECTS.length)[0], 168, "по кругу");
+  assert.deepEqual([...order(3)].sort((a, b) => a - b), [...order(0)].sort((a, b) => a - b), "тот же набор предметов");
+  const rotated = planSnapshots([], TODAY, WB_SUBJECTS, 4);
+  assert.equal(rotated.findIndex((t) => t.kind === "baseline"), WB_SUBJECTS.length, "свежие срезы по-прежнему раньше «прошлых»");
+  assert.equal(planSnapshots([], TODAY, subjectsFor("jackets").slice(0, 1), 5).length, 2, "один предмет — нечего сдвигать");
+  const baselines = (rotation: number) => planSnapshots([], TODAY, WB_SUBJECTS, rotation).filter((t) => t.kind === "baseline").map((t) => t.subject.id);
+  assert.equal(baselines(0)[0], 168);
+  assert.equal(baselines(1)[0], 172, "«прошлые» срезы сдвигаются так же: baseline-пустышка не стоит в голове вечно");
+});
+
+test("«Прошлый» срез: при равном расстоянии (28 и 32 дня) берётся более ранний, порядок строк не влияет", () => {
+  const a = [{ windowTo: "2026-09-07" }, { windowTo: "2026-09-03" }];
+  assert.equal(pickPrevious(a, TODAY)?.windowTo, "2026-09-03");
+  assert.equal(pickPrevious([...a].reverse(), TODAY)?.windowTo, "2026-09-03");
+});
+
+test("Отставшие предметы: свежий срез не снялся (остался месячной давности) — в расчёт не входит и это видно", () => {
+  const fresh = subject("Куртки", [["бомбер женский", 5000], ["пуховик зимний", 3000]]);
+  const stale = { ...subject("Ветровки", [["ветровка женская", 9000]]), windowTo: "2026-09-05" };
+  const split = splitLagging([fresh, stale]);
+  assert.deepEqual(split.fresh.map((s) => s.subject), ["Куртки"]);
+  assert.deepEqual(split.lagging.map((s) => s.subject), ["Ветровки"]);
+  assert.equal(splitLagging([{ windowTo: "2026-10-05" }, { windowTo: "2026-09-21" }]).lagging.length, 0, "14 дней — ещё допустимо");
+  const report = demandByForm("jackets", [fresh, stale])!;
+  assert.deepEqual(report.subjects, ["Куртки"]);
+  assert.deepEqual(report.laggingSubjects, ["Ветровки"]);
+  assert.equal(report.subjectsTotal, 9, "предметов раздела всего");
+  assert.equal(report.rows.some((r) => r.key === "windbreaker"), false, "частотность отставшего предмета в доли не попала");
+  assert.equal(report.windowTo, TODAY);
+});
+
+test("Исключение из спроса: мужское, детское и не по теме — по причинам; запрос без пола остаётся", () => {
+  assert.equal(excludedReason("пуховик мужской зимний"), "men");
+  assert.equal(excludedReason("куртка для мальчика"), "kids");
+  assert.equal(excludedReason("рюкзак школьный"), "kids");
+  assert.equal(excludedReason("жилет сигнальный"), "other");
+  assert.equal(excludedReason("рюкзак для ноутбука"), "other");
+  assert.equal(excludedReason("рюкзак туристический"), "other");
+  for (const keep of ["куртка женская", "бомбер", "сумка шопер", "куртка унисекс", "пуховик"]) assert.equal(excludedReason(keep), null, keep);
+  const report = demandByForm("jackets", [subject("Куртки", [["бомбер женский", 4000], ["бомбер мужской", 3000], ["куртка детская", 2000], ["жилет сигнальный", 500], ["пуховик", 1000]])])!;
+  assert.deepEqual(report.excluded, { queries: 3, searches: 5500, men: 3000, kids: 2000, other: 500 });
+  assert.equal(report.searches, 5000, "в расчёте только оставшиеся");
+  assert.equal(report.queries, 2);
+  assert.equal(report.rows.find((r) => r.key === "bomber")?.searches, 4000, "мужской бомбер в долю не попал");
+});
+
+test("Словарь форм на поисковых запросах: ткань — не форма, написания «кросс боди», «на пояс», «аляска», «дутик» и др.", () => {
+  const jacket = (q: string) => formOf("jackets", q)?.key ?? null;
+  const bag = (q: string) => formOf("bags", q)?.key ?? null;
+  assert.equal(jacket("плащевая куртка женская"), "jacket", "плащёвка — ткань, а не тренч");
+  assert.equal(jacket("куртка плащевка"), "jacket");
+  assert.equal(jacket("плащ женский"), "trench");
+  assert.equal(jacket("аляска женская"), "parka");
+  assert.equal(jacket("дутик женский"), "puffer");
+  assert.equal(jacket("штормовка"), "windbreaker");
+  assert.equal(jacket("шубка из эко меха"), "fur");
+  assert.equal(jacket("курточка осенняя"), "jacket");
+  assert.equal(bag("сумка кросс боди женская"), "crossbody");
+  assert.equal(bag("сумка кроссбоди"), "crossbody");
+  assert.equal(bag("сумка на пояс"), "belt_bag");
+  assert.equal(bag("сумка женская"), "bag", "общая сумка остаётся общей");
+});
+
+test("Доля каталогов — средняя по источникам: большой каталог не решает за остальные (бомбер у Zara)", () => {
+  const models = [
+    // Zara: 350 моделей, 60 бомберов и 120 пуховиков → бомбер 33% её названных
+    ...Array.from({ length: 60 }, (_, i) => ({ sourceId: "S001", sourceName: "Zara", title: `Bomber jacket ${i}` })),
+    ...Array.from({ length: 120 }, (_, i) => ({ sourceId: "S001", sourceName: "Zara", title: `Puffer jacket ${i}` })),
+    // ещё три источника по 20 моделей с пуховиками и без бомберов
+    ...["S002", "S003", "S004"].flatMap((id) => Array.from({ length: 20 }, (_, i) => ({ sourceId: id, sourceName: id, title: `Puffer jacket ${i}` }))),
+  ];
+  const supply = buildFormsReport("jackets", models);
+  const demand = demandByForm("jackets", [subject("Куртки", [["бомбер женский", 1000], ["пуховик зимний", 9000]])])!;
+  const { rows, basis, sourcesInAverage } = compareSupplyDemand(supply, demand);
+  assert.equal(basis, "normalized");
+  assert.equal(sourcesInAverage, 4);
+  const bomber = rows.find((r) => r.key === "bomber")!;
+  assert.equal(bomber.models, 60);
+  assert.equal(bomber.supplyShare, 8.3, "(60/180 + 0 + 0 + 0) / 4 = 8,3%, а не сырые 60/240 = 25%");
+  assert.equal(bomber.demandShare, 10);
+  assert.equal(bomber.gap, 1.7);
+  assert.equal(bomber.concentrated, true, "все бомберы у одного источника — подсказка в экране");
+  const raw = models.length > 0 ? 60 / 300 * 100 : 0;
+  assert.ok(bomber.supplyShare !== null && bomber.supplyShare < raw, "нормированная доля меньше сырой");
+});
+
+test("Доля каталогов: ни у одного источника нет достаточного каталога — остаётся сырая доля, с пометкой basis", () => {
+  const models = [{ sourceId: "S1", sourceName: "A", title: "Bomber jacket 1" }, { sourceId: "S1", sourceName: "A", title: "Puffer jacket 1" }];
+  const { rows, basis } = compareSupplyDemand(buildFormsReport("jackets", models), demandByForm("jackets", [subject("Куртки", [["бомбер", 1000]])])!);
+  assert.equal(basis, "raw");
+  assert.equal(rows.find((r) => r.key === "bomber")?.supplyShare, 50);
+});
+
+// --- чтение срезов из базы ---
+
+function metaDb(metas: Array<{ subject_id: number; subject_name: string; window_from: string; window_to: string }>, queries: Record<string, unknown>) {
+  const filters: string[] = [];
+  const db = {
+    from: () => {
+      const state = { table: "meta", subject: 0, dates: [] as string[] };
+      const q: Record<string, unknown> = {
+        select: (cols: string) => { state.table = cols.includes("subject_name") ? "meta" : "rows"; return q; },
+        eq: (c: string, v: unknown) => { if (c === "subject_id") state.subject = Number(v); return q; },
+        gte: (c: string, v: unknown) => { filters.push(`${c}>=${v}`); return q; },
+        in: (_c: string, v: string[]) => { state.dates = v; return q; },
+        then: (resolve: (v: unknown) => unknown) => {
+          if (state.table === "meta") return Promise.resolve({ data: metas, error: null }).then(resolve);
+          return Promise.resolve({ data: state.dates.map((d) => ({ window_to: d, queries: queries[`${state.subject}:${d}`] ?? [] })), error: null }).then(resolve);
+        },
+      };
+      return q;
+    },
+  };
+  return { db: db as never, filters };
+}
+
+test("Чтение срезов: свежий и «прошлый» по каждому предмету, пустой срез не считается, читаем не глубже полугода", async () => {
+  const metas = [
+    { subject_id: 168, subject_name: "Куртки", window_from: "2026-09-06", window_to: "2026-10-05" },
+    { subject_id: 168, subject_name: "Куртки", window_from: "2026-08-07", window_to: "2026-09-05" },
+    { subject_id: 172, subject_name: "Ветровки", window_from: "2026-09-06", window_to: "2026-10-05" },
+    { subject_id: 1635, subject_name: "Бомберы", window_from: "2026-09-06", window_to: "2026-10-05" },
+  ];
+  const { db, filters } = metaDb(metas, {
+    "168:2026-10-05": [["бомбер", 100, null]], "168:2026-09-05": [["бомбер", 80, null]],
+    "172:2026-10-05": [["ветровка", 50, null]],
+    "1635:2026-10-05": [],
+  });
+  const out = await readDemandSubjects(db, "jackets", new Date("2026-10-06T10:00:00Z"));
+  assert.deepEqual(out.map((s) => s.subject), ["Куртки", "Ветровки"], "Бомберы с пустым срезом отброшены");
+  assert.equal(out[0].previousTo, "2026-09-05");
+  assert.deepEqual(out[0].previous, [{ word: "бомбер", wb_count: 80, items_count: undefined }]);
+  assert.equal(out[1].previousTo, null);
+  assert.equal(out[1].previous, null);
+  assert.deepEqual(filters, ["window_to>=2026-05-09"], "150 дней назад от московской даты");
+});
+
+test("Сборщик: крон-роут держит запас по времени и сдвигает очередь", () => {
+  const route = readFileSync(join(import.meta.dirname, "..", "app/api/sync/assortment-wb-queries/route.ts"), "utf8");
+  assert.match(route, /START_BUDGET_MS = 60_000/, "60 + 171 (две попытки по 85 с) + квота 10 с — в пределах 300 с");
+  assert.match(route, /planSnapshots\(existing, latestClosed, subjects, Math\.floor\(/, "очередь сдвигается");
+  assert.match(route, /f\.kind === "current"/, "сбой одного «прошлого» среза не краснит журнал");
+  const client = readFileSync(join(import.meta.dirname, "..", "lib/mpstats/client.ts"), "utf8");
+  assert.match(client, /timeoutMs: 85_000, attempts: 2/);
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { demandForTerm, demandTerm, growth, matchDemand, ownSubjects } from "../lib/assortment/wbDemand.ts";
+import { demandForTerm, demandTerm, growth, matchDemand, ownSubjects, termMatcher } from "../lib/assortment/wbDemand.ts";
 
 /** Спрос на WB по слову модели: частотность MPSTATS, без цен и выручки. */
 
@@ -36,13 +36,13 @@ test("Совпадение по всем словам, ё = е; рост — т�
 
 test("Сводка по предметам: пустые отбрасываются, сильнейший сверху, «не найдено» честно", () => {
   const subjects = [
-    { subject: "Сумки", current: [{ word: "хобо", wb_count: 100 }], previous: [{ word: "хобо", wb_count: 50 }] },
+    { subject: "Сумки", current: [{ word: "хобо", wb_count: 2000 }], previous: [{ word: "хобо", wb_count: 1000 }] },
     { subject: "Сумки кросс-боди", current: [{ word: "хобо кросс боди", wb_count: 300 }], previous: [] },
     { subject: "Рюкзаки", current: [{ word: "рюкзак", wb_count: 999 }], previous: [] },
   ];
   const result = demandForTerm("хобо", subjects);
-  assert.deepEqual(result.subjects.map((s) => s.subject), ["Сумки кросс-боди", "Сумки"]);
-  assert.equal(result.total, 400);
+  assert.deepEqual(result.subjects.map((s) => s.subject), ["Сумки", "Сумки кросс-боди"], "сильнейший сверху");
+  assert.equal(result.total, 2300);
   assert.equal(result.growthPct, 100);
   assert.equal(demandForTerm("хобо", [subjects[2]]).found, false);
   assert.equal(growth(10, 0), null);
@@ -70,4 +70,32 @@ test("Предметы — только своих брендов раздела
   ];
   assert.deepEqual(ownSubjects(rows, "bags"), [{ subject: "Сумки", nmId: 1, count: 2 }, { subject: "Сумки кросс-боди", nmId: 3, count: 1 }]);
   assert.deepEqual(ownSubjects(rows, "jackets").map((s) => s.subject), ["Куртки", "Пуховики"]);
+});
+
+test("Термин находит слитное и раздельное написание: «кросс-боди» = «кроссбоди» = «кросс боди», «шопер» = «шоппер»", () => {
+  const crossbody = termMatcher("кросс-боди");
+  for (const q of ["сумка кросс боди женская", "сумка кроссбоди", "Кросс-боди сумка", "сумка кросс-боди"]) assert.equal(crossbody(q), true, q);
+  assert.equal(termMatcher("кроссбоди")("сумка кросс боди женская"), true, "слитный термин находит раздельный запрос");
+  assert.equal(crossbody("сумка тоут"), false);
+  assert.equal(termMatcher("шопер")("сумка шоппер"), true);
+  assert.equal(termMatcher("шоппер")("шопер женский"), true);
+  assert.equal(termMatcher("сумка хобо")("хобо сумка женская"), true, "слова в любом порядке");
+  assert.equal(termMatcher("бомбер")("пуховик"), false);
+  assert.equal(termMatcher("до")("кроссбоди"), false, "короткий слитный термин не ищется по склейке (иначе ловит что угодно)");
+});
+
+test("Рост по слову: при малой базе процент не показываем («кейп» 60 → 300 — шум, а не +400%)", () => {
+  const small = demandForTerm("кейп", [{ subject: "Куртки", current: [{ word: "кейп женский", wb_count: 300 }], previous: [{ word: "кейп женский", wb_count: 60 }] }]);
+  assert.equal(small.found, true);
+  assert.equal(small.growthPct, null);
+  const enough = demandForTerm("кейп", [{ subject: "Куртки", current: [{ word: "кейп женский", wb_count: 3000 }], previous: [{ word: "кейп женский", wb_count: 2000 }] }]);
+  assert.equal(enough.growthPct, 50);
+});
+
+test("«Новый в топе» — только у предмета, у которого есть прошлый срез", () => {
+  const withPrev = matchDemand("Куртки", "бомбер", [{ word: "бомбер женский", wb_count: 100 }], [{ word: "парка", wb_count: 5 }]);
+  const noPrev = matchDemand("Бомберы", "бомбер", [{ word: "бомбер женский", wb_count: 100 }], []);
+  assert.equal(withPrev.compared, true);
+  assert.equal(noPrev.compared, false, "предмет без прошлого среза: сравнивать не с чем");
+  assert.equal(noPrev.queries[0].before, null);
 });

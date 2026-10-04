@@ -1,6 +1,8 @@
 import type { AssortmentDirection } from "./constants";
 import { normalizeTitle, rulesFor } from "./forms";
-import { growth, type KeywordRow } from "./wbDemand";
+import { growth, MIN_GROWTH_BASE, type KeywordRow } from "./wbDemand";
+
+export { MIN_GROWTH_BASE };
 
 /**
  * Спрос WB как собственная история (движок тенденций, этап 4). Чистые функции.
@@ -54,8 +56,6 @@ export const WINDOW_DAYS = 30;
 export const PREVIOUS_TARGET_GAP = 30;
 export const PREVIOUS_MIN_GAP = 20;
 export const PREVIOUS_MAX_GAP = 45;
-/** Рост по форме не показываем, если «до» меньше — доли процента на малых числах врут. */
-export const MIN_GROWTH_BASE = 1000;
 
 /** [запрос, wb_count, items_count|null] — компактная запись, чтобы снимок был в десятки КБ. */
 export type QueryTriple = [string, number, number | null];
@@ -124,7 +124,7 @@ const task = (subject: WbSubject, kind: SnapshotTask["kind"], windowTo: string):
  * квота и время сборщика уходят в первую очередь на то, что видно на экране.
  * Ничего не пора снимать — пустой список: прогон по крону тогда не трогает MPSTATS.
  */
-export function planSnapshots(existing: SnapshotMeta[], latestClosed: string, subjects: readonly WbSubject[] = WB_SUBJECTS): SnapshotTask[] {
+export function planSnapshots(existing: SnapshotMeta[], latestClosed: string, subjects: readonly WbSubject[] = WB_SUBJECTS, rotation = 0): SnapshotTask[] {
   const current: SnapshotTask[] = [];
   const baseline: SnapshotTask[] = [];
   for (const subject of subjects) {
@@ -139,7 +139,18 @@ export function planSnapshots(existing: SnapshotMeta[], latestClosed: string, su
     });
     if (!hasPrevious) baseline.push(task(subject, "baseline", addDays(reference, -PREVIOUS_TARGET_GAP)));
   }
-  return [...current, ...baseline];
+  return [...rotate(current, rotation), ...rotate(baseline, rotation)];
+}
+
+/**
+ * Сдвиг очереди: если предмет в голове плана стабильно не снимается (ответ дольше
+ * таймаута, пустой список), следующий запуск начинает не с него — иначе он съедает
+ * время и квоту каждого запуска, а остальные предметы не снимаются вовсе.
+ */
+function rotate<T>(list: T[], by: number): T[] {
+  if (list.length < 2) return list;
+  const shift = ((Math.floor(by) % list.length) + list.length) % list.length;
+  return [...list.slice(shift), ...list.slice(0, shift)];
 }
 
 /** «Прошлый» срез к свежему: ближе всего к 30 дням назад в допуске; нет — null (роста не показываем). */
@@ -150,12 +161,31 @@ export function pickPrevious<T extends { windowTo: string }>(snapshots: T[], cur
     const gap = daysBetween(snap.windowTo, currentTo);
     if (gap < PREVIOUS_MIN_GAP || gap > PREVIOUS_MAX_GAP) continue;
     const distance = Math.abs(gap - PREVIOUS_TARGET_GAP);
-    if (distance < bestDistance) {
+    // При равном расстоянии (28 и 32 дня) берём более ранний срез: ответ не зависит от порядка строк в базе.
+    if (distance < bestDistance || (distance === bestDistance && best && snap.windowTo < best.windowTo)) {
       best = snap;
       bestDistance = distance;
     }
   }
   return best;
+}
+
+/** Свежий срез предмета старше самого свежего по разделу больше чем на столько дней — в расчёт не берём. */
+export const MAX_SUBJECT_LAG_DAYS = 14;
+
+/**
+ * Предмет, у которого свежий срез не снялся (остался только «прошлый» месячной
+ * давности), не должен выглядеть свежим: доли форм считались бы по смеси дат.
+ */
+export function isLagging(newestTo: string, subjectTo: string): boolean {
+  return daysBetween(subjectTo, newestTo) > MAX_SUBJECT_LAG_DAYS;
+}
+
+/** Предметы с актуальным срезом и отставшие (их срез старше самого свежего больше чем на две недели). */
+export function splitLagging<T extends { windowTo: string }>(subjects: T[]): { fresh: T[]; lagging: T[] } {
+  const newest = subjects.map((s) => s.windowTo).sort().reverse()[0];
+  if (!newest) return { fresh: [], lagging: [] };
+  return { fresh: subjects.filter((s) => !isLagging(newest, s.windowTo)), lagging: subjects.filter((s) => isLagging(newest, s.windowTo)) };
 }
 
 // ---------------------------------------------------------------------------
@@ -206,6 +236,25 @@ export function distinctQueries(subjects: Array<Pick<SubjectQueries, "current" |
   return out;
 }
 
+export type ExcludedReason = "men" | "kids" | "other";
+
+const MEN_RE = /мужск|мужчин|для муж\b/;
+const KIDS_RE = /детск|для дет|мальчик|девоч|подрост|школьн|малыш|новорожден/;
+const OTHER_RE = /сигнальн|спасательн|для собак|для кошек|собак|ноутбук|туристическ|тактическ|военн|охотнич|рыболовн|строительн/;
+
+/**
+ * Какие запросы к нашему спросу не относятся: каталоги и профили — женские, и
+ * «пуховик мужской» или «рюкзак школьный» не показывает, какую форму искать
+ * женщинам. Запрос без указания пола считается нейтральным и остаётся.
+ */
+export function excludedReason(word: string): ExcludedReason | null {
+  const text = normalizeTitle(word);
+  if (MEN_RE.test(text)) return "men";
+  if (KIDS_RE.test(text)) return "kids";
+  if (OTHER_RE.test(text)) return "other";
+  return null;
+}
+
 export interface FormDemandRow {
   key: string;
   label: string;
@@ -226,8 +275,15 @@ export interface FormDemandReport {
   windowTo: string;
   previousTo: string | null;
   subjects: string[];
+  /** Сколько предметов раздела в расчёте и сколько их всего: срез мог не сняться по части предметов. */
+  subjectsTotal: number;
+  /** Предметы, чей срез старше остальных больше чем на две недели, — исключены из расчёта. */
+  laggingSubjects: string[];
+  /** Запросы в расчёте (без исключённых). */
   queries: number;
   searches: number;
+  /** Исключено из расчёта: мужское, детское, не по теме (частотность). */
+  excluded: { queries: number; searches: number; men: number; kids: number; other: number };
   /** Частотность запросов с конкретной формой. */
   named: number;
   rows: FormDemandRow[];
@@ -237,15 +293,25 @@ export interface FormDemandReport {
 
 const pct1 = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 1000) / 10 : 0);
 
-export function demandByForm(direction: AssortmentDirection, subjects: SubjectQueries[]): FormDemandReport | null {
-  if (!subjects.length) return null;
+export function demandByForm(direction: AssortmentDirection, allSubjects: SubjectQueries[], subjectsTotal = subjectsFor(direction).length): FormDemandReport | null {
+  if (!allSubjects.length) return null;
+  const { fresh: subjects, lagging } = splitLagging(allSubjects);
+  const laggingSubjects = lagging.map((s) => s.subject);
   const rules = rulesFor(direction);
   const distinct = distinctQueries(subjects);
+  const excluded = { queries: 0, searches: 0, men: 0, kids: 0, other: 0 };
   const acc = new Map<string, { queries: number; searches: number; now: number; before: number; list: Array<{ word: string; searches: number }> }>();
   let searches = 0;
   let unnamedQueries = 0;
   let unnamedSearches = 0;
   for (const entry of distinct.values()) {
+    const reason = excludedReason(entry.word);
+    if (reason) {
+      excluded.queries += 1;
+      excluded.searches += entry.now;
+      excluded[reason] += entry.now;
+      continue;
+    }
     searches += entry.now;
     const text = normalizeTitle(entry.word);
     const rule = rules.find((r) => r.re.test(text));
@@ -289,8 +355,11 @@ export function demandByForm(direction: AssortmentDirection, subjects: SubjectQu
     windowTo,
     previousTo: previousTos[0] ?? null,
     subjects: subjects.map((s) => s.subject),
-    queries: distinct.size,
+    subjectsTotal,
+    laggingSubjects,
+    queries: distinct.size - excluded.queries,
     searches,
+    excluded,
     named,
     rows,
     unnamed: { queries: unnamedQueries, searches: unnamedSearches },

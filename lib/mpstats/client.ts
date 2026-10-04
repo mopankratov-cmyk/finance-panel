@@ -210,7 +210,7 @@ export async function subjectKeywordsId(subjectId: number | string, d1: string, 
  */
 export async function subjectKeywordsFull(subjectId: number | string, d1: string, d2: string): Promise<NicheQuery[]> {
   if (!hasMpstats()) throw new MpstatsApiError("MPSTATS не подключён", "auth");
-  const data = await post<{ queries?: NicheQuery[] }>("/subject/keywords", `d1=${d1}&d2=${d2}&path=${subjectId}`, {}, 0, { timeoutMs: 100_000, attempts: 2 });
+  const data = await post<{ queries?: NicheQuery[] }>("/subject/keywords", `d1=${d1}&d2=${d2}&path=${subjectId}`, {}, 0, { timeoutMs: 85_000, attempts: 2 });
   return (data?.queries ?? []).map((r) => ({ word: r.word, wb_count: Number(r.wb_count ?? 0), items_count: r.items_count }));
 }
 

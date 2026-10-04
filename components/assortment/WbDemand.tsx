@@ -71,7 +71,7 @@ export function WbDemand({ direction, attributes }: { direction: AssortmentDirec
                       <span className="text-slate-800">{q.word}</span>
                       <span className="text-xs text-slate-500">
                         {num(q.now)}
-                        {q.before !== null ? ` · было ${num(q.before)}` : state.demand.previousTo ? " · новый в топе" : ""}
+                        {q.before !== null ? ` · было ${num(q.before)}` : s.compared ? " · новый в топе" : ""}
                         {q.items !== null && ` · товаров ${num(q.items)}`}
                       </span>
                     </li>

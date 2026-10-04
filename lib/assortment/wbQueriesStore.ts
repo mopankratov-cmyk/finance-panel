@@ -1,8 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssortmentDirection } from "./constants";
+import { moscowToday } from "@/lib/sync/moscowDay";
 import { isMissingAssortmentSchema } from "./errors";
 import {
-  compactQueries, expandQueries, pickPrevious, subjectsFor,
+  addDays, compactQueries, expandQueries, pickPrevious, subjectsFor,
   type SnapshotMeta, type SnapshotTask, type SubjectQueries,
 } from "./wbQueries";
 import type { KeywordRow } from "./wbDemand";
@@ -16,13 +17,21 @@ import type { KeywordRow } from "./wbDemand";
 
 const TABLE = "assortment_wb_query_snapshot";
 
+/** Глубина чтения срезов, дней: «прошлый» срез — ~30, с запасом на пропуски сбора. */
+const READ_DAYS = 150;
+
+function sinceDate(now: Date | number): string {
+  return addDays(moscowToday(now), -READ_DAYS);
+}
+
 function tableMissing(error: { code?: string | null; message?: string | null }): boolean {
   return error.code === "42P01" || error.code === "PGRST205" || isMissingAssortmentSchema(new Error(error.message ?? ""));
 }
 
 /** Какие срезы уже есть; null — таблицы ещё нет. */
-export async function loadSnapshotMeta(db: SupabaseClient): Promise<SnapshotMeta[] | null> {
-  const { data, error } = await db.from(TABLE).select("subject_id,window_to");
+export async function loadSnapshotMeta(db: SupabaseClient, now: Date | number = new Date()): Promise<SnapshotMeta[] | null> {
+  // Старше полугода срезы плану не нужны; без границы выборка упрётся в 1000 строк PostgREST.
+  const { data, error } = await db.from(TABLE).select("subject_id,window_to").gte("window_to", sinceDate(now));
   if (error) {
     if (tableMissing(error)) return null;
     throw new Error(error.message);
@@ -108,9 +117,9 @@ interface MetaRow {
 }
 
 /** Свежие и «прошлые» срезы предметов раздела; пусто, если сборщик ещё ничего не снял. */
-export async function readDemandSubjects(db: SupabaseClient, direction: AssortmentDirection): Promise<SubjectQueries[]> {
+export async function readDemandSubjects(db: SupabaseClient, direction: AssortmentDirection, now: Date | number = new Date()): Promise<SubjectQueries[]> {
   const known = subjectsFor(direction);
-  const { data, error } = await db.from(TABLE).select("subject_id,subject_name,window_from,window_to").eq("direction", direction);
+  const { data, error } = await db.from(TABLE).select("subject_id,subject_name,window_from,window_to").eq("direction", direction).gte("window_to", sinceDate(now));
   if (error) {
     if (tableMissing(error)) return [];
     throw new Error(error.message);
