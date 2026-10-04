@@ -345,6 +345,26 @@ async function zaraRowsWithoutPhotos(db: SupabaseClient): Promise<Array<{ source
     .filter((r) => !Array.isArray(r.image_urls) || r.image_urls.every((u) => typeof u !== "string" || isDeadImageUrl(u)));
 }
 
+/**
+ * Снять мёртвые ссылки Zara у строк каталога, где живых нет: иначе модель
+ * числится «с фото», а показывает заглушку. Бесплатно — без выборки.
+ */
+export async function clearDeadZaraPhotos(db: SupabaseClient): Promise<number> {
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await db.from("assortment_source_items").select("source_item_id,image_urls")
+    .eq("source_id", ZARA_PHOTOS.sourceId).not("image_urls", "is", null).gte("last_seen_at", since)
+    .order("source_item_id", { ascending: true }).limit(1000);
+  if (error) {
+    if (isMissingColumnError(error)) return 0;
+    throw new Error(error.message);
+  }
+  const dead = ((data ?? []) as Array<{ source_item_id: string; image_urls: unknown }>)
+    .filter((r) => Array.isArray(r.image_urls) && r.image_urls.length > 0 && r.image_urls.every((u) => typeof u !== "string" || isDeadImageUrl(u)))
+    .map((r) => ({ source_id: ZARA_PHOTOS.sourceId, source_item_id: r.source_item_id, image_urls: null }));
+  await upsertSourceItems(db, dead);
+  return dead.length;
+}
+
 /** Выборка фото Zara из «Zara.com products» по моделям без фото; null — просить нечего. */
 export async function triggerZaraPhotos(db: SupabaseClient): Promise<PhotoPending | null> {
   const codes = [...new Set((await zaraRowsWithoutPhotos(db)).map((r) => zaraModelCode(r.handle)).filter((c): c is string => Boolean(c)))];
@@ -453,6 +473,7 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
             photoLeft.push(pending);
           }
         }
+        await clearDeadZaraPhotos(db).catch((e) => { errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`); return 0; });
         if ((result.collected ?? 0) > 0 && photoLeft.length === 0) {
           const next = await triggerZaraPhotos(db).catch((e) => { errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`); return null; });
           if (next) photoLeft = [next];
@@ -511,6 +532,8 @@ export async function requestZaraPhotos(db: SupabaseClient, deadline: number): P
     result.photos = (result.photos ?? 0) + applied;
     result.detail.push(`${pending.snapshotId}: записей ${rows.length}, фото получили ${applied}`);
   }
+  const cleared = await clearDeadZaraPhotos(db);
+  if (cleared) result.detail.push(`мёртвых ссылок снято: ${cleared}`);
   // Новую выборку — только если ничего не ждало: применили готовую — на этом всё (повторный вызов не покупает ещё одну).
   if (waiting.length === 0) {
     const next = await triggerZaraPhotos(db);

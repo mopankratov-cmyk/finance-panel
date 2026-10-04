@@ -267,3 +267,11 @@ test("Выборка фото не зависает: пустая — приме
   assert.match(crawl, /const failed = e instanceof BrightDataError && e\.status !== undefined && e\.status < 500;/);
   assert.match(crawl, /result\.detail\.push\(/, "в ответе ручного запуска — номер выборки и её состояние");
 });
+
+test("Мёртвые ссылки Zara снимаются сразу при работе с фото, без платной выборки", () => {
+  const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(crawl, /export async function clearDeadZaraPhotos/);
+  assert.match(crawl, /r\.image_urls\.every\(\(u\) => typeof u !== "string" \|\| isDeadImageUrl\(u\)\)\)\s*\.map\(\(r\) => \(\{ source_id: ZARA_PHOTOS\.sourceId, source_item_id: r\.source_item_id, image_urls: null \}\)\)/, "снимаем только строки, где живых нет");
+  assert.match(crawl, /const cleared = await clearDeadZaraPhotos\(db\);/, "ручной запуск");
+  assert.match(crawl, /await clearDeadZaraPhotos\(db\)\.catch/, "плановый сбор");
+});
