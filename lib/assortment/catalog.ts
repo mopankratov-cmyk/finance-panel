@@ -72,6 +72,8 @@ export function thumbUrl(raw: string, width = THUMB_WIDTH): string | null {
     return null;
   }
   if (url.protocol !== "https:") return null;
+  // Снимки Zara старого вида удалены (404) — не показываем битую картинку, карточка скажет «фото будет позже».
+  if (url.hostname === "static.zara.net" && url.pathname.startsWith("/photos/")) return null;
   const host = url.hostname;
   const w = String(width);
   if (host === "cdn.shopify.com" || url.pathname.includes("/cdn/shop/") || url.pathname.startsWith("/s/files/")) url.searchParams.set("width", w);

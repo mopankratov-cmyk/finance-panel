@@ -12,6 +12,8 @@ test("Поля каталога: только непустое, только htt
   assert.deepEqual(catalogFields({}), {});
   assert.deepEqual(catalogFields({ badges: [], badgesKnown: true }), { badges: null }, "Shopify прочитал теги — «меток нет» пишется, снятая метка снимается");
   assert.deepEqual(catalogFields({ badges: [] }), {}, "Bright Data и сайты РФ меток не читают — не трогаем");
+  assert.deepEqual(catalogFields({ images: [], imagesKnown: true }), { image_urls: null }, "полная запись набора без живых фото — ссылки снимаются");
+  assert.deepEqual(catalogFields({ images: [] }), {}, "обход без фото не затирает собранные");
 });
 
 test("Пачки с одинаковым набором полей: строка без фото не попадёт в пачку с фото", () => {

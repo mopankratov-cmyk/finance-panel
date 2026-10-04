@@ -215,3 +215,13 @@ test("Сироты разбираются только у полных разд�
   const ru = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");
   assert.equal((ru.match(/cloudPhotos: shop\.via !== "mini", drainOrphans: true/g) ?? []).length, 2);
 });
+
+test("Мёртвые снимки Zara (`/photos///2023…`, 404) не сохраняются; живые `/assets/public/…` — да", () => {
+  const record = mapRecord({
+    product_id: 1, product_name: "PADDED BOMBER JACKET", url: "https://www.zara.com/us/en/padded-bomber-jacket-p00695071.html", product_family: "CAZADORA",
+    image: ["https://static.zara.net/photos///2024/V/0/1/p/8073/205/800/12/w/1920/8073205800_1_1_1.jpg?ts=1", "https://static.zara.net/assets/public/7337/1758/0eec4845bc39/4d0836546ed2/00695071800-e1/00695071800-e1.jpg?ts=2&w=1920"],
+  })!;
+  assert.deepEqual(record.images, ["https://static.zara.net/assets/public/7337/1758/0eec4845bc39/4d0836546ed2/00695071800-e1/00695071800-e1.jpg?ts=2&w=1920"]);
+  const source = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
+  assert.match(source, /imagesKnown: snapshot\.kind === "dataset"/, "у готовых наборов «фото нет» снимает старые мёртвые ссылки");
+});

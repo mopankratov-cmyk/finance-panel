@@ -252,10 +252,19 @@ export function hiResImageUrl(raw: string): string {
   }
 }
 
+/**
+ * Мёртвые ссылки на фото: Zara убрала снимки старого вида
+ * `static.zara.net/photos///2023…` (04.10 — 404 с любого адреса и с Referer),
+ * а набор Bright Data «Zara - Products» их хранит. Живые — `/assets/public/…`.
+ */
+export function isDeadImageUrl(url: string): boolean {
+  return /^https?:\/\/static\.zara\.net\/photos\//.test(url);
+}
+
 function imageList(record: Record<string, unknown>): string[] {
   const out: string[] = [];
   const push = (value: unknown) => {
-    if (typeof value === "string" && /^https?:\/\//.test(value)) {
+    if (typeof value === "string" && /^https?:\/\//.test(value) && !isDeadImageUrl(value)) {
       const url = hiResImageUrl(value);
       if (!out.includes(url)) out.push(url);
     }

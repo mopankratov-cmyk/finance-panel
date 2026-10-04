@@ -216,7 +216,7 @@ async function processSnapshot(
   churnGuard = false,
 ): Promise<IngestResult> {
   const records = (preloaded ?? await downloadRecords(snapshot.snapshotId)).map(mapRecord).filter((r): r is MappedRecord => Boolean(r));
-  return ingestRecords(db, source, snapshot, records, deadline, { quiet, churnGuard, drainOrphans: snapshot.kind === "dataset" });
+  return ingestRecords(db, source, snapshot, records, deadline, { quiet, churnGuard, drainOrphans: snapshot.kind === "dataset", imagesKnown: snapshot.kind === "dataset" });
 }
 
 export interface IngestResult {
@@ -246,6 +246,8 @@ export async function ingestRecords(
     freshOnly?: Set<string>;
     /** false — сайт не пускает облако (магазины через mini): фото принесёт mini. */
     cloudPhotos?: boolean;
+    /** Записи полные (готовый набор): нет фото — снимаем старые ссылки. */
+    imagesKnown?: boolean;
     /**
      * Разбирать застрявшие новинки прошлых сборов — только где раздел берётся
      * целиком (готовые наборы, сайты РФ). Выдача поиска ASOS и раздела H&M сама
@@ -269,7 +271,7 @@ export async function ingestRecords(
   for (const r of relevant) {
     const row = {
       source_id: source.sourceId, source_item_id: r.sourceItemId, handle: r.url, title: r.title, product_type: r.category, direction: target.direction, last_seen_at: now,
-      ...catalogFields({ images: r.images, brand: r.brand ?? source.name }),
+      ...catalogFields({ images: r.images, imagesKnown: options.imagesKnown, brand: r.brand ?? source.name }),
     };
     if (plan.baseline || !known.has(r.sourceItemId)) inserts.push({ ...row, baseline: asBaseline || !fresh.has(r.sourceItemId) });
     else updates.push(row);

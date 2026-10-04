@@ -24,10 +24,18 @@ const FRESH_BATCH = 1000;
  * обход Shopify читает теги целиком, и «меток нет» — это знание (пишем null,
  * иначе снятая брендом «новинка» висела бы вечно).
  */
-export function catalogFields(input: { images?: string[] | null; brand?: string | null; badges?: CatalogBadge[] | null; badgesKnown?: boolean }): Record<string, unknown> {
+export function catalogFields(input: {
+  images?: string[] | null;
+  /** Запись полная (готовый набор): «фото нет» — знание, старые ссылки снимаются (мёртвые Zara). */
+  imagesKnown?: boolean;
+  brand?: string | null;
+  badges?: CatalogBadge[] | null;
+  badgesKnown?: boolean;
+}): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   const images = [...new Set((input.images ?? []).filter((u) => typeof u === "string" && /^https:\/\//.test(u)))].slice(0, MAX_IMAGE_URLS);
   if (images.length) out.image_urls = images;
+  else if (input.imagesKnown) out.image_urls = null;
   const brand = input.brand?.trim();
   if (brand) out.brand = brand.slice(0, 120);
   const badges = [...new Set(input.badges ?? [])];
