@@ -25,7 +25,7 @@
 
 import type { MappedRecord } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
-import { parseAskent, parseBefree, parseLoveRepublic, parsePompa, parseSela, parseZarina } from "./ruShopParsers";
+import { parseAskent, parseBefree, parseLoveRepublic, parsePompa, parseSela, parseUshatava, parseZarina } from "./ruShopParsers";
 
 export interface RuShopSection {
   direction: AssortmentDirection;
@@ -33,7 +33,7 @@ export interface RuShopSection {
   slug: string;
 }
 
-export type RuShopParser = "lime" | "befree" | "love_republic" | "zarina" | "sela" | "pompa" | "askent";
+export type RuShopParser = "lime" | "befree" | "love_republic" | "zarina" | "sela" | "pompa" | "askent" | "ushatava";
 
 export interface RuShop {
   sourceId: string;
@@ -202,6 +202,26 @@ export const RU_SHOPS: RuShop[] = [
     method: "crawl_askent",
     accessNote: "Обход каталога сумок askent.ru пн и чт (загрузчик на mini); robots.txt разрешает /cat/ и ?PAGEN_3=; цены не читаем",
   },
+  {
+    // Маленький бренд, но новинки размечает сам; разделы отдаются сервером целиком на одной странице.
+    sourceId: "S137",
+    name: "Ushatava",
+    brand: "Ushatava",
+    catalogBase: "https://www.ushatava.ru/store/w/",
+    pageParam: "PAGEN_3",
+    parser: "ushatava",
+    via: "mini",
+    cardHref: "/store/w/[a-z0-9/_-]+-\\d+/",
+    imageHosts: ["www.ushatava.ru"],
+    sections: [
+      { direction: "bags", slug: "sumki/" },
+      { direction: "jackets", slug: "catalog/verkhnyaya-odezhda/" },
+    ],
+    weekdaysUtc: [2, 5],
+    maxPages: 3,
+    method: "crawl_ushatava",
+    accessNote: "Обход каталога ushatava.ru вт и пт (загрузчик на mini); robots.txt разрешает каталог; цены не читаем",
+  },
 ];
 
 export function ruShopPageUrl(shop: Pick<RuShop, "catalogBase" | "pageParam">, slug: string, page: number): string {
@@ -218,6 +238,7 @@ export function parseShopCatalog(shop: Pick<RuShop, "parser">, html: string): Ma
     case "sela": return parseSela(html);
     case "pompa": return parsePompa(html);
     case "askent": return parseAskent(html);
+    case "ushatava": return parseUshatava(html);
   }
 }
 

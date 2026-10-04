@@ -115,6 +115,7 @@ test("Каталоги российских брендов: модель без 
     ["S134", "sela.html", /^SL\d+$/, /^https:\/\/www\.sela\.ru\/eshop\//],
     ["S135", "pompa.html", /^\d{5,}$/, /^https:\/\/www\.pompa\.ru\/catalog\/product\/\d+\/$/],
     ["S136", "askent.html", /^S\.\d+$/, /^https:\/\/askent\.ru\/cat\/sumki\/sumka_\d+\/$/],
+    ["S137", "ushatava.html", /^\d+$/, /^https:\/\/www\.ushatava\.ru\/store\/w\/[a-z0-9/_-]+-\d+\/$/],
   ];
   for (const [id, file, model, url] of cases) {
     const html = fixture(file);
@@ -135,7 +136,7 @@ test("Каталоги российских брендов: модель без 
 
 test("Российские магазины: свои дни, разрешённая постраничная выдача, закрытые не трогаем", () => {
   const ids = RU_SHOPS.map((s) => s.sourceId);
-  assert.deepEqual(ids, ["S130", "S131", "S132", "S133", "S134", "S135", "S136"]);
+  assert.deepEqual(ids, ["S130", "S131", "S132", "S133", "S134", "S135", "S136", "S137"]);
   assert.equal(ruShopPageUrl(shop("S135"), "outerwear/", 2), "https://www.pompa.ru/catalog/outerwear/?PAGEN_1=2");
   assert.equal(ruShopPageUrl(shop("S133"), "clothes/outwear/kurtki/", 3), "https://zarina.ru/catalog/clothes/outwear/kurtki/?page=3");
   const text = JSON.stringify(RU_SHOPS);
@@ -153,16 +154,16 @@ test("Российские магазины: свои дни, разрешённ
 });
 
 test("Сайты, не пускающие облако, приносит загрузчик на mini; план — по дням магазина", () => {
-  assert.deepEqual(RU_SHOPS.filter((s) => s.via === "mini").map((s) => s.sourceId), ["S131", "S132", "S133", "S134", "S136"]);
+  assert.deepEqual(RU_SHOPS.filter((s) => s.via === "mini").map((s) => s.sourceId), ["S131", "S132", "S133", "S134", "S136", "S137"]);
   const tuesday = miniShopsPlan(new Date("2026-10-06T03:00:00Z"));
-  assert.deepEqual(tuesday.map((s) => s.sourceId), ["S131", "S132"]);
+  assert.deepEqual(tuesday.map((s) => s.sourceId), ["S131", "S132", "S137"]);
   assert.equal(tuesday[0].sections[0].urls[1], "https://befree.ru/zhenskaya/zen-riukzaki-i-sumki?page=2");
   assert.equal(tuesday[0].sections[0].urls.length, shop("S131").maxPages);
   assert.deepEqual(miniShopsPlan(new Date("2026-10-05T03:00:00Z")).map((s) => s.sourceId), ["S136"], "понедельник: Lime на Vercel, Askent — с mini");
-  assert.equal(miniShopsPlan(new Date("2026-10-05T03:00:00Z"), { all: true }).length, 5);
+  assert.equal(miniShopsPlan(new Date("2026-10-06T03:00:00Z"), { all: true }).length, 6);
   assert.deepEqual(miniShopsPlan(new Date("2026-10-05T03:00:00Z"), { only: "S134" }).map((s) => s.sourceId), ["S134"]);
   for (const plan of miniShopsPlan(new Date(), { all: true })) {
-    const html = fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html", S136: "askent.html" }[plan.sourceId]!);
+    const html = fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html", S136: "askent.html", S137: "ushatava.html" }[plan.sourceId]!);
     assert.ok((html.match(new RegExp(plan.cardHref, "g")) ?? []).length >= 2, `${plan.name}: адрес карточки находится`);
   }
   const store = readFileSync(join(root, "lib/assortment/ruShopsStore.ts"), "utf8");
@@ -187,7 +188,7 @@ test("Посылка загрузчика: только его магазины 
 
 test("Фото, которые облаку не отдали, приносит mini: только своему магазину и с его CDN", () => {
   for (const shop of RU_SHOPS) {
-    const records = parseShopCatalog(shop, shop.sourceId === "S130" ? PAGE : fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html", S135: "pompa.html", S136: "askent.html" }[shop.sourceId]!));
+    const records = parseShopCatalog(shop, shop.sourceId === "S130" ? PAGE : fixture({ S131: "befree.html", S132: "love-republic.html", S133: "zarina.html", S134: "sela.html", S135: "pompa.html", S136: "askent.html", S137: "ushatava.html" }[shop.sourceId]!));
     for (const r of records) assert.ok(r.images.every((src) => shop.imageHosts.includes(new URL(src).hostname)), `${shop.name}: фото ${r.images[0]} не с его CDN`);
   }
   assert.equal(miniPhotoShop("S131", "https://imgcdn.befree.ru/rest/V1/images/1280/product/images/BF1/BF1_20_1.jpg")?.name, "befree");

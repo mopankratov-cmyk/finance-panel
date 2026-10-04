@@ -56,6 +56,7 @@ const METHOD_LABEL: Record<string, string> = {
   brightdata_zara: "набор Bright Data по Zara",
   brightdata_uniqlo: "набор Bright Data по Uniqlo",
   crawl_lime: "обход каталога limestore.com",
+  crawl_ushatava: "обход каталога ushatava.ru",
   mpstats_top: "MPSTATS: топ предмета WB",
   mpstats_brand: "MPSTATS: товары бренда на WB",
   mpstats_similar: "MPSTATS + сходство по фото",

@@ -165,3 +165,37 @@ export function parseAskent(html: string, origin = "https://askent.ru"): MappedR
   }
   return out;
 }
+
+/**
+ * Ushatava (Bitrix): карточка — `<div data-product-id data-ecommerce-data-layer='{id,name,variant,price}'>`,
+ * фото — `/upload/resize_cache/…/480_636_…/….jpg` в srcset (берём превью 480).
+ * Цену из data-layer не берём. Раздел задаётся адресом каталога, а не данными
+ * карточки (там у всего category «Новинки»).
+ */
+export function parseUshatava(html: string, origin = "https://www.ushatava.ru"): MappedRecord[] {
+  const out: MappedRecord[] = [];
+  const seen = new Set<string>();
+  // Карточка начинается с data-product-id; берём кусок до следующей карточки.
+  const parts = html.split(/(?=data-product-id="\d+"\s+data-ecommerce-data-layer=)/);
+  for (const part of parts) {
+    const head = part.match(/^data-product-id="(\d+)"\s+data-ecommerce-data-layer="([^"]+)"/);
+    if (!head) continue;
+    const [, id, rawLayer] = head;
+    if (seen.has(id)) continue;
+    let data: { name?: unknown } = {};
+    try {
+      data = JSON.parse(rawLayer.replace(/&quot;/g, "\"").replace(/&amp;/g, "&").replace(/\\\//g, "/"));
+    } catch {
+      data = {};
+    }
+    const link = part.match(/<a[^>]+href="(\/store\/w\/[a-z0-9/_-]+-\d+\/)"/i)?.[1];
+    // Превью 480 px, иначе — первый /upload/ файл карточки.
+    const preview = part.match(/(\/upload\/resize_cache\/[^"' ]*\/480_636_[^"' ]+\.(?:jpe?g|png|webp))/i)?.[1]
+      ?? part.match(/(\/upload\/[^"' ]+\.(?:jpe?g|png|webp))/i)?.[1];
+    const title = decodeHtml(typeof data.name === "string" ? data.name : "");
+    if (!link || !title) continue;
+    seen.add(id);
+    out.push(record(id, `${origin}${link}`, title, "Ushatava", preview ? [`${origin}${preview}`] : []));
+  }
+  return out;
+}
