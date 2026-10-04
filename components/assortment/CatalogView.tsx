@@ -297,7 +297,7 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
                 <div className="flex flex-1 flex-col gap-1.5 px-3 pb-3 pt-2">
                   <div className="break-anywhere line-clamp-2 text-sm font-medium leading-5 text-slate-900">{card.title}</div>
                   <div className="text-xs text-slate-500">{card.brand} · в каталоге с {day(card.firstSeenAt)}</div>
-                  <div className="mt-auto flex flex-wrap gap-2 pt-1">
+                  <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                     {card.referenceId && (
                       <Link href={`${ASSORTMENT_BASE_PATH}/${direction}/${card.referenceId}`} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-violet-50 px-3 text-xs font-medium text-violet-800 hover:bg-violet-100">
                         {isWork(card.referenceStatus) && <Check className="h-3.5 w-3.5" />}
@@ -309,16 +309,19 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
                         {busy.has(cardKey(card)) ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Отобрать
                       </button>
                     )}
-                    {!card.referenceId && !ready.photosPending && (
-                      <button type="button" onClick={() => setHidden(card, true)} disabled={busy.has(cardKey(card))} aria-label={`Не интересно: ${card.title}`} className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60">
-                        <EyeOff className="h-3.5 w-3.5" /> Не интересно
-                      </button>
-                    )}
-                    {card.productUrl && (
-                      <a href={card.productUrl} target="_blank" rel="noopener noreferrer" className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs text-slate-700 hover:bg-slate-50">
-                        <ExternalLink className="h-3.5 w-3.5" /> На сайте
-                      </a>
-                    )}
+                    {/* Второстепенное — значками в один ряд: карточка не растёт на три строки кнопок. */}
+                    <span className="flex gap-2">
+                      {!card.referenceId && !ready.photosPending && (
+                        <button type="button" onClick={() => setHidden(card, true)} disabled={busy.has(cardKey(card))} aria-label={`Не интересно: ${card.title}`} title="Не интересно" className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-60">
+                          <EyeOff className="h-4 w-4" />
+                        </button>
+                      )}
+                      {card.productUrl && (
+                        <a href={card.productUrl} target="_blank" rel="noopener noreferrer" aria-label={`На сайте бренда: ${card.title}`} title="На сайте бренда" className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50">
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
+                    </span>
                   </div>
                   {cardError?.key === cardKey(card) && <div role="alert" className="text-xs leading-5 text-red-700">{cardError.message}</div>}
                 </div>

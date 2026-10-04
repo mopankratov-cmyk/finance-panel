@@ -33,7 +33,9 @@ test("Превью ~480 px по правилам CDN; только https", () =>
   assert.equal(thumbUrl("https://image.uniqlo.com/UQ/ST3/eu/a.jpg?width=1200"), "https://image.uniqlo.com/UQ/ST3/eu/a.jpg?width=480");
   assert.equal(thumbUrl("https://a.cdn.lime-shine.com/p/x.jpeg?w=1200&q=85"), "https://a.cdn.lime-shine.com/p/x.jpeg?w=480&q=85");
   assert.equal(thumbUrl("https://imgcdn.befree.ru/rest/V1/images/1280/product/images/BF1/BF1_20_1.jpg"), "https://imgcdn.befree.ru/rest/V1/images/640/product/images/BF1/BF1_20_1.jpg");
-  assert.equal(thumbUrl("https://imgcdn.zarina.ru/upload/images/zr261/thumb/900_9999/a.webp"), "https://imgcdn.zarina.ru/upload/images/zr261/thumb/600_9999/a.webp");
+  assert.equal(thumbUrl("https://imgcdn.zarina.ru/upload/images/zr261/thumb/900_9999/a.webp"), "https://imgcdn.zarina.ru/upload/images/zr261/thumb/900_9999/a.webp", "у ZARINA размера 600 нет (404) — как есть");
+  assert.equal(thumbUrl("https://static.zara.net/assets/public/a/b.jpg?ts=1"), "https://static.zara.net/assets/public/a/b.jpg?ts=1", "Zara без своего w — параметр вслепую не подставляем");
+  assert.equal(thumbUrl("https://static.zara.net/assets/public/a/b.jpg?ts=1&w=1126"), "https://static.zara.net/assets/public/a/b.jpg?ts=1&w=480");
   assert.equal(thumbUrl("https://imgcdn.loverepublic.ru/upload/images/64492/644920065_22_4.jpg"), "https://imgcdn.loverepublic.ru/upload/images/64492/thumb/600_9999/644920065_22_4.jpg");
   assert.equal(thumbUrl("https://cdn01.sela.ru/wa-data/public/shop/products/44/98/219844/images/982985/982985.671x936@2x.jpg"), "https://cdn01.sela.ru/wa-data/public/shop/products/44/98/219844/images/982985/982985.671x936.jpg");
   assert.equal(thumbUrl("https://askent.ru/upload/resize_cache/iblock/254/900_1095_1/a.webp"), "https://askent.ru/upload/resize_cache/iblock/254/900_1095_1/a.webp", "незнакомый CDN — как есть");

@@ -79,11 +79,13 @@ export function thumbUrl(raw: string, width = THUMB_WIDTH): string | null {
   else if (host === "images.asos-media.com") return `${url.origin}${url.pathname}?$n_${w}w$&wid=${w}&fit=constrain`;
   else if (host === "image.hm.com" || host.endsWith(".hm.com")) url.searchParams.set("imwidth", w);
   else if (host === "image.uniqlo.com") url.searchParams.set("width", w);
-  else if (host === "static.zara.net") url.searchParams.set("w", w);
+  // Zara: только если размер уже задан в адресе — подставлять параметр вслепую не будем.
+  else if (host === "static.zara.net") { if (url.searchParams.has("w")) url.searchParams.set("w", w); }
   else if (host === "a.cdn.lime-shine.com") url.searchParams.set("w", w);
   else if (host === "imgcdn.befree.ru") url.pathname = url.pathname.replace(/\/images\/\d+\//, "/images/640/");
-  // Love Republic и ZARINA (одна платформа) отдают превью /thumb/600_9999/ — их сайты сами так грузят сетку.
-  else if (host === "imgcdn.loverepublic.ru" || host === "imgcdn.zarina.ru") {
+  // Love Republic отдаёт превью /thumb/600_9999/ — его сайт сам так грузит сетку. У ZARINA такого
+  // размера нет (404, 04.10: «фото не открылось» у всех курток ZARINA) — её /thumb/900_9999/ как есть.
+  else if (host === "imgcdn.loverepublic.ru") {
     url.pathname = url.pathname.includes("/thumb/")
       ? url.pathname.replace(/\/thumb\/\d+_\d+\//, "/thumb/600_9999/")
       : url.pathname.replace(/^(\/upload\/images\/[^/]+)\/([^/]+)$/, "$1/thumb/600_9999/$2");
