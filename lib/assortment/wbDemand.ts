@@ -1,11 +1,11 @@
 /**
  * Спрос на WB по модели (улучшение 2 от 01.10.2026). Чистые функции.
  *
- * Берём частотность поисковых запросов из MPSTATS по предметам СВОИХ товаров
- * раздела (сумки CLÉRIN, куртки NORVIA/HEATON) и ищем среди них запросы со
- * словом модели: «хобо», «бомбер». Только частотность и число товаров по
- * запросу — без цен и выручки (граница ТЗ). MPSTATS — оценка: годится для
- * направления, а не для абсолютных чисел.
+ * Частотность поисковых запросов WB (MPSTATS) по предметам-силуэтам раздела
+ * (lib/assortment/wbQueries.ts) и поиск среди них запросов со словом модели:
+ * «хобо», «бомбер». Только частотность и число товаров по запросу — без цен и
+ * выручки (граница ТЗ). MPSTATS — оценка: годится для направления, а не для
+ * абсолютных чисел; wb_count — снимок на дату, а не сумма за период.
  */
 
 import type { AssortmentDirection } from "./constants";
@@ -75,12 +75,42 @@ export function matchDemand(subject: string, term: string, current: KeywordRow[]
   return { subject, queries: queries.slice(0, 8), total, totalBefore, growthPct: growth(totalNowBoth, totalBefore) };
 }
 
-export function combineDemand(term: string, subjects: SubjectDemand[]): DemandResult {
-  const withHits = subjects.filter((s) => s.queries.length > 0).sort((a, b) => b.total - a.total);
-  const total = withHits.reduce((s, x) => s + x.total, 0);
-  const now = withHits.reduce((s, x) => s + x.queries.filter((q) => q.before != null).reduce((a, q) => a + q.now, 0), 0);
-  const before = withHits.reduce((s, x) => s + x.totalBefore, 0);
-  return { term, subjects: withHits, total, growthPct: growth(now, before), found: withHits.length > 0 };
+export interface SubjectKeywords {
+  subject: string;
+  current: KeywordRow[];
+  previous: KeywordRow[];
+}
+
+/**
+ * Спрос по слову модели в целом. Запрос, что есть сразу в нескольких предметах
+ * («бомбер женский» в «Куртках» и «Бомберах»), считается один раз: его частотность
+ * одна, и складывать её по предметам нельзя. Построчно по предметам показываем как есть.
+ */
+export function demandForTerm(term: string, subjects: SubjectKeywords[]): DemandResult {
+  const perSubject = subjects.map((s) => matchDemand(s.subject, term, s.current, s.previous)).filter((s) => s.queries.length > 0).sort((a, b) => b.total - a.total);
+  const words = norm(term).split(" ").filter(Boolean);
+  const hits = (row: KeywordRow) => {
+    const text = norm(row.word);
+    return words.every((w) => text.includes(w));
+  };
+  const now = new Map<string, number>();
+  const before = new Map<string, number>();
+  for (const s of subjects) {
+    for (const row of s.current) if (hits(row)) now.set(norm(row.word), Math.max(now.get(norm(row.word)) ?? 0, Number(row.wb_count) || 0));
+    for (const row of s.previous) if (hits(row)) before.set(norm(row.word), Math.max(before.get(norm(row.word)) ?? 0, Number(row.wb_count) || 0));
+  }
+  let total = 0;
+  let nowBoth = 0;
+  let beforeBoth = 0;
+  for (const [word, value] of now) {
+    total += value;
+    const prev = before.get(word);
+    if (prev != null) {
+      nowBoth += value;
+      beforeBoth += prev;
+    }
+  }
+  return { term, subjects: perSubject, total, growthPct: growth(nowBoth, beforeBoth), found: perSubject.length > 0 };
 }
 
 export const DIRECTION_WB_BRANDS: Record<AssortmentDirection, string[]> = {

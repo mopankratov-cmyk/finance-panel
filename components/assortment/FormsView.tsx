@@ -4,12 +4,14 @@ import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
 import type { FormRow, FormsReport } from "@/lib/assortment/forms";
+import type { FormDemandReport } from "@/lib/assortment/wbQueries";
+import { FormDemand } from "./FormDemand";
 import { plural } from "@/lib/warehouse/plural";
 
 type State =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; report: FormsReport };
+  | { kind: "ready"; report: FormsReport; demand: FormDemandReport | null };
 
 const num = (n: number) => n.toLocaleString("ru-RU");
 const pct = (n: number) => `${n.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
@@ -32,7 +34,7 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
           setState({ kind: "error", message: body?.error || `Формы не загрузились (${response.status})` });
           return;
         }
-        setState({ kind: "ready", report: body.report as FormsReport });
+        setState({ kind: "ready", report: body.report as FormsReport, demand: (body.demand as FormDemandReport | null) ?? null });
       })
       .catch(() => {
         if (!cancelled) setState({ kind: "error", message: "Нет связи с сервером" });
@@ -49,11 +51,11 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>;
   }
 
-  return <FormsReportView report={state.report} />;
+  return <FormsReportView report={state.report} demand={state.demand} />;
 }
 
 /** Отчёт по формам — отдельно от загрузки: его можно показать на любых данных. */
-export function FormsReportView({ report }: { report: FormsReport }) {
+export function FormsReportView({ report, demand = null }: { report: FormsReport; demand?: FormDemandReport | null }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [showUnrecognized, setShowUnrecognized] = useState(false);
   if (report.models === 0) {
@@ -96,6 +98,8 @@ export function FormsReportView({ report }: { report: FormsReport }) {
         </div>
         {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} />)}
       </section>
+
+      <FormDemand report={report} demand={demand} />
 
       {report.traits.length > 0 && (
         <section className="flex flex-col gap-2">

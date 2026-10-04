@@ -1,49 +1,49 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
-import { hasMpstats, itemSubject, subjectKeywordsId } from "@/lib/mpstats/client";
-import { closedMoscowDates } from "@/lib/wb/sklejki";
 import type { AssortmentDirection } from "./constants";
-import { combineDemand, matchDemand, ownSubjects, type DemandResult, type KeywordRow } from "./wbDemand";
+import { demandByForm, type FormDemandReport, type SubjectQueries } from "./wbQueries";
+import { readDemandSubjects } from "./wbQueriesStore";
+import { demandForTerm, type DemandResult } from "./wbDemand";
 
 export class DemandUnavailableError extends Error {}
 
-interface SubjectKeywords {
-  subject: string;
-  current: KeywordRow[];
-  previous: KeywordRow[];
-}
-
 /**
- * Частотность запросов предметов своих товаров раздела за 30 дней и 30 дней
- * до них. Списки запросов кэшируются на час и одни на все модели раздела —
- * квоту MPSTATS тратим на раздел, а не на каждую карточку.
+ * Срезы раздела на час в кэше Next: списки по 2 000 запросов на предмет читаются
+ * из базы ~1 МБ, а вкладка «Формы» и страница каждой модели просят их постоянно.
+ * MPSTATS при этом не вызывается вообще — его раз в неделю опрашивает сборщик.
  */
-async function subjectKeywords(db: SupabaseClient, direction: AssortmentDirection): Promise<{ period: { from: string; to: string }; subjects: SubjectKeywords[] }> {
-  const dates = closedMoscowDates(60);
-  const previous = { from: dates[0], to: dates[29] };
-  const current = { from: dates[30], to: dates[59] };
-  return loadHourlyDashboard("assortment-wb-demand", { direction, to: current.to }, async () => {
-    const { data, error } = await db.from("wb_cards").select("nm_id,brand,subject").not("subject", "is", null).limit(5000);
-    if (error) throw new Error(error.message);
-    const subjects = ownSubjects((data ?? []) as Array<{ subject: string | null; nm_id: number; brand: string | null }>, direction);
-    const out: SubjectKeywords[] = [];
-    for (const s of subjects) {
-      const resolved = await itemSubject(s.nmId);
-      if (!resolved) continue;
-      const [now, before] = await Promise.all([
-        subjectKeywordsId(resolved.id, current.from, current.to, 400),
-        subjectKeywordsId(resolved.id, previous.from, previous.to, 400),
-      ]);
-      out.push({ subject: resolved.name || s.subject, current: now, previous: before });
-    }
-    return { period: current, subjects: out };
-  });
+export async function loadDemandSubjects(db: SupabaseClient, direction: AssortmentDirection): Promise<SubjectQueries[]> {
+  return loadHourlyDashboard("assortment-wb-queries", { direction }, () => readDemandSubjects(db, direction));
 }
 
-export async function loadWbDemand(db: SupabaseClient, direction: AssortmentDirection, term: string): Promise<DemandResult & { period: { from: string; to: string }; subjectsChecked: string[] }> {
-  if (!hasMpstats()) throw new DemandUnavailableError("MPSTATS не подключён в окружении панели.");
-  const { period, subjects } = await subjectKeywords(db, direction);
-  if (subjects.length === 0) throw new DemandUnavailableError("Своих карточек раздела на WB не нашлось — не по чему определить предмет.");
-  const result = combineDemand(term, subjects.map((s) => matchDemand(s.subject, term, s.current, s.previous)));
-  return { ...result, period, subjectsChecked: subjects.map((s) => s.subject) };
+/** Спрос по формам для вкладки «Формы»; null — срезов ещё нет. Сбой чтения не роняет вкладку. */
+export async function loadFormDemand(db: SupabaseClient, direction: AssortmentDirection): Promise<FormDemandReport | null> {
+  try {
+    return demandByForm(direction, await loadDemandSubjects(db, direction));
+  } catch {
+    return null;
+  }
+}
+
+export const NO_SNAPSHOTS_MESSAGE = "Частотность запросов WB ещё не собрана: сборщик снимает её раз в неделю, первые данные появятся в течение нескольких дней после включения.";
+
+/** Спрос по слову модели. Берёт готовые срезы из базы, а не MPSTATS: прямой вызов занимает до полутора минут. */
+export async function loadWbDemand(
+  db: SupabaseClient,
+  direction: AssortmentDirection,
+  term: string,
+): Promise<DemandResult & { period: { from: string; to: string }; subjectsChecked: string[]; previousTo: string | null; queriesChecked: number }> {
+  const subjects = await loadDemandSubjects(db, direction);
+  if (subjects.length === 0) throw new DemandUnavailableError(NO_SNAPSHOTS_MESSAGE);
+  const result = demandForTerm(term, subjects.map((s) => ({ subject: s.subject, current: s.current, previous: s.previous ?? [] })));
+  const to = subjects.map((s) => s.windowTo).sort().reverse()[0];
+  const from = subjects.find((s) => s.windowTo === to)?.windowFrom ?? to;
+  const previousTo = subjects.map((s) => s.previousTo).filter((v): v is string => Boolean(v)).sort().reverse()[0] ?? null;
+  return {
+    ...result,
+    period: { from, to },
+    subjectsChecked: subjects.map((s) => s.subject),
+    previousTo,
+    queriesChecked: Math.max(...subjects.map((s) => s.current.length)),
+  };
 }

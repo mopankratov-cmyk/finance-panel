@@ -45,31 +45,39 @@ function retryDelay(res: Response, fallback: number): number {
   return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, 10_000) : fallback;
 }
 
-async function post<T>(path: string, query: string, body: unknown, revalidate = TTL): Promise<T | null> {
+interface PostOptions {
+  /** Таймаут одного запроса; по умолчанию 20 с — для обычных ответов. */
+  timeoutMs?: number;
+  /** Сколько раз пробовать; по умолчанию 4. */
+  attempts?: number;
+}
+
+async function post<T>(path: string, query: string, body: unknown, revalidate = TTL, options: PostOptions = {}): Promise<T | null> {
   const authToken = token();
   if (!authToken) return null;
   const url = `${BASE}${path}${query ? `?${query}` : ""}`;
+  const attempts = Math.max(1, options.attempts ?? 4);
   let lastError: unknown = null;
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < attempts; i++) {
     try {
       const res = await fetch(url, {
         method: "POST",
         headers: { "X-Mpstats-TOKEN": authToken, "Content-Type": "application/json" },
         body: JSON.stringify(body ?? {}),
         next: { revalidate },
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(options.timeoutMs ?? 20_000),
       });
       if (res.status === 401 || res.status === 403) {
         throw new MpstatsApiError("MPSTATS authorization failed", "auth", res.status);
       }
       if (res.status === 429) {
         lastError = new MpstatsApiError("MPSTATS: исчерпан лимит запросов", "rate_limit", 429);
-        if (i < 3) await sleep(retryDelay(res, 1500));
+        if (i < attempts - 1) await sleep(retryDelay(res, 1500));
         continue;
       }
       if (res.status === 202) {
         lastError = new MpstatsApiError("MPSTATS: данные ещё готовятся", "upstream", 202);
-        if (i < 3) await sleep(retryDelay(res, 1500));
+        if (i < attempts - 1) await sleep(retryDelay(res, 1500));
         continue;
       }
       if (!res.ok) throw new MpstatsApiError(`MPSTATS API ${res.status}`, "upstream", res.status);
@@ -78,7 +86,7 @@ async function post<T>(path: string, query: string, body: unknown, revalidate = 
       if (error instanceof MpstatsApiError
         && (error.code === "auth" || (error.upstreamStatus != null && error.upstreamStatus < 500))) throw error;
       lastError = error;
-      if (i < 3) await sleep(1200);
+      if (i < attempts - 1) await sleep(1200);
     }
   }
   if (lastError instanceof MpstatsApiError) throw lastError;
@@ -191,6 +199,39 @@ export async function subjectByDateId(subjectId: number | string, d1: string, d2
 export async function subjectKeywordsId(subjectId: number | string, d1: string, d2: string, limit = 400): Promise<NicheQuery[]> {
   const data = await post<{ queries?: NicheQuery[] }>("/subject/keywords", `d1=${d1}&d2=${d2}&path=${subjectId}`, { startRow: 0, endRow: limit });
   return (data?.queries ?? []).map((r) => ({ word: r.word, wb_count: Number(r.wb_count ?? 0), items_count: r.items_count }));
+}
+
+/**
+ * Весь список запросов предмета для недельного сборщика. MPSTATS отдаёт до 5 000
+ * запросов одним ответом ~10 МБ за 30–90 секунд и игнорирует startRow/endRow и
+ * sortModel (проверено 05.10.2026), поэтому окно запроса ждёт долго, ответ не
+ * кэшируется (больше 2 МБ Next всё равно не кладёт) и пробуем дважды, не четырежды:
+ * каждая попытка тратит квоту. В пользовательском запросе это вызывать нельзя.
+ */
+export async function subjectKeywordsFull(subjectId: number | string, d1: string, d2: string): Promise<NicheQuery[]> {
+  if (!hasMpstats()) throw new MpstatsApiError("MPSTATS не подключён", "auth");
+  const data = await post<{ queries?: NicheQuery[] }>("/subject/keywords", `d1=${d1}&d2=${d2}&path=${subjectId}`, {}, 0, { timeoutMs: 100_000, attempts: 2 });
+  return (data?.queries ?? []).map((r) => ({ word: r.word, wb_count: Number(r.wb_count ?? 0), items_count: r.items_count }));
+}
+
+/** Остаток квоты WB-запросов MPSTATS (общая на все экраны панели); null — не удалось узнать. */
+export async function mpstatsWbQuota(): Promise<{ available: number; used: number } | null> {
+  const authToken = token();
+  if (!authToken) return null;
+  try {
+    const res = await fetch("https://mpstats.io/api/user/report_api_limit", {
+      headers: { "X-Mpstats-TOKEN": authToken, "Content-Type": "application/json" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const body = (await res.json()) as { available_wb_external?: unknown; use_wb_external?: unknown };
+    const available = Number(body.available_wb_external);
+    const used = Number(body.use_wb_external);
+    return Number.isFinite(available) && Number.isFinite(used) ? { available, used } : null;
+  } catch {
+    return null;
+  }
 }
 
 // Рыночный прогноз продаж предмета. Используем только как относительный

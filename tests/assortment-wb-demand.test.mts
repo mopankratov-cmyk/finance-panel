@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { combineDemand, demandTerm, growth, matchDemand, ownSubjects } from "../lib/assortment/wbDemand.ts";
+import { demandForTerm, demandTerm, growth, matchDemand, ownSubjects } from "../lib/assortment/wbDemand.ts";
 
 /** Спрос на WB по слову модели: частотность MPSTATS, без цен и выручки. */
 
@@ -35,15 +35,28 @@ test("Совпадение по всем словам, ё = е; рост — т�
 });
 
 test("Сводка по предметам: пустые отбрасываются, сильнейший сверху, «не найдено» честно", () => {
-  const a = matchDemand("Сумки", "хобо", [{ word: "хобо", wb_count: 100 }], [{ word: "хобо", wb_count: 50 }]);
-  const b = matchDemand("Сумки кросс-боди", "хобо", [{ word: "хобо кросс боди", wb_count: 300 }], []);
-  const c = matchDemand("Рюкзаки", "хобо", [{ word: "рюкзак", wb_count: 999 }], []);
-  const result = combineDemand("хобо", [a, b, c]);
+  const subjects = [
+    { subject: "Сумки", current: [{ word: "хобо", wb_count: 100 }], previous: [{ word: "хобо", wb_count: 50 }] },
+    { subject: "Сумки кросс-боди", current: [{ word: "хобо кросс боди", wb_count: 300 }], previous: [] },
+    { subject: "Рюкзаки", current: [{ word: "рюкзак", wb_count: 999 }], previous: [] },
+  ];
+  const result = demandForTerm("хобо", subjects);
   assert.deepEqual(result.subjects.map((s) => s.subject), ["Сумки кросс-боди", "Сумки"]);
   assert.equal(result.total, 400);
   assert.equal(result.growthPct, 100);
-  assert.equal(combineDemand("хобо", [c]).found, false);
+  assert.equal(demandForTerm("хобо", [subjects[2]]).found, false);
   assert.equal(growth(10, 0), null);
+});
+
+test("Один запрос в нескольких предметах считается один раз, а не суммой", () => {
+  const subjects = [
+    { subject: "Куртки", current: [{ word: "бомбер женский", wb_count: 5000 }, { word: "бомбер", wb_count: 3000 }], previous: [{ word: "бомбер женский", wb_count: 4000 }] },
+    { subject: "Бомберы", current: [{ word: "Бомбер женский", wb_count: 5000 }], previous: [{ word: "бомбер женский", wb_count: 4000 }] },
+  ];
+  const result = demandForTerm("бомбер", subjects);
+  assert.equal(result.total, 8000, "5000 + 3000: «бомбер женский» не удваивается");
+  assert.equal(result.growthPct, 25, "5000 против 4000 — рост по запросу, что был в обоих срезах, без удвоения");
+  assert.equal(result.subjects.length, 2, "построчно по предметам запрос показан в каждом, где он есть");
 });
 
 test("Предметы — только своих брендов раздела, самые частые первыми", () => {
