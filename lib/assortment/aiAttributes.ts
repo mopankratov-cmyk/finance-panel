@@ -12,7 +12,7 @@ import type { AssortmentDirection } from "./constants";
 
 export const AI_META_KEY = "ai_meta";
 
-const HINTS: Record<string, string> = {
+export const FIELD_HINTS: Record<string, string> = {
   subtype: "бомбер, пуховик, тренч, парка, ветровка, пальто, косуха, жакет, анорак…",
   length: "укороченная, до талии, до бедра, до середины бедра, до колена, ниже колена",
   volume: "приталенная, прямая, свободная, оверсайз, объёмная",
@@ -39,7 +39,7 @@ const HINTS: Record<string, string> = {
 
 /** Системная инструкция для раздела: признаки из таблицы ТЗ, только видимое. */
 export function aiPrompt(direction: AssortmentDirection): string {
-  const fields = ATTRIBUTE_FIELDS[direction].map((f) => `- ${f.key} — ${f.label}${HINTS[f.key] ? ` (например: ${HINTS[f.key]})` : ""}`).join("\n");
+  const fields = ATTRIBUTE_FIELDS[direction].map((f) => `- ${f.key} — ${f.label}${FIELD_HINTS[f.key] ? ` (например: ${FIELD_HINTS[f.key]})` : ""}`).join("\n");
   return [
     `Ты описываешь ${direction === "bags" ? "сумку" : "куртку"} по фото товара для отдела разработки ассортимента.`,
     "Описывай только то, что видно на фото, коротко (1–5 слов), по-русски, строчными буквами.",

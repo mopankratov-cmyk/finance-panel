@@ -7,6 +7,7 @@ import type { FormRow, FormsReport } from "@/lib/assortment/forms";
 import { fitFor, type BrandProfile } from "@/lib/assortment/brandProfiles";
 import type { FormDemandReport } from "@/lib/assortment/wbQueries";
 import { FormDemand } from "./FormDemand";
+import { PhotoTraits } from "./PhotoTraits";
 import { plural } from "@/lib/warehouse/plural";
 
 type State =
@@ -52,7 +53,12 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>;
   }
 
-  return <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} />;
+  return (
+    <div className="flex flex-col gap-5">
+      <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} />
+      <PhotoTraits direction={direction} />
+    </div>
+  );
 }
 
 /** Отчёт по формам — отдельно от загрузки: его можно показать на любых данных. */

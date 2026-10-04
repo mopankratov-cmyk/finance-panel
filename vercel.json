@@ -194,6 +194,10 @@
     {
       "path": "/api/sync/assortment-wb-queries",
       "schedule": "15 */6 * * *"
+    },
+    {
+      "path": "/api/sync/assortment-catalog-ai",
+      "schedule": "40 */2 * * *"
     }
   ]
 }
