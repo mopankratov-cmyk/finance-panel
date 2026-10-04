@@ -475,15 +475,16 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
 
 /**
  * Ручной запуск фото Zara (?phase=photos): готовую выборку — применить сразу;
- * неготовую свежую — ждать; новую заказать, только если ждать нечего (не
- * покупаем те же записи дважды).
+ * неготовую свежую — ждать; новую заказать, только если до вызова ничего не
+ * ждало (не покупаем выборку на каждый вызов).
  */
 export async function requestZaraPhotos(db: SupabaseClient, deadline: number): Promise<BrightDataRunResult> {
   const source = await readSource(db, ZARA_PHOTOS.sourceId);
   const caps = (source.capabilities && typeof source.capabilities === "object" ? source.capabilities : {}) as Record<string, unknown>;
   const result: BrightDataRunResult = { sourceId: ZARA_PHOTOS.sourceId, phase: "trigger", ok: true, triggered: 0, photos: 0 };
   const left: PhotoPending[] = [];
-  for (const pending of readPhotoPending(caps)) {
+  const waiting = readPhotoPending(caps);
+  for (const pending of waiting) {
     const rows = await downloadDatasetRecords(pending.snapshotId).catch(() => undefined);
     if (rows === undefined) {
       left.push(pending);
@@ -495,7 +496,8 @@ export async function requestZaraPhotos(db: SupabaseClient, deadline: number): P
     }
     result.photos = (result.photos ?? 0) + await applyZaraPhotos(db, rows, deadline);
   }
-  if (left.length === 0) {
+  // Новую выборку — только если ничего не ждало: применили готовую — на этом всё (повторный вызов не покупает ещё одну).
+  if (waiting.length === 0) {
     const next = await triggerZaraPhotos(db);
     if (next) {
       left.push(next);

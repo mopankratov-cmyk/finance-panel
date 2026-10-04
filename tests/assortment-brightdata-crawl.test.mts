@@ -256,7 +256,7 @@ test("Фото Zara заказываются сами после сбора Zara
   assert.match(crawl, /imagesKnown: options\.imagesKnown && !livePhotos\.has\(r\.sourceItemId\)/, "еженедельный сбор не стирает живые фото из второго набора — не покупаем их заново");
   assert.match(crawl, /if \(isMissingColumnError\(error\)\) return \[\];\s*throw new Error\(error\.message\);/, "сбой базы не глотается");
   assert.match(crawl, /photoLeft\.push\(pending\);/, "сбой применения — выборка остаётся в очереди");
-  assert.match(crawl, /if \(left\.length === 0\) \{\s*const next = await triggerZaraPhotos/, "вручную — новую выборку только если ждать нечего");
+  assert.match(crawl, /if \(waiting\.length === 0\) \{\s*const next = await triggerZaraPhotos/, "вручную — новую выборку только если до вызова ничего не ждало: повторный вызов не покупает ещё одну");
   const route = readFileSync(join(root, "app/api/sync/assortment-brightdata/route.ts"), "utf8");
   assert.match(route, /get\("phase"\) === "photos"/);
 });
