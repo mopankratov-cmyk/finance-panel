@@ -227,10 +227,10 @@ export function catalogFiltersFrom(params: PageParams): CatalogFilters {
   };
 }
 
-/** Вид раздела: лента находок или «Каталоги брендов». */
-export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog";
+/** Вид раздела: лента находок, «Каталоги брендов» или «Формы» (разбор каталога по формам). */
+export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms";
 
 export function sectionViewFrom(params: PageParams): SectionView {
   const view = one(params, "view");
-  return view === "catalog" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
+  return view === "catalog" || view === "forms" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
 }

@@ -16,6 +16,7 @@ import type { FeedCard, FeedView } from "@/lib/assortment/feed";
 import { AddFindingModal } from "./AddFindingModal";
 import { DEFAULT_CATALOG_FILTERS, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
 import { CatalogView } from "./CatalogView";
+import { FormsView } from "./FormsView";
 import { FeedGrid } from "./FeedGrid";
 import { useAssortmentSources } from "./useAssortmentSources";
 
@@ -126,7 +127,7 @@ export function AssortmentSection({
   }, [direction]);
 
   useEffect(() => {
-    if (view === "catalog") return;
+    if (view === "catalog" || view === "forms") return;
     let cancelled = false;
     setFeed((prev) => (prev.kind === "ready" ? prev : { kind: "loading" }));
     fetch(`/api/assortment-development/references?direction=${direction}&view=${view}`)
@@ -153,6 +154,8 @@ export function AssortmentSection({
   const tabs: Array<{ id: SectionView; label: string }> = [
     ...VIEWS,
     ...(catalogTotal || view === "catalog" ? [{ id: "catalog" as const, label: catalogTotal ? `Каталоги брендов · ${catalogTotal.toLocaleString("ru-RU")}` : "Каталоги брендов" }] : []),
+    // «Формы» разбирают каталог — нет моделей, нет и вкладки (прячем, а не серим).
+    ...(catalogTotal || view === "forms" ? [{ id: "forms" as const, label: "Формы" }] : []),
   ];
 
   return (
@@ -201,8 +204,9 @@ export function AssortmentSection({
         </div>
 
         {view === "catalog" && <CatalogView direction={direction} initialFilters={initialCatalogFilters} />}
-        {view !== "catalog" && feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
-        {view !== "catalog" && feed.kind === "error" && (
+        {view === "forms" && <FormsView direction={direction} />}
+        {view !== "catalog" && view !== "forms" && feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
+        {view !== "catalog" && view !== "forms" && feed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{feed.message}</div>
         )}
         {actionError && (
@@ -216,7 +220,7 @@ export function AssortmentSection({
             </button>
           </p>
         ) : null}
-        {view !== "catalog" && feed.kind === "ready" && feed.cards.length > 0 && (
+        {view !== "catalog" && view !== "forms" && feed.kind === "ready" && feed.cards.length > 0 && (
           <FeedGrid
             cards={feed.cards}
             direction={direction}
@@ -227,7 +231,7 @@ export function AssortmentSection({
             onQuickAction={quickAction}
           />
         )}
-        {view !== "catalog" && feed.kind === "ready" && feed.cards.length === 0 && (
+        {view !== "catalog" && view !== "forms" && feed.kind === "ready" && feed.cards.length === 0 && (
           <section className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
             <div className="text-base font-semibold text-slate-900">Находок пока нет</div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">{current.empty}</p>
