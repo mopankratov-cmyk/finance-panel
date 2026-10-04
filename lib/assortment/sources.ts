@@ -1,6 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { parseAccessStatus, type AssortmentDirection } from "./constants";
-import { sortSources, type AssortmentSource } from "./coverage";
+import { effectiveAccessStatus, sortSources, type AssortmentSource } from "./coverage";
 import { isMissingColumnError } from "./errors";
 
 export type LoadSourcesResult =
@@ -49,5 +49,12 @@ export async function loadAssortmentSources(direction: AssortmentDirection | nul
     }
     return { ok: false, reason: "error", message: error.message };
   }
-  return { ok: true, sources: sortSources((data ?? []).map((row) => toSource(row as unknown as Record<string, unknown>))) };
+  const now = Date.now();
+  const sources = (data ?? []).map((row) => {
+    const declared = toSource(row as unknown as Record<string, unknown>);
+    const shown = effectiveAccessStatus(declared, now);
+    // Показываем статус по факту работы сборщика; запись паспорта — рядом, если отличается.
+    return shown === declared.accessStatus ? declared : { ...declared, accessStatus: shown, declaredAccessStatus: declared.accessStatus };
+  });
+  return { ok: true, sources: sortSources(sources) };
 }

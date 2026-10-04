@@ -186,6 +186,10 @@
     {
       "path": "/api/sync/assortment-ru-market",
       "schedule": "0 4 * * 1"
+    },
+    {
+      "path": "/api/sync/assortment-freshness",
+      "schedule": "30 9 * * *"
     }
   ]
 }
