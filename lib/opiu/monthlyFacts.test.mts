@@ -38,8 +38,8 @@ test("налоги и проценты из ДДС не дублируют ра�
   ], ["company-a"]);
   assert.equal(dds.taxes, undefined);
   assert.equal(dds.loan_interest, undefined);
-  assert.equal(loans.loan_interest.amount, 570);
-  assert.match(loans.loan_interest.note ?? "", /проценты и пени/i);
+  assert.equal(loans.loan_interest.amount, 720);
+  assert.match(loans.loan_interest.note ?? "", /проценты, пени, штрафы и комиссии/i);
 });
 
 test("даже пользовательская статья ДДС не подменяет расчёт налогов и процентов", () => {

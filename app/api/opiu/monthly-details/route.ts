@@ -146,8 +146,8 @@ export async function GET(request: NextRequest) {
         .from("loan_schedule_rows")
         .select("id,loan_id,due_date,amount_rub,kind,status,calendar_payment_id")
         .gte("due_date", range.from).lte("due_date", range.to)
-        .in("kind", ["interest", "penalty"]).neq("status", "cancelled")
-        .order("due_date").order("id").range(from, to), { label: "Детализация ОПиУ: проценты и пени", maxPages: 20 });
+        .in("kind", ["interest", "penalty", "fine", "fee"]).neq("status", "cancelled")
+        .order("due_date").order("id").range(from, to), { label: "Детализация ОПиУ: расходы по кредитам", maxPages: 20 });
       const loanIds = [...new Set(schedule.map((row) => String(row.loan_id ?? "")).filter(Boolean))];
       const loans = loanIds.length ? await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
         .from("loans").select("id,creditor").in("id", loanIds)
@@ -175,7 +175,10 @@ export async function GET(request: NextRequest) {
           if (seenInterestAccruals.has(key)) return [];
           seenInterestAccruals.add(key);
         }
-        const kindLabel = kind === "penalty" ? "Пени" : "Проценты";
+        const kindLabel = kind === "penalty" ? "Пени"
+          : kind === "fine" ? "Штраф"
+            : kind === "fee" ? "Комиссия"
+              : "Проценты";
         return [{
           id: `loan:${String(row.id)}`,
           source: "loan",

@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
       .select("id,loan_id,due_date,amount_rub,kind,status,calendar_payment_id")
       .gte("due_date", from)
       .lte("due_date", to)
-      .in("kind", ["interest", "penalty"])
+      .in("kind", ["interest", "penalty", "fine", "fee"])
       .neq("status", "cancelled")
       .order("due_date", { ascending: true })
       .range(pageFrom, pageTo), { label: "ОПиУ: графики кредитов", maxPages: 20 });

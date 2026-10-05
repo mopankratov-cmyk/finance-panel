@@ -116,7 +116,7 @@ export const MONTHLY_OPIU_ARTICLES: readonly MonthlyOpiuArticle[] = [
   { id: "exchange_loss", label: "Курсовая разница -", section: "below_expense", source: "ДДС", description: "Отрицательная курсовая разница" },
   { id: "taxes", label: "Налоги", section: "below_expense", source: "Учёт налогов", description: "Начисленные налоги за период" },
   { id: "depreciation", label: "Амортизация", section: "below_expense", source: "Учёт основных средств", description: "Амортизация оборудования" },
-  { id: "loan_interest", label: "Начисленные проценты и пени по займам и кредитам", section: "below_expense", source: "Учёт финансовой деятельности", description: "Проценты и пени по графикам займов и кредитов за месяц" },
+  { id: "loan_interest", label: "Проценты, пени, штрафы и комиссии по займам и кредитам", section: "below_expense", source: "Учёт финансовой деятельности", description: "Начисленные проценты, пени, штрафы и комиссии по графикам займов и кредитов за месяц" },
   { id: "vat", label: "НДС", section: "below_expense", source: "Учёт НДС", description: "Начисленный НДС" },
 ] as const;
 

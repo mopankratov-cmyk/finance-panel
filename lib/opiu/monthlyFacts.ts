@@ -111,7 +111,7 @@ export function loanCompanyByReceiptPayments(rows: readonly LoanReceiptCompanyFa
 }
 
 /**
- * ОПиУ работает по начислению: проценты и пени берём из графика за месяц,
+ * ОПиУ работает по начислению: проценты, пени, штрафы и комиссии берём из графика за месяц,
  * независимо от того, успел ли платёж перейти из плана в факт. Тело кредита
  * здесь намеренно не учитывается — это движение баланса, а не расход.
  */
@@ -122,7 +122,7 @@ export function aggregateLoanScheduleMonthlyFacts(
   const selected = new Set(companyIds);
   const seenInterestAccruals = new Set<string>();
   const relevant = rows.filter((row) => {
-    if ((row.kind !== "interest" && row.kind !== "penalty")
+    if (!(["interest", "penalty", "fine", "fee"] as const).includes(row.kind)
       || row.status === "cancelled"
       || (selected.size && (!row.companyId || !selected.has(row.companyId)))) return false;
 
@@ -143,7 +143,7 @@ export function aggregateLoanScheduleMonthlyFacts(
     loan_interest: {
       amount,
       status: "complete",
-      note: "Начисленные проценты и пени по графикам кредитов за месяц",
+      note: "Начисленные проценты, пени, штрафы и комиссии по графикам кредитов за месяц",
     },
   };
 }
