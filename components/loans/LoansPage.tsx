@@ -256,6 +256,7 @@ export function LoansPage() {
   const [wbLinkingSource, setWbLinkingSource] = useState<string | null>(null);
   const [wbIgnoringContract, setWbIgnoringContract] = useState<string | null>(null);
   const [wbAllocatingContract, setWbAllocatingContract] = useState<string | null>(null);
+  const [restoringSchedules, setRestoringSchedules] = useState(false);
   const formPanel = useRef<HTMLDivElement>(null);
   const closeForm = useCallback(() => { setModalOpen(false); setEditing(null); }, []);
   useDialogBehavior(modalOpen, closeForm, formPanel);
@@ -433,6 +434,27 @@ export function LoansPage() {
     }
     if (showResult) alert(matched ? `Сверка завершена: ${matched} платежей по графикам найдены в ДДС и отмечены оплаченными.` : "Новых совпадений с фактическими платежами ДДС не найдено.");
   }, [companyByPayment, dispatch, scheduleRows, state.loans, state.payments]);
+
+  const restoreSchedulesFromDocuments = useCallback(async () => {
+    setRestoringSchedules(true);
+    try {
+      const response = await fetch("/api/finance/loans/restore-schedules", { method: "POST" });
+      const body = await response.json().catch(() => ({})) as { repaired?: string[]; skipped?: Array<{ loan?: string; reason?: string }>; error?: string };
+      if (!response.ok) throw new Error(body.error || "Не удалось восстановить графики");
+      const [fresh, schedule] = await Promise.all([loadFinanceState(), loadLoanScheduleRows()]);
+      dispatch({ type: "LOAD", payload: fresh });
+      setScheduleRows(schedule.rows);
+      const repaired = body.repaired ?? [];
+      const skipped = body.skipped ?? [];
+      alert(repaired.length
+        ? `Графики восстановлены из исходных файлов: ${repaired.join(", ")}.${skipped.length ? ` Не изменены: ${skipped.map((item) => `${item.loan ?? "договор"} — ${item.reason ?? "нет данных"}`).join("; ")}.` : ""}`
+        : `Подходящих графиков для восстановления не найдено.${skipped.length ? ` ${skipped.map((item) => `${item.loan ?? "договор"} — ${item.reason ?? "нет данных"}`).join("; ")}.` : ""}`);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось восстановить графики");
+    } finally {
+      setRestoringSchedules(false);
+    }
+  }, [dispatch]);
 
   const reconcileWithWb = useCallback(async () => {
     setMarketplaceLoading(true);
@@ -673,6 +695,7 @@ export function LoansPage() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0"><h1 className="text-2xl font-bold text-slate-950">Кредиты и займы</h1><p className="mt-1 text-sm text-slate-500">Договоры, графики, остаток долга и ближайшие оплаты</p></div>
           <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end xl:shrink-0">
+            <button aria-label="Восстановить графики из исходных файлов" onClick={() => void restoreSchedulesFromDocuments()} disabled={restoringSchedules} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${restoringSchedules ? "animate-spin" : ""}`} /> Исправить графики</button>
             <button aria-label="Сверить платежи с ДДС" onClick={() => void reconcileWithDds(true)} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить ДДС</button>
             <button aria-label="Сверить удержания Wildberries" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${marketplaceLoading ? "animate-spin" : ""}`} /> Сверить WB</button>
             <button onClick={() => downloadSimpleXlsx(rowsForExport, `Учёт_финансовой_деятельности_${today}.xlsx`, "Учёт кредитов займов от сторонн")} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"><Download className="h-4 w-4" /> Excel</button>

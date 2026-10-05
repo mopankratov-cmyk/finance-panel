@@ -45,6 +45,23 @@ test("bank spreadsheet parser classifies and sums same-date schedule components"
   }]);
 });
 
+test("annuity spreadsheet keeps July and August as separate contractual payments", () => {
+  const result = recognizeLoanSpreadsheet([
+    ["Предварительный график платежей"],
+    ["Дата", "К оплате, RUB", "Основной долг, RUB", "Проценты, RUB", "Остаток основного долга, RUB"],
+    ["15.06.2026", "120049.86", "91134.02", "28915.84", "1441958.91"],
+    ["15.07.2026", "120049.86", "92607.36", "27442.50", "1349351.55"],
+    ["15.08.2026", "120049.86", "94104.51", "25945.35", "1255247.04"],
+    ["15.09.2026", "120049.86", "95625.87", "24423.99", "1159621.17"],
+  ]);
+  assert.deepEqual(result.schedule, [
+    { date: "2026-06-15", principal: 91134.02, interest: 28915.84, penalty: 0, fine: 0, status: "planned", balanceBefore: 1533092.93, balanceAfter: 1441958.91 },
+    { date: "2026-07-15", principal: 92607.36, interest: 27442.5, penalty: 0, fine: 0, status: "planned", balanceBefore: 1441958.91, balanceAfter: 1349351.55 },
+    { date: "2026-08-15", principal: 94104.51, interest: 25945.35, penalty: 0, fine: 0, status: "planned", balanceBefore: 1349351.55, balanceAfter: 1255247.04 },
+    { date: "2026-09-15", principal: 95625.87, interest: 24423.99, penalty: 0, fine: 0, status: "planned", balanceBefore: 1255247.04, balanceAfter: 1159621.17 },
+  ]);
+});
+
 test("Word contract schedule keeps exact principal and interest columns", () => {
   const schedule = recognizeLoanDocumentSchedule(`
     Дата Остаток ссудной задолженности Проценты Ссудная задолженность Платеж
