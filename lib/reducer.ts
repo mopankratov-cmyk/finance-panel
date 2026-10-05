@@ -1,4 +1,9 @@
 import type { FinanceAction, FinanceState } from "./types";
+import { amountWithCategoryDirection } from "./finance/categories";
+
+function normalizePaymentDirection<T extends { amount: number; category: string }>(payment: T): T {
+  return { ...payment, amount: amountWithCategoryDirection(payment.category, payment.amount) };
+}
 
 export function financeReducer(
   state: FinanceState,
@@ -26,13 +31,13 @@ export function financeReducer(
       };
 
     case "ADD_PAYMENT":
-      return { ...state, payments: [...state.payments, action.payload] };
+      return { ...state, payments: [...state.payments, normalizePaymentDirection(action.payload)] };
 
     case "UPDATE_PAYMENT":
       return {
         ...state,
         payments: state.payments.map((p) =>
-          p.id === action.payload.id ? action.payload : p,
+          p.id === action.payload.id ? normalizePaymentDirection(action.payload) : p,
         ),
       };
 
