@@ -29,13 +29,17 @@ test("налоги и проценты из ДДС не дублируют ра�
     { amount: -700, category: "Проценты по кредитам и займам", status: "done", importSource: "bank-review:loan" },
   ]);
   const loans = aggregateLoanScheduleMonthlyFacts([
-    { amount: 500, kind: "interest", status: "planned", companyId: "company-a" },
+    { amount: 500, kind: "interest", status: "planned", companyId: "company-a", loanId: "loan-a", dueDate: "2026-09-10" },
+    { amount: 500, kind: "interest", status: "paid", companyId: "company-a", loanId: "loan-a", dueDate: "2026-09-10" },
+    { amount: 70, kind: "penalty", status: "paid", companyId: "company-a", loanId: "loan-a", dueDate: "2026-09-21" },
     { amount: 100, kind: "fee", status: "paid", companyId: "company-a" },
+    { amount: 50, kind: "fine", status: "paid", companyId: "company-a" },
     { amount: 900, kind: "interest", status: "cancelled", companyId: "company-a" },
   ], ["company-a"]);
   assert.equal(dds.taxes, undefined);
   assert.equal(dds.loan_interest, undefined);
-  assert.equal(loans.loan_interest.amount, 500);
+  assert.equal(loans.loan_interest.amount, 720);
+  assert.match(loans.loan_interest.note ?? "", /проценты, пени, штрафы и комиссии/i);
 });
 
 test("даже пользовательская статья ДДС не подменяет расчёт налогов и процентов", () => {

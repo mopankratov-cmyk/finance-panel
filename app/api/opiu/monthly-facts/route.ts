@@ -177,10 +177,10 @@ export async function GET(request: NextRequest) {
   try {
     const scheduleRaw = await loadAllSupabasePages<Record<string, unknown>>((pageFrom, pageTo) => db
       .from("loan_schedule_rows")
-      .select("loan_id,amount_rub,kind,status,calendar_payment_id")
+      .select("id,loan_id,due_date,amount_rub,kind,status,calendar_payment_id")
       .gte("due_date", from)
       .lte("due_date", to)
-      .eq("kind", "interest")
+      .in("kind", ["interest", "penalty", "fine", "fee"])
       .neq("status", "cancelled")
       .order("due_date", { ascending: true })
       .range(pageFrom, pageTo), { label: "ОПиУ: графики кредитов", maxPages: 20 });
@@ -215,6 +215,9 @@ export async function GET(request: NextRequest) {
       })));
     }
     loanRows = scheduleRaw.map((row) => ({
+      id: row.id == null ? undefined : String(row.id),
+      loanId: row.loan_id == null ? undefined : String(row.loan_id),
+      dueDate: row.due_date == null ? undefined : String(row.due_date).slice(0, 10),
       amount: num(row.amount_rub),
       kind: String(row.kind) as LoanScheduleMonthlyFact["kind"],
       status: String(row.status) as LoanScheduleMonthlyFact["status"],
