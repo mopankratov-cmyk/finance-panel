@@ -9,17 +9,22 @@ import {
   aggregateWeek,
   buildCostLookup,
   findMissingCostArticles,
-  loanTransferRub,
+  loanInterestRub,
+  loanPrincipalRub,
+  NO_SHARED_LOAN,
   overlayFunnelOrders,
+  penaltyLoanRub,
   rowDate,
   sumWeeks,
   type MissingCostArticle,
   type OpiuOrder,
   type ProductCostRow,
+  type SharedLoanAmounts,
 } from "./metrics";
 import { fetchLoanTransferRows, fetchReportRows, rowsBySaleDate } from "./reportRows";
 import { fetchPaidStorageByWeek } from "./paidStorage";
 import { fetchAdsSpendBySourceByWeek } from "./adsSpendBySource";
+import { brandTaxGaps, loadBrandTaxCompanies, withWeeklyTaxes } from "./weeklyTaxes";
 
 function financeDb() {
   const db = getSupabaseAdmin();
@@ -252,17 +257,25 @@ function sharedLoanTransferByWeek(
   rawRows: WbReportRow[],
   weeks: MonthWeek[],
   brand: OpiuBrand,
-): Record<string, number> {
-  const map: Record<string, number> = {};
+): Record<string, SharedLoanAmounts> {
+  const map: Record<string, SharedLoanAmounts> = {};
   if (!brand.articlePrefixes?.length) return map;
   const siblings = siblingBrandCount(brand);
 
   for (const w of weeks) {
-    const total = rawRows.reduce((sum, row) => {
+    const total = { principal: 0, interest: 0, penalty: 0 };
+    for (const row of rawRows) {
       const date = rowDate(row);
-      return date >= w.rangeFrom && date <= w.rangeTo ? sum + loanTransferRub(row) : sum;
-    }, 0);
-    map[w.weekStart] = total / siblings;
+      if (date < w.rangeFrom || date > w.rangeTo) continue;
+      total.principal += loanPrincipalRub(row);
+      total.interest += loanInterestRub(row);
+      total.penalty += penaltyLoanRub(row);
+    }
+    map[w.weekStart] = {
+      principal: total.principal / siblings,
+      interest: total.interest / siblings,
+      penalty: total.penalty / siblings,
+    };
   }
 
   return map;
@@ -341,7 +354,7 @@ async function loadBrandMonthData(
       adStats,
       costLookup,
       warehouseByWeek[w.weekStart] ?? 0,
-      loanTransferBySaleWeek[w.weekStart] ?? 0,
+      loanTransferBySaleWeek[w.weekStart] ?? NO_SHARED_LOAN,
       paidStorageByWeek ? (paidStorageByWeek[w.weekStart] ?? 0) : null,
       adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[w.weekStart] ?? { balance: 0, bonus: 0 }) : null,
     ),
@@ -354,7 +367,7 @@ async function loadBrandMonthData(
       adStats,
       costLookup,
       warehouseByWeek[w.weekStart] ?? 0,
-      loanTransferByReportWeek[w.weekStart] ?? 0,
+      loanTransferByReportWeek[w.weekStart] ?? NO_SHARED_LOAN,
       paidStorageByWeek ? (paidStorageByWeek[w.weekStart] ?? 0) : null,
       adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[w.weekStart] ?? { balance: 0, bonus: 0 }) : null,
     ),
@@ -422,18 +435,23 @@ async function loadOpiuForWeeks(
   const dateFrom = weeks[0]!.rangeFrom;
   const dateTo = weeks[weeks.length - 1]!.rangeTo;
 
-  const perBrand = await Promise.all(
-    brands.map((brand) => loadBrandMonthData(brand, weeks, dateFrom, dateTo, refresh)),
-  );
+  const [perBrand, taxCompanies] = await Promise.all([
+    Promise.all(brands.map((brand) => loadBrandMonthData(brand, weeks, dateFrom, dateTo, refresh))),
+    loadBrandTaxCompanies(brands),
+  ]);
+  // Налог/НДС — по настройкам юрлица каждого бренда (как в месячном ОПиУ).
+  const taxSettingGaps = [...new Set(brands.flatMap((brand) => brandTaxGaps(brand, taxCompanies.get(brand.id))))];
+  const saleByBrand = perBrand.map((p, b) => withWeeklyTaxes(p.saleDateWeekMetrics, taxCompanies.get(brands[b]!.id)));
+  const reportByBrand = perBrand.map((p, b) => withWeeklyTaxes(p.reportDateWeekMetrics, taxCompanies.get(brands[b]!.id)));
 
-  const saleDateWeekMetrics = weeks.map((_, i) => sumWeeks(perBrand.map((p) => p.saleDateWeekMetrics[i]!)));
-  const reportDateWeekMetrics = weeks.map((_, i) => sumWeeks(perBrand.map((p) => p.reportDateWeekMetrics[i]!)));
+  const saleDateWeekMetrics = weeks.map((_, i) => sumWeeks(saleByBrand.map((metrics) => metrics[i]!)));
+  const reportDateWeekMetrics = weeks.map((_, i) => sumWeeks(reportByBrand.map((metrics) => metrics[i]!)));
   const warehouseByWeek = mergeWarehouseByWeek(perBrand.map((p) => p.warehouseByWeek), weeks);
   const missingCostArticlesSale = mergeMissingCostArticles(perBrand.map((p) => p.missingCostArticlesSale));
   const missingCostArticlesReport = mergeMissingCostArticles(perBrand.map((p) => p.missingCostArticlesReport));
 
-  const report = buildOpiuReportFromWeekMetrics(weeks, saleDateWeekMetrics, missingCostArticlesSale, warehouseByWeek);
-  const reportByReportDate = buildOpiuReportFromWeekMetrics(weeks, reportDateWeekMetrics, missingCostArticlesReport, warehouseByWeek);
+  const report = buildOpiuReportFromWeekMetrics(weeks, saleDateWeekMetrics, missingCostArticlesSale, warehouseByWeek, taxSettingGaps);
+  const reportByReportDate = buildOpiuReportFromWeekMetrics(weeks, reportDateWeekMetrics, missingCostArticlesReport, warehouseByWeek, taxSettingGaps);
 
   const reportRowIds = new Set<number>();
   for (const p of perBrand) for (const id of p.reportRowIds) reportRowIds.add(id);
@@ -514,7 +532,7 @@ async function loadBrandSalePeriodData(
     adStats,
     costLookup,
     0,
-    loanTransferByWeek[period.weekStart] ?? 0,
+    loanTransferByWeek[period.weekStart] ?? NO_SHARED_LOAN,
     paidStorageByWeek ? (paidStorageByWeek[period.weekStart] ?? 0) : null,
     adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[period.weekStart] ?? { balance: 0, bonus: 0 }) : null,
   );
@@ -542,13 +560,17 @@ export async function loadOpiuSalePeriod(
   const brands = resolveOpiuBrands(brandIds);
   const period = periodFromRange(dateFrom, dateTo);
 
-  const perBrand = await Promise.all(
-    brands.map((brand) => loadBrandSalePeriodData(brand, period, dateFrom, dateTo)),
-  );
+  const [perBrand, taxCompanies] = await Promise.all([
+    Promise.all(brands.map((brand) => loadBrandSalePeriodData(brand, period, dateFrom, dateTo))),
+    loadBrandTaxCompanies(brands),
+  ]);
+  const taxSettingGaps = [...new Set(brands.flatMap((brand) => brandTaxGaps(brand, taxCompanies.get(brand.id))))];
 
-  const weekMetrics = sumWeeks(perBrand.map((p) => p.weekMetrics));
+  const weekMetrics = sumWeeks(
+    perBrand.map((p, b) => withWeeklyTaxes([p.weekMetrics], taxCompanies.get(brands[b]!.id))[0]!),
+  );
   const missingCostArticles = mergeMissingCostArticles(perBrand.map((p) => p.missingCostArticles));
-  const report = buildOpiuReportFromWeekMetrics([period], [weekMetrics], missingCostArticles, {});
+  const report = buildOpiuReportFromWeekMetrics([period], [weekMetrics], missingCostArticles, {}, taxSettingGaps);
 
   return {
     report,

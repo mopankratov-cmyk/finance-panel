@@ -51,7 +51,7 @@ function valueClass(
   if (value == null || row.kind === "separator") return "text-slate-400";
   if (row.kind === "percent") return "text-slate-500";
   if (row.expense) return value > 0 ? "text-red-600" : value < 0 ? "text-emerald-600" : "text-slate-700";
-  if (row.id === "marginal" || row.id === "gross") {
+  if (row.id === "marginal" || row.id === "gross" || row.id === "net_profit") {
     if (value > 0) return "text-emerald-600";
     if (value < 0) return "text-red-600";
     return "text-slate-700";
@@ -645,6 +645,17 @@ export function OpiuPage() {
         </div>
       )}
 
+      {report && (report.taxSettingGaps?.length ?? 0) > 0 && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <p className="font-medium">
+            Налог, НДС и Чистая прибыль не рассчитаны — не заполнены налоговые настройки компании.
+          </p>
+          <p className="mt-1 text-amber-700">
+            {report.taxSettingGaps!.join("; ")}. Заполните режим налогообложения, ставку и НДС в разделе «Компании».
+          </p>
+        </div>
+      )}
+
       {report && !activeLoading && (
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
@@ -782,7 +793,7 @@ export function OpiuPage() {
                       }
     
                       const isPercent = row.kind === "percent";
-                      const isTotal = row.id === "marginal" || row.id === "gross";
+                      const isTotal = row.id === "marginal" || row.id === "gross" || row.id === "net_profit";
                       const isOtherRow = row.id === "other";
                       const isOtherChildRow = OTHER_DEDUCTIONS_CHILD_IDS.has(row.id);
                       const rowBg = isTotal
