@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { moscowToday } from "@/lib/sync/moscowDay";
-import { aiPrompt } from "./aiAttributes";
+import { catalogPrompt, catalogUserText } from "./aiAttributes";
 import { ATTRIBUTE_FIELDS } from "./attributes";
 import { CATALOG_SEEN_DAYS } from "./catalog";
 import {
@@ -199,7 +199,8 @@ export interface VisionAnswer {
   images?: number;
 }
 
-export type AskVision = (direction: AssortmentDirection, imageUrls: string[], model: string) => Promise<VisionAnswer>;
+/** Вызов ИИ: раздел, до двух фото, модель, название товара с сайта (подсказка к вопросу, необязательно). */
+export type AskVision = (direction: AssortmentDirection, imageUrls: string[], model: string, title?: string | null) => Promise<VisionAnswer>;
 
 /** Ошибки, после которых продолжать бессмысленно: ключ, деньги, лимит. */
 export class VisionStopError extends Error {
@@ -234,7 +235,7 @@ function snippet(text: unknown): string {
  * (в том числе 503 «провайдер недоступен», даже с noProvidersForModel). Остальное (фото не скачалось) — неудача модели.
  */
 export function makePolzaVision(rubPerUsd: number, fetchImpl: typeof fetch = fetch): AskVision {
-  return async (direction, imageUrls, model) => {
+  return async (direction, imageUrls, model, title) => {
     const key = polzaKey();
     const response = await fetchImpl(POLZA_URL, {
       method: "POST",
@@ -246,8 +247,8 @@ export function makePolzaVision(rubPerUsd: number, fetchImpl: typeof fetch = fet
         ...(model.startsWith("google/") ? { reasoning: { effort: "none" } } : {}),
         max_tokens: 3000,
         messages: [
-          { role: "system", content: aiPrompt(direction) },
-          { role: "user", content: [{ type: "text", text: "Опиши признаки по этим фото." }, ...imageUrls.slice(0, MAX_IMAGES).map((url) => ({ type: "image_url", image_url: { url } }))] },
+          { role: "system", content: catalogPrompt(direction) },
+          { role: "user", content: [{ type: "text", text: catalogUserText(title) }, ...imageUrls.slice(0, MAX_IMAGES).map((url) => ({ type: "image_url", image_url: { url } }))] },
         ],
       }),
       signal: AbortSignal.timeout(55_000),
@@ -293,12 +294,12 @@ export function askFor(config: CatalogAiConfig): AskVision {
 }
 
 /** Реальный вызов Anthropic: до двух фото модели по ссылкам с сайта бренда, ответ — JSON признаков. */
-export const askAnthropicVision: AskVision = async (direction, imageUrls, model) => {
+export const askAnthropicVision: AskVision = async (direction, imageUrls, model, title) => {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 45_000, maxRetries: 0 });
   const content: Anthropic.MessageCreateParams["messages"][number]["content"] = imageUrls.slice(0, MAX_IMAGES).map((url) => ({ type: "image" as const, source: { type: "url" as const, url } }));
-  content.push({ type: "text", text: "Опиши признаки по этим фото." });
+  content.push({ type: "text", text: catalogUserText(title) });
   try {
-    const response = await client.messages.create({ model, max_tokens: 700, system: aiPrompt(direction), messages: [{ role: "user", content }] });
+    const response = await client.messages.create({ model, max_tokens: 700, system: catalogPrompt(direction), messages: [{ role: "user", content }] });
     return {
       text: response.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"),
       inputTokens: response.usage.input_tokens,
@@ -543,10 +544,10 @@ interface Outcome {
 async function askWithFallback(ask: AskVision, head: CatalogHead, model: string): Promise<VisionAnswer> {
   const urls = head.imageUrls.slice(0, MAX_IMAGES);
   try {
-    return { ...(await ask(head.direction, urls, model)), images: urls.length };
+    return { ...(await ask(head.direction, urls, model, head.title)), images: urls.length };
   } catch (error) {
     if (error instanceof VisionStopError || urls.length < 2 || isTransientVisionError(error) || (error as { forbidden?: boolean })?.forbidden) throw error;
-    return { ...(await ask(head.direction, urls.slice(0, 1), model)), images: 1 };
+    return { ...(await ask(head.direction, urls.slice(0, 1), model, head.title)), images: 1 };
   }
 }
 

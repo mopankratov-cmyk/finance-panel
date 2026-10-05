@@ -19,7 +19,7 @@ import { isRuSource } from "./ruMarket";
 
 export const CATALOG_AI_KIND = "catalog_attributes";
 /** Версия вопроса и словаря признаков: поменяли — модели можно разобрать заново. */
-export const PROMPT_VERSION = "catalog-v1";
+export const PROMPT_VERSION = "catalog-v2";
 /** Дешёвая модель с картинками: каталог — тысячи вызовов, а не десятки (основная модель панели — Opus). */
 export const DEFAULT_CATALOG_MODEL = "claude-haiku-4-5-20251001";
 
