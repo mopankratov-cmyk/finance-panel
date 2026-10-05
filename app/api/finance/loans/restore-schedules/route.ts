@@ -124,24 +124,40 @@ export async function POST() {
       const existingResult = await client.from("loan_schedule_rows").select("*").eq("loan_id", loanId);
       if (existingResult.error) throw existingResult.error;
       const existing = (existingResult.data ?? []).map(scheduleRowFromDb);
-      const planned = existing.filter((row) => row.status === "planned");
-      const keep = existing.filter((row) => row.status !== "planned");
-      if (!planned.length) {
-        skipped.push({ loan: loan.creditor, reason: "нет плановых строк для безопасной замены" });
-        continue;
-      }
-      const paymentIds = planned.map((row) => row.calendarPaymentId).filter((id): id is string => Boolean(id));
-      const locationResult = paymentIds.length
-        ? await client.from("payments").select("id,account_id,company_id").in("id", paymentIds).limit(1)
+      // Частично зачтённая строка уже содержит часть факта WB. Удалять её
+      // нельзя: каскад стёр бы журнал распределения и вновь задвоил расход.
+      const existingIds = existing.map((row) => row.id);
+      const allocationsResult = existingIds.length
+        ? await client.from("loan_schedule_marketplace_allocations").select("schedule_row_id").in("schedule_row_id", existingIds)
+        : { data: [] as Array<{ schedule_row_id: string }>, error: null };
+      if (allocationsResult.error && !/does not exist|schema cache/i.test(allocationsResult.error.message)) throw allocationsResult.error;
+      const partiallyPaidIds = new Set((allocationsResult.data ?? []).map((row) => String(row.schedule_row_id)));
+      const replaceable = existing.filter((row) => row.status === "planned" && !partiallyPaidIds.has(row.id));
+      // Факты и частично закрытые строки — история, источник её не переписывает.
+      // Важно: пустой план не означает, что график нельзя восстановить. Именно
+      // этот случай раньше оставлял договор без будущих строк.
+      const keep = existing.filter((row) => !replaceable.some((candidate) => candidate.id === row.id));
+      const paymentIds = replaceable.map((row) => row.calendarPaymentId).filter((id): id is string => Boolean(id));
+      const allCalendarPaymentIds = existing.map((row) => row.calendarPaymentId).filter((id): id is string => Boolean(id));
+      const locationResult = allCalendarPaymentIds.length
+        ? await client.from("payments").select("id,account_id,company_id").in("id", allCalendarPaymentIds).limit(20)
         : { data: [] as PaymentLocation[], error: null };
       if (locationResult.error) throw locationResult.error;
-      const location = (locationResult.data ?? [])[0] as PaymentLocation | undefined;
+      let location = (locationResult.data ?? []).find((row) => Boolean(row.account_id)) as PaymentLocation | undefined;
+      if (!location) {
+        // У некоторых старых договоров строки графика были удалены вместе с
+        // календарём, но сохранилась выдача/оплата с меткой договора.
+        const loanPayment = await client.from("payments").select("id,account_id,company_id")
+          .like("comment", `%[loan:${loanId}%`).order("date", { ascending: true }).limit(1).maybeSingle();
+        if (loanPayment.error) throw loanPayment.error;
+        location = loanPayment.data as PaymentLocation | undefined;
+      }
       if (!location?.account_id) {
-        skipped.push({ loan: loan.creditor, reason: "у старого плана нет счёта оплаты" });
+        skipped.push({ loan: loan.creditor, reason: "не найден счёт оплаты в истории договора" });
         continue;
       }
 
-      const currency = planned[0]?.currency || "RUB";
+      const currency = existing[0]?.currency || "RUB";
       const paidKeys = new Set(keep.map((row) => `${row.dueDate}|${row.kind}`));
       const incoming = rowsFromSource(source, loanId, currency).filter((row) => !paidKeys.has(`${row.dueDate}|${row.kind}`));
       if (!incoming.length) {
@@ -149,8 +165,10 @@ export async function POST() {
         continue;
       }
 
-      const removedRows = await client.from("loan_schedule_rows").delete().in("id", planned.map((row) => row.id));
-      if (removedRows.error) throw removedRows.error;
+      if (replaceable.length) {
+        const removedRows = await client.from("loan_schedule_rows").delete().in("id", replaceable.map((row) => row.id));
+        if (removedRows.error) throw removedRows.error;
+      }
       if (paymentIds.length) {
         const removedPayments = await client.from("payments").delete().in("id", paymentIds);
         if (removedPayments.error) throw removedPayments.error;

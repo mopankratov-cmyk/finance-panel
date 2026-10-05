@@ -455,13 +455,25 @@ export function LoansPage() {
       const response = await fetch("/api/finance/loans/restore-schedules", { method: "POST" });
       const body = await response.json().catch(() => ({})) as { repaired?: string[]; skipped?: Array<{ loan?: string; reason?: string }>; error?: string };
       if (!response.ok) throw new Error(body.error || "Не удалось восстановить графики");
-      const [fresh, schedule] = await Promise.all([loadFinanceState(), loadLoanScheduleRows()]);
+      // Восстановленный исторический хвост сразу используем для удержаний WB.
+      // Иначе пользователю приходилось отдельно запускать ту же сверку ещё раз.
+      const repairedFacts = await loadMarketplaceFacts();
+      const linkedContracts = [...new Set(repairedFacts
+        .filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber)
+        .map((fact) => fact.contractNumber!))];
+      let wbAllocated = 0;
+      for (const contractNumber of linkedContracts) {
+        const allocation = await allocateWbContractAutomatically(contractNumber);
+        wbAllocated += allocation.allocatedAmountRub ?? 0;
+      }
+      const [fresh, schedule, freshFacts] = await Promise.all([loadFinanceState(), loadLoanScheduleRows(), loadMarketplaceFacts()]);
       dispatch({ type: "LOAD", payload: fresh });
       setScheduleRows(schedule.rows);
+      setMarketplaceFacts(freshFacts);
       const repaired = body.repaired ?? [];
       const skipped = body.skipped ?? [];
       alert(repaired.length
-        ? `Графики восстановлены из исходных файлов: ${repaired.join(", ")}.${skipped.length ? ` Не изменены: ${skipped.map((item) => `${item.loan ?? "договор"} — ${item.reason ?? "нет данных"}`).join("; ")}.` : ""}`
+        ? `Графики восстановлены из исходных файлов: ${repaired.join(", ")}.${wbAllocated ? ` Удержания WB зачтены на ${formatMoney(wbAllocated)}.` : ""}${skipped.length ? ` Не изменены: ${skipped.map((item) => `${item.loan ?? "договор"} — ${item.reason ?? "нет данных"}`).join("; ")}.` : ""}`
         : `Подходящих графиков для восстановления не найдено.${skipped.length ? ` ${skipped.map((item) => `${item.loan ?? "договор"} — ${item.reason ?? "нет данных"}`).join("; ")}.` : ""}`);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Не удалось восстановить графики");
@@ -806,7 +818,7 @@ export function LoansPage() {
                     <p className="font-semibold text-slate-950">{fact.loanName ?? `Договор WB № ${fact.contractNumber ?? "не определён"}`}</p>
                     <p className="mt-1 text-xs font-semibold text-amber-950">Кабинет WB: {fact.cabinetName ?? "не найден среди подключённых"}</p>
                     <p className="mt-1 truncate text-xs text-slate-600">{formatDate(fact.date)} · {marketplaceKindLabel[fact.kind]} · {fact.reason}</p>
-                    {fact.contractNumber && <button type="button" onClick={() => void ignoreWbContract(fact.contractNumber!)} disabled={wbIgnoringContract === fact.contractNumber} className="mt-2 min-h-9 rounded-lg px-2 text-xs font-semibold text-amber-900 underline decoration-amber-400 underline-offset-2 hover:bg-amber-100 disabled:opacity-50">{wbIgnoringContract === fact.contractNumber ? "Скрываю…" : "Закрытый договор — скрыть из проверки"}</button>}
+                    {fact.state === "unassigned" && fact.contractNumber && <button type="button" onClick={() => void ignoreWbContract(fact.contractNumber!)} disabled={wbIgnoringContract === fact.contractNumber} className="mt-2 min-h-9 rounded-lg px-2 text-xs font-semibold text-amber-900 underline decoration-amber-400 underline-offset-2 hover:bg-amber-100 disabled:opacity-50">{wbIgnoringContract === fact.contractNumber ? "Скрываю…" : "Закрытый договор — скрыть из проверки"}</button>}
                     {fact.state === "review" && (
                       reviewRows.length ? (
                         <div className="mt-2 rounded-lg border border-amber-200 bg-white/70 p-2">
