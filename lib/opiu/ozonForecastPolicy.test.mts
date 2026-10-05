@@ -86,6 +86,7 @@ test("cash-flow pagination keeps the latest correction for one external report i
   assert.equal(result.reports.length, 1);
   assert.equal(result.reports[0]?.reportId, "report-1");
   assert.equal(result.reports[0]?.amount, 125);
+  assert.equal(result.reports[0]?.estimatedReceiptDate, "2026-08-26");
 });
 
 test("different external report ids on the same date remain separate", async () => {

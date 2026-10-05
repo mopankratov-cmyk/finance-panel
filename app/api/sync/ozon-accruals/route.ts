@@ -13,6 +13,7 @@ import {
   type OzonAccrualCursorState,
 } from "@/lib/ozon/accrualSyncCursor";
 import { ozonAccrualByDay, ozonPostings } from "@/lib/ozon/api";
+import { refreshPublishedMarketplacePayouts } from "@/lib/opiu/marketplaceCalendarRefresh";
 
 export const maxDuration = 300;
 
@@ -244,6 +245,18 @@ export async function GET(request: NextRequest) {
     state: nextCursorState,
   });
 
+  let calendar: { scopes: number; updated: number } | null = null;
+  let calendarError: string | null = null;
+  try {
+    calendar = await refreshPublishedMarketplacePayouts({
+      marketplace: "ozon",
+      cabinetId,
+      ozonCreds: creds,
+    });
+  } catch (error) {
+    calendarError = error instanceof Error ? error.message : "Календарь выплат Ozon не обновлён";
+  }
+
   return NextResponse.json({
     cabinetId,
     date: syncDate,
@@ -255,5 +268,7 @@ export async function GET(request: NextRequest) {
     postingRows: postingRows.length,
     skippedPostings,
     postingErrors,
-  });
+    calendar,
+    calendarError,
+  }, { status: calendarError ? 502 : 200 });
 }

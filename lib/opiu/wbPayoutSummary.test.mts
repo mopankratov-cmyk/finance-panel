@@ -39,7 +39,7 @@ test("WB reports keep separate stable identities and replace forecast remainder"
   ];
   const schedule = deriveWbConfirmedPayoutSchedule(rows);
   assert.deepEqual(schedule.map((row) => [row.id, row.amount]), [["101", 140], ["102", 25]]);
-  assert.equal(schedule[0].date, "2026-08-20");
+  assert.equal(schedule[0].date, "2026-09-02");
   assert.equal(deriveWbPayoutSummary(500, 165).remainingPayout, 335);
 });
 

@@ -4,6 +4,7 @@ import { OPIU_BRANDS } from "@/lib/opiu/constants";
 import { opiuReportRefreshPeriod, syncOpiuReportPeriod } from "@/lib/opiu/reportSync";
 import { selectOpiuReportQueueCabinet, type OpiuReportQueueState } from "@/lib/opiu/reportSyncQueue";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { refreshPublishedMarketplacePayouts } from "@/lib/opiu/marketplaceCalendarRefresh";
 
 // Один вызов syncOpiuReportPeriod обрабатывает ограниченную порцию (см.
 // MAX_PAGES_PER_CALL/SOFT_TIME_BUDGET_MS в lib/opiu/syncReportRows.ts —
@@ -66,9 +67,13 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = { cabinetId, ...(await syncOpiuReportPeriod(period, cabinetId)) };
+    // Календарь читает итог `forPaySum` отдельного Finance API WB, поэтому
+    // обновление безопасно и при порционной догрузке детальных строк ОПиУ.
+    const calendar = await refreshPublishedMarketplacePayouts({ marketplace: "wb", cabinetId });
     return NextResponse.json({
       period,
       results: [result],
+      calendar,
       deferredCabinetIds: uniqueCabinetIds.filter((id) => id !== cabinetId),
     });
   } catch (error) {
