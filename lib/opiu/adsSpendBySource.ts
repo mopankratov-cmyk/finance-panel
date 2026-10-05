@@ -30,11 +30,15 @@ export interface AdsSpendBySource {
  * кампания↔товар в той таблице для части кампаний оказалась неточной/устаревшей.
  * Парсинг названия — прямой источник истины, тот же, каким пользуется владелец.
  */
-function matchesVendorPrefix(campaignName: string | null, prefixes: string[] | undefined): boolean {
+export function matchesVendorPrefix(
+  campaignName: string | null,
+  prefixes: string[] | undefined,
+  keywords?: string[],
+): boolean {
   if (!prefixes?.length) return true;
   if (!campaignName) return false;
   const normalized = campaignName.toUpperCase();
-  return prefixes.some((p) => normalized.includes(p.toUpperCase()));
+  return [...prefixes, ...(keywords ?? [])].some((p) => normalized.includes(p.toUpperCase()));
 }
 
 /**
@@ -79,7 +83,7 @@ export async function fetchAdsSpendBySourceByWeek(
   for (const w of weeks) map[w.weekStart] = { balance: 0, bonus: 0 };
 
   for (const row of rows) {
-    if (!matchesVendorPrefix(row.campaign_name, brand.articlePrefixes)) continue;
+    if (!matchesVendorPrefix(row.campaign_name, brand.articlePrefixes, brand.campaignKeywords)) continue;
     const week = weeks.find((w) => row.date >= w.rangeFrom && row.date <= w.rangeTo);
     if (!week) continue;
     const bucket = map[week.weekStart]!;
