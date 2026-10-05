@@ -123,7 +123,7 @@ export function buildSettlements(
     });
   }
 
-  return [...drafts.values()].map(({ net, ...draft }) => ({
+  return [...drafts.values()].map(({ net, ...draft }): Settlement => ({
     ...draft,
     balance: Math.abs(net),
     side: Math.abs(net) < 0.01 ? "closed" : net > 0 ? "owed_to_us" : "we_owe",
