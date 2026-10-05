@@ -51,6 +51,15 @@ export function dedupKey(sourceId: string | null, region: string, sourceItemId: 
   return [sourceId ?? "manual", region, sourceItemId ?? normalizedUrl].join("|");
 }
 
+/**
+ * Ключ находки при импорте по ссылке. Артикул однозначен только внутри сайта: у источника вне паспорта (`sourceId` пуст) ключ был бы
+ * «manual||<sku>» без хоста, и товары двух разных сайтов с одним sku склеивались бы в одну находку (фото второго подмешивались к первому).
+ */
+export function importDedupKey(sourceId: string | null, region: string, sourceItemId: string | null, normalizedUrl: string, pageUrl: string): string {
+  const scoped = sourceItemId && !sourceId ? `${baseDomain(new URL(pageUrl).hostname)}:${sourceItemId}` : sourceItemId;
+  return dedupKey(sourceId, region, scoped, normalizedUrl);
+}
+
 const SECOND_LEVEL = new Set(["co.uk", "com.au", "co.jp", "com.cn", "com.tr", "co.kr", "com.hk", "com.br"]);
 
 /** Домен бренда без поддомена витрины: eng.polene-paris.com и eu.polene-paris.com — один сайт. */
@@ -131,16 +140,6 @@ export function parseShopifyProduct(json: unknown): ExtractedProduct | null {
   };
 }
 
-function metaContent(html: string, key: string): string[] {
-  const out: string[] = [];
-  const re = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*>`, "gi");
-  for (const tag of html.match(re) ?? []) {
-    const content = tag.match(/content=["']([^"']*)["']/i)?.[1];
-    if (content) out.push(decodeEntities(content));
-  }
-  return out;
-}
-
 function decodeEntities(value: string): string {
   return value
     .replace(/&amp;/g, "&")
@@ -150,9 +149,97 @@ function decodeEntities(value: string): string {
     .replace(/&gt;/g, ">");
 }
 
-function jsonLdProducts(html: string): Array<Record<string, unknown>> {
+/**
+ * Страница чужого сайта — недоверенный ввод до 3 МБ. Регулярки вида `<meta[^>]+…` на каждое «<meta» без «>» проходили текст до конца
+ * и откатывались: время росло квадратом (59 КБ — секунда, 234 КБ — 17 с), и одна страница из повторяющегося «<meta » держала функцию до
+ * её таймаута. Поэтому — один линейный проход: теги находятся по «<имя», конец тега ищется монотонным указателем, длинный «тег» (больше
+ * MAX_TAG) тегом не считается, содержимое script пропускается целиком.
+ */
+const MAX_TAG = 4096;
+/** Документ режем: JSON-LD и og:-теги лежат в начале страницы. */
+const MAX_DOCUMENT = 1_500_000;
+
+interface HtmlDocument {
+  metas: string[];
+  links: string[];
+  ldBlocks: string[];
+  title: string | null;
+}
+
+function scanDocument(source: string): HtmlDocument {
+  const html = source.length > MAX_DOCUMENT ? source.slice(0, MAX_DOCUMENT) : source;
+  const doc: HtmlDocument = { metas: [], links: [], ldBlocks: [], title: null };
+  const re = /<(meta|link|script|title)(?=[\s/>])/gi;
+  let gt = -2; // ближайшее «>» не левее текущего тега; -1 — «>» больше нет
+  let closeAt = -2; // ближайшее «</script» не левее конца текущего тега; -1 — больше нет
+  for (let match = re.exec(html); match; match = re.exec(html)) {
+    if (gt === -1) break;
+    if (gt < match.index) {
+      gt = html.indexOf(">", match.index);
+      if (gt < 0) {
+        gt = -1;
+        break;
+      }
+    }
+    if (gt - match.index > MAX_TAG) continue;
+    const name = match[1].toLowerCase();
+    const tag = html.slice(match.index, gt + 1);
+    re.lastIndex = gt + 1;
+    if (name === "meta") doc.metas.push(tag);
+    else if (name === "link") doc.links.push(tag);
+    else if (name === "title") {
+      if (doc.title === null) {
+        const stop = html.indexOf("<", gt + 1);
+        doc.title = html.slice(gt + 1, stop < 0 ? Math.min(html.length, gt + 1 + 500) : Math.min(stop, gt + 1 + 500));
+      }
+    } else {
+      // script: тело пропускаем целиком (в нём бывают строки «<meta»), JSON-LD сохраняем.
+      if (closeAt !== -1 && closeAt < gt + 1) {
+        const found = indexOfIgnoreCase(html, "</script", gt + 1);
+        closeAt = found < 0 ? -1 : found;
+      }
+      if (closeAt === -1) break;
+      if (/type\s*=\s*["']application\/ld\+json["']/i.test(tag)) doc.ldBlocks.push(html.slice(gt + 1, closeAt));
+      re.lastIndex = closeAt + 8;
+    }
+  }
+  return doc;
+}
+
+/** Поиск без учёта регистра без копии всего текста в нижнем регистре (его длина может не совпасть с исходной). */
+function indexOfIgnoreCase(haystack: string, needle: string, from: number): number {
+  const first = needle[0];
+  const upper = first.toUpperCase();
+  let pos = from;
+  while (pos < haystack.length) {
+    const a = haystack.indexOf(first, pos);
+    const b = upper === first ? -1 : haystack.indexOf(upper, pos);
+    const at = a < 0 ? b : b < 0 ? a : Math.min(a, b);
+    if (at < 0) return -1;
+    if (haystack.substr(at, needle.length).toLowerCase() === needle) return at;
+    pos = at + 1;
+  }
+  return -1;
+}
+
+function attribute(tag: string, name: string): string | null {
+  const match = new RegExp(`(?:^|[\\s"'/])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(tag);
+  return match ? match[1] ?? match[2] ?? "" : null;
+}
+
+function metaContent(doc: HtmlDocument, key: string): string[] {
+  const out: string[] = [];
+  for (const tag of doc.metas) {
+    const names = [attribute(tag, "property"), attribute(tag, "name")];
+    if (!names.some((value) => value !== null && value.toLowerCase() === key.toLowerCase())) continue;
+    const content = attribute(tag, "content");
+    if (content) out.push(decodeEntities(content));
+  }
+  return out;
+}
+
+function jsonLdProducts(doc: HtmlDocument): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
-  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) ?? [];
   const visit = (node: unknown) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(visit);
@@ -161,8 +248,7 @@ function jsonLdProducts(html: string): Array<Record<string, unknown>> {
     if (type === "Product" || (Array.isArray(type) && type.includes("Product"))) out.push(record);
     if (record["@graph"]) visit(record["@graph"]);
   };
-  for (const block of blocks) {
-    const body = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
+  for (const body of doc.ldBlocks) {
     try {
       visit(JSON.parse(body));
     } catch {
@@ -172,19 +258,38 @@ function jsonLdProducts(html: string): Array<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * Каноническая ссылка страницы — поле чужого сайта и становится адресом находки (<a href> на карточке, ключ дедупликации): берём её, только
+ * если это http(s) и тот же сайт, что у самой страницы. «javascript:…» и чужой домен (канонический адрес «на фишинг») отбрасываются —
+ * находка остаётся с адресом страницы.
+ */
+export function trustedCanonical(href: string, pageUrl: string): string | null {
+  try {
+    const page = new URL(pageUrl);
+    const canonical = new URL(href, page);
+    if (canonical.protocol !== "https:" && canonical.protocol !== "http:") return null;
+    if (baseDomain(canonical.hostname) !== baseDomain(page.hostname)) return null;
+    return canonical.toString();
+  } catch {
+    return null;
+  }
+}
+
 /** Обычная HTML-страница товара: JSON-LD Product, затем og:-теги. */
 export function extractHtmlProduct(html: string, pageUrl: string): ExtractedProduct {
-  const ld = jsonLdProducts(html)[0];
+  const doc = scanDocument(html);
+  const ld = jsonLdProducts(doc)[0];
   const ldImages = ld ? (Array.isArray(ld.image) ? ld.image : [ld.image]).map((i) => (typeof i === "string" ? i : (i as { url?: string })?.url ?? null)) : [];
   const brand = ld?.brand;
-  const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]*>/i)?.[0]?.match(/href=["']([^"']+)["']/i)?.[1] ?? null;
+  const canonicalTag = doc.links.find((tag) => (attribute(tag, "rel") ?? "").toLowerCase() === "canonical");
+  const canonical = canonicalTag ? attribute(canonicalTag, "href") : null;
   return {
     sourceItemId: text(ld?.productID) ?? text(ld?.sku) ?? null,
-    title: text(ld?.name) ?? text(metaContent(html, "og:title")[0]) ?? text(html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]),
+    title: text(ld?.name) ?? text(metaContent(doc, "og:title")[0]) ?? text(doc.title),
     brand: text(typeof brand === "string" ? brand : (brand as { name?: string })?.name),
     article: text(ld?.sku) ?? text(ld?.mpn),
-    canonicalUrl: canonical ? new URL(decodeEntities(canonical), pageUrl).toString() : null,
-    images: uniqueUrls([...ldImages, ...metaContent(html, "og:image"), ...metaContent(html, "twitter:image")], pageUrl),
+    canonicalUrl: canonical ? trustedCanonical(decodeEntities(canonical), pageUrl) : null,
+    images: uniqueUrls([...ldImages, ...metaContent(doc, "og:image"), ...metaContent(doc, "twitter:image")], pageUrl),
     publishedAt: null,
     productType: text(ld?.category),
     colors: text(ld?.color) ? [text(ld?.color) as string] : [],

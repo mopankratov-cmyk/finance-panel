@@ -12,7 +12,7 @@ import {
   shopifyProductJsonUrl,
 } from "../lib/assortment/extract.ts";
 import { isBlockedAddress } from "../lib/assortment/netGuard.ts";
-import { parsePublicUrl, SafeFetchError } from "../lib/assortment/safeFetch.ts";
+import { parsePublicUrl, safeFetch, SafeFetchError } from "../lib/assortment/safeFetch.ts";
 import { cardSignal, cleanBadge, pluralColors, type ObservationLite } from "../lib/assortment/signals.ts";
 import { isUploadPath, referenceMediaPath, uploadPath } from "../lib/assortment/storage.ts";
 
@@ -126,6 +126,77 @@ test("Адрес находки: только http(s), без логина в с
   for (const raw of ["ftp://x.com/a", "file:///etc/passwd", "https://user:pass@x.com/", "http://x.com:8080/", "javascript:alert(1)", "нет"]) {
     assert.throws(() => parsePublicUrl(raw), SafeFetchError, raw);
   }
+});
+
+test("Защита сети: IPv6 во всех записях — IPv4 в hex (::ffff:7f00:1), развёрнутая и с зоной, IPv4-совместимые, NAT64, 6to4, Teredo, документация, site-local", () => {
+  for (const address of [
+    "::ffff:7f00:1", "::ffff:a00:1", "::ffff:a9fe:a9fe", "0:0:0:0:0:ffff:7f00:1", "0000:0000:0000:0000:0000:ffff:127.0.0.1",
+    "::7f00:1", "::10.0.0.1", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "64:ff9b:1::1", "2002:7f00:1::1", "2002:a9fe:a9fe::1",
+    "2001:0:4136:e378:8000:63bf:3fff:fdd2", "2001:db8::1", "fec0::1", "ff02::1", "fe80::1%eth0", "100::1", "::ffff:0:0",
+    "1:2:3:4:5:6:7:8:9", "::g", ":::",
+  ]) {
+    assert.equal(isBlockedAddress(address), true, address);
+  }
+  for (const address of ["::ffff:808:808", "::ffff:8.8.8.8", "64:ff9b::808:808", "2002:808:808::1", "2a00:1450:4001::64", "2606:4700:4700::1111"]) {
+    assert.equal(isBlockedAddress(address), false, address);
+  }
+});
+
+test("Адрес-литерал в ссылке закрыт до подключения: 127.0.0.1, [::1], 2130706433, 0x7f.1, [::ffff:7f00:1], 169.254.169.254, 10.x; редирект проверяется тем же; публичный IP и имя — проходят", async () => {
+  for (const raw of ["http://127.0.0.1/", "https://[::1]/", "http://2130706433/", "http://0x7f.1/", "http://127.1/", "http://[::ffff:7f00:1]/", "http://169.254.169.254/latest/meta-data/", "http://10.0.0.5/", "https://192.168.1.1/x", "http://[fd00::1]/", "http://0.0.0.0/"]) {
+    assert.throws(() => parsePublicUrl(raw), (e: unknown) => e instanceof SafeFetchError && e.code === "blocked_host", raw);
+    await assert.rejects(() => safeFetch(raw, { maxBytes: 1000, timeoutMs: 1000 }), (e: unknown) => e instanceof SafeFetchError && e.code === "blocked_host", `safeFetch ${raw}`);
+  }
+  assert.equal(parsePublicUrl("https://8.8.8.8/x").hostname, "8.8.8.8");
+  assert.equal(parsePublicUrl("https://[2606:4700:4700::1111]/").hostname, "[2606:4700:4700::1111]");
+  assert.equal(parsePublicUrl("https://polene-paris.com/products/x").hostname, "polene-paris.com");
+});
+
+test("Разбор чужой HTML-страницы линеен: «<meta » × 250 000, незакрытые <script>/<link>/<title> и один гигантский «тег» не держат функцию (раньше 59 КБ — секунда, 234 КБ — 17 с)", () => {
+  const started = Date.now();
+  const bombs = [
+    "<meta ".repeat(250_000),
+    '<script type="application/ld+json">'.repeat(40_000),
+    "<link ".repeat(250_000),
+    "<title ".repeat(200_000),
+    `<meta property="og:title" content="${"x".repeat(2_000_000)}`,
+    "<meta ".repeat(100_000) + ">",
+  ];
+  for (const bomb of bombs) extractHtmlProduct(bomb, "https://x.example/p");
+  assert.ok(Date.now() - started < 4000, `заняло ${Date.now() - started} мс`);
+});
+
+test("Границы разбора: «тег» длиннее 4096 знаков тегом не считается; JSON-LD дальше первых 1,5 МБ страницы не читается (память и время ограничены)", () => {
+  const longMeta = `<meta property="og:title" content="${"x".repeat(5000)}">`;
+  assert.equal(extractHtmlProduct(longMeta + "<title>Запасной</title>", "https://x.example/").title, "Запасной", "meta на 5 КБ пропущена");
+  const ld = '<script type="application/ld+json">{"@type":"Product","name":"Из LD"}</script>';
+  assert.equal(extractHtmlProduct(ld, "https://x.example/").title, "Из LD");
+  assert.equal(extractHtmlProduct(" ".repeat(1_600_000) + ld, "https://x.example/").title, null, "блок после 1,5 МБ не читается");
+});
+
+test("Разбор HTML сохраняет прежнее поведение: регистр тегов, одинарные кавычки, порядок атрибутов, canonical с лишними атрибутами, JSON-LD в @graph, <meta> внутри script не берётся, title", () => {
+  const html = `<!doctype html><HTML><HEAD>
+    <TITLE>  Запасное название </TITLE>
+    <META CONTENT='Название из og' PROPERTY='og:title'>
+    <meta name="twitter:image" content="/img/tw.jpg" data-x="1">
+    <meta property="og:image" content="https://cdn.example.com/a.jpg?x=1&amp;y=2" />
+    <link rel="stylesheet" href="/a.css"><link data-rel="canonical" href="/wrong"><LINK ID=c REL="canonical" HREF="/products/real?utm=1" crossorigin>
+    <script>document.write('<meta property="og:image" content="https://evil.example/x.jpg">')</script>
+    <script type='application/ld+json'>{"@graph":[{"@type":"Product","name":"Из LD","sku":"SKU1","brand":{"name":"B"},"image":["https://cdn.example.com/ld.jpg"],"color":"black"}]}</script>
+  </HEAD></HTML>`;
+  const p = extractHtmlProduct(html, "https://shop.example.com/gb/x");
+  assert.equal(p.title, "Из LD", "JSON-LD главнее og:title");
+  assert.equal(p.article, "SKU1");
+  assert.equal(p.brand, "B");
+  assert.deepEqual(p.colors, ["black"]);
+  assert.equal(p.canonicalUrl, "https://shop.example.com/products/real?utm=1", "canonical — по rel, а не по data-rel, с лишними атрибутами");
+  assert.ok(p.images.includes("https://cdn.example.com/ld.jpg"));
+  assert.ok(p.images.includes("https://cdn.example.com/a.jpg?x=1&y=2"), "og:image с &amp;");
+  assert.ok(p.images.includes("https://shop.example.com/img/tw.jpg"), "twitter:image относительный");
+  assert.ok(!p.images.some((u) => u.includes("evil.example")), "<meta> в тексте скрипта — не тег страницы");
+  const noLd = extractHtmlProduct("<title>Только title</title><meta property='og:title' content='OG &quot;кавычки&quot;'>", "https://x.example/");
+  assert.equal(noLd.title, 'OG "кавычки"');
+  assert.equal(extractHtmlProduct("<title>Запасной</title>", "https://x.example/").title, "Запасной");
 });
 
 test("Хранилище: пути загрузок и фото модели не выходят за свои папки", () => {

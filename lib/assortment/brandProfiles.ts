@@ -1,3 +1,4 @@
+import { containsMoney } from "./attributes";
 import type { AssortmentDirection } from "./constants";
 import { rulesFor } from "./forms";
 
@@ -122,6 +123,8 @@ function text(value: unknown, max: number, label: string): { value: string | nul
   if (typeof value !== "string") return { error: `${label}: нужен текст` };
   const clean = value.replace(/\s+/g, " ").trim();
   if (clean.length > max) return { error: `${label}: не длиннее ${max} знаков` };
+  // Профиль бренда — решение владельца о ТОВАРЕ (аудитория, палитра, заметки); цен и денег в модуле нет ни в каком поле.
+  if (containsMoney(clean)) return { error: `${label}: цены и деньги в модуле не храним — опишите словами` };
   return { value: clean || null };
 }
 

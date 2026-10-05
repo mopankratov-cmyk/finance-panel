@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
 import { audit } from "@/lib/audit/log";
-import { briefCsv } from "@/lib/assortment/collections";
+import { briefCsv, exportFileName } from "@/lib/assortment/collections";
 import { collectionFailure, isUuid } from "@/lib/assortment/collectionsApi";
 import { loadBrief } from "@/lib/assortment/collectionsStore";
 import { ASSORTMENT_ROLES } from "@/lib/assortment/constants";
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, ctx: { params: Promise<{ id: str
   try {
     const brief = await loadBrief(db, id, version, format === "view");
     await audit(request, session, { action: "assortment.export", subject: `collection:${id}`, after: { format, version: brief.collection.version } });
-    const name = `zadanie-${brief.collection.period ?? "podborka"}-v${brief.collection.version}`;
+    const name = exportFileName(brief.collection.period, brief.collection.version);
     if (format === "csv") {
       return new NextResponse(briefCsv(brief), {
         headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="${name}.csv"` },

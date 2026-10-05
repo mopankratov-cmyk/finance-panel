@@ -3,6 +3,7 @@ import http from "node:http";
 import https from "node:https";
 import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 import type { Readable } from "node:stream";
+import { isIP } from "node:net";
 import { isBlockedAddress } from "./netGuard";
 
 /**
@@ -144,6 +145,11 @@ export function parsePublicUrl(raw: string): URL {
   if (url.protocol !== "https:" && url.protocol !== "http:") throw new SafeFetchError("bad_url", "Поддерживаются только ссылки http и https");
   if (url.username || url.password) throw new SafeFetchError("bad_url", "Ссылка с логином и паролем не принимается");
   if (url.port && !["80", "443"].includes(url.port)) throw new SafeFetchError("bad_url", "Нестандартный порт не принимается");
+  // Адрес-литерал (127.0.0.1, [::1], 169.254.169.254, [::ffff:7f00:1]) Node подключает напрямую, не вызывая lookup, — проверка в
+  // guardedLookup его не видит. WHATWG URL уже привёл десятичные и шестнадцатеричные записи (2130706433, 0x7f.1) к виду 127.0.0.1.
+  // Эта же функция проверяет цель редиректа.
+  const host = url.hostname.replace(/^\[|\]$/g, "");
+  if (isIP(host) && isBlockedAddress(host)) throw new SafeFetchError("blocked_host", "Адрес ведёт во внутреннюю сеть");
   return url;
 }
 

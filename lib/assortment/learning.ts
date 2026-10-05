@@ -11,6 +11,7 @@
 import { constructionKey } from "./collections";
 import type { AssortmentDirection } from "./constants";
 import { REJECT_REASONS } from "./decisions";
+import { hasOwnKey } from "./own";
 
 export type LessonReason = "repeats_assortment" | "shape" | "audience" | "weak_evidence" | "other";
 
@@ -28,7 +29,7 @@ export function reasonKey(stored: string | null): LessonReason | null {
   if (!stored) return null;
   const parts = stored.split(":");
   const key = parts[0] === "replaced" ? parts[1] : parts[0];
-  return key && key in REJECT_REASONS ? (key as LessonReason) : null;
+  return key && hasOwnKey(REJECT_REASONS, key) ? (key as LessonReason) : null;
 }
 
 export const REASON_SHORT: Record<LessonReason, string> = {

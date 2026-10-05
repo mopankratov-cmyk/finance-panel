@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sniffImageMime } from "@/lib/ctrtest/pinImage";
+import { containsMoney } from "./attributes";
 import type { AssortmentDirection } from "./constants";
 import {
-  dedupKey,
   detectSourceId,
   extractHtmlProduct,
   fallbackTitle,
+  importDedupKey,
   normalizeProductUrl,
   parseShopifyProduct,
   regionFromUrl,
@@ -145,6 +146,10 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
   const uploads = (input.uploads ?? []).filter(isUploadPath).slice(0, MAX_IMAGES);
   const rawUrl = (input.url ?? "").trim();
   if (!rawUrl && uploads.length === 0) throw new ImportInputError("Нужна ссылка или хотя бы одно фото.");
+  // Граница ТЗ: в модуле нет цен и денег. Заметка и название — то, что человек пишет сам (название сайта не проверяем: там бренды вроде
+  // «Cost»); тот же запрет стоит у правки признаков и у задания на образец, обходить его через форму импорта нельзя.
+  if (input.note && containsMoney(input.note)) throw new ImportInputError("Цены и деньги в модуле не храним — перепишите заметку словами.");
+  if (input.title && containsMoney(input.title)) throw new ImportInputError("Цены и деньги в модуле не храним — перепишите название словами.");
   await ensureAssortmentBucket(db);
 
   const warnings: string[] = [];
@@ -184,7 +189,7 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
 
   const normalizedUrl = url ? normalizeProductUrl(product?.canonicalUrl ?? url) : "";
   const key = url
-    ? dedupKey(sourceId, region, product?.sourceItemId ?? null, normalizedUrl)
+    ? importDedupKey(sourceId, region, product?.sourceItemId ?? null, normalizedUrl, url)
     : uploaded[0] ? `manual||photo:${sha256(uploaded[0].bytes)}` : null;
   if (!key) throw new ImportInputError("Фото не прочиталось: нужен JPEG, PNG или WebP до 10 МБ.");
 
