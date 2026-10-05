@@ -14,6 +14,13 @@ export interface OpiuBrand {
    * по префиксу артикула NV-/HT-, юрлицо у product_costs общее).
    */
   articlePrefixes?: string[];
+  /**
+   * Дополнительные слова, по которым рекламная кампания относится к бренду,
+   * если в её названии нет артикула. У Riobox кампании называются
+   * "RIOBOX 1239272678 пенал черн. (рс ключи)" — без "ESC", поэтому по
+   * articlePrefixes вся его реклама (в августе ~1,8 млн ₽) терялась.
+   */
+  campaignKeywords?: string[];
 }
 
 // Соответствие юрлицо → WB-кабинет сверено по факту: пересечение article между
@@ -58,6 +65,7 @@ export const OPIU_BRANDS: OpiuBrand[] = [
     entity: "ООО РИО",
     cabinetId: "d43854d4-5bb7-49ac-a7d4-ecd619330c20", // Оптима — NORVIA / RIOBOX
     articlePrefixes: ["ESC"],
+    campaignKeywords: ["RIOBOX"],
   },
   {
     id: "optima-norvia",
