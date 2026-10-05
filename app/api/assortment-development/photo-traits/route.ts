@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
-import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { ASSORTMENT_ROLES, parseDirection } from "@/lib/assortment/constants";
-import { TRAITS_REPORT_VERSION } from "@/lib/assortment/catalogAi";
-import { loadPhotoSamples, loadPhotoTraits } from "@/lib/assortment/catalogAiStore";
+import { loadPhotoSamples } from "@/lib/assortment/catalogAiStore";
+import { loadPhotoTraitsCached } from "@/lib/assortment/photoTraitsCached";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
-
-class NoReport extends Error {}
-/** Пока разбор идёт сотнями в час, отчёт в кэше на час был бы заметно устаревшим: до этого числа моделей его не кэшируем. */
-const CACHE_FROM_ANALYZED = 300;
-class Uncached extends Error {
-  constructor(readonly report: unknown) {
-    super("uncached");
-  }
-}
 
 /**
  * Признаки каталога по фото (оценка ИИ): доли значений по признакам среди моделей,
@@ -41,18 +31,8 @@ export async function GET(request: NextRequest) {
     }
   }
   try {
-    // Разбор идёт сотнями в сутки, а отчёт тянет весь каталог и признаки (~7 запросов) — на час в кэше.
-    // Пустой результат (нет таблицы, ничего не разобрано) в кэш не кладём.
-    const report = await loadHourlyDashboard(`assortment-photo-traits-v${TRAITS_REPORT_VERSION}`, { direction }, async () => {
-      const result = await loadPhotoTraits(db, direction);
-      if (!result) throw new NoReport();
-      if (result.analyzed < CACHE_FROM_ANALYZED) throw new Uncached(result);
-      return result;
-    }).catch((error) => {
-      if (error instanceof NoReport) return null;
-      if (error instanceof Uncached) return error.report;
-      throw error;
-    });
+    // Разбор идёт сотнями в сутки, а отчёт тянет весь каталог и признаки (~7 запросов) — на час в кэше (один с полоской «На чём стоят цифры»).
+    const report = await loadPhotoTraitsCached(db, direction);
     return NextResponse.json({ report }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Признаки по фото не посчитались" }, { status: 500 });

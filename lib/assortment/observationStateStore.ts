@@ -20,8 +20,12 @@ function unavailable(error: unknown): boolean {
   return code === "42P01" || code === "PGRST205" || isMissingAssortmentSchema(new Error(message));
 }
 
-/** Глубина и полнота истории наблюдений по источникам. */
-export async function loadHistoryState(db: SupabaseClient, now: Date | number = new Date()): Promise<HistoryState> {
+/**
+ * Глубина и полнота истории наблюдений по источникам. С разделом — только прогоны этого раздела и прогоны «целиком» (direction
+ * null: Shopify отдаёт куртки и сумки одним обходом): у источника с двумя полными прогонами по курткам и одним по сумкам на
+ * экране сумок «появилось/пропало» не наблюдение.
+ */
+export async function loadHistoryState(db: SupabaseClient, now: Date | number = new Date(), direction?: string): Promise<HistoryState> {
   const today = moscowToday(now);
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - HISTORY_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
   try {
@@ -30,7 +34,8 @@ export async function loadHistoryState(db: SupabaseClient, now: Date | number = 
       .gte("observed_on", since)
       .order("started_at", { ascending: true })
       .range(from, to) as unknown as PromiseLike<{ data: RunRow[] | null; error: { message: string } | null }>, { label: "Журнал прогонов", pageSize: 1000 });
-    return { available: true, today, sources: summarizeHistory(rows, today) };
+    const mine = direction ? rows.filter((r) => r.direction == null || r.direction === direction) : rows;
+    return { available: true, today, sources: summarizeHistory(mine, today) };
   } catch (error) {
     if (unavailable(error)) return { available: false, today, sources: [] };
     throw error;
