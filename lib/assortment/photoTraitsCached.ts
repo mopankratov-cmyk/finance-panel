@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { TRAITS_REPORT_VERSION, type PhotoTraitsReport } from "./catalogAi";
-import { loadPhotoTraits } from "./catalogAiStore";
+import { loadPhotoTraits, loadQueueDirect, type QueueFacts } from "./catalogAiStore";
 import type { AssortmentDirection } from "./constants";
 
 class NoReport extends Error {}
@@ -29,4 +29,9 @@ export async function loadPhotoTraitsCached(db: SupabaseClient, direction: Assor
     if (error instanceof Uncached) return error.report;
     throw error;
   });
+}
+
+/** Очередь раздела без отчёта по признакам — с часовым кэшем: чтение тяжёлое, а у раздела, где ничего не разобрано, число стоит на месте. */
+export async function loadQueueCached(db: SupabaseClient, direction: AssortmentDirection): Promise<QueueFacts> {
+  return loadHourlyDashboard("assortment-queue-direct-v1", { direction }, () => loadQueueDirect(db, direction));
 }

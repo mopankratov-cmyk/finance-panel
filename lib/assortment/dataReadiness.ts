@@ -48,15 +48,24 @@ export interface TraitsFacts {
   legacy: number;
   /** Моделей, которые вообще можно разобрать: с фото, без «Рынка РФ» — знаменатель того же отчёта. */
   eligible: number;
+  /** Сколько моделей сборщик ещё возьмёт (новые, повторы, пересбор прежней версии) — по тому же правилу, что у самого сборщика. */
+  queued: number;
+  /** Не возьмёт никогда: три неудачные попытки; и пока обход не перепишет ключ — нестабильный ключ. В «осталось разобрать» не входят. */
+  exhausted: number;
+  unstable: number;
   /** Неудавшихся строк сейчас (из них часть повторится, часть исчерпала попытки). */
   failed: number;
-  /** За последние 7 суток: удалось и не удалось — по ним судим, «сломалось ли сейчас», а не по накопленному. */
+  /** За последние 7 суток: удалось и не удалось (включая неудачный пересбор старой строки) — по ним судим, «сломалось ли сейчас», а не по накопленному. */
   recentOk: number;
   recentFailed: number;
-  /** Когда в последний раз успешно разобрана модель, ISO; null — ни одной. */
+  /** Когда в последний раз успешно (без ошибки) разобрана модель, ISO; null — ни одной (или не прочиталось — см. readFailed). */
   lastOkAt: string | null;
-  /** Сколько осталось разобрать в ДРУГОМ разделе: очередь сборщика общая; null — не удалось узнать. */
-  otherRemaining: number | null;
+  /** Когда сборщик в последний раз пробовал разобрать что-либо (удачно или нет), ISO; null — следов попыток нет. */
+  lastAttemptAt: string | null;
+  /** Чтение времени последней модели/попытки не удалось: «ни одной удачи» по null не заключаем. */
+  readFailed?: boolean;
+  /** Сколько сборщик ещё возьмёт в ДРУГОМ разделе: очередь общая; null — не удалось узнать (строка в errors). */
+  otherQueued: number | null;
   callsToday: number;
   dailyLimit: number;
   weekUsd: number;
@@ -128,49 +137,85 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
   lines.push({ kind: "факт", text: `Разобрано по фото ${num(t.analyzed)} из ${num(t.eligible)} ${plural(t.eligible, "модели", "моделей", "моделей")} (${pct.toLocaleString("ru-RU")}%)${t.legacy > 0 ? `; ещё ${num(t.legacy)} разобраны по прежнему вопросу и пересоберутся` : ""}.` });
 
   // Остановки: сборщик не работает по настройке — каждое состояние названо, а не «около суток».
-  const budgetGone = t.weeklyBudgetUsd > 0 && t.weekUsd >= t.weeklyBudgetUsd;
+  // Бюджет кончается раньше нуля: сборщик не делает вызов, на который остатка не хватает (резерв одного вызова).
+  const budgetGone = t.weeklyBudgetUsd > 0 && (t.weekUsd >= t.weeklyBudgetUsd || (t.budgetCallsLeft !== null && t.budgetCallsLeft <= 0));
   const stops: string[] = [];
   if (!t.enabled) stops.push("Разбор выключен (ASSORTMENT_CATALOG_AI=off): новые модели не разбираются.");
   else if (!t.keyConfigured) stops.push("У разбора нет ключа ИИ: он ждёт, пока ключ будет задан.");
   else if (!t.priced) stops.push(`Для модели «${t.model}» нет цены в таблице: сборщик не запускается (бюджет нечем считать).`);
   else if (t.dailyLimit <= 0) stops.push("Потолок суток 0: разбор остановлен.");
   else if (t.weeklyBudgetUsd <= 0) stops.push("Бюджет недели 0: разбор остановлен.");
-  else if (budgetGone) stops.push("Бюджет недели исчерпан — разбор встанет до освобождения бюджета.");
+  else if (budgetGone) stops.push(`Бюджет недели исчерпан (потрачено ${usd(t.weekUsd)} из ${usd(t.weeklyBudgetUsd)}; остатка не хватает даже на один вызов) — разбор встанет до освобождения бюджета.`);
   for (const text of stops) lines.push({ kind: "факт", text, problem: true });
   let problem = stops.length > 0;
   const running = stops.length === 0;
 
   lines.push({ kind: "факт", text: `Сегодня вызовов ${num(t.callsToday)} из ${num(t.dailyLimit)}; за 7 дней потрачено ${usd(t.weekUsd)} из ${usd(t.weeklyBudgetUsd)}.` });
 
-  const remaining = Math.max(0, t.eligible - t.analyzed);
-  const other = t.otherRemaining ?? 0;
+  // Очередь — только то, что сборщик возьмёт: модели, исчерпавшие попытки, и модели с нестабильным ключом в неё не входят
+  // (иначе срок «около суток» не наступал бы, а через сутки без новых моделей вылезала бы ложная тревога «не движется»).
+  const remaining = t.queued;
+  const otherKnown = t.otherQueued !== null;
+  const other = t.otherQueued ?? 0;
   const total = remaining + other;
-  if (total === 0) {
+  if (total === 0 && otherKnown) {
     lines.push({ kind: "факт", text: "Очередь разобрана: новые модели подхватятся следующими прогонами." });
+  } else if (total === 0) {
+    lines.push({ kind: "факт", text: "В этом разделе очередь пуста; очередь другого раздела не прочиталась — общий срок посчитать нельзя." });
   } else if (running) {
     const perDayMax = Math.min(t.dailyLimit, CATALOG_AI_RUN_CAP * CATALOG_AI_RUNS_PER_DAY);
     const perDayMin = Math.min(t.dailyLimit, CATALOG_AI_RUN_MIN * CATALOG_AI_RUNS_PER_DAY);
     const fast = Math.ceil(total / perDayMax);
     const slow = Math.ceil(total / perDayMin);
     const span = fast === slow ? aroundDays(fast) : `от ${fast} до ${slow} суток`;
+    const otherNote = !otherKnown ? " (очередь другого раздела не прочиталась — срок без неё)" : other > 0 ? ` (в другом разделе ещё ${num(other)}: очередь у сборщика общая)` : "";
     lines.push({
       kind: "расчёт",
-      text: `Осталось разобрать ${num(remaining)}${other > 0 ? ` (в другом разделе ещё ${num(other)}: очередь у сборщика общая)` : ""}; при потолке ${num(perDayMax)} в сутки (прогон — 75–120 моделей, 12 прогонов) на всё уйдёт ${span}.`,
+      text: `Осталось разобрать ${num(remaining)}${otherNote}; при потолке ${num(perDayMax)} в сутки (прогон — 75–120 моделей, 12 прогонов) на всё уйдёт ${span}.`,
     });
     if (t.budgetCallsLeft !== null && t.budgetCallsLeft < total) {
       lines.push({ kind: "расчёт", text: `Остатка бюджета недели хватит примерно на ${num(Math.max(0, t.budgetCallsLeft))} вызовов — меньше очереди (${num(total)}): разбор встанет раньше, чем она закончится.` });
     }
   }
+  const skipped = t.exhausted + t.unstable;
+  if (skipped > 0) {
+    const parts = [
+      t.exhausted > 0 ? `${num(t.exhausted)} исчерпали три попытки` : null,
+      t.unstable > 0 ? `у ${num(t.unstable)} ключ модели в базе не совпал с расчётным (ближайший обход его перепишет)` : null,
+    ].filter(Boolean).join("; ");
+    lines.push({ kind: "факт", text: `Ещё ${num(skipped)} ${plural(skipped, "модель", "модели", "моделей")} сборщик не возьмёт: ${parts}. В «осталось разобрать» они не входят.` });
+  }
 
-  // «Не движется»: условия рабочие, очередь есть, а последняя модель разобрана давно.
-  if (running && total > 0 && !budgetGone) {
+  // «Не движется»: условия рабочие, очередь есть, а сборщик давно ничего не пробовал. Судим по последней ПОПЫТКЕ любого рода, а не
+  // только по последней удаче: когда в очереди одни повторы внутри суточной паузы, он жив и брать ему сегодня нечего.
+  if (running && total > 0) {
     const lastOk = t.lastOkAt ? Date.parse(t.lastOkAt) : null;
-    const stalled = lastOk === null ? false : nowMs - lastOk > STALL_HOURS * 3600 * 1000;
+    const lastTry = [t.lastAttemptAt ? Date.parse(t.lastAttemptAt) : null, lastOk].filter((x): x is number => x !== null && !Number.isNaN(x)).sort((a, b) => b - a)[0] ?? null;
     if (lastOk !== null) {
       const at = new Date(lastOk + 3 * 3600 * 1000).toISOString();
-      lines.push({ kind: "факт", text: `Последняя модель разобрана ${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК.${stalled ? ` Прошло больше ${STALL_HOURS} часов при непустой очереди — разбор не движется (проверьте журнал крона и ключ).` : ""}`, problem: stalled });
+      lines.push({ kind: "факт", text: `Последняя модель разобрана ${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК.` });
     }
-    if (stalled) problem = true;
+    if (lastTry !== null) {
+      const stalled = nowMs - lastTry > STALL_HOURS * 3600 * 1000;
+      if (stalled) {
+        const at = new Date(lastTry + 3 * 3600 * 1000).toISOString();
+        lines.push({ kind: "факт", text: `Сборщик ничего не пробовал разобрать больше ${STALL_HOURS} часов (последняя попытка ${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК) при непустой очереди — разбор не движется (проверьте журнал крона и ключ).`, problem: true });
+        problem = true;
+      }
+    }
+    if (lastOk === null && t.analyzed === 0 && t.legacy === 0 && !t.readFailed) {
+      // Ни одной удачи. Причина остановки сборщика (ключ не принят, нет средств) нигде не сохраняется — по базе видно только то,
+      // что он уже пробовал: вызовы, неудачи. Пробовал и ни разу не вышло — проблема; следов нет — «ещё не отработал».
+      const tried = lastTry !== null || t.callsToday > 0 || t.weekUsd > 0 || t.failed > 0 || t.recentFailed > 0;
+      lines.push({
+        kind: "факт",
+        text: tried
+          ? "Ни одна модель не разобрана, хотя вызовы или неудачи были — проверьте журнал крона, ключ и ответы ИИ."
+          : "Ни одна модель ещё не разобрана и следов попыток нет: сборщик ещё не отработал или у него не принят ключ (причина остановки нигде не сохраняется — смотрите ответ крона). Срок выше — расчёт на случай, что он работает.",
+        problem: tried,
+      });
+      if (tried) problem = true;
+    }
   }
 
   if (t.failed > 0) {
@@ -184,6 +229,11 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
       problem: bad,
     });
     if (bad) problem = true;
+  } else if (t.recentFailed > 0 && t.recentOk + t.recentFailed >= FAILED_MIN_ATTEMPTS && t.recentFailed / (t.recentOk + t.recentFailed) >= FAILED_SHARE_PROBLEM) {
+    // Неудачи есть только у пересборов старых строк (статус «ok» они сохраняют) — в «не разобралось» их нет, а доля высокая.
+    const share = t.recentFailed / (t.recentOk + t.recentFailed);
+    lines.push({ kind: "факт", text: `За 7 суток неудачных ${Math.round(share * 100)}% попыток (пересбор разобранного по прежнему вопросу) — проверьте журнал крона и ответы ИИ.`, problem: true });
+    problem = true;
   }
   return {
     key: "traits",
@@ -210,39 +260,56 @@ function demandGroup(d: DemandFacts, today: string): ReadinessGroup | null {
 }
 
 const MAX_LISTED = 6;
+/** Сколько дней сверх положенных 7 ждём второй полный прогон, прежде чем назвать источник застрявшим (обходы идут ежедневно). */
+export const STUCK_GRACE_DAYS = 3;
 
 function historyGroup(h: HistoryFacts, today: string): ReadinessGroup | null {
   const sources = h.sources;
   if (sources.length === 0) return null;
   const names = (statuses: HistoryStatus[]) => sources.filter((s) => statuses.includes(s.status)).map((s) => s.name);
   const lines: ReadinessLine[] = [];
+  let problem = false;
   const dynamics = names(["dynamics"]);
   const appearance = names(["appearance"]);
   const building = sources.filter((s) => s.status === "building" || s.status === "none");
   const windowOnly = names(["window_only"]);
+  const listed = (parts: string[]) => `${parts.slice(0, MAX_LISTED).join("; ")}${parts.length > MAX_LISTED ? ` и ещё ${parts.length - MAX_LISTED}` : ""}`;
   if (dynamics.length > 0) lines.push({ kind: "факт", text: `Можно смотреть динамику: ${dynamics.join(", ")}.` });
   if (appearance.length > 0) lines.push({ kind: "факт", text: `«Появилось» и «пропало» — наблюдение: ${appearance.join(", ")}.` });
+  // Источник с первым полным прогоном давно, а второго всё нет, — застрял: обходы не доходят до конца. Дата для него «не раньше
+  // сегодня» печаталась бы каждый день и ничем не отличалась от источника, который будет готов завтра.
+  const withFull = building.filter((s) => s.firstFullDay);
+  const stuck = withFull.filter((s) => daysBetween(s.firstFullDay as string, today) > APPEARANCE_MIN_SPAN_DAYS + STUCK_GRACE_DAYS);
+  const waiting = building.filter((s) => !s.firstFullDay).map((s) => s.name);
   if (building.length > 0) {
     lines.push({ kind: "факт", text: `История копится: ${building.map((s) => s.name).join(", ")}.` });
     // Сроки — по каждому источнику от ЕГО первого полного прогона; прошедшая дата значит «после ближайшего полного прогона», а не «давно».
-    const dated = building.filter((s) => s.firstFullDay).sort((a, b) => (a.firstFullDay as string).localeCompare(b.firstFullDay as string));
-    const waiting = building.filter((s) => !s.firstFullDay).map((s) => s.name);
-    const parts = dated.slice(0, MAX_LISTED).map((s) => {
-      const at = laterOf(addDays(s.firstFullDay as string, APPEARANCE_MIN_SPAN_DAYS), today);
-      return `${s.name} — не раньше ${dm(at)}`;
-    });
-    const rest = dated.length > MAX_LISTED ? ` и ещё ${dated.length - MAX_LISTED}` : "";
-    if (parts.length > 0) lines.push({ kind: "оценка", text: `«Появилось» и «пропало» (два полных прогона с разрывом ${APPEARANCE_MIN_SPAN_DAYS} дней): ${parts.join("; ")}${rest}.` });
-    if (waiting.length > 0) lines.push({ kind: "оценка", text: `Ждут первого полного прогона: ${waiting.slice(0, MAX_LISTED).join(", ")}${waiting.length > MAX_LISTED ? ` и ещё ${waiting.length - MAX_LISTED}` : ""} — для них даты пока нет.` });
-    const firstDays = sources.filter((s) => s.status !== "window_only" && s.firstDay).map((s) => s.firstDay as string).sort();
-    if (firstDays.length > 0) {
-      lines.push({ kind: "оценка", text: `Динамика — не раньше ${dm(laterOf(addDays(firstDays[0], DYNAMICS_MIN_SPAN_DAYS), today))} (${DYNAMICS_MIN_SPAN_DAYS} дней наблюдений и не меньше ${DYNAMICS_MIN_DAYS} дней с прогонами). До этого на экране только срез на сегодня.` });
+    const dated = withFull.filter((s) => !stuck.includes(s)).sort((a, b) => (a.firstFullDay as string).localeCompare(b.firstFullDay as string));
+    const parts = dated.map((s) => `${s.name} — не раньше ${dm(laterOf(addDays(s.firstFullDay as string, APPEARANCE_MIN_SPAN_DAYS), today))}`);
+    if (parts.length > 0) lines.push({ kind: "оценка", text: `«Появилось» и «пропало» (два полных прогона с разрывом ${APPEARANCE_MIN_SPAN_DAYS} дней): ${listed(parts)}.` });
+    if (stuck.length > 0) {
+      const stuckParts = stuck.map((s) => {
+        const days = daysBetween(s.firstFullDay as string, today);
+        return `${s.name} (первый ${dm(s.firstFullDay as string)}, уже ${days} ${plural(days, "день", "дня", "дней")})`;
+      });
+      lines.push({ kind: "факт", text: `Второй полный прогон не приходит: ${listed(stuckParts)}. Пока обходы не доходят до конца, «появилось» и «пропало» по этим источникам не станут наблюдением — проверьте журнал обходов.`, problem: true });
+      problem = true;
     }
+    if (waiting.length > 0) lines.push({ kind: "оценка", text: `Ждут первого полного прогона: ${listed(waiting.slice())} — для них даты пока нет.` });
+  }
+  // Динамика — только по источникам, которым её ещё ждать: готовые к ней и застрявшие в дату не входят. Нужно и 28 дней наблюдений
+  // от первого прогона, и наблюдение «появилось/пропало» (первый полный +7).
+  const pendingDynamics = sources
+    .filter((s) => s.firstDay && (s.status === "appearance" || (s.status === "building" && s.firstFullDay && !stuck.includes(s))))
+    .map((s) => ({ name: s.name, at: laterOf(laterOf(addDays(s.firstDay as string, DYNAMICS_MIN_SPAN_DAYS), s.status === "building" ? addDays(s.firstFullDay as string, APPEARANCE_MIN_SPAN_DAYS) : ""), today) }))
+    .sort((a, b) => a.at.localeCompare(b.at) || a.name.localeCompare(b.name));
+  if (pendingDynamics.length > 0) {
+    lines.push({ kind: "оценка", text: `Динамика (${DYNAMICS_MIN_SPAN_DAYS} дней наблюдений и не меньше ${DYNAMICS_MIN_DAYS} дней с прогонами): ${listed(pendingDynamics.map((p) => `${p.name} — не раньше ${dm(p.at)}`))}. До этого по ним на экране только срез на сегодня.` });
   }
   if (windowOnly.length > 0) lines.push({ kind: "факт", text: `Только верх выдачи, «пропало» не определить: ${windowOnly.join(", ")}.` });
   if (lines.length === 0) return null;
   const firstDays = sources.map((s) => s.firstDay).filter((d): d is string => Boolean(d)).sort();
-  return { key: "history", title: "История каталогов", summary: firstDays[0] ? `история с ${dm(firstDays[0])}` : "история копится", lines, problem: false };
+  return { key: "history", title: "История каталогов", summary: firstDays[0] ? `история с ${dm(firstDays[0])}` : "история копится", lines, problem };
 }
 
 export function buildReadiness(input: ReadinessInput): ReadinessReport {

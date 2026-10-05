@@ -191,11 +191,56 @@ export interface ExistingResult {
 
 export const MAX_ATTEMPTS = 3;
 /** Версия формы отчёта по признакам (корзины значений, legacy, examples): входит в ключ кэша, чтобы после выкладки не жил старый отчёт. */
-export const TRAITS_REPORT_VERSION = 2;
+export const TRAITS_REPORT_VERSION = 3;
 export const RETRY_AFTER_MS = 24 * 3600 * 1000;
 
 const keyOf = (sourceId: string, modelKey: string) => `${sourceId}\u0000${modelKey}`;
 export { keyOf as resultKey };
+
+export interface QueueLanes {
+  /** Новые: результата нет. */
+  fresh: CatalogHead[];
+  /** Неудавшиеся, у которых ещё есть попытки (до трёх). */
+  retry: CatalogHead[];
+  /** Разобранные прежней версией вопроса, у которых ещё есть попытки пересбора. */
+  stale: CatalogHead[];
+  /** Сборщик не возьмёт никогда: три неудачные попытки — у неудавшейся модели или у пересбора прежней версии. */
+  exhausted: CatalogHead[];
+  /** Сборщик не возьмёт, пока ближайший обход не перепишет ключ: разбор лёг бы сиротой. */
+  unstable: CatalogHead[];
+}
+
+/**
+ * Раскладка моделей каталога по очереди сборщика — одно правило и для самого сборщика (pickCandidates), и для полоски «На чём
+ * стоят цифры» (summarizeQueue): иначе «осталось разобрать» включало бы тех, кого сборщик не возьмёт никогда. nowMs — момент
+ * для суточной паузы между попытками; Infinity — «паузу не учитывать» (сколько моделей сборщик возьмёт, когда она пройдёт).
+ */
+export function queueLanes(heads: CatalogHead[], existing: Map<string, ExistingResult>, nowMs: number): QueueLanes {
+  const lanes: QueueLanes = { fresh: [], retry: [], stale: [], exhausted: [], unstable: [] };
+  const seen = new Set<string>();
+  for (const head of heads) {
+    if (head.imageUrls.length === 0 || isRuSource(head.sourceId)) continue;
+    if (head.keyStable === false) {
+      lanes.unstable.push(head);
+      continue;
+    }
+    const key = keyOf(head.sourceId, head.modelKey);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const prev = existing.get(key);
+    if (!prev) lanes.fresh.push(head);
+    else if (prev.status === "failed") {
+      if (prev.attempts >= MAX_ATTEMPTS) lanes.exhausted.push(head);
+      else if (nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) lanes.retry.push(head);
+    } else if (prev.promptVersion !== PROMPT_VERSION) {
+      // Пересбор старой строки, у которого уже были неудачные попытки (ответ из одних «не видно»), потолком попыток ограничен так же,
+      // как у новой: иначе платный вызов повторялся бы каждые сутки без конца.
+      if (prev.attempts >= MAX_ATTEMPTS) lanes.exhausted.push(head);
+      else if (nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) lanes.stale.push(head);
+    }
+  }
+  return lanes;
+}
 
 /**
  * Очередь разбора. Сначала новые модели (свежие выше), потом повтор неудавшихся
@@ -204,27 +249,24 @@ export { keyOf as resultKey };
  * референс) — тоже: ИИ на него не тратим.
  */
 export function pickCandidates(heads: CatalogHead[], existing: Map<string, ExistingResult>, nowMs: number, limit: number): CatalogHead[] {
-  const fresh: CatalogHead[] = [];
-  const retry: CatalogHead[] = [];
-  const stale: CatalogHead[] = [];
-  const seen = new Set<string>();
-  for (const head of heads) {
-    if (head.imageUrls.length === 0 || isRuSource(head.sourceId) || head.keyStable === false) continue;
-    const key = keyOf(head.sourceId, head.modelKey);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const prev = existing.get(key);
-    if (!prev) fresh.push(head);
-    else if (prev.status === "failed") {
-      if (prev.attempts < MAX_ATTEMPTS && nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) retry.push(head);
-    } else if (prev.promptVersion !== PROMPT_VERSION && prev.attempts < MAX_ATTEMPTS && nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) {
-      // Пересбор старой строки, у которого уже были неудачные попытки (ответ из одних «не видно»), потолком попыток ограничен так же,
-      // как у новой: иначе платный вызов повторялся бы каждые сутки без конца.
-      stale.push(head);
-    }
-  }
+  const { fresh, retry, stale } = queueLanes(heads, existing, nowMs);
   const newestFirst = (a: CatalogHead, b: CatalogHead) => b.firstSeenAt.localeCompare(a.firstSeenAt) || a.sourceId.localeCompare(b.sourceId) || a.modelKey.localeCompare(b.modelKey);
   return [...byTurns(fresh.sort(newestFirst)), ...byTurns(retry.sort(newestFirst)), ...byTurns(stale.sort(newestFirst))].slice(0, Math.max(0, limit));
+}
+
+/** Очередь сборщика в числах: сколько моделей он ещё возьмёт и сколько не возьмёт никогда. */
+export interface QueueSummary {
+  /** Новые + повторы + пересбор прежней версии (суточная пауза между попытками не учитывается — сборщик возьмёт их в течение суток). */
+  queued: number;
+  /** Исчерпали три попытки. */
+  exhausted: number;
+  /** Ключ модели в базе не совпал с расчётным. */
+  unstable: number;
+}
+
+export function summarizeQueue(heads: CatalogHead[], existing: Map<string, ExistingResult>): QueueSummary {
+  const lanes = queueLanes(heads, existing, Number.POSITIVE_INFINITY);
+  return { queued: lanes.fresh.length + lanes.retry.length + lanes.stale.length, exhausted: lanes.exhausted.length, unstable: lanes.unstable.length };
 }
 
 /**
@@ -473,6 +515,8 @@ export interface PhotoTraitsReport {
   /** Доля разобранных моделей, что приходится на источники в средней (0..1). */
   averageCoverage: number;
   fields: TraitField[];
+  /** Очередь сборщика по этому разделу (то же правило, что у самого сборщика); нет — отчёт из кэша старой формы. */
+  queue?: QueueSummary;
 }
 
 const pct = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 1000) / 10 : 0);

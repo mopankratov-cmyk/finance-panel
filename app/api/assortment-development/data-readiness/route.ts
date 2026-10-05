@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { ASSORTMENT_ROLES, parseDirection } from "@/lib/assortment/constants";
 import { loadReadiness } from "@/lib/assortment/dataReadinessStore";
-import { loadPhotoTraitsCached } from "@/lib/assortment/photoTraitsCached";
+import { loadPhotoTraitsCached, loadQueueCached } from "@/lib/assortment/photoTraitsCached";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   const direction = parseDirection(request.nextUrl.searchParams.get("direction"));
   if (!direction) return NextResponse.json({ error: "direction должен быть jackets или bags" }, { status: 400 });
   try {
-    return NextResponse.json({ report: await loadReadiness(db, direction, new Date(), { traits: loadPhotoTraitsCached }) }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ report: await loadReadiness(db, direction, new Date(), { traits: loadPhotoTraitsCached, queue: loadQueueCached }) }, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Состояние данных не посчиталось" }, { status: 500 });
   }

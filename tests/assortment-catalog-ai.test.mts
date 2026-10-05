@@ -147,7 +147,7 @@ test("Отчёт: «не видно» в долях не участвует, с�
 
 type Row = Record<string, unknown>;
 interface FakeOpts {
-  heads?: Row[]; results?: Row[]; usage?: Row[]; missing?: string[]; upsertFail?: boolean; usageWriteFail?: boolean;
+  heads?: Row[]; results?: Row[]; usage?: Row[]; missing?: string[]; upsertFail?: boolean; usageWriteFail?: boolean; failFailedRead?: boolean;
   /** Соперник: вызывается один раз перед первым обновлением строки учёта — как параллельный прогон. */
   rival?: (usage: Row[]) => void;
 }
@@ -165,16 +165,21 @@ function fakeDb(init: FakeOpts = {}) {
   const db = {
     from: (table: string) => {
       const filters: Array<(r: Row) => boolean> = [];
+      const eqs: Array<[string, unknown]> = [];
       const state = { op: "select", values: {} as Row, returning: false };
       const rows = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
       const isMissing = init.missing?.includes(table);
       const q: Record<string, unknown> = {
         select: () => { if (state.op === "update") state.returning = true; return q; },
-        eq: (c: string, val: unknown) => { filters.push((r) => r[c] === val); return q; },
+        eq: (c: string, val: unknown) => { eqs.push([c, val]); filters.push((r) => r[c] === val); return q; },
         gte: (c: string, val: unknown) => { filters.push((r) => String(r[c] ?? "") >= String(val)); return q; },
         is: (c: string, val: unknown) => { filters.push((r) => (r[c] ?? null) === val); return q; },
         order: () => q,
-        range: (from: number, to: number) => Promise.resolve(isMissing ? { data: null, error: missingErr(table) } : { data: rows().slice(from, to + 1), error: null }),
+        range: (from: number, to: number) => {
+          // Сбой вспомогательного чтения неудавшихся строк (очередь отчёта): основной отчёт он ронять не должен.
+          if (init.failFailedRead && table === "assortment_model_attributes" && eqs.some(([c, v]) => c === "status" && v === "failed")) return Promise.resolve({ data: null, error: { message: "таймаут запроса" } });
+          return Promise.resolve(isMissing ? { data: null, error: missingErr(table) } : { data: rows().slice(from, to + 1), error: null });
+        },
         maybeSingle: () => Promise.resolve({ data: rows()[0] ?? null, error: null }),
         update: (values: Row) => { state.op = "update"; state.values = values; return q; },
         insert: (row: Row) => {
@@ -1167,6 +1172,15 @@ test("Отчёт по базе: в долях только текущая вер
   assert.equal(report.analyzed, 2, "в долях — только v2");
   assert.equal(report.legacy, 3);
   assert.equal(report.fields.find((f) => f.key === "length")?.visible, 2);
+  // Очередь сборщика по разделу: m5 — новая, m2–m4 — пересбор прежней версии; та же раскладка, что у самого сборщика.
+  assert.deepEqual(report.queue, { queued: 4, exhausted: 0, unstable: 0 });
+  const dead = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1"), row(3, "catalog-v1"), row(4, "catalog-v1"), resultRow("S1", "m5", { direction: "jackets", status: "failed", attempts: 3, attributes: null })] });
+  assert.deepEqual((await loadPhotoTraits(dead.db, "jackets"))!.queue, { queued: 3, exhausted: 1, unstable: 0 }, "три неудачные попытки — модель не в очереди, а в «не возьмёт»");
+  // Сбой чтения неудавшихся строк (для очереди) не роняет отчёт: доли и счётчики на месте, очереди в нём нет — полоска прочтёт её сама.
+  const flaky = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1")], failFailedRead: true });
+  const survived = (await loadPhotoTraits(flaky.db, "jackets"))!;
+  assert.equal(survived.analyzed, 2);
+  assert.equal(survived.queue, undefined, "очередь не посчиталась — её нет в отчёте, а не нули");
   const onlyOld = fakeDb({ heads, results: [row(0, "catalog-v1"), row(1, "catalog-v1")] });
   const old = (await loadPhotoTraits(onlyOld.db, "jackets"))!;
   assert.equal(old.analyzed, 0);

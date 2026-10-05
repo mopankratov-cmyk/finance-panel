@@ -15,6 +15,7 @@ import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { modelKey } from "./modelKey";
 import { isRuSource } from "./ruMarket";
+import { summarizeQueue, type QueueSummary } from "./catalogAi";
 
 /**
  * Разбор каталога по фото и отчёт по признакам. Без миграции 202610050005 (таблица
@@ -649,9 +650,9 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
   const { data: names } = await db.from("assortment_sources").select("source_id,name");
   const nameOf = new Map((names ?? []).map((n) => [String((n as { source_id: string }).source_id), String((n as { name: string | null }).name ?? "")]));
   try {
-    type TraitRow = { source_id: string; model_key: string; attributes: StoredAttributes | null; prompt_version: string | null };
+    type TraitRow = { source_id: string; model_key: string; attributes: StoredAttributes | null; prompt_version: string | null; attempts: number | null; taken_at: string | null };
     const rows = await loadAllSupabasePages<TraitRow>((from, to) => db.from(RESULTS)
-      .select("source_id,model_key,attributes,prompt_version")
+      .select("source_id,model_key,attributes,prompt_version,attempts,taken_at")
       .eq("direction", direction)
       .eq("status", "ok")
       .order("source_id", { ascending: true })
@@ -665,11 +666,50 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
     const models: TraitModel[] = fresh.map((r) => ({ sourceId: r.source_id, sourceName: nameOf.get(r.source_id) || r.source_id, attributes: r.attributes as StoredAttributes }));
     // Знаменатель покрытия — модели, которые вообще можно разобрать: с фото и не «Рынок РФ».
     const eligible = heads.filter((h) => h.imageUrls.length > 0 && !isRuSource(h.sourceId)).length;
-    return buildPhotoTraits(direction, models, Math.max(eligible, usable.length), usable.length - fresh.length);
+    // Очередь сборщика по этому разделу — тем же правилом, по которому он сам берёт модели: неудавшиеся с тремя попытками и
+    // модели с нестабильным ключом в «осталось разобрать» не входят, их сборщик не возьмёт.
+    // Вспомогательное чтение: его сбой не роняет основной отчёт (блок «Признаки по фото» живёт и без очереди), полоска «На чём стоят
+    // цифры» в этом случае прочтёт очередь сама.
+    let queue: QueueSummary | undefined;
+    try {
+      const failedRows = await loadAllSupabasePages<{ source_id: string; model_key: string; attempts: number | null; taken_at: string }>((from, to) => db.from(RESULTS)
+        .select("source_id,model_key,attempts,taken_at")
+        .eq("direction", direction)
+        .eq("status", "failed")
+        .order("source_id", { ascending: true })
+        .order("model_key", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: Array<{ source_id: string; model_key: string; attempts: number | null; taken_at: string }> | null; error: { message: string } | null }>, { label: "Неразобранные признаки", pageSize: 1000 });
+      const existing = new Map<string, ExistingResult>();
+      for (const r of rows) existing.set(resultKey(r.source_id, r.model_key), { status: "ok", attempts: Number(r.attempts) || 1, promptVersion: r.prompt_version ?? "", takenAt: r.taken_at ?? "" });
+      for (const r of failedRows) existing.set(resultKey(r.source_id, r.model_key), { status: "failed", attempts: Number(r.attempts) || 1, promptVersion: "", takenAt: r.taken_at });
+      queue = summarizeQueue(heads, existing);
+    } catch {
+      queue = undefined;
+    }
+    return { ...buildPhotoTraits(direction, models, Math.max(eligible, usable.length), usable.length - fresh.length), ...(queue ? { queue } : {}) };
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;
   }
+}
+
+/** Очередь раздела и знаменатель «из M». */
+export interface QueueFacts {
+  eligible: number;
+  queue: QueueSummary;
+}
+
+/**
+ * Очередь сборщика по разделу прямым чтением каталога и таблицы результатов — для раздела, где отчёта по признакам нет (ничего ещё
+ * не разобрано: как раз самая большая очередь) или он пришёл без очереди. Чтение тяжёлое (вид голов + вся таблица результатов) —
+ * на экране его берут через часовой кэш (photoTraitsCached.loadQueueCached).
+ */
+export async function loadQueueDirect(db: SupabaseClient, direction: AssortmentDirection, nowMs = Date.now()): Promise<QueueFacts> {
+  const heads = await loadCatalogHeads(db, direction, nowMs);
+  // Вида каталога ещё нет (миграция): разбирать нечего.
+  if (!heads) return { eligible: 0, queue: { queued: 0, exhausted: 0, unstable: 0 } };
+  const existing = (await loadExisting(db)) ?? new Map();
+  return { eligible: heads.filter((h) => h.imageUrls.length > 0 && !isRuSource(h.sourceId)).length, queue: summarizeQueue(heads, existing) };
 }
 
 // ---------------------------------------------------------------------------

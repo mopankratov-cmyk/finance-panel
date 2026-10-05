@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { moscowToday } from "@/lib/sync/moscowDay";
 import { catalogAiConfig, estimatedCallUsd, type PhotoTraitsReport } from "./catalogAi";
-import { aiKeyConfigured, loadPhotoTraits, loadSpend } from "./catalogAiStore";
+import { aiKeyConfigured, loadPhotoTraits, loadQueueDirect, loadSpend, type QueueFacts } from "./catalogAiStore";
 import type { AssortmentDirection } from "./constants";
 import { buildReadiness, type DemandFacts, type HistoryFacts, type ReadinessInput, type ReadinessReport, type TraitsFacts } from "./dataReadiness";
 import { isMissingAssortmentSchema } from "./errors";
@@ -42,25 +42,37 @@ async function count(db: SupabaseClient, build: (q: ReturnType<SupabaseClient["f
 /** Отчёт по признакам раздела: загрузчик подставляется (на проде — с часовым кэшем, как у блока «Признаки по фото»). */
 export type TraitsLoader = (db: SupabaseClient, direction: AssortmentDirection) => Promise<PhotoTraitsReport | null>;
 
-/** Сколько осталось разобрать в разделе: те же числа, что в блоке «Признаки по фото». */
-async function remainingOf(db: SupabaseClient, direction: AssortmentDirection, traits: TraitsLoader): Promise<number | null> {
-  try {
-    const report = await traits(db, direction);
-    return report ? Math.max(0, report.catalog - report.analyzed) : null;
-  } catch {
-    return null;
-  }
+/** Очередь раздела без готового отчёта: подставляется (на проде — с часовым кэшем). */
+export type QueueLoader = (db: SupabaseClient, direction: AssortmentDirection) => Promise<QueueFacts>;
+
+/**
+ * Очередь сборщика по разделу: из отчёта (он считает её тем же правилом, что сам сборщик), а когда отчёта нет или он пришёл без
+ * очереди — прямым чтением каталога и результатов. «Не взял бы никогда» (три неудачные попытки, нестабильный ключ) в очередь не входит.
+ */
+async function queueOf(db: SupabaseClient, direction: AssortmentDirection, report: PhotoTraitsReport | null, queue: QueueLoader): Promise<QueueFacts> {
+  if (report?.queue) return { eligible: report.catalog, queue: report.queue };
+  return queue(db, direction);
 }
 
-async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, now: Date, traits: TraitsLoader): Promise<TraitsFacts | null> {
+async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, now: Date, traits: TraitsLoader, queue: QueueLoader, note: (message: string) => void): Promise<TraitsFacts | null> {
   // Есть ли таблица результатов вообще: нет — блока нет (прячем, а не рисуем нули).
   const failed = await count(db, (q) => q.select("model_key", { count: "exact" }).eq("direction", direction).eq("status", "failed").limit(1));
   if (failed === null) return null;
   const sinceIso = new Date(now.getTime() - RECENT_DAYS * DAY_MS).toISOString();
-  const recentFailed = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "failed").gte("taken_at", sinceIso).limit(1))) ?? 0;
-  const recentOk = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "ok").gte("taken_at", sinceIso).limit(1))) ?? 0;
-  const last = await db.from(RESULTS).select("taken_at").eq("status", "ok").order("taken_at", { ascending: false }).limit(1);
+  // Удача — разобрано без ошибки (last_error пуст). Неудачный ПЕРЕСБОР старой строки статус «ok» сохраняет и только пишет last_error
+  // с новой taken_at: считать его удачей значило бы занижать долю неудач и показывать время неудачной попытки как «последняя модель разобрана».
+  const recentOk = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "ok").is("last_error", null).gte("taken_at", sinceIso).limit(1))) ?? 0;
+  const recentFailedNew = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "failed").gte("taken_at", sinceIso).limit(1))) ?? 0;
+  const recentFailedRebuild = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "ok").not("last_error", "is", null).gte("taken_at", sinceIso).limit(1))) ?? 0;
+  // Сбой этих двух чтений не молчит (строка в errors) и не превращается в «ни одной удачи»: время неизвестно — null и без тревоги.
+  const last = await db.from(RESULTS).select("taken_at").eq("status", "ok").is("last_error", null).order("taken_at", { ascending: false }).limit(1);
+  if (last.error) note(`время последней разобранной модели (${last.error.message.slice(0, 120)})`);
   const lastOkAt = last.error ? null : ((last.data ?? []) as Array<{ taken_at: string }>)[0]?.taken_at ?? null;
+  // Последняя попытка любого рода — удачная, неудачная, неудачный пересбор: по ней судим, работает ли сборщик (свежая неудача — тоже
+  // доказательство, что он жив; доля неудач ловится отдельно).
+  const attempt = await db.from(RESULTS).select("taken_at").order("taken_at", { ascending: false }).limit(1);
+  if (attempt.error) note(`время последней попытки разбора (${attempt.error.message.slice(0, 120)})`);
+  const lastAttemptAt = attempt.error ? null : ((attempt.data ?? []) as Array<{ taken_at: string }>)[0]?.taken_at ?? null;
 
   const errors = new Map<string, number>();
   if (failed > 0) {
@@ -72,20 +84,20 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
   }
 
   const report = await traits(db, direction);
-  let analyzed = report?.analyzed ?? 0;
-  let legacy = report?.legacy ?? 0;
-  let eligible = report?.catalog ?? 0;
-  if (!report) {
-    // Ничего ещё не разобрано (или нет вида каталога): знаменатель — счётчики видов по источникам, числитель — нули.
-    const stats = await db.from("assortment_catalog_stats").select("source_id,with_photo").eq("direction", direction);
-    if (stats.error && !missing(stats.error)) throw new Error(stats.error.message);
-    eligible = stats.error ? 0 : ((stats.data ?? []) as Array<{ source_id: string; with_photo: number }>).filter((r) => !isRuSource(r.source_id)).reduce((sum, r) => sum + (Number(r.with_photo) || 0), 0);
-    analyzed = 0;
-    legacy = 0;
-  }
+  const own = await queueOf(db, direction, report, queue);
+  const analyzed = report?.analyzed ?? 0;
+  const legacy = report?.legacy ?? 0;
 
+  // Очередь у сборщика общая: остаток другого раздела входит в срок. Не прочитался — null и строка в errors, а не тихий ноль:
+  // «очередь разобрана» при нечитаемой второй половине было бы ложью.
   const other: AssortmentDirection = direction === "jackets" ? "bags" : "jackets";
-  const otherRemaining = await remainingOf(db, other, traits);
+  let otherQueued: number | null = null;
+  try {
+    const otherReport = await traits(db, other).catch(() => null);
+    otherQueued = (await queueOf(db, other, otherReport, queue)).queue.queued;
+  } catch (error) {
+    note(`очередь другого раздела${error instanceof Error && error.message ? ` (${error.message.slice(0, 120)})` : ""}`);
+  }
 
   const config = catalogAiConfig();
   const spend = await loadSpend(db, now);
@@ -100,12 +112,17 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
     model: config.model,
     analyzed,
     legacy,
-    eligible: Math.max(eligible, analyzed + legacy),
+    eligible: Math.max(own.eligible, analyzed + legacy),
+    queued: own.queue.queued,
+    exhausted: own.queue.exhausted,
+    unstable: own.queue.unstable,
     failed,
     recentOk,
-    recentFailed,
+    recentFailed: recentFailedNew + recentFailedRebuild,
     lastOkAt,
-    otherRemaining,
+    lastAttemptAt,
+    readFailed: Boolean(last.error || attempt.error),
+    otherQueued,
     callsToday: spend?.callsToday ?? 0,
     dailyLimit: config.dailyLimit,
     weekUsd,
@@ -151,8 +168,9 @@ async function loadHistory(db: SupabaseClient, direction: AssortmentDirection, n
  * Полоска «На чём стоят цифры» по разделу. Сбой одной части не роняет остальные, но и не прячется: часть попадает в errors,
  * а экран пишет «не загрузилось» — молчание выглядело бы как «данных нет».
  */
-export async function loadReadiness(db: SupabaseClient, direction: AssortmentDirection, now: Date = new Date(), deps: { traits?: TraitsLoader } = {}): Promise<ReadinessReport> {
+export async function loadReadiness(db: SupabaseClient, direction: AssortmentDirection, now: Date = new Date(), deps: { traits?: TraitsLoader; queue?: QueueLoader } = {}): Promise<ReadinessReport> {
   const traitsLoader: TraitsLoader = deps.traits ?? loadPhotoTraits;
+  const queueLoader: QueueLoader = deps.queue ?? ((client, direction_) => loadQueueDirect(client, direction_, now.getTime()));
   const errors: string[] = [];
   const guard = async <T>(label: string, run: () => Promise<T | null>): Promise<T | null> => {
     try {
@@ -163,7 +181,7 @@ export async function loadReadiness(db: SupabaseClient, direction: AssortmentDir
     }
   };
   const [traits, demand, history] = await Promise.all([
-    guard("признаки по фото", () => loadTraits(db, direction, now, traitsLoader)),
+    guard("признаки по фото", () => loadTraits(db, direction, now, traitsLoader, queueLoader, (message) => errors.push(message))),
     guard("спрос на WB", () => loadDemand(db, direction, now)),
     guard("история каталогов", () => loadHistory(db, direction, now)),
   ]);
