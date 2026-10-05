@@ -579,7 +579,7 @@ export function PaymentsPage() {
             </div>
             <label className="flex min-h-11 items-center gap-2 self-end rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700">
               <input type="checkbox" checked={cashoutOnly} onChange={(event) => setCashoutOnly(event.target.checked)} className="h-4 w-4 accent-violet-600" />
-              Только «Обнал»
+              Только «Движение наличных»
             </label>
           </div>
           {/* На телефоне поля фильтров занимают экран целиком, и список платежей

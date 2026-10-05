@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
   const from = request.nextUrl.searchParams.get("from") ?? "";
   const to = request.nextUrl.searchParams.get("to") ?? "";
   if (!DATE.test(from) || !DATE.test(to) || from > to || from.slice(0, 4) !== to.slice(0, 4)) {
-    return NextResponse.json({ error: "Для раздела «Обнал» укажите корректный период в пределах одного года" }, { status: 400 });
+    return NextResponse.json({ error: "Для раздела «Движение наличных» укажите корректный период в пределах одного года" }, { status: 400 });
   }
 
   try {

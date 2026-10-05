@@ -244,7 +244,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
   const handlePrepare = async () => {
     if (!statement) return;
     if (cashoutOnly && !companyId) {
-      setError("Для импорта в раздел «Обнал» выберите компанию — ИП Панкратов или ООО РИО.");
+      setError("Для импорта в раздел «Движение наличных» выберите компанию — ИП Панкратов или ООО РИО.");
       return;
     }
     if (!selectedAccount && !needsNewBankAccount) {
@@ -329,7 +329,7 @@ export function BankStatementModal({ open, onClose, accounts, companies, existin
       <button type="button" aria-label="Закрыть" className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={close} />
       <div ref={panel} role="dialog" aria-modal="true" aria-label="Импорт банковской выписки" className="relative flex max-h-[92dvh] w-full max-w-[1500px] flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:max-h-[94dvh] sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 sm:px-5 sm:py-4">
-          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">{cashoutOnly ? "Импорт выписки для раздела «Обнал»" : "Импорт банковской выписки"}</h2>
+          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">{cashoutOnly ? "Импорт выписки для раздела «Движение наличных»" : "Импорт банковской выписки"}</h2>
           <button type="button" onClick={close} aria-label="Закрыть" className="tap -mr-2 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
         <div className="overflow-y-auto overscroll-contain px-4 pb-safe-4 pt-4 sm:px-5">
