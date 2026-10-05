@@ -73,6 +73,16 @@ async function saveWbContractLink(contractNumber: string, loanId: string): Promi
   if (!response.ok) throw new Error(body.error || "Не удалось сохранить связь договора WB");
 }
 
+async function ignoreClosedWbContract(contractNumber: string): Promise<void> {
+  const response = await fetch("/api/finance/loans/marketplace-facts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "ignore-contract", contractNumber }),
+  });
+  const body = await response.json().catch(() => ({})) as { error?: string };
+  if (!response.ok) throw new Error(body.error || "Не удалось скрыть закрытый договор WB");
+}
+
 const marker = (loanId: string) => `[loan:${loanId}:`;
 const receiptMarker = (loanId: string) => `[loan:${loanId}:receipt]`;
 const scheduleMarker = (loanId: string, rowId: string, kind: "principal" | "interest" | "penalty" | "fine") => `[loan:${loanId}:schedule:${rowId}:${kind}]`;
@@ -244,6 +254,7 @@ export function LoansPage() {
   const [wbLinkLoanIds, setWbLinkLoanIds] = useState<Record<string, string>>({});
   const [wbReviewRowIds, setWbReviewRowIds] = useState<Record<string, string>>({});
   const [wbLinkingSource, setWbLinkingSource] = useState<string | null>(null);
+  const [wbIgnoringContract, setWbIgnoringContract] = useState<string | null>(null);
   const [wbAllocatingContract, setWbAllocatingContract] = useState<string | null>(null);
   const formPanel = useRef<HTMLDivElement>(null);
   const closeForm = useCallback(() => { setModalOpen(false); setEditing(null); }, []);
@@ -465,6 +476,19 @@ export function LoansPage() {
       setWbLinkingSource(null);
     }
   }, [reconcileWithWb, wbLinkLoanIds]);
+
+  const ignoreWbContract = useCallback(async (contractNumber: string) => {
+    if (!window.confirm(`Скрыть договор WB № ${contractNumber} из очереди сверки?\n\nИсходные удержания останутся в отчёте WB, но больше не будут предлагаться для привязки.`)) return;
+    setWbIgnoringContract(contractNumber);
+    try {
+      await ignoreClosedWbContract(contractNumber);
+      setMarketplaceFacts(await loadMarketplaceFacts());
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Не удалось скрыть закрытый договор WB");
+    } finally {
+      setWbIgnoringContract(null);
+    }
+  }, []);
 
   const allocateWbContract = useCallback(async (contractNumber: string) => {
     if (!window.confirm(`Распределить удержания WB по договору № ${contractNumber}?\n\nСистема закроет только полностью покрытые старые строки того же вида платежа в хронологическом порядке. Пени, которых нет в графике, будут добавлены отдельными оплаченными строками датой удержания. Непоместившийся остаток не будет списан наугад.`)) return;
@@ -735,6 +759,7 @@ export function LoansPage() {
                     <p className="font-semibold text-slate-950">{fact.loanName ?? `Договор WB № ${fact.contractNumber ?? "не определён"}`}</p>
                     <p className="mt-1 text-xs font-semibold text-amber-950">Кабинет WB: {fact.cabinetName ?? "не найден среди подключённых"}</p>
                     <p className="mt-1 truncate text-xs text-slate-600">{formatDate(fact.date)} · {marketplaceKindLabel[fact.kind]} · {fact.reason}</p>
+                    {fact.contractNumber && <button type="button" onClick={() => void ignoreWbContract(fact.contractNumber!)} disabled={wbIgnoringContract === fact.contractNumber} className="mt-2 min-h-9 rounded-lg px-2 text-xs font-semibold text-amber-900 underline decoration-amber-400 underline-offset-2 hover:bg-amber-100 disabled:opacity-50">{wbIgnoringContract === fact.contractNumber ? "Скрываю…" : "Закрытый договор — скрыть из проверки"}</button>}
                     {fact.state === "review" && (
                       reviewRows.length ? (
                         <div className="mt-2 rounded-lg border border-amber-200 bg-white/70 p-2">
