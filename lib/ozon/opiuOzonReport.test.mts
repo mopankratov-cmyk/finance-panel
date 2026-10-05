@@ -1,227 +1,268 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildOzonOpiuReport } from "./opiuOzonReport.ts";
+import {
+  OZON_SHEET_ADS_EXTRA_TYPE_IDS,
+  OZON_SHEET_ADS_LINES,
+  OZON_SHEET_LOGISTICS_LINES,
+  OZON_SHEET_LOGISTICS_NAMED_LINES,
+  OZON_SHEET_OTHER_LINES,
+} from "./opiuOzonSheetLayout.ts";
 
-function baseInput(overrides: Partial<Parameters<typeof buildOzonOpiuReport>[0]> = {}) {
-  return {
-    accrualRows: [],
-    postings: [],
-    adSpend: 0,
-    typeNames: new Map<number, string>(),
-    knownTypeIds: new Set<number>(),
-    ...overrides,
-  };
+type Input = Parameters<typeof buildOzonOpiuReport>[0];
+
+function baseInput(overrides: Partial<Input> = {}): Input {
+  return { accrualRows: [], postings: [], typeNames: new Map<number, string>(), ...overrides };
 }
 
-test("an empty period (no postings, no accruals) reports all-zero sections, not an error", () => {
+const section = (report: ReturnType<typeof buildOzonOpiuReport>, key: string) =>
+  report.sections.find((s) => s.key === key)!;
+const child = (sec: { children: { label: string; amount: number | null }[] }, label: string) =>
+  sec.children.find((c) => c.label === label)!;
+
+test("an empty period reports zeros everywhere and keeps the stub sections as stubs", () => {
   const report = buildOzonOpiuReport(baseInput());
   assert.equal(report.total, 0);
-  const cogs = report.sections.find((s) => s.key === "cogs")!;
-  assert.equal(cogs.kind, "stub");
-  assert.equal(cogs.amount, null);
-  for (const section of report.sections) {
-    if (section.key === "cogs") continue;
-    assert.equal(section.amount, 0, `expected ${section.key} to be 0`);
+  assert.equal(section(report, "cogs").kind, "stub");
+  assert.equal(section(report, "cogs").amount, null);
+  assert.equal(section(report, "warehouse").kind, "stub");
+  for (const key of ["orders", "sales", "commission", "logistics", "ads", "other"]) {
+    assert.equal(section(report, key).amount, 0, `${key} must be 0`);
   }
 });
 
-test("type_id 69 on a POSTING row is always commission, never logistics", () => {
-  const report = buildOzonOpiuReport(
-    baseInput({ accrualRows: [{ accrued_category: "POSTING", type_id: 69, amount: -533 }] }),
+test("section headers use the exact labels of the reference sheet", () => {
+  const report = buildOzonOpiuReport(baseInput());
+  assert.deepEqual(
+    report.sections.map((s) => s.label),
+    [
+      "Заказы",
+      "Продажи",
+      "Себестоимость",
+      "Склад",
+      "Комиссия за продажу:",
+      "Логистика:",
+      "Реклама:",
+      "Прочие удержания:",
+      "Прочие компенсации",
+    ],
   );
-  const commission = report.sections.find((s) => s.key === "commission")!;
-  const logistics = report.sections.find((s) => s.key === "logistics")!;
-  assert.equal(commission.amount, -533);
-  assert.equal(logistics.amount, 0);
+  assert.equal(report.totalLabel, "ИТОГО К ВЫПЛАТЕ");
 });
 
-test("any other POSTING type_id is logistics, with a per-type_id child row", () => {
-  const report = buildOzonOpiuReport(
-    baseInput({
-      accrualRows: [
-        { accrued_category: "POSTING", type_id: 32, amount: -56 },
-        { accrued_category: "POSTING", type_id: 29, amount: -8.14 },
-      ],
-      typeNames: new Map([[32, "Последняя миля"]]),
-    }),
-  );
-  const logistics = report.sections.find((s) => s.key === "logistics")!;
-  assert.equal(logistics.amount, -64.14);
-  assert.equal(logistics.children.length, 2);
-  const known = logistics.children.find((c) => c.label === "Последняя миля")!;
-  assert.equal(known.amount, -56);
-  const unknown = logistics.children.find((c) => c.label === "Категория #29")!;
-  assert.equal(unknown.amount, -8.14);
-});
-
-test("ITEM and NON_ITEM rows both land in Прочие удержания, neither one dropping the other", () => {
+test("a real sale from the reference list: 250 sale, -50 commission, -9.64 last mile, -17.28 logistics → 173.08", () => {
+  // Accrual 60413789942 from the sheet's «Список начислений» (Итоговая сумма операции = 173,08).
   const report = buildOzonOpiuReport(
     baseInput({
       accrualRows: [
-        { accrued_category: "ITEM", type_id: 1, amount: -4.13 },
-        { accrued_category: "NON_ITEM", type_id: 12, amount: -547.8 },
+        { accrual_id: 60413789942, accrued_category: "POSTING", type_id: 69, amount: -50, extra: { sale_amount: 250 } },
+        { accrual_id: 60413789942, accrued_category: "POSTING", type_id: 29, amount: -9.64 },
+        { accrual_id: 60413789942, accrued_category: "POSTING", type_id: 32, amount: -17.28 },
       ],
     }),
   );
-  const other = report.sections.find((s) => s.key === "other")!;
-  assert.equal(other.amount, -551.93);
-  assert.equal(other.children.length, 2);
+  assert.equal(child(section(report, "sales"), "Заказы").amount, 250);
+  assert.equal(section(report, "sales").amount, 250);
+  assert.equal(section(report, "commission").amount, 50, "expense sections are shown positive, as in the sheet");
+  assert.equal(section(report, "logistics").amount, 26.92);
+  assert.equal(child(section(report, "logistics"), "Последняя миля").amount, -9.64, "logistics lines keep Ozon's sign");
+  assert.equal(child(section(report, "logistics"), "Логистика").amount, -17.28);
+  assert.equal(report.total, 173.08);
 });
 
-test("ad spend is a positive input but shows as a negative amount and subtracts from the total", () => {
-  const report = buildOzonOpiuReport(baseInput({ adSpend: 281524 }));
-  const ads = report.sections.find((s) => s.key === "ads")!;
-  assert.equal(ads.amount, -281524);
-  assert.equal(report.total, -281524);
+test("a return (negative sale_amount, no reversed services) goes to «Получение возврата, отмены, невыкупа от покупателя»", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [
+        { accrual_id: 1, accrued_category: "POSTING", type_id: 69, amount: 50, extra: { sale_amount: -250 } },
+      ],
+    }),
+  );
+  const sales = section(report, "sales");
+  assert.equal(child(sales, "Получение возврата, отмены, невыкупа от покупателя").amount, -250);
+  assert.equal(child(sales, "Заказы").amount, 0);
+  assert.equal(sales.amount, -250);
+  assert.equal(section(report, "commission").amount, -50, "returned commission reduces the commission expense");
+  assert.equal(report.total, -200);
 });
 
-test("orders section buckets posting amounts by stage", () => {
+test("a cancelled accrual (negative sale_amount with reversed positive services) goes to «Доставка покупателю — отмена начисления»", () => {
+  // Accrual 60462387221 from the sheet: Итоговая сумма операции = -157,72.
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [
+        { accrual_id: 60462387221, accrued_category: "POSTING", type_id: 69, amount: 50, extra: { sale_amount: -250 } },
+        { accrual_id: 60462387221, accrued_category: "POSTING", type_id: 98, amount: 25 },
+        { accrual_id: 60462387221, accrued_category: "POSTING", type_id: 32, amount: 17.28 },
+      ],
+    }),
+  );
+  const sales = section(report, "sales");
+  assert.equal(child(sales, "Доставка покупателю — отмена начисления").amount, -250);
+  assert.equal(child(sales, "Получение возврата, отмены, невыкупа от покупателя").amount, 0);
+  assert.equal(report.total, -157.72);
+});
+
+test("an accrual with services only (no commission) adds nothing to Продажи but its services reach Логистика", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({ accrualRows: [{ accrual_id: 5, accrued_category: "POSTING", type_id: 45, amount: -15 }] }),
+  );
+  const sales = section(report, "sales");
+  assert.equal(sales.amount, 0);
+  assert.equal(child(sales, "Доставка и обработка возврата, отмены, невыкупа").amount, 0);
+  assert.equal(child(section(report, "logistics"), "Обработка возврата").amount, -15);
+  assert.equal(section(report, "logistics").amount, 15);
+});
+
+test("Реклама lines are the sheet's accrual types, shown with the opposite sign, and the section sums them", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [
+        { accrual_id: 1, accrued_category: "NON_ITEM", type_id: 41, amount: -152845 },
+        { accrual_id: 2, accrued_category: "NON_ITEM", type_id: 54, amount: -30453 },
+      ],
+    }),
+  );
+  const ads = section(report, "ads");
+  assert.equal(child(ads, "Оплата за клик").amount, 152845);
+  assert.equal(child(ads, "Продвижение товара").amount, 30453);
+  assert.equal(ads.amount, 183298);
+  assert.equal(report.total, -183298);
+});
+
+test("every advertising line of the sheet is always shown, even at zero", () => {
+  const ads = section(buildOzonOpiuReport(baseInput()), "ads");
+  assert.deepEqual(
+    ads.children.map((c) => c.label),
+    OZON_SHEET_ADS_LINES.map((l) => l.label),
+  );
+});
+
+test("an advertising type that is not in the sheet is shown as its own Реклама row once it has charges", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [{ accrual_id: 1, accrued_category: "NON_ITEM", type_id: 75, amount: -1000 }],
+      typeNames: new Map([[75, "Трафареты"]]),
+    }),
+  );
+  const ads = section(report, "ads");
+  assert.equal(child(ads, "Трафареты").amount, 1000);
+  assert.equal(ads.amount, 1000);
+  assert.deepEqual(report.newCategories, [], "a known advertising type is not an unlisted category");
+});
+
+test("Прочие удержания lines keep Ozon's sign and the section is their sum with the opposite sign", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [
+        { accrual_id: 1, accrued_category: "ITEM", type_id: 1, amount: -5271 },
+        { accrual_id: 2, accrued_category: "NON_ITEM", type_id: 52, amount: -24990 },
+      ],
+    }),
+  );
+  const other = section(report, "other");
+  assert.equal(child(other, "Эквайринг").amount, -5271);
+  assert.equal(child(other, "Подписка Premium").amount, -24990);
+  assert.equal(other.amount, 30261);
+  assert.equal(report.total, -30261);
+});
+
+test("a charge type that is in none of the sheet's rows is still counted: NON_ITEM goes to Прочие удержания", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [{ accrual_id: 1, accrued_category: "NON_ITEM", type_id: 7, amount: -300 }],
+      typeNames: new Map([[7, "Благотворительное пожертвование"]]),
+    }),
+  );
+  assert.equal(child(section(report, "other"), "Благотворительное пожертвование").amount, -300);
+  assert.equal(section(report, "other").amount, 300);
+  assert.equal(report.total, -300);
+  assert.deepEqual(report.newCategories, [
+    { typeId: 7, label: "Благотворительное пожертвование", section: "other" },
+  ]);
+});
+
+test("a posting service type that is in none of the sheet's rows is still counted: it goes to Логистика", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({ accrualRows: [{ accrual_id: 1, accrued_category: "POSTING", type_id: 44, amount: -12 }] }),
+  );
+  assert.equal(child(section(report, "logistics"), "Категория #44").amount, -12);
+  assert.equal(section(report, "logistics").amount, 12);
+  assert.equal(report.newCategories[0].section, "logistics");
+});
+
+test("total follows the sheet's formula: Продажи − Комиссия − Логистика − Реклама − Прочие удержания", () => {
+  const report = buildOzonOpiuReport(
+    baseInput({
+      accrualRows: [
+        { accrual_id: 1, accrued_category: "POSTING", type_id: 69, amount: -100, extra: { sale_amount: 1000 } },
+        { accrual_id: 1, accrued_category: "POSTING", type_id: 32, amount: -50 },
+        { accrual_id: 2, accrued_category: "NON_ITEM", type_id: 41, amount: -30 },
+        { accrual_id: 3, accrued_category: "NON_ITEM", type_id: 1, amount: -20 },
+      ],
+    }),
+  );
+  assert.equal(report.total, 1000 - 100 - 50 - 30 - 20);
+});
+
+test("the orders block sums the five statuses of the sheet and keeps unknown statuses visible", () => {
   const report = buildOzonOpiuReport(
     baseInput({
       postings: [
         { status: "delivered", amount: 1000 },
         { status: "cancelled", amount: 200 },
         { status: "delivering", amount: 50 },
+        { status: "awaiting_deliver", amount: 10 },
+        { status: "awaiting_packaging", amount: 5 },
+        { status: "arbitration", amount: 7 },
       ],
     }),
   );
-  const orders = report.sections.find((s) => s.key === "orders")!;
-  assert.equal(orders.amount, 1250);
+  const orders = section(report, "orders");
+  assert.equal(child(orders, "Доставлено").amount, 1000);
+  assert.equal(child(orders, "Отменено").amount, 200);
+  assert.equal(child(orders, "Доставляется").amount, 50);
+  assert.equal(child(orders, "Ожидает отгрузки").amount, 10);
+  assert.equal(child(orders, "Ожидает упаковки").amount, 5);
+  assert.equal(child(orders, "Другие статусы").amount, 7);
+  assert.equal(orders.amount, 1272);
+  assert.equal(report.total, 0, "orders are an informational block and never enter К выплате");
 });
 
-test("Продажи → Заказы comes from commission rows' extra.sale_amount, not from posting amounts (spec §7)", () => {
-  const report = buildOzonOpiuReport(
-    baseInput({
-      postings: [{ status: "cancelled", amount: 200 }],
-      accrualRows: [
-        { accrued_category: "POSTING", type_id: 69, amount: -100, extra: { sale_amount: 1300 } },
-        { accrued_category: "POSTING", type_id: 69, amount: -50, extra: { sale_amount: 700 } },
-      ],
-    }),
-  );
-  const sales = report.sections.find((s) => s.key === "sales")!;
-  const ordersChild = sales.children.find((c) => c.label === "Заказы (оценка)")!;
-  assert.equal(ordersChild.amount, 2000);
-  assert.equal(sales.amount, 2000);
+test("the «Другие статусы» row is absent when every posting has one of the five statuses", () => {
+  const report = buildOzonOpiuReport(baseInput({ postings: [{ status: "delivered", amount: 1 }] }));
+  assert.equal(section(report, "orders").children.some((c) => c.label === "Другие статусы"), false);
 });
 
-test("a commission row with no extra field contributes zero to Заказы without throwing", () => {
-  const report = buildOzonOpiuReport(
-    baseInput({ accrualRows: [{ accrued_category: "POSTING", type_id: 69, amount: -50 }] }),
-  );
-  const sales = report.sections.find((s) => s.key === "sales")!;
-  const ordersChild = sales.children.find((c) => c.label === "Заказы (оценка)")!;
-  assert.equal(ordersChild.amount, 0);
-});
-
-test("cancelled postings show as an informational Продажи child but never reduce Продажи or the total (finding C2)", () => {
-  // The only revenue the total contains is Σ extra.sale_amount from
-  // commission rows, which only exist for postings that actually accrued a
-  // sale. A cancelled posting never gets one, so subtracting its
-  // ozon_postings.amount from Продажи removed money the total never held —
-  // real orders come out under-reported by roughly the value of every
-  // cancellation in the period.
-  const report = buildOzonOpiuReport(
-    baseInput({
-      postings: [{ status: "cancelled", amount: 500 }],
-      accrualRows: [{ accrued_category: "POSTING", type_id: 69, amount: -10, extra: { sale_amount: 1000 } }],
-    }),
-  );
-  const sales = report.sections.find((s) => s.key === "sales")!;
-  assert.equal(sales.amount, 1000, "cancelled postings must not reduce Продажи");
-  assert.equal(report.total, 1000 - 10, "cancelled postings must not reduce К выплате");
-  const cancelledChild = sales.children.find((c) => c.label === "Возвраты и отмены (справочно)")!;
-  assert.equal(cancelledChild.amount, -500, "still shown for visibility, just not summed in");
-});
-
-test("the top-level Заказы section is labelled to disambiguate it from Продажи → Заказы (finding I3)", () => {
-  const report = buildOzonOpiuReport(baseInput({ postings: [{ status: "delivered", amount: 100 }] }));
-  const orders = report.sections.find((s) => s.key === "orders")!;
-  assert.equal(orders.label, "Заказы (по отправлениям)");
-});
-
-test("total sums Продажи + Комиссия + Логистика + Реклама + Прочие удержания, excluding Себестоимость", () => {
+test("no float noise or negative zero in the output", () => {
   const report = buildOzonOpiuReport(
     baseInput({
       accrualRows: [
-        { accrued_category: "POSTING", type_id: 69, amount: -100, extra: { sale_amount: 1000 } },
-        { accrued_category: "POSTING", type_id: 32, amount: -50 },
-        { accrued_category: "NON_ITEM", type_id: 12, amount: -20 },
-      ],
-      adSpend: 30,
-    }),
-  );
-  assert.equal(report.total, 1000 - 100 - 50 - 30 - 20);
-});
-
-test("a type_id absent from the cache is surfaced as a new category exactly once", () => {
-  const report = buildOzonOpiuReport(
-    baseInput({
-      accrualRows: [
-        { accrued_category: "POSTING", type_id: 32, amount: -10 },
-        { accrued_category: "POSTING", type_id: 32, amount: -5 },
-        { accrued_category: "NON_ITEM", type_id: 12, amount: -3 },
-      ],
-      knownTypeIds: new Set([32]),
-    }),
-  );
-  assert.deepEqual(
-    report.newCategories.map((c) => c.typeId),
-    [12],
-  );
-});
-
-test("an uncached logistics type_id is never flagged as new — the banner only ever names Прочие удержания (finding I4)", () => {
-  // Spec §6 scopes the banner to Прочие удержания specifically ("внутри
-  // «Прочие удержания» ... появился совсем новый type_id"). Logistics rows
-  // are always correctly sectioned by the structural rule regardless of the
-  // cache, so flagging them as "new" pointed the user at the wrong section.
-  const report = buildOzonOpiuReport(
-    baseInput({
-      accrualRows: [{ accrued_category: "POSTING", type_id: 32, amount: -10 }],
-      knownTypeIds: new Set([69]),
-    }),
-  );
-  assert.deepEqual(report.newCategories, []);
-});
-
-test("an empty accrual-types cache flags nothing as new, rather than announcing every category as new (finding I4)", () => {
-  // Before the migration is applied, before the first cron run, or while
-  // Ozon is unreachable, ozon_accrual_types is empty. An empty cache is not
-  // evidence any category is new — it just means there is nothing yet to
-  // compare against.
-  const report = buildOzonOpiuReport(
-    baseInput({
-      accrualRows: [{ accrued_category: "NON_ITEM", type_id: 12, amount: -3 }],
-      knownTypeIds: new Set(),
-    }),
-  );
-  assert.deepEqual(report.newCategories, []);
-});
-
-test("the same type_id under ITEM and under NON_ITEM contributes both amounts, neither one dropping the other", () => {
-  // Nothing at the DB level stops the same numeric type_id from showing up
-  // under two different accrued_category values — sumByType groups by
-  // type_id alone once a row has been sorted into "other", so this pins that
-  // both amounts still reach the total rather than the second write
-  // silently overwriting the first.
-  const report = buildOzonOpiuReport(
-    baseInput({
-      accrualRows: [
-        { accrued_category: "ITEM", type_id: 12, amount: -10 },
-        { accrued_category: "NON_ITEM", type_id: 12, amount: -5 },
+        { accrual_id: 1, accrued_category: "POSTING", type_id: 32, amount: -0.1 },
+        { accrual_id: 2, accrued_category: "POSTING", type_id: 32, amount: -0.2 },
       ],
     }),
   );
-  const other = report.sections.find((s) => s.key === "other")!;
-  assert.equal(other.amount, -15);
-  assert.equal(other.children.length, 1);
-  assert.equal(other.children[0].amount, -15);
+  assert.equal(section(report, "logistics").amount, 0.3);
+  assert.ok(Object.is(section(report, "commission").amount, 0), "must be +0, not -0");
 });
 
-test("the commission sentinel type_id never appears as a new category, even when uncached", () => {
-  const report = buildOzonOpiuReport(
-    baseInput({ accrualRows: [{ accrued_category: "POSTING", type_id: 69, amount: -100 }] }),
-  );
-  assert.deepEqual(report.newCategories, []);
+test("every type_id is assigned to at most one line of the sheet layout", () => {
+  const seen = new Map<number, string>();
+  const lines = [
+    ...OZON_SHEET_LOGISTICS_LINES.map((l) => ({ ...l, group: "logistics" })),
+    ...OZON_SHEET_LOGISTICS_NAMED_LINES.map((l) => ({ ...l, group: "logistics-named" })),
+    ...OZON_SHEET_ADS_LINES.map((l) => ({ ...l, group: "ads" })),
+    ...OZON_SHEET_OTHER_LINES.map((l) => ({ ...l, group: "other" })),
+  ];
+  for (const line of lines) {
+    for (const id of line.typeIds) {
+      assert.equal(seen.has(id), false, `type ${id} is in both "${seen.get(id)}" and "${line.group}: ${line.label}"`);
+      seen.set(id, `${line.group}: ${line.label}`);
+    }
+  }
+  for (const id of OZON_SHEET_ADS_EXTRA_TYPE_IDS) {
+    assert.equal(seen.has(id), false, `advertising extra type ${id} is already in "${seen.get(id)}"`);
+  }
+  assert.equal(seen.has(69), false, "69 is the commission, never a service line");
 });

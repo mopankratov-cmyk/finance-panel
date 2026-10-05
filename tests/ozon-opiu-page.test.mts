@@ -7,7 +7,7 @@ test("OzonOpiuPage fetches the report route and renders date inputs, a cabinet f
   assert.match(source, /\/api\/opiu\/ozon/, "must call the report API route");
   assert.match(source, /marketplace\s*===\s*["']ozon["']/, "must filter cabinets to Ozon on the client");
   assert.match(source, /type="date"/, "must render a date range picker");
-  assert.match(source, /К выплате/, "must render the total row label");
+  assert.match(source, /report\.totalLabel/, "must render the total row label from the report (ИТОГО К ВЫПЛАТЕ, as in the sheet)");
   assert.match(source, /не подключено/, "must render the Себестоимость stub label");
 });
 

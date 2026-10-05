@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { isValidDateParam } from "@/lib/opiu/weeks";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { readOzonAdDaily } from "@/lib/ozon/adDailyRead";
-import { readCachedAccrualTypeIds, readCachedAccrualTypeNames } from "@/lib/ozon/accrualTypesCache";
+import { readCachedAccrualTypeNames } from "@/lib/ozon/accrualTypesCache";
 import { buildOzonOpiuReport, type OzonOpiuAccrualInput, type OzonOpiuPostingInput } from "@/lib/ozon/opiuOzonReport";
-import { sumOzonAdSpend } from "@/lib/ozon/opiuOzonAdSpend";
 import { buildOzonOpiuDateRangeWarning } from "@/lib/ozon/opiuOzonDateRangeWarning";
 
 export const maxDuration = 60;
@@ -26,7 +24,7 @@ export async function GET(request: NextRequest) {
 
   const { data: allCabinets, error: cabinetsError } = await db
     .from("wb_cabinets")
-    .select("id, client_id")
+    .select("id")
     .eq("marketplace", "ozon")
     .eq("is_active", true);
   if (cabinetsError) return NextResponse.json({ error: cabinetsError.message }, { status: 502 });
@@ -34,31 +32,28 @@ export async function GET(request: NextRequest) {
   const requested = new Set(resolveCabinetIds(request));
   const cabinets = (allCabinets ?? []).filter((c) => requested.size === 0 || requested.has(String(c.id)));
   const cabinetIds = cabinets.map((c) => String(c.id));
-  const clientIds = cabinets.map((c) => String(c.client_id));
 
   if (!cabinetIds.length) {
     return NextResponse.json({ report: null, cabinetIds: [], error: "Нет доступных кабинетов Ozon" }, { status: 200 });
   }
 
-  // Supabase молча обрезает выборку на 1000 строк без ошибки — обычный
-  // ассортимент за месяц перешагивает этот потолок быстро (одно отправление
-  // с продажей уже даёт строку комиссии плюс по одной на каждую услугу
-  // доставки), см. docs/PROJECT-KNOWLEDGE.md §4 и finding C1 финального
-  // ревью. loadAllSupabasePages читает ВСЕ страницы, с сортировкой по
-  // первичному ключу для устойчивой пагинации.
+  // Supabase молча обрезает выборку на 1000 строк без ошибки — одно отправление
+  // с продажей уже даёт строку комиссии плюс по одной на каждую услугу, так что
+  // за месяц потолок перешагивается быстро (docs/PROJECT-KNOWLEDGE.md §4).
+  // loadAllSupabasePages читает ВСЕ страницы с сортировкой по ключу.
   let accrualRows: OzonOpiuAccrualInput[];
   let postings: OzonOpiuPostingInput[];
-  let adSpend: number;
   try {
-    [accrualRows, postings, adSpend] = await Promise.all([
+    [accrualRows, postings] = await Promise.all([
       loadAllSupabasePages(
         async (from, to) => {
           const result = await db
             .from("ozon_accrual_rows")
-            .select("accrued_category, type_id, amount, extra")
+            .select("cabinet_id, accrual_id, accrued_category, type_id, amount, extra")
             .in("cabinet_id", cabinetIds)
             .gte("date", dateFrom)
             .lte("date", dateTo)
+            .order("cabinet_id", { ascending: true })
             .order("accrual_id", { ascending: true })
             .order("sku", { ascending: true })
             .order("type_id", { ascending: true })
@@ -68,6 +63,9 @@ export async function GET(request: NextRequest) {
         { label: "ozon_accrual_rows" },
       ).then((rows) =>
         rows.map((r) => ({
+          // ID начисления уникален в пределах кабинета — склеиваем с кабинетом,
+          // чтобы при выборе нескольких кабинетов начисления не смешались.
+          accrual_id: `${r.cabinet_id}:${r.accrual_id}`,
           accrued_category: String(r.accrued_category),
           type_id: Number(r.type_id),
           amount: Number(r.amount),
@@ -88,28 +86,14 @@ export async function GET(request: NextRequest) {
         },
         { label: "ozon_postings" },
       ).then((rows) => rows.map((r) => ({ status: String(r.status), amount: Number(r.amount) }))),
-      // Итог по кабинету за день (sku='*') не всегда готов — разнесение по
-      // товарам едет отдельными отчётами. Наивный запрос только по '*' терял
-      // расход для кабинета/дня без готового итога (finding I1). readOzonAdDaily
-      // читает ВСЕ строки за период (тоже постранично), sumOzonAdSpend
-      // выбирает источник независимо для каждой пары (кабинет, день).
-      readOzonAdDaily(db, clientIds, dateFrom, dateTo).then(({ rows }) => sumOzonAdSpend(rows.map((r) => ({
-        client_id: String(r.client_id),
-        sku: String(r.sku),
-        date: String(r.date),
-        spent: Number(r.spent ?? 0),
-      })))),
     ]);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 502 });
   }
 
-  const [typeNames, knownTypeIds] = await Promise.all([
-    readCachedAccrualTypeNames(db),
-    readCachedAccrualTypeIds(db),
-  ]);
+  const typeNames = await readCachedAccrualTypeNames(db);
 
-  const report = buildOzonOpiuReport({ accrualRows, postings, adSpend, typeNames, knownTypeIds });
+  const report = buildOzonOpiuReport({ accrualRows, postings, typeNames });
   const warning = buildOzonOpiuDateRangeWarning(dateFrom, new Date());
   return NextResponse.json({ report, cabinetIds, warning });
 }

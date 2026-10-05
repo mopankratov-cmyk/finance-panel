@@ -6,7 +6,8 @@ import { AlertTriangle, ChevronDown, Sigma, Table2 } from "lucide-react";
 interface OzonOpiuChildRow {
   key: string;
   label: string;
-  amount: number;
+  /** null — строка без источника данных (заглушка), показывается как «—». */
+  amount: number | null;
 }
 
 interface OzonOpiuSection {
@@ -20,11 +21,13 @@ interface OzonOpiuSection {
 interface OzonOpiuNewCategory {
   typeId: number;
   label: string;
+  section: "logistics" | "other";
 }
 
 interface OzonOpiuReport {
   sections: OzonOpiuSection[];
   total: number;
+  totalLabel: string;
   newCategories: OzonOpiuNewCategory[];
 }
 
@@ -39,8 +42,12 @@ interface Cabinet {
 // Не в REVENUE_SECTIONS намеренно — иначе цвет строки намекал бы, что она
 // участвует в сумме (finding I3 в финальном ревью).
 const REVENUE_SECTIONS = new Set(["sales", "cogs"]);
+// Как в таблице выгрузки: расходные разделы показаны положительными числами
+// (это вычитаемое), поэтому красить их по знаку нельзя — зелёным выглядел бы расход.
+const EXPENSE_SECTIONS = new Set(["commission", "logistics", "ads", "other", "otherCompensations"]);
 const ALWAYS_OPEN_SECTIONS = new Set(["sales"]);
 const INFORMATIONAL_SECTIONS = new Set(["orders"]);
+const NEW_CATEGORY_SECTION_LABELS = { logistics: "«Логистике»", other: "«Прочих удержаниях»" } as const;
 
 function formatRub(value: number | null): string {
   if (value === null) return "—";
@@ -263,8 +270,10 @@ export function OzonOpiuPage() {
             <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
               Ozon прислал начисления по {report!.newCategories.length === 1 ? "новой категории" : "новым категориям"}:{" "}
-              {report!.newCategories.map((c) => c.label).join(", ")}. Учтено в «Прочих удержаниях» и в итоге
-              полностью — просто ещё нет в справочнике имён.
+              {report!.newCategories.map((c) => c.label).join(", ")}. Учтено в итоге
+              полностью (строки добавлены в конец {[...new Set(report!.newCategories.map((c) => c.section))]
+                .map((section) => NEW_CATEGORY_SECTION_LABELS[section])
+                .join(" и ")}) — этих строк ещё нет в таблице выгрузки.
             </div>
           </div>
         )}
@@ -282,6 +291,8 @@ export function OzonOpiuPage() {
             {report.sections.map((section) => {
               const isRevenue = REVENUE_SECTIONS.has(section.key);
               const isInformational = INFORMATIONAL_SECTIONS.has(section.key);
+              const isExpense = EXPENSE_SECTIONS.has(section.key);
+              const amountClass = (value: number | null) => (isExpense ? "text-slate-900" : valueColorClass(value));
               const bg = section.kind === "stub" || isInformational ? "bg-white" : isRevenue ? "bg-sky-50" : "bg-rose-50";
               const hasChildren = section.children.length > 0;
               const alwaysOpen = ALWAYS_OPEN_SECTIONS.has(section.key);
@@ -304,7 +315,7 @@ export function OzonOpiuPage() {
                           <span className="text-xs font-normal italic text-slate-400">не входит в сумму</span>
                         )}
                       </div>
-                      <div className={`w-40 text-right text-sm font-bold tabular-nums ${valueColorClass(section.amount)}`}>
+                      <div className={`w-40 text-right text-sm font-bold tabular-nums ${amountClass(section.amount)}`}>
                         {formatRub(section.amount)}
                       </div>
                     </button>
@@ -319,7 +330,7 @@ export function OzonOpiuPage() {
                           <span className="ml-2 text-xs font-normal italic text-slate-400">не входит в сумму</span>
                         )}
                       </div>
-                      <div className={`w-40 text-right text-sm font-bold tabular-nums ${valueColorClass(section.amount)}`}>
+                      <div className={`w-40 text-right text-sm font-bold tabular-nums ${amountClass(section.amount)}`}>
                         {section.kind === "stub" ? "—" : formatRub(section.amount)}
                       </div>
                     </div>
@@ -331,7 +342,7 @@ export function OzonOpiuPage() {
                         className="flex w-full items-center border-b border-slate-100 bg-white px-5 py-2 pl-10"
                       >
                         <div className="flex-grow text-xs italic text-slate-500">{child.label}</div>
-                        <div className={`w-40 text-right text-xs tabular-nums ${valueColorClass(child.amount)}`}>
+                        <div className={`w-40 text-right text-xs tabular-nums ${isExpense ? "text-slate-700" : valueColorClass(child.amount)}`}>
                           {formatRub(child.amount)}
                         </div>
                       </div>
@@ -341,7 +352,7 @@ export function OzonOpiuPage() {
             })}
 
             <div className="flex items-center border-t-2 border-emerald-200 bg-emerald-50 px-5 py-3.5">
-              <div className="flex-grow text-[15px] font-extrabold text-slate-900">К выплате</div>
+              <div className="flex-grow text-[15px] font-extrabold text-slate-900">{report.totalLabel}</div>
               <div className="w-40 text-right text-[15px] font-extrabold tabular-nums text-slate-900">
                 {formatRub(report.total)}
               </div>
