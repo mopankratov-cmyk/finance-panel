@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  allowance, AVERAGE_MIN_COVERAGE, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, MIN_VISIBLE_FOR_SHARES, pickProvider, polzaKey,
-  packAttributes, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, resultKey, type CatalogHead, type ExistingResult, type TraitModel,
+  allowance, AVERAGE_MIN_COVERAGE, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, isEligibleHead, MIN_VISIBLE_FOR_SHARES, pickProvider, polzaKey,
+  packAttributes, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, queueLanes, resultKey, type CatalogHead, type ExistingResult, type TraitModel,
 } from "../lib/assortment/catalogAi.ts";
-import { aiKeyConfigured, askFor, isTransientVisionError, loadPhotoSamples, loadPhotoTraits, makePolzaVision, runCatalogAi, VisionStopError, type AskVision, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
+import { aiKeyConfigured, askFor, isTransientVisionError, loadCatalogHeads, loadPhotoSamples, loadSpend, loadPhotoTraits, makePolzaVision, runCatalogAi, VisionStopError, type AskVision, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
 import { catalogPrompt, catalogUserText } from "../lib/assortment/aiAttributes.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -957,7 +957,7 @@ function samplesDb() {
 
 test("Примеры разбора: по кругу между источниками, только текущий каталог и только удавшиеся; подписи признаков, «не видно», фото головы", async () => {
   const { db } = samplesDb();
-  const out = (await loadPhotoSamples(db, "jackets", { limit: 6, seed: "x" }))!;
+  const out = (await loadPhotoSamples(db, "jackets", { limit: 6, seed: "x", nowMs: NOW }))!;
   assert.equal(out.analyzed, 14, "10 + 3 + 1: без неудачной, без ушедшей из каталога и без пустой");
   assert.equal(out.samples.length, 6);
   const sources = out.samples.map((s) => s.sourceId);
@@ -975,22 +975,22 @@ test("Примеры разбора: по кругу между источник
 
 test("Примеры разбора: то же зерно — та же выборка, другое зерно — другие модели; лимит не больше 24; нет таблицы — null", async () => {
   const { db } = samplesDb();
-  const ids = async (seed: string) => (await loadPhotoSamples(db, "jackets", { limit: 5, seed }))!.samples.map((s) => s.title).join("|");
+  const ids = async (seed: string) => (await loadPhotoSamples(db, "jackets", { limit: 5, seed, nowMs: NOW }))!.samples.map((s) => s.title).join("|");
   assert.equal(await ids("a"), await ids("a"));
   const variants = new Set([await ids("a"), await ids("b"), await ids("c"), await ids("d")]);
   assert.ok(variants.size >= 2, "выборка зависит от зерна");
-  assert.equal((await loadPhotoSamples(db, "jackets", { limit: 500 }))!.samples.length, 14, "лимит ограничен 24, а моделей всего 14");
+  assert.equal((await loadPhotoSamples(db, "jackets", { limit: 500, nowMs: NOW }))!.samples.length, 14, "лимит ограничен 24, а моделей всего 14");
   const missing = fakeDb({ heads: [headRow("S1", "a")], missing: ["assortment_model_attributes"] });
-  assert.equal(await loadPhotoSamples(missing.db, "jackets"), null);
+  assert.equal(await loadPhotoSamples(missing.db, "jackets", { nowMs: NOW }), null);
   const noView = fakeDb({ missing: ["assortment_catalog_heads"] });
-  assert.equal(await loadPhotoSamples(noView.db, "jackets"), null);
+  assert.equal(await loadPhotoSamples(noView.db, "jackets", { nowMs: NOW }), null);
 });
 
 test("Примеры разбора: лимит не больше 24 даже при просьбе о большем; «не видно» не подставляет значение, даже если оно осталось в записи", async () => {
   const heads = Array.from({ length: 40 }, (_, i) => headRow("S1", `m${String(i).padStart(2, "0")}`));
   const results = heads.map((h, i) => resultRow("S1", String(h.source_item_id), { attributes: { length: { v: i === 0 ? "до бедра" : "до колена", c: 0.9 }, hood: { v: "есть", nv: true } } }));
   const { db } = fakeDb({ heads, results });
-  const out = (await loadPhotoSamples(db, "jackets", { limit: 100 }))!;
+  const out = (await loadPhotoSamples(db, "jackets", { limit: 100, nowMs: NOW }))!;
   assert.equal(out.samples.length, 24, "потолок 24 карточки");
   const hood = out.samples[0].attributes.find((a) => a.key === "hood")!;
   assert.equal(hood.notVisible, true);
@@ -1143,6 +1143,46 @@ test("Декор: «стразы», «пайетки», «бисер» по от
   assert.equal(canonicalValue("decor", "что-то блестящее"), "другое");
 });
 
+test("Учёт расхода: вызовы «за сегодня» — только московская дата сегодня (вчерашние 1 500 не режут сегодня), неделя — ровно 7 суток включая сегодня; чужой вид учёта не считается", async () => {
+  const usage = [
+    { day: "2026-10-05", kind: "catalog_attributes", calls: 1500, cost_usd: 1 },
+    { day: "2026-10-06", kind: "catalog_attributes", calls: 7, cost_usd: "0.5" },
+    { day: "2026-09-30", kind: "catalog_attributes", calls: 10, cost_usd: 2 }, // сегодня − 6 суток: последний день окна
+    { day: "2026-09-29", kind: "catalog_attributes", calls: 10, cost_usd: 4 }, // сегодня − 7: уже вне недели
+    { day: "2026-10-06", kind: "catalog_attributes_lock", calls: 99, cost_usd: 9 }, // служебная строка замка, не расход
+  ];
+  const spend = (await loadSpend(fakeDb({ usage }).db, new Date("2026-10-06T10:00:00Z")))!;
+  assert.equal(spend.callsToday, 7);
+  assert.equal(spend.weekUsd, 3.5, "0,5 + 1 + 2: окно с 30.09 по 06.10 без 29.09 и без замка");
+  // Граница суток по Москве: 00:30 МСК 06.10 — это ещё 05.10 по UTC; «сегодня» — 06.10.
+  const nearMidnight = (await loadSpend(fakeDb({ usage }).db, new Date("2026-10-05T21:30:00Z")))!;
+  assert.equal(nearMidnight.callsToday, 7, "московская дата, а не UTC");
+  const allowed = allowance(catalogAiConfig({}), spend.weekUsd, spend.callsToday, 120);
+  assert.equal(allowed.models, 120, "потолок суток 1500 при 7 вызовах сегодня не ограничивает");
+  assert.equal(await loadSpend(fakeDb({ missing: ["assortment_ai_usage"] }).db, new Date("2026-10-06T10:00:00Z")), null, "нет таблицы учёта — null, а не нули");
+});
+
+test("Каталог для разбора: скрытые, давно не виденные (>30 суток) и без https-фото — вне; общее правило «можно разбирать» (фото и не «Рынок РФ») одно на очередь и на «из M»", async () => {
+  const heads = [
+    headRow("S1", "ok"),
+    headRow("S1", "hidden", { model_hidden_at: "2026-10-04T00:00:00Z" }),
+    headRow("S1", "stale", { model_last_seen_at: "2026-08-01T00:00:00Z" }),
+    headRow("S1", "http", { image_urls: ["http://img/insecure.jpg", "not-a-url"] }),
+    headRow("S1", "nophoto", { image_urls: [] }),
+    headRow("S128", "ru"),
+    headRow("S1", "mixed", { image_urls: ["http://img/a.jpg", "https://img/b.jpg"] }),
+  ];
+  const loaded = (await loadCatalogHeads(fakeDb({ heads }).db, null, NOW))!;
+  assert.deepEqual(loaded.map((h) => h.sourceItemId).sort(), ["http", "mixed", "nophoto", "ok", "ru"], "скрытая и давно не виденная не читаются");
+  assert.deepEqual(loaded.find((h) => h.sourceItemId === "mixed")!.imageUrls, ["https://img/b.jpg"], "только https-ссылки");
+  assert.deepEqual(loaded.find((h) => h.sourceItemId === "http")!.imageUrls, [], "ни одной https-ссылки — фото нет");
+  const eligible = loaded.filter(isEligibleHead).map((h) => h.sourceItemId).sort();
+  assert.deepEqual(eligible, ["mixed", "ok"], "без фото и «Рынок РФ» разбирать нельзя");
+  const report = await loadPhotoTraits(fakeDb({ heads, results: [resultRow("S1", "ok", { direction: "jackets" })] }).db, "jackets", NOW);
+  assert.equal(report?.catalog, 2, "знаменатель «из M» — то же правило");
+  assert.equal(queueLanes(loaded, new Map(), NOW).fresh.length, 2, "очередь — то же правило");
+});
+
 test("Средняя по источникам для признака: источник с 1–2 видимыми моделями весом не владеет; невидимые источники в среднюю не входят; источников для средней меньше двух — доли по всем моделям и пометка", () => {
   // S1: 20 моделей, у всех «капюшон: есть»; S2: 12 моделей, капюшон виден у ОДНОЙ («нет»); S3: 12 моделей, капюшон нигде не виден.
   const models: TraitModel[] = [
@@ -1222,25 +1262,25 @@ test("Отчёт по базе: в долях только текущая вер
   const heads = Array.from({ length: 6 }, (_, i) => headRow("S1", `m${i}`));
   const row = (i: number, version: string) => resultRow("S1", String(heads[i].source_item_id), { direction: "jackets", prompt_version: version, attributes: { length: { v: "до бедра" } } });
   const mixed = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1"), row(3, "catalog-v1"), row(4, "catalog-v1")] });
-  const report = (await loadPhotoTraits(mixed.db, "jackets"))!;
+  const report = (await loadPhotoTraits(mixed.db, "jackets", NOW))!;
   assert.equal(report.analyzed, 2, "в долях — только v2");
   assert.equal(report.legacy, 3);
   assert.equal(report.fields.find((f) => f.key === "length")?.visible, 2);
   // Очередь сборщика по разделу: m5 — новая, m2–m4 — пересбор прежней версии; та же раскладка, что у самого сборщика.
   assert.deepEqual(report.queue, { queued: 4, exhausted: 0, unstable: 0 });
   const dead = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1"), row(3, "catalog-v1"), row(4, "catalog-v1"), resultRow("S1", "m5", { direction: "jackets", status: "failed", attempts: 3, attributes: null })] });
-  assert.deepEqual((await loadPhotoTraits(dead.db, "jackets"))!.queue, { queued: 3, exhausted: 1, unstable: 0 }, "три неудачные попытки — модель не в очереди, а в «не возьмёт»");
+  assert.deepEqual((await loadPhotoTraits(dead.db, "jackets", NOW))!.queue, { queued: 3, exhausted: 1, unstable: 0 }, "три неудачные попытки — модель не в очереди, а в «не возьмёт»");
   // Сбой чтения неудавшихся строк (для очереди) не роняет отчёт: доли и счётчики на месте, очереди в нём нет — полоска прочтёт её сама.
   const flaky = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1")], failFailedRead: true });
-  const survived = (await loadPhotoTraits(flaky.db, "jackets"))!;
+  const survived = (await loadPhotoTraits(flaky.db, "jackets", NOW))!;
   assert.equal(survived.analyzed, 2);
   assert.equal(survived.queue, undefined, "очередь не посчиталась — её нет в отчёте, а не нули");
   const onlyOld = fakeDb({ heads, results: [row(0, "catalog-v1"), row(1, "catalog-v1")] });
-  const old = (await loadPhotoTraits(onlyOld.db, "jackets"))!;
+  const old = (await loadPhotoTraits(onlyOld.db, "jackets", NOW))!;
   assert.equal(old.analyzed, 0);
   assert.equal(old.legacy, 2, "блок остаётся и называет прежние разборы — не исчезает до переразбора");
   const none = fakeDb({ heads, results: [] });
-  assert.equal(await loadPhotoTraits(none.db, "jackets"), null);
+  assert.equal(await loadPhotoTraits(none.db, "jackets", NOW), null);
 });
 
 test("Прогон: ответ «не видно» по всем признакам — неудача с потолком попыток, а не «готово»; хороший результат при пересборе не затирается", async () => {

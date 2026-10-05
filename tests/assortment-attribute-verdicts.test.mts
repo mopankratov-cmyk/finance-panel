@@ -13,6 +13,8 @@ import { loadAccuracy, loadVerdicts, saveVerdict, VerdictInputError, VerdictTabl
 import { PROMPT_VERSION, type PhotoTraitsReport } from "../lib/assortment/catalogAi.ts";
 import { loadPhotoSamples, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
 
+const NOW = Date.parse("2026-10-06T10:00:00Z");
+
 /** Эталон точности разбора по фото: отметки «верно / неверно / не понять» человеком (05.10). Пороги — наше решение. */
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -240,7 +242,7 @@ function samplesDb(verdictRows: Row[] | null) {
 test("Примеры: у разбора по текущей версии — его отметки и ключ модели; у прежней версии отметок нет; «только без отметок» исключает размеченные", async () => {
   const verdicts = [{ source_id: "S001", model_key: "S001|a", field_key: "silhouette", verdict: "wrong" as const }];
   const { db } = samplesDb([]);
-  const all = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts }))!;
+  const all = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts, nowMs: NOW }))!;
   assert.equal(all.verdictsAvailable, true);
   assert.equal(all.judgedModels, 1);
   const a = all.samples.find((s) => s.modelKey === "S001|a")!;
@@ -249,12 +251,12 @@ test("Примеры: у разбора по текущей версии — е�
   const legacy = all.samples.find((s) => s.modelKey === "S001|c")!;
   assert.equal(legacy.promptVersion, "catalog-v1");
   assert.deepEqual(legacy.verdicts, {});
-  const fresh = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts, onlyUnjudged: true }))!;
+  const fresh = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts, onlyUnjudged: true, nowMs: NOW }))!;
   assert.ok(!fresh.samples.some((s) => s.modelKey === "S001|a"), "размеченная модель не предлагается снова");
   assert.equal(fresh.analyzed, 3, "разобрано — все, а не только неразмеченные");
-  const noTable = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts: null }))!;
+  const noTable = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts: null, nowMs: NOW }))!;
   assert.equal(noTable.verdictsAvailable, false, "таблицы нет — кнопок не будет");
-  const notAsked = (await loadPhotoSamples(db, "bags", { limit: 12 }))!;
+  const notAsked = (await loadPhotoSamples(db, "bags", { limit: 12, nowMs: NOW }))!;
   assert.equal(notAsked.verdictsAvailable, false);
 });
 
@@ -280,12 +282,12 @@ test("Разметка подряд: прежняя версия разбора 
     onlyNotVisible: { attributes: { silhouette: { v: null, nv: true } } },
     onlyFreeText: { attributes: { color: { v: "бежевый", c: 0.9 } } },
   });
-  const r = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts, onlyUnjudged: true }))!;
+  const r = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts, onlyUnjudged: true, nowMs: NOW }))!;
   assert.deepEqual(r.samples.map((x) => x.modelKey).sort(), ["S001|fresh", "S001|partial"], "legacy, done, onlyNotVisible и onlyFreeText не предлагаются");
   assert.equal(r.unjudgedModels, 2, "сколько ещё осталось, считается тем же правилом");
   assert.equal(r.analyzed, 6, "разобрано — все");
   assert.equal(r.judgedModels, 2, "размечено — модели, у которых есть хоть одна отметка");
-  const all = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts }))!;
+  const all = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts, nowMs: NOW }))!;
   assert.equal(all.samples.length, 6, "обычный просмотр показывает всё, включая прежнюю версию");
   assert.equal(all.unjudgedModels, 2);
 });
