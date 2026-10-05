@@ -4,6 +4,8 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { moscowToday } from "@/lib/sync/moscowDay";
 import { catalogPrompt, catalogUserText } from "./aiAttributes";
 import { ATTRIBUTE_FIELDS } from "./attributes";
+import type { StoredVerdict } from "./attributeVerdictsStore";
+import type { Verdict } from "./attributeVerdicts";
 import { CATALOG_SEEN_DAYS } from "./catalog";
 import {
   allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
@@ -681,6 +683,11 @@ export interface PhotoSample {
   model: string | null;
   takenAt: string | null;
   attributes: Array<{ key: string; label: string; value: string | null; notVisible: boolean; confidence: number | null }>;
+  /** Ключ модели и версия вопроса, по которым получен разбор: по ним ставится отметка точности. Нет — отмечать нельзя. */
+  modelKey?: string;
+  promptVersion?: string | null;
+  /** Отметки человека по признакам этой модели (текущая версия вопроса): ключ признака → верно/неверно/не понять. */
+  verdicts?: Record<string, Verdict>;
 }
 
 /** Простой устойчивый хэш (FNV-1a, 32 бита): порядок «случайной» выборки зависит от зерна и ключа модели, а не от порядка строк в базе. */
@@ -701,24 +708,36 @@ function fnv1a(text: string): number {
 export async function loadPhotoSamples(
   db: SupabaseClient,
   direction: AssortmentDirection,
-  options: { limit?: number; seed?: string; nowMs?: number } = {},
-): Promise<{ samples: PhotoSample[]; analyzed: number } | null> {
+  options: {
+    limit?: number; seed?: string; nowMs?: number;
+    /** Отметки точности раздела: массив — таблица есть (показываем их и разрешаем отмечать); null — таблицы нет; не задано — отметки не запрашивали. */
+    verdicts?: StoredVerdict[] | null;
+    /** Только модели, по которым ещё ничего не отмечено, — для разметки подряд. */
+    onlyUnjudged?: boolean;
+  } = {},
+): Promise<{ samples: PhotoSample[]; analyzed: number; verdictsAvailable: boolean; judgedModels: number } | null> {
   const limit = Math.max(1, Math.min(options.limit ?? 12, 24));
   const heads = await loadCatalogHeads(db, direction, options.nowMs ?? Date.now());
   if (!heads) return null;
   const current = new Map(heads.map((h) => [resultKey(h.sourceId, h.modelKey), h]));
   const { data: names } = await db.from("assortment_sources").select("source_id,name");
   const nameOf = new Map((names ?? []).map((n) => [String((n as { source_id: string }).source_id), String((n as { name: string | null }).name ?? "")]));
-  type Row = { source_id: string; model_key: string; attributes: StoredAttributes | null; model: string | null; taken_at: string | null };
+  type Row = { source_id: string; model_key: string; attributes: StoredAttributes | null; model: string | null; taken_at: string | null; prompt_version: string | null };
   try {
     const rows = await loadAllSupabasePages<Row>((from, to) => db.from(RESULTS)
-      .select("source_id,model_key,attributes,model,taken_at")
+      .select("source_id,model_key,attributes,model,taken_at,prompt_version")
       .eq("direction", direction)
       .eq("status", "ok")
       .order("source_id", { ascending: true })
       .order("model_key", { ascending: true })
       .range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: { message: string } | null }>, { label: "Примеры разбора по фото", pageSize: 1000 });
-    const usable = rows.filter((r) => r.attributes && Object.keys(r.attributes).length > 0 && current.has(resultKey(r.source_id, r.model_key)));
+    const allUsable = rows.filter((r) => r.attributes && Object.keys(r.attributes).length > 0 && current.has(resultKey(r.source_id, r.model_key)));
+    const byModel = new Map<string, Record<string, Verdict>>();
+    for (const v of options.verdicts ?? []) {
+      const key = resultKey(v.source_id, v.model_key);
+      byModel.set(key, { ...(byModel.get(key) ?? {}), [v.field_key]: v.verdict });
+    }
+    const usable = options.onlyUnjudged ? allUsable.filter((r) => !byModel.has(resultKey(r.source_id, r.model_key))) : allUsable;
     const seed = options.seed ?? "";
     const lanes = new Map<string, Row[]>();
     for (const row of usable.slice().sort((a, b) => fnv1a(`${seed}|${a.source_id}|${a.model_key}`) - fnv1a(`${seed}|${b.source_id}|${b.model_key}`))) {
@@ -744,6 +763,9 @@ export async function loadPhotoSamples(
         imageUrl: head.imageUrls[0] ?? null,
         model: row.model,
         takenAt: row.taken_at,
+        modelKey: row.model_key,
+        promptVersion: row.prompt_version,
+        verdicts: row.prompt_version === PROMPT_VERSION ? byModel.get(resultKey(row.source_id, row.model_key)) ?? {} : {},
         attributes: ATTRIBUTE_FIELDS[direction].filter((f) => stored[f.key]).map((f) => ({
           key: f.key,
           label: f.label,
@@ -753,7 +775,7 @@ export async function loadPhotoSamples(
         })),
       };
     });
-    return { samples, analyzed: usable.length };
+    return { samples, analyzed: allUsable.length, verdictsAvailable: Array.isArray(options.verdicts), judgedModels: byModel.size };
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;

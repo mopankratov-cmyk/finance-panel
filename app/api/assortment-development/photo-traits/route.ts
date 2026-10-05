@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { ASSORTMENT_ROLES, parseDirection } from "@/lib/assortment/constants";
+import { loadAccuracy, loadVerdicts } from "@/lib/assortment/attributeVerdictsStore";
 import { loadPhotoSamples } from "@/lib/assortment/catalogAiStore";
 import { loadPhotoTraitsCached } from "@/lib/assortment/photoTraitsCached";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -21,11 +22,22 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const direction = parseDirection(request.nextUrl.searchParams.get("direction"));
   if (!direction) return NextResponse.json({ error: "direction должен быть jackets или bags" }, { status: 400 });
+  // Точность разбора, измеренная человеком (отметки «верно/неверно»): меняется с каждой отметкой — без кэша. null — таблицы нет.
+  if (request.nextUrl.searchParams.get("accuracy") === "1") {
+    try {
+      return NextResponse.json({ accuracy: await loadAccuracy(db, direction).catch(() => null) }, { headers: { "Cache-Control": "private, no-store" } });
+    } catch (error) {
+      return NextResponse.json({ error: error instanceof Error ? error.message : "Точность не посчиталась" }, { status: 500 });
+    }
+  }
   if (request.nextUrl.searchParams.get("samples") === "1") {
     try {
       const seed = (request.nextUrl.searchParams.get("seed") ?? "").slice(0, 40);
       const limit = Number(request.nextUrl.searchParams.get("limit")) || 12;
-      return NextResponse.json({ result: await loadPhotoSamples(db, direction, { seed, limit }) }, { headers: { "Cache-Control": "private, no-store" } });
+      // Сбой чтения отметок примеры не роняет: просто без кнопок «верно/неверно».
+      const verdicts = await loadVerdicts(db, direction).catch(() => null);
+      const onlyUnjudged = request.nextUrl.searchParams.get("unjudged") === "1";
+      return NextResponse.json({ result: await loadPhotoSamples(db, direction, { seed, limit, verdicts, onlyUnjudged }) }, { headers: { "Cache-Control": "private, no-store" } });
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "Примеры не загрузились" }, { status: 500 });
     }
