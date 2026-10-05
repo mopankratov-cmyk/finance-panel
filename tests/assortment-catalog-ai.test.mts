@@ -638,10 +638,13 @@ test("Отчёт: «другое» не теряется при длинном �
 
 // --- Polza ---
 
-test("Провайдер: заданный явно; иначе по ключу (Anthropic раньше Polza); ключей нет — Anthropic (сборщик скажет, что ключа нет)", () => {
+test("Провайдер: заданный явно; иначе по ключу (Polza раньше Anthropic — ключ Anthropic есть у других функций панели); ключей нет — Anthropic (сборщик скажет, что ключа нет)", () => {
   assert.equal(pickProvider({ ASSORTMENT_CATALOG_AI_PROVIDER: "polza", ANTHROPIC_API_KEY: "k" }), "polza", "явный выбор сильнее ключей");
   assert.equal(pickProvider({ ASSORTMENT_CATALOG_AI_PROVIDER: "Anthropic", POLZA_API_KEY: "k" }), "anthropic");
-  assert.equal(pickProvider({ ANTHROPIC_API_KEY: "a", POLZA_API_KEY: "p" }), "anthropic");
+  assert.equal(pickProvider({ ANTHROPIC_API_KEY: "a", POLZA_API_KEY: "p" }), "polza", "оба ключа: Polza — его заводили для этого, а Anthropic может быть без баланса");
+  assert.equal(pickProvider({ ANTHROPIC_API_KEY: "a", POLZA_AI_API_KEY: "p" }), "polza");
+  assert.equal(pickProvider({ ANTHROPIC_API_KEY: "a" }), "anthropic");
+  assert.equal(pickProvider({ ASSORTMENT_CATALOG_AI_PROVIDER: "anthropic", ANTHROPIC_API_KEY: "a", POLZA_API_KEY: "p" }), "anthropic", "явный выбор Anthropic при двух ключах");
   assert.equal(pickProvider({ POLZA_API_KEY: "p" }), "polza");
   assert.equal(pickProvider({ POLZA_AI_API_KEY: "p" }), "polza", "второе имя переменной");
   assert.equal(pickProvider({ ANTHROPIC_API_KEY: "  ", POLZA_API_KEY: "p" }), "polza", "пустой ключ — нет ключа");
@@ -860,7 +863,7 @@ test("Модель без цены: сообщение по провайдеру
   assert.equal(catalogAiConfig({ ASSORTMENT_CATALOG_AI_PROVIDER: "openai", POLZA_API_KEY: "p" }).providerForced, false);
   const route = readFileSync(join(import.meta.dirname, "..", "app/api/sync/assortment-catalog-ai/route.ts"), "utf8");
   assert.match(route, /skippedBecause === "no_price"[\s\S]*writeSyncLog\(JOB, "error"/, "модель без цены — строка-ошибка в журнале");
-  assert.match(route, /ASSORTMENT_CATALOG_AI_PROVIDER=polza/, "подсказка про явный выбор Polza при остановке Anthropic");
+  assert.match(route, /ASSORTMENT_CATALOG_AI_PROVIDER=\$\{otherProvider\}/, "подсказка про явный выбор другого провайдера при остановке по ключу/деньгам");
   assert.match(route, /ANTHROPIC_API_KEY или POLZA_API_KEY/, "ключей нет совсем — называем оба");
 });
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { catalogAiConfig, polzaKey, PROVIDER_KEY_NAME, PROVIDER_LABEL } from "@/lib/assortment/catalogAi";
+import { catalogAiConfig, PROVIDER_KEY_NAME, PROVIDER_LABEL } from "@/lib/assortment/catalogAi";
 import { aiKeyConfigured, askFor, runCatalogAi } from "@/lib/assortment/catalogAiStore";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -59,10 +59,11 @@ export async function GET(request: NextRequest) {
     // токены в минуту): прогон «partial» и три таких подряд тревогу не дают. Без единой разобранной — «error».
     const rateLimited = summary.stoppedBy === "rate_limit";
     const hardStop = summary.stoppedBy === "auth" || summary.stoppedBy === "billing" || summary.stoppedBy === "config" || summary.stoppedBy === "errors" || (rateLimited && summary.done === 0);
-    // Провайдер выбран по ключу (Anthropic раньше Polza), Anthropic остановился по ключу/деньгам, а ключ Polza есть:
-    // подсказываем явное переключение, чтобы владелец не искал причину.
-    const switchHint = config.provider === "anthropic" && !config.providerForced && polzaKey() && (summary.stoppedBy === "auth" || summary.stoppedBy === "billing")
-      ? "Задан и POLZA_API_KEY: укажите ASSORTMENT_CATALOG_AI_PROVIDER=polza"
+    // Провайдер выбран по ключу (Polza раньше Anthropic), а остановился по ключу/деньгам, и ключ другого провайдера
+    // тоже есть: подсказываем явный выбор, чтобы владелец не искал причину.
+    const otherProvider = config.provider === "polza" ? "anthropic" : "polza";
+    const switchHint = !config.providerForced && aiKeyConfigured(otherProvider) && (summary.stoppedBy === "auth" || summary.stoppedBy === "billing")
+      ? `Задан и ключ ${PROVIDER_LABEL[otherProvider]}: чтобы работать через него, укажите ASSORTMENT_CATALOG_AI_PROVIDER=${otherProvider}`
       : null;
     const note = [
       summary.stopMessage,

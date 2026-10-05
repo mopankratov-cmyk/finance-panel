@@ -68,13 +68,14 @@ export interface CatalogAiConfig {
 }
 
 /**
- * Провайдер: ASSORTMENT_CATALOG_AI_PROVIDER=anthropic|polza; не задан — какой ключ есть (Anthropic раньше Polza); нет
- * ни одного — anthropic (сборщик скажет, что ключа нет).
+ * Провайдер: ASSORTMENT_CATALOG_AI_PROVIDER=anthropic|polza; не задан — какой ключ есть, и Polza раньше Anthropic: ключ
+ * Anthropic в окружении есть и у других функций панели (договоры, выписки), по нему не видно, что на счёте есть деньги и что
+ * его хотели именно для этого сборщика, а ключ Polza заведён осознанно (дешевле, оплата в рублях). Нужен Anthropic при
+ * наличии обоих ключей — задайте провайдера явно. Нет ни одного — anthropic (сборщик скажет, что ключа нет).
  */
 export function pickProvider(env: Record<string, string | undefined>): CatalogProvider {
   const forced = (env.ASSORTMENT_CATALOG_AI_PROVIDER ?? "").trim().toLowerCase();
   if (forced === "anthropic" || forced === "polza") return forced;
-  if (env.ANTHROPIC_API_KEY?.trim()) return "anthropic";
   if (polzaKey(env)) return "polza";
   return "anthropic";
 }

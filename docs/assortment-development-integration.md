@@ -314,8 +314,8 @@ ffmpeg — это правка `package.json` и установка на mini, �
 `FINANCE_PANEL_URL` (ссылки в сводке; по умолчанию finance-panel-two),
 `ASSORTMENT_AI_DAILY_LIMIT` (по умолчанию 20; это старый разбор находок на основной модели, в учёт расхода каталога не входит).
 Разбор каталога по фото (`assortment-catalog-ai`): провайдер — `ASSORTMENT_CATALOG_AI_PROVIDER=anthropic|polza`
-(не задан — какой ключ есть, Anthropic раньше Polza: **если есть оба ключа, а работать должен Polza, задайте
-`ASSORTMENT_CATALOG_AI_PROVIDER=polza`** — ключ Anthropic без баланса остановит прогон, а Polza молча не подхватит); у Polza ключ `POLZA_API_KEY` (или `POLZA_AI_API_KEY`), по умолчанию
+(не задан — какой ключ есть, **Polza раньше Anthropic**: ключ Anthropic есть и у других функций панели и ничего не
+говорит о балансе; если при двух ключах нужен именно Anthropic — задайте `ASSORTMENT_CATALOG_AI_PROVIDER=anthropic`); у Polza ключ `POLZA_API_KEY` (или `POLZA_AI_API_KEY`), по умолчанию
 модель `google/gemini-2.5-flash`, цены в ₽ за млн токенов — в таблице `POLZA_PRICES_RUB`
 (`lib/assortment/catalogAi.ts`) или `ASSORTMENT_CATALOG_AI_POLZA_PRICE_IN_RUB` / `..._OUT_RUB`; расход берётся из ответа
 (`usage.cost_rub`) и пересчитывается в $ учёта по `ASSORTMENT_CATALOG_AI_RUB_PER_USD` (по умолчанию 80);
