@@ -8,13 +8,14 @@ import { dedupKey } from "./extract";
 import { remoteImage, storeImages } from "./importer";
 import { closestRuMatch, isRuSource, shapeStems, LIME_BRANDS, RU_LIME_PER_DIRECTION, RU_SOURCE_IDS, RU_SOURCES, RU_TOP_PER_SUBJECT, ruDirection, wbProductUrl, type RuSimilarCandidate } from "./ruMarket";
 import { formatValue, type Attributes } from "./attributes";
-import { rowsByIds } from "./byIds";
+import { IDS_CHUNK, rowsByIds } from "./byIds";
 import { MAX_DISTANCE, similarityPercent } from "./similar";
 import { ownSubjects } from "./wbDemand";
 
 const NEW_PER_RUN = 120;
 
 export interface RuMarketResult {
+  /** Источник паспорта (S128, S129); «archive» — шаг архивации позиций без продаж, у него нет своего источника. */
   sourceId: string;
   /** Сколько позиций отобрано для записи. */
   items: number;
@@ -104,15 +105,25 @@ export function sellingOnly<T extends { item: MarketItem }>(picks: T[]): T[] {
 }
 
 /** Позиции рынка, у которых последний замер — ноль продаж, прячем из вкладки. */
-async function archiveNotSelling(db: SupabaseClient) {
-  const { data: refs, error } = await db.from("assortment_references").select("id").in("source_id", RU_SOURCE_IDS).neq("status", "archived");
-  if (error) throw new Error(error.message);
-  const ids = (refs ?? []).map((r) => String(r.id));
+export async function archiveNotSelling(db: SupabaseClient) {
+  // Листанием, а не одним запросом: PostgREST режет ответ до 1000 строк, а набор активных RU-позиций только растёт (каждую неделю
+  // до +120, уходят лишь позиции с нулём продаж) — иначе архивация перестала бы видеть часть позиций.
+  const refs = await loadAllSupabasePages<{ id: string }>((from, to) => db.from("assortment_references")
+    .select("id")
+    .in("source_id", RU_SOURCE_IDS)
+    .neq("status", "archived")
+    .order("id", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: Array<{ id: string }> | null; error: { message: string } | null }>, { label: "Позиции «Рынка РФ»", pageSize: 1000, maxPages: 60 });
+  const ids = refs.map((r) => String(r.id));
   if (ids.length === 0) return 0;
   // latestSales при сбое чтения бросает: иначе «продаж нет» у всех позиций и в архив ушёл бы весь замер.
   const sales = await latestSales(db, ids);
   const dead = ids.filter((id) => (sales.get(id) ?? 0) <= 0);
-  if (dead.length) await db.from("assortment_references").update({ status: "archived", updated_at: new Date().toISOString() }).in("id", dead);
+  // Пачками: тысячи uuid в одном `.in()` — это адрес запроса в сотни килобайт.
+  for (let i = 0; i < dead.length; i += IDS_CHUNK) {
+    const { error } = await db.from("assortment_references").update({ status: "archived", updated_at: new Date().toISOString() }).in("id", dead.slice(i, i + IDS_CHUNK));
+    if (error) throw new Error(error.message);
+  }
   return dead.length;
 }
 
@@ -200,7 +211,12 @@ export async function collectRuMarket(db: SupabaseClient, deadline: number): Pro
     await mark(db, RU_SOURCES.lime.source_id, false, `MPSTATS: ${message}`);
     results.push({ sourceId: RU_SOURCES.lime.source_id, items: 0, added: 0, updated: 0, error: message });
   }
-  await archiveNotSelling(db);
+  // Архивация — уборка после замера: её сбой не отменяет ни «учимся» следом, ни ответ о записанном замере. Причина идёт в итог.
+  try {
+    await archiveNotSelling(db);
+  } catch (error) {
+    results.push({ sourceId: "archive", items: 0, added: 0, updated: 0, error: `архивация позиций без продаж не удалась: ${error instanceof Error ? error.message.slice(0, 160) : "ошибка"}` });
+  }
   return results;
 }
 
@@ -219,6 +235,22 @@ export async function latestSales(db: SupabaseClient, ids: string[]): Promise<Ma
     if (!out.has(id) && typeof row.value_num === "number") out.set(id, row.value_num);
   }
   return out;
+}
+
+/** На сколько находок сдвигается старт «учимся» за неделю: с запасом меньше того, что успевает один прогон, — окна смыкаются без пропусков. */
+const LEARN_STRIDE = 250;
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+
+/** Откуда начинать обход находок на этой неделе: детерминированно от номера недели, при любом размере списка. */
+export function learnStartOffset(nowMs: number, size: number): number {
+  return size > 0 ? (Math.floor(nowMs / WEEK_MS) * LEARN_STRIDE) % size : 0;
+}
+
+/** Итог недельного прогона для журнала синхронизации: сбой источника, архивации или чтения при обучении делает его «частичным», а не «ok». */
+export function ruMarketSyncSummary(collected: RuMarketResult[], learned: { checked: number; failed?: number }): { status: "ok" | "partial"; added: number; message: string | null } {
+  const problems = collected.filter((r) => r.error).map((r) => `${r.sourceId}: ${r.error}`);
+  if (learned.failed) problems.push(`учимся: не проверено ${learned.failed} из ${learned.checked} находок (сбой чтения)`);
+  return { status: problems.length ? "partial" : "ok", added: collected.reduce((sum, r) => sum + r.added, 0), message: problems.length ? problems.join("; ") : null };
 }
 
 /**
@@ -243,10 +275,13 @@ export async function learnFromRuMarket(db: SupabaseClient, deadline: number): P
     .range(from, to) as unknown as PromiseLike<{ data: RefRow[] | null; error: { message: string } | null }>);
   const all = new Map(refs.map((r) => [String(r.id), r]));
   const foreign = refs.filter((r) => !isRuSource(r.source_id) && r.status !== "archived");
+  // Курсора нет, а за бюджет проверяется не вся очередь: старт сдвигается каждую неделю, иначе хвост списка не проверялся бы никогда.
+  const start = learnStartOffset(Date.now(), foreign.length);
+  const order = [...foreign.slice(start), ...foreign.slice(0, start)];
   let matched = 0;
   let checked = 0;
   let failed = 0;
-  for (const ref of foreign) {
+  for (const ref of order) {
     if (Date.now() > deadline) break;
     checked += 1;
     const plain = Object.fromEntries(Object.entries((ref.attributes ?? {}) as Attributes).map(([k, v]) => [k, formatValue(v)]));
@@ -267,7 +302,14 @@ export async function learnFromRuMarket(db: SupabaseClient, deadline: number): P
       .filter((s) => s.distance <= MAX_DISTANCE)
       .map((s) => ({ s, r: all.get(String(s.reference_id)) }))
       .filter((x) => x.r && isRuSource(x.r.source_id) && x.r.direction === ref.direction);
-    const sales = await latestSales(db, ru.map((x) => String(x.r!.id)));
+    // Сбой чтения продаж — как сбой поиска похожих: находка непроверена (прежний вывод цел), а недельный прогон идёт дальше.
+    let sales: Map<string, number>;
+    try {
+      sales = await latestSales(db, ru.map((x) => String(x.r!.id)));
+    } catch {
+      failed += 1;
+      continue;
+    }
     const best = closestRuMatch(ru.map((x): RuSimilarCandidate => ({
       referenceId: String(x.r!.id), distance: x.s.distance, sales: sales.get(String(x.r!.id)) ?? null,
       title: String(x.r!.title ?? ""), brand: x.r!.brand ? String(x.r!.brand) : null, url: String(x.r!.url ?? ""),

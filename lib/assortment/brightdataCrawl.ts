@@ -66,10 +66,12 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
   const results: BrightDataRunResult[] = [];
   for (const [sourceId, targets] of bySource) {
     const now = new Date().toISOString();
+    let source: Awaited<ReturnType<typeof readSource>> | null = null;
+    const pending: PendingSnapshot[] = [];
+    let started = 0;
     try {
-      const source = await readSource(db, sourceId);
-      const pending = readPending(source.capabilities).filter((p) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS);
-      let started = 0;
+      source = await readSource(db, sourceId);
+      pending.push(...readPending(source.capabilities).filter((p) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS));
       for (const target of targets) {
         if (!options.force && target.weekdayUtc !== undefined && new Date().getUTCDay() !== target.weekdayUtc) continue;
         // Платный запуск не идемпотентен: повторная доставка крона (или второй вызов) купила бы те же выборки ещё раз ($2,5 за 1 000
@@ -84,14 +86,19 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
           ...(target.kind === "dataset" ? { recordsLimit: target.recordsLimit ?? 50, coverage: filterSignature(target.filter) } : {}),
         });
         started += 1;
+        // Номер оплаченной пробы пишем СРАЗУ, а не после цикла: сбой следующей цели (429, таймаут 30 с, 5xx) иначе терял бы уже купленные
+        // выборки — их номеров нигде не осталось бы, и повторный запуск купил бы всё заново.
+        await mark(db, sourceId, { capabilities: writePending(source.capabilities, pending), last_attempt_at: now, last_error: null });
       }
       if (started === 0) continue;
-      await mark(db, sourceId, { capabilities: writePending(source.capabilities, pending), last_attempt_at: now, last_error: null });
       results.push({ sourceId, phase: "trigger", ok: true, triggered: started, pending: pending.length });
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 200) : "ошибка запуска";
-      await mark(db, sourceId, { last_attempt_at: now, last_error: `Bright Data: ${message}` }).catch(() => undefined);
-      results.push({ sourceId, phase: "trigger", ok: false, error: message });
+      // Если сбой пришёл при самой записи уже оплаченной пробы — ещё одна попытка сохранить очередь вместе с причиной одним обращением.
+      const patch: Record<string, unknown> = { last_attempt_at: now, last_error: `Bright Data: ${message}${started > 0 ? ` (оплачено и сохранено проб: ${started})` : ""}` };
+      if (source && started > 0) patch.capabilities = writePending(source.capabilities, pending);
+      await mark(db, sourceId, patch).catch(() => undefined);
+      results.push({ sourceId, phase: "trigger", ok: false, error: message, ...(started > 0 ? { triggered: started, pending: pending.length } : {}) });
     }
   }
   return results;
@@ -573,11 +580,12 @@ export async function requestZaraPhotos(db: SupabaseClient, deadline: number): P
     try {
       rows = await downloadDatasetRecords(pending.snapshotId);
     } catch (e) {
-      // Выборка не удалась у Bright Data — снимаем (иначе висела бы вечно и не давала заказать новую); сбой связи — ждём до суток.
+      // Окончательный отказ Bright Data (4xx, кроме 408 и 429) — снимаем: иначе выборка висела бы вечно и не давала заказать новую.
+      // Сбой связи, таймаут, 5xx, 408 и 429 — временные: оплаченная выборка ждёт до суток, как и в плановом сборе (одно правило на оба пути).
       const message = String((e as Error)?.message ?? e).slice(0, 200);
-      const failed = e instanceof BrightDataError && e.status !== undefined && e.status < 500;
-      if (!failed && fresh(pending)) left.push(pending);
-      result.detail.push(`${pending.snapshotId}: ${failed ? "снята" : "ждём"} — ${message}`);
+      const keep = !isPermanentDownloadError(e) && fresh(pending);
+      if (keep) left.push(pending);
+      result.detail.push(`${pending.snapshotId}: ${keep ? "ждём" : "снята"} — ${message}`);
       continue;
     }
     if (rows === null) {

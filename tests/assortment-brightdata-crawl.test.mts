@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripMoney } from "../lib/assortment/brightdata.ts";
-import { clearDeadZaraPhotos, collectBrightData, triggerBrightData } from "../lib/assortment/brightdataCrawl.ts";
+import { clearDeadZaraPhotos, collectBrightData, requestZaraPhotos, triggerBrightData } from "../lib/assortment/brightdataCrawl.ts";
 import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
@@ -265,7 +265,7 @@ test("Фото Zara заказываются сами после сбора Zara
 test("Выборка фото не зависает: пустая — применять нечего, не удавшаяся у Bright Data — снимается, состояние видно", () => {
   const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
   assert.match(crawl, /if \(response\.status === 400 && \/empty\|no \(data\|records\)\/i\.test\(text\)\) return \[\];/);
-  assert.match(crawl, /const failed = e instanceof BrightDataError && e\.status !== undefined && e\.status < 500;/);
+  assert.match(crawl, /const keep = !isPermanentDownloadError\(e\) && fresh\(pending\);/, "ручной путь — то же правило «временное/окончательное», что и в плановом сборе");
   assert.match(crawl, /result\.detail\.push\(/, "в ответе ручного запуска — номер выборки и её состояние");
 });
 
@@ -281,7 +281,7 @@ test("Мёртвые ссылки Zara снимаются сразу при ра
 
 type Caps = Record<string, unknown>;
 /** Паспорт источников: у каждого свои capabilities; чужие таблицы (строки каталога) пусты. */
-function sourcesDb(initial: Record<string, Caps>) {
+function sourcesDb(initial: Record<string, Caps>, failUpdate?: (patch: Record<string, unknown>) => boolean) {
   const state = { caps: { ...initial } as Record<string, Caps>, patches: [] as Array<{ id: string; patch: Record<string, unknown> }> };
   const db = {
     from: (table: string) => {
@@ -295,9 +295,12 @@ function sourcesDb(initial: Record<string, Caps>) {
         range: () => Promise.resolve({ data: [], error: null }),
         maybeSingle: () => Promise.resolve({ data: { source_id: id, name: id === "S001" ? "Zara" : id, capabilities: state.caps[id] ?? {} }, error: null }),
         then: (resolve: (v: unknown) => unknown) => {
+          // сбой записи в базу: патч не применяется
+          if (table === "assortment_sources" && patch && failUpdate?.(patch)) return Promise.resolve({ data: null, error: { message: "db write failed" } }).then(resolve);
           if (table === "assortment_sources" && patch) {
-            state.patches.push({ id, patch });
-            if ("capabilities" in patch) state.caps[id] = patch.capabilities as Caps;
+            // Как настоящая база: записывается снимок, а не живая ссылка на массив, который код потом продолжает менять.
+            state.patches.push({ id, patch: JSON.parse(JSON.stringify(patch)) });
+            if ("capabilities" in patch) state.caps[id] = JSON.parse(JSON.stringify(patch.capabilities)) as Caps;
           }
           return Promise.resolve({ data: [], error: null }).then(resolve);
         },
@@ -368,6 +371,85 @@ test("Платный запуск идемпотентен: пока по цел
   assert.ok(second.length === 0 || second.every((r) => (r.triggered ?? 0) === 0));
   await withFetch(handler, () => triggerBrightData(db, { only: "S046", force: true }));
   assert.equal(paid, orderedFirst * 2, "осознанный повтор force=1 — заказывает снова");
+});
+
+test("Сбой N-й платной цели не теряет уже оплаченные пробы: они записаны сразу, повторный запуск покупает только недостающие", async () => {
+  let issued = 0;
+  let failOn = 3;
+  let attempts = 0;
+  let seenAtFailure: string[] | null = null;
+  const handler = (url: string) => {
+    if (!url.includes("/datasets/v3/trigger")) return new Response("{}", { status: 200 });
+    attempts += 1;
+    if (attempts === failOn) {
+      // Что лежит в базе в момент сбоя третьей цели, ещё до обработчика сбоя (так выглядит и убитая по таймауту функция): проба каждой оплаченной цели уже записана.
+      seenAtFailure = pendingIds(state);
+      return new Response("rate limited", { status: 429 });
+    }
+    issued += 1;
+    return new Response(JSON.stringify({ snapshot_id: `s_${issued}` }), { status: 200 });
+  };
+  const pendingIds = (st: { caps: Record<string, Caps> }) => ((st.caps.S046?.brightdata_pending as Array<{ snapshotId: string }>) ?? []).map((p) => p.snapshotId);
+  const { db, state } = sourcesDb({});
+  const first = await withFetch(handler, () => triggerBrightData(db, { only: "S046" }));
+  assert.equal(first[0].ok, false);
+  assert.match(first[0].error ?? "", /429/);
+  assert.equal(first[0].triggered, 2, "в итоге названо, сколько проб оплачено до сбоя");
+  assert.deepEqual(seenAtFailure, ["s_1", "s_2"], "к моменту сбоя третьей цели две оплаченные пробы уже записаны, а не ждут конца цикла");
+  assert.deepEqual(pendingIds(state), ["s_1", "s_2"], "две оплаченные пробы сохранены, хотя третья цель упала");
+  const last = state.patches.filter((p) => p.id === "S046").pop()!;
+  assert.match(String(last.patch.last_error), /429.*оплачено и сохранено проб: 2/, "причина и число сохранённых проб видны в «Источниках»");
+  // Повторный запуск (ручной, без force): ASOS — четыре цели, две уже ждут — покупаются только две недостающие.
+  failOn = 0;
+  const second = await withFetch(handler, () => triggerBrightData(db, { only: "S046" }));
+  assert.ok(second.every((r) => r.ok), JSON.stringify(second));
+  assert.equal(issued, 4, "всего куплено четыре пробы, а не шесть: s_1 и s_2 не покупались повторно");
+  assert.deepEqual(pendingIds(state), ["s_1", "s_2", "s_3", "s_4"]);
+  assert.equal(second[0].triggered, 2);
+});
+
+test("Сбой записи очереди после оплаты: покупка останавливается, а оплаченные пробы всё равно сохраняются повторной попыткой в обработчике сбоя", async () => {
+  let issued = 0;
+  const handler = (url: string) => {
+    if (!url.includes("/datasets/v3/trigger")) return new Response("{}", { status: 200 });
+    issued += 1;
+    return new Response(JSON.stringify({ snapshot_id: `s_${issued}` }), { status: 200 });
+  };
+  // запись очереди из двух проб падает один раз
+  let failed = false;
+  const { db, state } = sourcesDb({}, (patch) => {
+    const pending = (patch.capabilities as { brightdata_pending?: unknown[] } | undefined)?.brightdata_pending;
+    if (!failed && pending?.length === 2) { failed = true; return true; }
+    return false;
+  });
+  const result = await withFetch(handler, () => triggerBrightData(db, { only: "S046" }));
+  assert.equal(result[0].ok, false);
+  assert.match(result[0].error ?? "", /db write failed/);
+  assert.equal(issued, 2, "после сбоя записи третью и четвёртую пробы не покупаем вслепую");
+  assert.deepEqual(((state.caps.S046?.brightdata_pending as Array<{ snapshotId: string }>) ?? []).map((p) => p.snapshotId), ["s_1", "s_2"], "обе оплаченные пробы сохранены повторной попыткой");
+});
+
+test("Ручной ?phase=photos: 429 и 408 — временные (оплаченная выборка остаётся в очереди, как и в плановом сборе), 500 тоже; 404 — снимает; старше суток — снимает", async () => {
+  const fresh = new Date(Date.now() - 3600 * 1000).toISOString();
+  const old = new Date(Date.now() - 30 * 3600 * 1000).toISOString();
+  const photoPending = (triggeredAt: string) => ({ snapshotId: "snap_paid", triggeredAt });
+  const left = (state: { caps: Record<string, Caps> }) => ((state.caps.S001.brightdata_photo_pending as unknown[]) ?? []).length;
+  for (const [status, kept] of [[429, true], [408, true], [500, true], [503, true], [404, false], [403, false]] as const) {
+    const { db, state } = sourcesDb({ S001: { brightdata_photo_pending: [photoPending(fresh)] } });
+    const result = await withFetch(() => new Response("boom", { status }), () => requestZaraPhotos(db, Date.now() + 60_000));
+    assert.equal(left(state), kept ? 1 : 0, `ручной запуск, HTTP ${status}: ${kept ? "выборка осталась" : "выборка снята"}`);
+    assert.equal(result.triggered, 0, "новую выборку не покупаем, пока старая в очереди");
+    assert.match((result.detail ?? []).join(" "), kept ? /ждём/ : /снята/);
+    // тот же ответ в плановом сборе даёт то же решение
+    const planned = sourcesDb({ S001: { brightdata_photo_pending: [photoPending(fresh)] } });
+    await withFetch(() => new Response("boom", { status }), () => collectBrightData(planned.db, Date.now() + 60_000));
+    assert.equal(left(planned.state), left(state), `HTTP ${status}: плановый и ручной путь решают одинаково`);
+  }
+  // Временный сбой, но выборке больше суток — снимается и в сообщении так и сказано.
+  const stale = sourcesDb({ S001: { brightdata_photo_pending: [photoPending(old)] } });
+  const staleResult = await withFetch(() => new Response("slow down", { status: 429 }), () => requestZaraPhotos(stale.db, Date.now() + 60_000));
+  assert.equal(left(stale.state), 0);
+  assert.match((staleResult.detail ?? []).join(" "), /снята/);
 });
 
 test("Мёртвые фото Zara снимаются у ВСЕХ строк окна, а не у первой тысячи по id (дальше неё модели оставались «с фото» и показывали заглушку)", async () => {
