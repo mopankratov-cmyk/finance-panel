@@ -29,6 +29,25 @@ test("agent cabinet report keeps only allowlisted nm_id rows", () => {
   );
 });
 
+test("scoped cabinet keeps cabinet-wide money rows without nm_id (кредит, реклама, хранение)", () => {
+  const rows = [
+    { rrd_id: 1, rr_dt: "2026-09-14", nm_id: 101, retail_amount: 500 },
+    { rrd_id: 2, rr_dt: "2026-09-14", nm_id: 202, retail_amount: 500 },
+    { rrd_id: 3, rr_dt: "2026-09-14", nm_id: 0, deduction: 23_064.53, bonus_type_name: "Перевод на баланс заёмщика для оплаты основного долга по кредиту" },
+    { rrd_id: 4, rr_dt: "2026-09-14", nm_id: null, deduction: 464_939, bonus_type_name: "Оказание услуг «WB Продвижение»" },
+    { rrd_id: 5, rr_dt: "2026-09-14", nm_id: 0, storage_fee: 1_200 },
+    { rrd_id: 6, rr_dt: "2026-09-14", nm_id: 0, acceptance: 300 },
+    { rrd_id: 7, rr_dt: "2026-09-14", nm_id: 0, penalty: 3_300 },
+    { rrd_id: 8, rr_dt: "2026-09-14", nm_id: 0, rebill_logistic_cost: 12 },
+    { rrd_id: 9, rr_dt: "2026-09-14", nm_id: 0 },
+  ] as WbReportRow[];
+
+  assert.deepEqual(
+    filterReportRowsByAllowedNmIds(rows, new Set([202])).map((row) => row.rrd_id),
+    [2, 3, 4, 5, 6, 7],
+  );
+});
+
 test("sale-date report uses sale_dt while preserving report-date rows", () => {
   const source: WbReportRow[] = [{
     rrd_id: 101,
