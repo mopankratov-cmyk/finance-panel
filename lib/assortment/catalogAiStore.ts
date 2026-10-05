@@ -622,6 +622,13 @@ async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<s
       await recordFailure(why, usage);
       return { status: "failed", errorMessage: why, ...paid };
     }
+    // Ни одного признака, кроме «не видно» (фото-заглушка, пустая карточка): это не разбор, а пустая строка, которая
+    // навсегда выпала бы из очереди как «готово». Считаем неудачей с потолком попыток — вдруг другое фото сработает.
+    if (Object.values(attributes).every((a) => a.nv || !a.v)) {
+      const why = "ответ ИИ: все признаки «не видно»";
+      await recordFailure(why, usage);
+      return { status: "failed", errorMessage: why, ...paid };
+    }
     await save({ status: "ok", attributes, last_error: null, image_count: answer.images ?? base.image_count, ...usage });
     return { status: "ok", ...paid };
   } catch {
@@ -640,20 +647,23 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
   const { data: names } = await db.from("assortment_sources").select("source_id,name");
   const nameOf = new Map((names ?? []).map((n) => [String((n as { source_id: string }).source_id), String((n as { name: string | null }).name ?? "")]));
   try {
-    const rows = await loadAllSupabasePages<{ source_id: string; model_key: string; attributes: StoredAttributes | null }>((from, to) => db.from(RESULTS)
-      .select("source_id,model_key,attributes")
+    type TraitRow = { source_id: string; model_key: string; attributes: StoredAttributes | null; prompt_version: string | null };
+    const rows = await loadAllSupabasePages<TraitRow>((from, to) => db.from(RESULTS)
+      .select("source_id,model_key,attributes,prompt_version")
       .eq("direction", direction)
       .eq("status", "ok")
       .order("source_id", { ascending: true })
       .order("model_key", { ascending: true })
-      .range(from, to) as unknown as PromiseLike<{ data: Array<{ source_id: string; model_key: string; attributes: StoredAttributes | null }> | null; error: { message: string } | null }>, { label: "Признаки по фото", pageSize: 1000 });
-    const models: TraitModel[] = rows
-      .filter((r) => r.attributes && current.has(resultKey(r.source_id, r.model_key)))
-      .map((r) => ({ sourceId: r.source_id, sourceName: nameOf.get(r.source_id) || r.source_id, attributes: r.attributes as StoredAttributes }));
-    if (models.length === 0) return null;
+      .range(from, to) as unknown as PromiseLike<{ data: TraitRow[] | null; error: { message: string } | null }>, { label: "Признаки по фото", pageSize: 1000 });
+    const usable = rows.filter((r) => r.attributes && current.has(resultKey(r.source_id, r.model_key)));
+    if (usable.length === 0) return null;
+    // В долях — только разобранное по текущей версии вопроса: иначе в одной картине смешаны два разных вопроса.
+    // Прежние строки (пересоберутся) считаем отдельно и называем в подписи.
+    const fresh = usable.filter((r) => r.prompt_version === PROMPT_VERSION);
+    const models: TraitModel[] = fresh.map((r) => ({ sourceId: r.source_id, sourceName: nameOf.get(r.source_id) || r.source_id, attributes: r.attributes as StoredAttributes }));
     // Знаменатель покрытия — модели, которые вообще можно разобрать: с фото и не «Рынок РФ».
     const eligible = heads.filter((h) => h.imageUrls.length > 0 && !isRuSource(h.sourceId)).length;
-    return buildPhotoTraits(direction, models, Math.max(eligible, models.length));
+    return buildPhotoTraits(direction, models, Math.max(eligible, usable.length), usable.length - fresh.length);
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;

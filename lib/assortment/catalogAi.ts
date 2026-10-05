@@ -291,7 +291,11 @@ export function fieldVocabulary(key: string): string[] {
   return out;
 }
 
-/** Типичные формулировки, которые словарь по основам не поймает: «без капюшона», «съёмный капюшон». Порядок важен — первый совпавший. */
+/**
+ * Типичные формулировки, которые словарь по основам не поймает: «без капюшона», «съёмный капюшон», «нет» у признака
+ * с ответом «без …». Порядок важен — первый совпавший. Пишутся в нормализованном виде (без «ё»/«й»: «съемн», «стежк»).
+ * Вопрос к ИИ при этом не меняется: смена версии вопроса запускает переразбор всех моделей.
+ */
 const ALIASES: Record<string, Array<[RegExp, string]>> = {
   hood: [
     [/(^|\s)(без капюшон|нет капюшон|капюшона нет|капюшон отсутствует)/, "нет"],
@@ -299,12 +303,43 @@ const ALIASES: Record<string, Array<[RegExp, string]>> = {
     [/съемн/, "съёмный"],
     [/капюшон/, "есть"],
   ],
+  // «Нет» там, где в словаре ответ «без …»: иначе самое частое значение уходит в «другое».
+  quilting: [[/^(нет|без|отсутств)/, "без стёжки"]],
+  decor: [[/^(нет|без|отсутств)/, "без декора"]],
+  collar: [[/^(нет|без|отсутств)/, "без воротника"]],
+  closure: [[/^(нет|без|отсутств)/, "без застёжки"]],
+  hardware: [[/^(нет|без|отсутств|не вид)/, "без видимой фурнитуры"]],
+  pockets: [[/^(нет|без|отсутств)(?!\s+видим)/, "нет видимых"]],
+  // «Жёсткая» без «каркасная» — то же значение; «полужёсткая» и «не жёсткая» сюда не попадают.
+  rigidity: [[/(^|\s)(?<!(не|без)\s)жестк(ая|ии|ое|ие)(?!\s+каркас)/, "жёсткая каркасная"]],
+  // «Седло» — то же, что «седельная»; остальное ловит сопоставление по основе и склейка «кроссбоди»/«кросс-боди».
+  silhouette: [[/(^|\s)седл/, "седельная"]],
+};
+
+/**
+ * Значения, которых нет в подсказках вопроса, а ИИ называет их часто: показываем отдельными значениями, а не
+ * «другим». Работают как слова словаря, поэтому «куртка-жилет» определяется по первому названному.
+ */
+const EXTRA_TERMS: Record<string, string[]> = {
+  subtype: ["жилет", "плащ"],
+};
+
+/**
+ * «Куртка» без уточнения — не пуховик и не бомбер: пока ничего конкретного не названо, это отдельное значение
+ * «форма не названа». Применяется, только если словарь ничего не нашёл («куртка-бомбер» остаётся бомбером).
+ */
+const FALLBACKS: Record<string, Array<[RegExp, string]>> = {
+  subtype: [[/(^|\s)куртк/, "куртка (форма не названа)"]],
 };
 
 const NEGATIONS = new Set(["не", "без", "нет", "ни"]);
 const STEM = 4;
+/** Слово термина ровно из STEM букв («тоут», «мини», «хобо») ловит и свои окончания: «тоуты», «тоута» — не больше двух лишних букв. */
+const SHORT_TERM_ENDING = 2;
 
-const words = (text: string) => normalizeTitle(text).split(/[^а-яa-z0-9]+/).filter(Boolean);
+/** Двойные буквы схлопываются в обеих частях сравнения: «шоппер» = «шопер», «кросс» = «крос». */
+const fold = (word: string) => word.replace(/(.)\1+/g, "$1");
+const words = (text: string) => normalizeTitle(text).split(/[^а-яa-z0-9]+/).filter(Boolean).map(fold);
 /** Основа слова: до четырёх букв («прямой» = «прямая» = «прямые»); короткие слова — целиком. */
 const stem = (word: string) => (word.length <= STEM ? word : word.slice(0, STEM));
 
@@ -319,12 +354,29 @@ function matchAt(valueWords: string[], termWords: string[]): number {
     for (let i = 0; i < termWords.length; i += 1) {
       const v = valueWords[start + i];
       const t = termWords[i];
-      // Слово термина короче основы («до», «на») — только целиком, иначе «до» ловит «договор».
-      if (t.length <= STEM ? v !== t : !v.startsWith(stem(t))) continue outer;
+      // Слово термина короче основы («до», «на») — только целиком, иначе «до» ловит «договор»; ровно в основу — с окончанием.
+      if (t.length < STEM ? v !== t : t.length === STEM ? !(v.startsWith(t) && v.length <= t.length + SHORT_TERM_ENDING) : !v.startsWith(stem(t))) continue outer;
     }
     const before = start > 0 ? valueWords[start - 1] : null;
     if (before && NEGATIONS.has(before) && !NEGATIONS.has(termWords[0])) continue;
     return start;
+  }
+  return -1;
+}
+
+/**
+ * Термин из нескольких слов, написанный слитно: «кроссбоди» = «кросс-боди». Слово значения должно быть термином
+ * без пробелов и дефисов с парой лишних букв в конце.
+ */
+function matchJoined(valueWords: string[], termWords: string[]): number {
+  if (termWords.length < 2) return -1;
+  const joined = termWords.join("");
+  for (let i = 0; i < valueWords.length; i += 1) {
+    const v = valueWords[i];
+    if (!v.startsWith(joined) || v.length > joined.length + SHORT_TERM_ENDING) continue;
+    const before = i > 0 ? valueWords[i - 1] : null;
+    if (before && NEGATIONS.has(before)) continue;
+    return i;
   }
   return -1;
 }
@@ -336,17 +388,21 @@ export function canonicalValue(key: string, raw: string): string {
   for (const [re, canonical] of ALIASES[key] ?? []) if (re.test(value)) return canonical;
   const valueWords = words(raw);
   let best: { term: string; size: number; length: number; pos: number } | null = null;
-  for (const term of fieldVocabulary(key)) {
+  for (const term of [...fieldVocabulary(key), ...(EXTRA_TERMS[key] ?? [])]) {
     const termWords = words(term);
     if (termWords.length === 0) continue;
     const pos = matchAt(valueWords, termWords);
-    if (pos < 0) continue;
+    const posJoined = pos < 0 ? matchJoined(valueWords, termWords) : -1;
+    const at = pos >= 0 ? pos : posJoined;
+    if (at < 0) continue;
     // Что названо раньше — главное («накладные на молнии» — накладные, «свободная, оверсайз» — свободная);
     // с одной позиции — где слов больше (точнее), потом что длиннее.
-    const better = !best || pos < best.pos || (pos === best.pos && (termWords.length > best.size || (termWords.length === best.size && term.length > best.length)));
-    if (better) best = { term, size: termWords.length, length: term.length, pos };
+    const better = !best || at < best.pos || (at === best.pos && (termWords.length > best.size || (termWords.length === best.size && term.length > best.length)));
+    if (better) best = { term, size: termWords.length, length: term.length, pos: at };
   }
-  return best?.term ?? OTHER;
+  if (best) return best.term;
+  for (const [re, canonical] of FALLBACKS[key] ?? []) if (re.test(value)) return canonical;
+  return OTHER;
 }
 
 export interface TraitModel {
@@ -363,6 +419,8 @@ export interface TraitValue {
   /** Средняя доля по источникам с достаточным числом разобранных моделей, %. */
   avgSourceShare: number | null;
   sources: number;
+  /** Только у «другого»: самые частые сырые формулировки ИИ — чтобы видеть, что именно не попало в словарь. */
+  examples?: Array<{ text: string; models: number }>;
 }
 
 export interface TraitField {
@@ -379,8 +437,10 @@ export interface TraitField {
 
 export interface PhotoTraitsReport {
   direction: AssortmentDirection;
-  /** Разобрано моделей из текущего каталога. */
+  /** Разобрано моделей из текущего каталога по текущей версии вопроса — только они в долях. */
   analyzed: number;
+  /** Разобрано по прежней версии вопроса: в долях не участвуют, пересоберутся. */
+  legacy: number;
   /** Моделей каталога, которые можно разобрать: с фото, без «Рынка РФ». */
   catalog: number;
   coverage: number;
@@ -398,6 +458,11 @@ export interface PhotoTraitsReport {
 
 const pct = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 1000) / 10 : 0);
 const MAX_VALUES = 8;
+const MAX_OTHER_EXAMPLES = 5;
+/** Доли признака показываем, когда он виден хотя бы у стольких моделей; меньше — «мало данных»: 5 из 8 — это 62%, а не вывод. */
+export const MIN_VISIBLE_FOR_SHARES = 20;
+/** Пока разобрано меньше этой доли каталога (%), картина «предварительная»: она сместится, когда разберутся остальные источники. */
+export const PRELIMINARY_COVERAGE = 90;
 /** Средняя по источникам включается, когда источники с ≥10 разобранными моделями дают не меньше этой доли разобранного. */
 export const AVERAGE_MIN_COVERAGE = 0.8;
 
@@ -406,7 +471,7 @@ export const AVERAGE_MIN_COVERAGE = 0.8;
  * в его долях не участвует. Средняя по источникам — как у форм: большой каталог
  * не решает за остальные; в среднюю идут источники с ≥ 10 разобранными моделями.
  */
-export function buildPhotoTraits(direction: AssortmentDirection, models: TraitModel[], catalog: number): PhotoTraitsReport {
+export function buildPhotoTraits(direction: AssortmentDirection, models: TraitModel[], catalog: number, legacy = 0): PhotoTraitsReport {
   const perSourceTotal = new Map<string, number>();
   for (const m of models) perSourceTotal.set(m.sourceId, (perSourceTotal.get(m.sourceId) ?? 0) + 1);
   const eligibleSources = [...perSourceTotal.entries()].filter(([, n]) => n >= MIN_SOURCE_MODELS);
@@ -418,6 +483,7 @@ export function buildPhotoTraits(direction: AssortmentDirection, models: TraitMo
   for (const field of ATTRIBUTE_FIELDS[direction]) {
     if (FREE_TEXT_FIELDS.has(field.key)) continue;
     const counts = new Map<string, { models: number; perSource: Map<string, number> }>();
+    const otherRaw = new Map<string, number>();
     const visibleBySource = new Map<string, number>();
     let visible = 0;
     let notVisible = 0;
@@ -431,6 +497,10 @@ export function buildPhotoTraits(direction: AssortmentDirection, models: TraitMo
       visible += 1;
       visibleBySource.set(m.sourceId, (visibleBySource.get(m.sourceId) ?? 0) + 1);
       const value = canonicalValue(field.key, attr.v);
+      if (value === OTHER) {
+        const text = normalizeTitle(attr.v).slice(0, 40);
+        if (text) otherRaw.set(text, (otherRaw.get(text) ?? 0) + 1);
+      }
       const entry = counts.get(value) ?? { models: 0, perSource: new Map<string, number>() };
       entry.models += 1;
       entry.perSource.set(m.sourceId, (entry.perSource.get(m.sourceId) ?? 0) + 1);
@@ -450,11 +520,19 @@ export function buildPhotoTraits(direction: AssortmentDirection, models: TraitMo
     // Порядок — по тому, что показано (средняя по источникам, иначе сырая доля); «другое» — отдельно.
     const shown = (v: TraitValue) => v.avgSourceShare ?? v.share;
     const named = values.filter((v) => v.value !== OTHER).sort((a, b) => shown(b) - shown(a) || b.models - a.models || a.value.localeCompare(b.value));
-    fields.push({ key: field.key, label: field.label, visible, notVisible, values: named.slice(0, MAX_VALUES), other: values.find((v) => v.value === OTHER) ?? null });
+    const otherValue = values.find((v) => v.value === OTHER) ?? null;
+    if (otherValue) {
+      otherValue.examples = [...otherRaw.entries()]
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .slice(0, MAX_OTHER_EXAMPLES)
+        .map(([text, count]) => ({ text, models: count }));
+    }
+    fields.push({ key: field.key, label: field.label, visible, notVisible, values: named.slice(0, MAX_VALUES), other: otherValue });
   }
   return {
     direction,
     analyzed: models.length,
+    legacy,
     catalog,
     coverage: pct(models.length, catalog),
     sourcesInAverage: averaged.length,

@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  allowance, AVERAGE_MIN_COVERAGE, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, pickProvider, polzaKey,
+  allowance, AVERAGE_MIN_COVERAGE, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, MIN_VISIBLE_FOR_SHARES, pickProvider, polzaKey,
   packAttributes, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, resultKey, type CatalogHead, type ExistingResult, type TraitModel,
 } from "../lib/assortment/catalogAi.ts";
-import { aiKeyConfigured, askFor, isTransientVisionError, loadPhotoSamples, makePolzaVision, runCatalogAi, VisionStopError, type AskVision, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
+import { aiKeyConfigured, askFor, isTransientVisionError, loadPhotoSamples, loadPhotoTraits, makePolzaVision, runCatalogAi, VisionStopError, type AskVision, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
 import { catalogPrompt, catalogUserText } from "../lib/assortment/aiAttributes.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -654,7 +654,7 @@ test("Отчёт: «другое» не теряется при длинном �
   const vals = ["бомбер", "пуховик", "тренч", "парка", "ветровка", "пальто", "косуха", "жакет", "анорак"];
   const models: TraitModel[] = [
     ...vals.flatMap((v, i) => Array.from({ length: 10 - i }, () => tm("S1", { subtype: { v } }))),
-    ...Array.from({ length: 60 }, () => tm("S1", { subtype: { v: "куртка с карманами" } })),
+    ...Array.from({ length: 60 }, () => tm("S1", { subtype: { v: "накидка-кимоно" } })),
   ];
   const field = buildPhotoTraits("jackets", models, 200).fields.find((f) => f.key === "subtype")!;
   assert.equal(field.values.length, 8, "список значений обрезан до восьми");
@@ -1020,7 +1020,7 @@ test("Карточка признака: пять строк, а то, что н
     other: v("другое", 9, 61),
   };
   const proportions = { key: "proportions", label: "Пропорции", visible: 62, notVisible: 0, values: [v("средняя", 32, 62), v("малая", 14, 62), v("большая", 9, 62), v("мини", 4, 62), v("вытянутая", 3, 62)], other: null };
-  const report = { direction: "bags" as const, analyzed: 62, catalog: 1172, coverage: 5.3, sourcesInAverage: 0, basis: "raw" as const, averageCoverage: 0, fields: [silhouette, proportions] };
+  const report = { direction: "bags" as const, analyzed: 62, legacy: 0, catalog: 1172, coverage: 5.3, sourcesInAverage: 0, basis: "raw" as const, averageCoverage: 0, fields: [silhouette, proportions] };
   const html = renderToStaticMarkup(createElement(TraitsSection, { report }));
   const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
   assert.match(text, /Не показано: редкие значения — 11 моделей; другие формулировки — 9 моделей\./, "61 − (12+9+7+7+6) − 9 = 11");
@@ -1100,4 +1100,92 @@ test("Модели, разобранные по v1, снова в очереди
   const heads = [head("S1", "old"), head("S1", "fresh-v1"), head("S1", "brandnew")];
   const picked = pickCandidates(heads, existing, NOW, 100).map((h) => h.sourceItemId);
   assert.deepEqual(picked, ["brandnew", "old"], "новая первой; v1 старше суток — после неё; v1 моложе суток — ещё нет");
+});
+
+// --- словарь и ворота разбора (05.10): написания, «нет» → «без …», пустые ответы, версия вопроса ---
+
+test("Словарь: слитные и двойные написания, окончания, «нет» → «без …», «жёсткая» одним словом, «куртка» без формы — по реальным ответам с прода", () => {
+  const cases: Array<[string, string, string]> = [
+    ["silhouette", "шоппер", "шопер"], ["silhouette", "сумка-шоппер", "шопер"],
+    ["silhouette", "кроссбоди", "кросс-боди"], ["silhouette", "кросс боди", "кросс-боди"], ["silhouette", "кросс-боди", "кросс-боди"],
+    ["silhouette", "тоуты", "тоут"], ["silhouette", "седло", "седельная"], ["silhouette", "ведро", "ведро"],
+    ["rigidity", "жёсткая", "жёсткая каркасная"], ["rigidity", "жесткий", "жёсткая каркасная"], ["rigidity", "полужёсткая", "полужёсткая"], ["rigidity", "мягкая", "мягкая"],
+    ["quilting", "нет", "без стёжки"], ["decor", "нет", "без декора"], ["collar", "нет", "без воротника"], ["closure", "нет", "без застёжки"], ["hardware", "без", "без видимой фурнитуры"],
+    ["pockets", "нет", "нет видимых"], ["pockets", "нет видимых", "нет видимых"],
+    ["subtype", "жилет", "жилет"], ["subtype", "плащ", "плащ"], ["subtype", "куртка", "куртка (форма не названа)"],
+    ["subtype", "куртка-бомбер", "бомбер"], ["subtype", "куртка-пуховик", "пуховик"],
+  ];
+  for (const [key, raw, expected] of cases) assert.equal(canonicalValue(key, raw), expected, `${key}: «${raw}»`);
+});
+
+test("Словарь: ничего лишнего не ловится — «не жёсткая», «небольшая», «до»-слова и короткие термины остаются «другим»", () => {
+  assert.equal(canonicalValue("rigidity", "не жёсткая"), "другое", "отрицание не превращается в «жёсткая каркасная»");
+  assert.equal(canonicalValue("proportions", "небольшая"), "другое", "«небольшая» не «большая»");
+  assert.equal(canonicalValue("proportions", "миниатюрная"), "другое", "четырёхбуквенный «мини» ловит окончание, а не любое продолжение");
+  assert.equal(canonicalValue("length", "договор"), "другое", "«до» — только целиком");
+  assert.equal(canonicalValue("hood", "нет"), "нет");
+});
+
+test("Отчёт: «другое» раскрыто сырыми формулировками (частые первыми), версия вопроса — отдельным счётчиком, мало данных видно по полю", () => {
+  const models: TraitModel[] = [
+    ...Array.from({ length: 4 }, () => tm("S1", { silhouette: v("Сумка-мешок") })),
+    ...Array.from({ length: 2 }, () => tm("S1", { silhouette: v("пельмень") })),
+    tm("S1", { silhouette: v("тоут") }),
+  ];
+  const report = buildPhotoTraits("bags", models, 100, 62);
+  assert.equal(report.legacy, 62);
+  const silhouette = report.fields.find((f) => f.key === "silhouette")!;
+  assert.equal(silhouette.visible, 7);
+  assert.deepEqual(silhouette.other?.examples, [{ text: "сумка-мешок", models: 4 }, { text: "пельмень", models: 2 }]);
+  assert.ok(silhouette.visible < MIN_VISIBLE_FOR_SHARES, "поле с 7 моделями — «мало данных»");
+});
+
+test("Карточка признака: «предварительно» при охвате ниже 90%, «мало данных» при <20, сырые слова «другого» и прежняя версия вопроса названы", () => {
+  const val = (value: string, models: number, of: number) => ({ value, models, share: Math.round((models / of) * 1000) / 10, avgSourceShare: null, sources: 1 });
+  const rich = { key: "silhouette", label: "Силуэт", visible: 40, notVisible: 0, values: [val("тоут", 30, 40)], other: { ...val("другое", 10, 40), examples: [{ text: "мешок", models: 6 }, { text: "пельмень", models: 4 }] } };
+  const thin = { key: "rigidity", label: "Жёсткость формы", visible: 7, notVisible: 1, values: [val("мягкая", 7, 7)], other: null };
+  const mk = (coverage: number, legacy: number) => ({ direction: "bags" as const, analyzed: 40, legacy, catalog: 100, coverage, sourcesInAverage: 0, basis: "raw" as const, averageCoverage: 0, fields: [rich, thin] });
+  const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  const early = text(renderToStaticMarkup(createElement(TraitsSection, { report: mk(40, 62) })));
+  assert.match(early, /предварительно/);
+  assert.match(early, /другие формулировки — 10 моделей \(«мешок» ×6, «пельмень» ×4\)/);
+  assert.match(early, /Мало данных: признак виден у 7 моделей/);
+  assert.doesNotMatch(early, /мягкая/, "поле с <20 моделей долей не показывает");
+  assert.match(early, /Ещё 62 модели разобраны по прежнему вопросу/);
+  const done = text(renderToStaticMarkup(createElement(TraitsSection, { report: mk(95, 0) })));
+  assert.doesNotMatch(done, /предварительно/);
+  assert.doesNotMatch(done, /по прежнему вопросу/);
+});
+
+test("Отчёт по базе: в долях только текущая версия вопроса, прежняя — счётчиком; при одних прежних строках блок не пропадает", async () => {
+  const heads = Array.from({ length: 6 }, (_, i) => headRow("S1", `m${i}`));
+  const row = (i: number, version: string) => resultRow("S1", String(heads[i].source_item_id), { direction: "jackets", prompt_version: version, attributes: { length: { v: "до бедра" } } });
+  const mixed = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1"), row(3, "catalog-v1"), row(4, "catalog-v1")] });
+  const report = (await loadPhotoTraits(mixed.db, "jackets"))!;
+  assert.equal(report.analyzed, 2, "в долях — только v2");
+  assert.equal(report.legacy, 3);
+  assert.equal(report.fields.find((f) => f.key === "length")?.visible, 2);
+  const onlyOld = fakeDb({ heads, results: [row(0, "catalog-v1"), row(1, "catalog-v1")] });
+  const old = (await loadPhotoTraits(onlyOld.db, "jackets"))!;
+  assert.equal(old.analyzed, 0);
+  assert.equal(old.legacy, 2, "блок остаётся и называет прежние разборы — не исчезает до переразбора");
+  const none = fakeDb({ heads, results: [] });
+  assert.equal(await loadPhotoTraits(none.db, "jackets"), null);
+});
+
+test("Прогон: ответ «не видно» по всем признакам — неудача с потолком попыток, а не «готово»; хороший результат при пересборе не затирается", async () => {
+  const empty: AskVision = async () => ({ text: '{"attributes":{"subtype":"не видно","length":"не видно"}}', inputTokens: 4000, outputTokens: 100 });
+  const fresh = fakeDb({ heads: [headRow("S1", "a")] });
+  const out = await runCatalogAi(fresh.db, { ask: empty, config: cfg, now: clock });
+  assert.equal(out.done, 0);
+  assert.equal(out.failed, 1);
+  const saved = fresh.tables.assortment_model_attributes[0];
+  assert.equal(saved.status, "failed");
+  assert.match(String(saved.last_error), /все признаки «не видно»/);
+  assert.ok(Number(saved.cost_usd) > 0, "ответ оплачен — расход записан");
+  const good = { source_id: "S1", model_key: "S1|a", direction: "jackets", status: "ok", attributes: { length: { v: "до бедра" } }, prompt_version: "catalog-v1", attempts: 1, taken_at: "2026-10-01T00:00:00Z" };
+  const redo = fakeDb({ heads: [headRow("S1", "a")], results: [good] });
+  await runCatalogAi(redo.db, { ask: empty, config: cfg, now: clock });
+  assert.equal(redo.tables.assortment_model_attributes[0].status, "ok", "прежний результат не затёрт пустым ответом");
+  assert.deepEqual(redo.tables.assortment_model_attributes[0].attributes, { length: { v: "до бедра" } });
 });

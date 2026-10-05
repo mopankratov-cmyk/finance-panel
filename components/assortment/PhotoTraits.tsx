@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
-import { MIN_MODELS_FOR_TRAITS, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
+import { MIN_MODELS_FOR_TRAITS, MIN_VISIBLE_FOR_SHARES, PRELIMINARY_COVERAGE, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
 import type { PhotoSample } from "@/lib/assortment/catalogAiStore";
 import { plural } from "@/lib/warehouse/plural";
 
@@ -40,6 +40,7 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
       {ready ? <TraitsSection report={report} /> : (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
           Признаки по фото: разобрано {num(report.analyzed)} из {num(report.catalog)} {plural(report.catalog, "модели", "моделей", "моделей")} с фото. Доли по признакам появятся, когда разобрано будет хотя бы {MIN_MODELS_FOR_TRAITS}; а как ИИ описывает фото, можно посмотреть уже сейчас — на примерах ниже.
+          {(report.legacy ?? 0) > 0 && ` Ещё ${num(report.legacy)} ${plural(report.legacy, "модель разобрана", "модели разобраны", "моделей разобрано")} по прежнему вопросу: в долях они не участвуют и пересоберутся.`}
         </p>
       )}
       <PhotoSamples direction={direction} />
@@ -51,7 +52,10 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
   return (
     <section aria-label="Признаки по фото" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-900">Признаки по фото — оценка ИИ</h2>
+        <h2 className="text-sm font-semibold text-slate-900">
+          Признаки по фото — оценка ИИ
+          {report.coverage < PRELIMINARY_COVERAGE && <span className="ml-2 rounded-full bg-amber-50 px-2 py-0.5 align-middle text-[11px] font-normal text-amber-800">предварительно</span>}
+        </h2>
         <span className="text-xs text-slate-500">
           разобрано {num(report.analyzed)} из {num(report.catalog)} {plural(report.catalog, "модели", "моделей", "моделей")} с фото ({pct(report.coverage)})
         </span>
@@ -62,10 +66,12 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
           const other = field.other;
           // Модели в значениях за пятой строкой: без этой строки полоски и «другие формулировки» не сходятся к «видно у N».
           const hidden = Math.max(0, field.visible - shown.reduce((sum, v) => sum + v.models, 0) - (other?.models ?? 0));
+          const examples = (other?.examples ?? []).map((e) => `«${e.text}»${e.models > 1 ? ` ×${e.models}` : ""}`).join(", ");
           const unshown = [
             hidden > 0 ? `редкие значения — ${num(hidden)} ${plural(hidden, "модель", "модели", "моделей")}` : null,
-            other ? `другие формулировки — ${num(other.models)} ${plural(other.models, "модель", "модели", "моделей")}` : null,
+            other ? `другие формулировки — ${num(other.models)} ${plural(other.models, "модель", "модели", "моделей")}${examples ? ` (${examples})` : ""}` : null,
           ].filter(Boolean);
+          const tooFew = field.visible < MIN_VISIBLE_FOR_SHARES;
           const base = (v: (typeof shown)[number]) => v.avgSourceShare ?? v.share;
           return (
             <div key={field.key} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
@@ -73,6 +79,9 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
                 <span className="text-sm font-medium text-slate-900">{field.label}</span>
                 <span className="text-xs text-slate-500">видно у {num(field.visible)} · не видно {num(field.notVisible)}</span>
               </div>
+              {tooFew ? (
+                <p className="mt-2 text-xs leading-5 text-slate-500">Мало данных: признак виден у {num(field.visible)} {plural(field.visible, "модели", "моделей", "моделей")}, доли покажем, когда будет {MIN_VISIBLE_FOR_SHARES} и больше.</p>
+              ) : (
               <ul className="mt-2 flex flex-col gap-1.5">
                 {shown.map((v) => (
                   <li key={v.value} className="flex flex-col gap-0.5">
@@ -86,7 +95,8 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
                   </li>
                 ))}
               </ul>
-              {unshown.length > 0 && <p className="mt-2 text-xs text-slate-500">Не показано: {unshown.join("; ")}.</p>}
+              )}
+              {!tooFew && unshown.length > 0 && <p className="mt-2 text-xs text-slate-500">Не показано: {unshown.join("; ")}.</p>}
             </div>
           );
         })}
@@ -96,7 +106,9 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
         Полоска — доля от 100%, а не от самого частого значения. {report.basis === "averaged"
           ? `Доля — средняя по источникам (учтено ${report.sourcesInAverage}, у каждого не меньше 10 разобранных моделей; вместе они дают ${Math.round(report.averageCoverage * 100)}% разобранного): большой каталог не решает за остальные.`
           : "Пока разобрано мало: источников с 10 и более разобранными моделями недостаточно, чтобы усреднять, поэтому доли — по всем разобранным моделям и зависят от того, какие источники успели разобраться; средняя по источникам включится, когда такие источники будут давать 80% разобранного."}
-        {" "}Пока разобрана не вся витрина, картина может сместиться. Цен нет.
+        {" "}Пока разобрана не вся витрина, картина может сместиться.
+        {(report.legacy ?? 0) > 0 && ` Ещё ${num(report.legacy)} ${plural(report.legacy, "модель разобрана", "модели разобраны", "моделей разобрано")} по прежнему вопросу: в долях они не участвуют и пересоберутся.`}
+        {" "}Цен нет.
       </p>
     </section>
   );
