@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { moscowToday } from "@/lib/sync/moscowDay";
 import { aiPrompt } from "./aiAttributes";
+import { ATTRIBUTE_FIELDS } from "./attributes";
 import { CATALOG_SEEN_DAYS } from "./catalog";
 import {
   allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
@@ -652,6 +653,96 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
     // Знаменатель покрытия — модели, которые вообще можно разобрать: с фото и не «Рынок РФ».
     const eligible = heads.filter((h) => h.imageUrls.length > 0 && !isRuSource(h.sourceId)).length;
     return buildPhotoTraits(direction, models, Math.max(eligible, models.length));
+  } catch (error) {
+    if (missing({ message: error instanceof Error ? error.message : "" })) return null;
+    throw error;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Примеры разбора — проверить глазами, что ИИ описывает фото верно
+
+export interface PhotoSample {
+  sourceId: string;
+  sourceName: string;
+  title: string;
+  imageUrl: string | null;
+  model: string | null;
+  takenAt: string | null;
+  attributes: Array<{ key: string; label: string; value: string | null; notVisible: boolean; confidence: number | null }>;
+}
+
+/** Простой устойчивый хэш (FNV-1a, 32 бита): порядок «случайной» выборки зависит от зерна и ключа модели, а не от порядка строк в базе. */
+function fnv1a(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/**
+ * Случайные модели каталога с тем, что про них написал ИИ, и фото — владелец сверяет описание с картинкой, прежде чем
+ * верить долям признаков. Выборка идёт по кругу между источниками (иначе её целиком заняли бы JW PEI и Zara), порядок
+ * зависит от зерна: другое зерно — другие примеры. null — таблицы ещё нет.
+ */
+export async function loadPhotoSamples(
+  db: SupabaseClient,
+  direction: AssortmentDirection,
+  options: { limit?: number; seed?: string; nowMs?: number } = {},
+): Promise<{ samples: PhotoSample[]; analyzed: number } | null> {
+  const limit = Math.max(1, Math.min(options.limit ?? 12, 24));
+  const heads = await loadCatalogHeads(db, direction, options.nowMs ?? Date.now());
+  if (!heads) return null;
+  const current = new Map(heads.map((h) => [resultKey(h.sourceId, h.modelKey), h]));
+  const { data: names } = await db.from("assortment_sources").select("source_id,name");
+  const nameOf = new Map((names ?? []).map((n) => [String((n as { source_id: string }).source_id), String((n as { name: string | null }).name ?? "")]));
+  type Row = { source_id: string; model_key: string; attributes: StoredAttributes | null; model: string | null; taken_at: string | null };
+  try {
+    const rows = await loadAllSupabasePages<Row>((from, to) => db.from(RESULTS)
+      .select("source_id,model_key,attributes,model,taken_at")
+      .eq("direction", direction)
+      .eq("status", "ok")
+      .order("source_id", { ascending: true })
+      .order("model_key", { ascending: true })
+      .range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: { message: string } | null }>, { label: "Примеры разбора по фото", pageSize: 1000 });
+    const usable = rows.filter((r) => r.attributes && Object.keys(r.attributes).length > 0 && current.has(resultKey(r.source_id, r.model_key)));
+    const seed = options.seed ?? "";
+    const lanes = new Map<string, Row[]>();
+    for (const row of usable.slice().sort((a, b) => fnv1a(`${seed}|${a.source_id}|${a.model_key}`) - fnv1a(`${seed}|${b.source_id}|${b.model_key}`))) {
+      const lane = lanes.get(row.source_id) ?? [];
+      lane.push(row);
+      lanes.set(row.source_id, lane);
+    }
+    const order = [...lanes.keys()].sort((a, b) => fnv1a(`${seed}|${a}`) - fnv1a(`${seed}|${b}`));
+    const picked: Row[] = [];
+    for (let round = 0; picked.length < limit && round < limit; round += 1) {
+      for (const id of order) {
+        const row = lanes.get(id)?.[round];
+        if (row && picked.length < limit) picked.push(row);
+      }
+    }
+    const samples: PhotoSample[] = picked.map((row) => {
+      const head = current.get(resultKey(row.source_id, row.model_key))!;
+      const stored = row.attributes as StoredAttributes;
+      return {
+        sourceId: row.source_id,
+        sourceName: nameOf.get(row.source_id) || row.source_id,
+        title: head.title,
+        imageUrl: head.imageUrls[0] ?? null,
+        model: row.model,
+        takenAt: row.taken_at,
+        attributes: ATTRIBUTE_FIELDS[direction].filter((f) => stored[f.key]).map((f) => ({
+          key: f.key,
+          label: f.label,
+          value: stored[f.key].nv ? null : stored[f.key].v,
+          notVisible: Boolean(stored[f.key].nv) || !stored[f.key].v,
+          confidence: typeof stored[f.key].c === "number" ? stored[f.key].c! : null,
+        })),
+      };
+    });
+    return { samples, analyzed: usable.length };
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;

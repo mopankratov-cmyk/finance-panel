@@ -3,14 +3,17 @@
 import { useEffect, useState } from "react";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
 import { MIN_MODELS_FOR_TRAITS, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
+import type { PhotoSample } from "@/lib/assortment/catalogAiStore";
 import { plural } from "@/lib/warehouse/plural";
 
 const num = (n: number) => n.toLocaleString("ru-RU");
 const pct = (n: number) => `${n.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`;
 
 /**
- * Признаки каталога по фото — оценка ИИ. Блок прячется, пока разобрано меньше
- * MIN_MODELS_FOR_TRAITS моделей: доли по горстке моделей ничего не значат.
+ * Признаки каталога по фото — оценка ИИ. Доли прячутся, пока разобрано меньше
+ * MIN_MODELS_FOR_TRAITS моделей: по горстке моделей они ничего не значат. А примеры
+ * разбора (фото рядом с тем, что написал ИИ) видны сразу, с первой разобранной модели:
+ * сверить описание с картинкой можно и на десяти.
  */
 export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
   const [report, setReport] = useState<PhotoTraitsReport | null>(null);
@@ -29,8 +32,22 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
     };
   }, [direction]);
 
-  if (!report || report.analyzed < MIN_MODELS_FOR_TRAITS || report.fields.length === 0) return null;
+  if (!report) return null;
+  const ready = report.analyzed >= MIN_MODELS_FOR_TRAITS && report.fields.length > 0;
 
+  return (
+    <div className="flex flex-col gap-4">
+      {ready ? <TraitsSection report={report} /> : (
+        <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
+          Признаки по фото: разобрано {num(report.analyzed)} из {num(report.catalog)} {plural(report.catalog, "модели", "моделей", "моделей")} с фото. Доли по признакам появятся, когда разобрано будет хотя бы {MIN_MODELS_FOR_TRAITS}; а как ИИ описывает фото, можно посмотреть уже сейчас — на примерах ниже.
+        </p>
+      )}
+      <PhotoSamples direction={direction} />
+    </div>
+  );
+}
+
+function TraitsSection({ report }: { report: PhotoTraitsReport }) {
   return (
     <section aria-label="Признаки по фото" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -74,5 +91,80 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
         большой каталог не решает за остальные. Пока разобрана не вся витрина, картина может сместиться. Цен нет.
       </p>
     </section>
+  );
+}
+
+/** Примеры разбора: модель — фото, название и то, что про неё написал ИИ. Сверить с картинкой. */
+function PhotoSamples({ direction }: { direction: AssortmentDirection }) {
+  const [state, setState] = useState<{ kind: "closed" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; samples: PhotoSample[]; analyzed: number }>({ kind: "closed" });
+
+  useEffect(() => setState({ kind: "closed" }), [direction]);
+
+  const load = () => {
+    setState({ kind: "loading" });
+    const seed = Math.random().toString(36).slice(2, 10);
+    fetch(`/api/assortment-development/photo-traits?direction=${direction}&samples=1&seed=${seed}&limit=12`)
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        if (!r.ok || !body?.result) setState({ kind: "error", message: body?.error || `Примеры не загрузились (${r.status})` });
+        else setState({ kind: "ready", samples: body.result.samples as PhotoSample[], analyzed: Number(body.result.analyzed) || 0 });
+      })
+      .catch(() => setState({ kind: "error", message: "Нет связи с сервером" }));
+  };
+
+  return (
+    <section aria-label="Проверка разбора" className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold text-slate-900">Проверить разбор на примерах</h3>
+        <button type="button" onClick={load} disabled={state.kind === "loading"} className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60">
+          {state.kind === "ready" ? "Другие примеры" : state.kind === "loading" ? "Загружаем…" : "Показать 12 случайных моделей"}
+        </button>
+      </div>
+      {state.kind === "closed" && <p className="text-xs leading-5 text-slate-500">Фото рядом с тем, что написал ИИ: так видно, где он ошибается, прежде чем верить долям выше. Выборка идёт по кругу между источниками.</p>}
+      {state.kind === "error" && <p className="text-sm text-amber-800">{state.message}</p>}
+      {state.kind === "ready" && state.samples.length === 0 && <p className="text-sm text-slate-600">Пока нечего показывать: разобранных моделей из текущего каталога нет.</p>}
+      {state.kind === "ready" && state.samples.length > 0 && (
+        <>
+          <SampleCards samples={state.samples} />
+          <p className="text-xs leading-5 text-slate-500">Из {num(state.analyzed)} разобранных. Это оценка ИИ по фото: она ошибается, «не видно» — честный ответ, а не пропуск. Если неверно слишком часто, скажите — поправим вопрос или модель.</p>
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Карточки примеров — отдельно от загрузки, чтобы их можно было показать на любых данных. */
+export function SampleCards({ samples }: { samples: PhotoSample[] }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {samples.map((sample) => (
+        <article key={`${sample.sourceId}:${sample.title}:${sample.takenAt}`} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
+          <div className="flex gap-3">
+            {sample.imageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={sample.imageUrl} alt={sample.title} loading="lazy" referrerPolicy="no-referrer" className="h-32 w-24 shrink-0 rounded-lg bg-slate-100 object-cover" />
+            ) : (
+              <div className="grid h-32 w-24 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs text-slate-400">нет фото</div>
+            )}
+            <div className="min-w-0">
+              <div className="break-anywhere text-sm font-medium text-slate-900">{sample.title || "Без названия"}</div>
+              <div className="text-xs text-slate-500">{sample.sourceName}</div>
+              {sample.model && <div className="text-[11px] text-slate-400">{sample.model}</div>}
+            </div>
+          </div>
+          <dl className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-x-2 gap-y-0.5 text-xs">
+            {sample.attributes.map((a) => (
+              <div key={a.key} className="contents">
+                <dt className="text-slate-500">{a.label}</dt>
+                <dd className={a.notVisible ? "text-slate-400" : "text-slate-800"}>
+                  {a.notVisible ? "не видно" : a.value}
+                  {!a.notVisible && a.confidence !== null && a.confidence < 0.6 && <span className="text-amber-700"> · неуверенно</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </article>
+      ))}
+    </div>
   );
 }

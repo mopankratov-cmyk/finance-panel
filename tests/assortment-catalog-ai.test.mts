@@ -6,7 +6,10 @@ import {
   allowance, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, pickProvider, polzaKey,
   packAttributes, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, resultKey, type CatalogHead, type ExistingResult, type TraitModel,
 } from "../lib/assortment/catalogAi.ts";
-import { aiKeyConfigured, askFor, isTransientVisionError, makePolzaVision, runCatalogAi, VisionStopError, type AskVision } from "../lib/assortment/catalogAiStore.ts";
+import { aiKeyConfigured, askFor, isTransientVisionError, loadPhotoSamples, makePolzaVision, runCatalogAi, VisionStopError, type AskVision, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { SampleCards } from "../components/assortment/PhotoTraits.tsx";
 
 /** Признаки каталога по фото: бюджет считается и соблюдается, очередь честная, отчёт не выдаёт оценку ИИ за факт. */
 
@@ -894,4 +897,101 @@ test("Прогон на Polza: без cost в ответе расход счит
   const out = await runCatalogAi(db, { ask, config: polzaCfg, now: clock });
   assert.equal(out.costUsd, costUsd({ inputTokens: 4000, outputTokens: 300 }, polzaCfg.price!));
   assert.ok(out.costUsd > 0);
+});
+
+// --- примеры разбора ---
+
+const resultRow = (sourceId: string, id: string, over: Row = {}): Row => ({
+  source_id: sourceId, model_key: `${sourceId}|${id}`, direction: "jackets", status: "ok", model: "polza:google/gemini-2.5-flash", taken_at: "2026-10-06T08:00:00Z",
+  attributes: { length: { v: "до бедра", c: 0.9 }, hood: { v: null, nv: true }, volume: { v: "оверсайз", c: 0.4 } }, ...over,
+});
+
+function samplesDb() {
+  const heads = [
+    ...Array.from({ length: 10 }, (_, i) => headRow("S1", `a${i}`, { title: `Zara jacket ${i}`, image_urls: [`https://img/a${i}.jpg`] })),
+    ...Array.from({ length: 3 }, (_, i) => headRow("S2", `b${i}`, { title: `ASOS jacket ${i}` })),
+    ...Array.from({ length: 2 }, (_, i) => headRow("S3", `c${i}`)),
+  ];
+  const results = [
+    ...Array.from({ length: 10 }, (_, i) => resultRow("S1", `a${i}`)),
+    ...Array.from({ length: 3 }, (_, i) => resultRow("S2", `b${i}`)),
+    resultRow("S3", "c0"),
+    resultRow("S3", "c1", { status: "failed", attributes: null }),
+    resultRow("S1", "gone"), // разобрана, но в каталоге её уже нет
+    resultRow("S2", "empty", { attributes: {} }),
+  ];
+  const f = fakeDb({ heads: [...heads, headRow("S2", "empty")], results });
+  f.tables.assortment_sources.push({ source_id: "S1", name: "Zara" }, { source_id: "S2", name: "ASOS" });
+  return f;
+}
+
+test("Примеры разбора: по кругу между источниками, только текущий каталог и только удавшиеся; подписи признаков, «не видно», фото головы", async () => {
+  const { db } = samplesDb();
+  const out = (await loadPhotoSamples(db, "jackets", { limit: 6, seed: "x" }))!;
+  assert.equal(out.analyzed, 14, "10 + 3 + 1: без неудачной, без ушедшей из каталога и без пустой");
+  assert.equal(out.samples.length, 6);
+  const sources = out.samples.map((s) => s.sourceId);
+  assert.ok(["S1", "S2", "S3"].every((id) => sources.includes(id)), "каждый источник представлен, большой не занимает всё");
+  assert.ok(sources.filter((id) => id === "S1").length <= 2, "по кругу: не больше двух из шести у Zara");
+  const zara = out.samples.find((s) => s.sourceId === "S1")!;
+  assert.equal(zara.sourceName, "Zara");
+  assert.match(zara.title, /^Zara jacket/);
+  assert.match(String(zara.imageUrl), /^https:\/\/img\/a\d\.jpg$/, "фото головы модели");
+  assert.deepEqual(zara.attributes.map((a) => [a.label, a.value, a.notVisible]), [["Длина", "до бедра", false], ["Объём", "оверсайз", false], ["Капюшон", null, true]], "порядок и подписи — как в таблице признаков раздела");
+  assert.equal(zara.attributes[1].confidence, 0.4);
+  assert.equal(zara.model, "polza:google/gemini-2.5-flash");
+  assert.ok(!out.samples.some((s) => s.title === "" && s.sourceId === "S2" && s.attributes.length === 0), "пустые разборы не показываем");
+});
+
+test("Примеры разбора: то же зерно — та же выборка, другое зерно — другие модели; лимит не больше 24; нет таблицы — null", async () => {
+  const { db } = samplesDb();
+  const ids = async (seed: string) => (await loadPhotoSamples(db, "jackets", { limit: 5, seed }))!.samples.map((s) => s.title).join("|");
+  assert.equal(await ids("a"), await ids("a"));
+  const variants = new Set([await ids("a"), await ids("b"), await ids("c"), await ids("d")]);
+  assert.ok(variants.size >= 2, "выборка зависит от зерна");
+  assert.equal((await loadPhotoSamples(db, "jackets", { limit: 500 }))!.samples.length, 14, "лимит ограничен 24, а моделей всего 14");
+  const missing = fakeDb({ heads: [headRow("S1", "a")], missing: ["assortment_model_attributes"] });
+  assert.equal(await loadPhotoSamples(missing.db, "jackets"), null);
+  const noView = fakeDb({ missing: ["assortment_catalog_heads"] });
+  assert.equal(await loadPhotoSamples(noView.db, "jackets"), null);
+});
+
+test("Примеры разбора: лимит не больше 24 даже при просьбе о большем; «не видно» не подставляет значение, даже если оно осталось в записи", async () => {
+  const heads = Array.from({ length: 40 }, (_, i) => headRow("S1", `m${String(i).padStart(2, "0")}`));
+  const results = heads.map((h, i) => resultRow("S1", String(h.source_item_id), { attributes: { length: { v: i === 0 ? "до бедра" : "до колена", c: 0.9 }, hood: { v: "есть", nv: true } } }));
+  const { db } = fakeDb({ heads, results });
+  const out = (await loadPhotoSamples(db, "jackets", { limit: 100 }))!;
+  assert.equal(out.samples.length, 24, "потолок 24 карточки");
+  const hood = out.samples[0].attributes.find((a) => a.key === "hood")!;
+  assert.equal(hood.notVisible, true);
+  assert.equal(hood.value, null, "значение при nv не показываем: ИИ написал «не видно»");
+});
+
+test("Карточки примеров: название, источник, фото, значения, «не видно», «неуверенно» при уверенности ниже 0,6; без фото — заглушка", () => {
+  const samples: PhotoSample[] = [
+    { sourceId: "S1", sourceName: "Zara", title: "Zara bomber", imageUrl: "https://img/1.jpg", model: "polza:m", takenAt: null, attributes: [
+      { key: "length", label: "Длина", value: "до бедра", notVisible: false, confidence: 0.9 },
+      { key: "volume", label: "Объём", value: "оверсайз", notVisible: false, confidence: 0.4 },
+      { key: "hood", label: "Капюшон", value: null, notVisible: true, confidence: null },
+    ] },
+    { sourceId: "S2", sourceName: "ASOS", title: "ASOS coat", imageUrl: null, model: null, takenAt: null, attributes: [] },
+  ];
+  const html = renderToStaticMarkup(createElement(SampleCards, { samples }));
+  assert.match(html, /Zara bomber/);
+  assert.match(html, /<img[^>]+src="https:\/\/img\/1\.jpg"[^>]+referrerPolicy="no-referrer"|referrerpolicy="no-referrer"/i);
+  assert.match(html, /Длина[\s\S]*до бедра/);
+  assert.match(html, /оверсайз[\s\S]*неуверенно/, "уверенность 0,4 — помечено");
+  assert.doesNotMatch(html.split("оверсайз")[0].split("до бедра")[1] ?? "", /неуверенно/, "уверенность 0,9 — без пометки");
+  assert.match(html, /Капюшон[\s\S]*не видно/);
+  assert.match(html, /нет фото/);
+  assert.match(html, /polza:m/);
+});
+
+test("Маршрут примеров: ветка samples=1 без кэша; отчёт не кэшируется, пока разобрано мало моделей", () => {
+  const route = readFileSync(join(import.meta.dirname, "..", "app/api/assortment-development/photo-traits/route.ts"), "utf8");
+  assert.match(route, /searchParams\.get\("samples"\) === "1"/);
+  assert.match(route, /loadPhotoSamples\(db, direction, \{ seed, limit \}\)/);
+  assert.match(route, /requireApiSession\(ASSORTMENT_ROLES\)/, "общий круг модуля");
+  assert.match(route, /CACHE_FROM_ANALYZED = 300/);
+  assert.match(route, /result\.analyzed < CACHE_FROM_ANALYZED\) throw new Uncached\(result\)/);
 });
