@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { PROMPT_VERSION } from "./catalogAi";
+import { isJudgeableField, PROMPT_VERSION } from "./catalogAi";
 import { ATTRIBUTE_FIELDS } from "./attributes";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
@@ -62,6 +62,7 @@ export interface VerdictInput {
  */
 export async function saveVerdict(db: SupabaseClient, input: VerdictInput, who: string): Promise<void> {
   if (!ATTRIBUTE_FIELDS[input.direction].some((f) => f.key === input.field)) throw new VerdictInputError("Такого признака в разделе нет");
+  if (!isJudgeableField(input.field)) throw new VerdictInputError("Цвет, фактура и сочетания деталей — свободный текст: сверять с ответом ИИ нечем, их точность не измеряется");
   const { data, error } = await db.from(RESULTS).select("prompt_version,model,attributes,status").eq("source_id", input.sourceId).eq("model_key", input.modelKey).eq("direction", input.direction).maybeSingle();
   if (error) {
     if (missing(error)) throw new VerdictTableMissingError("Таблицы разбора по фото ещё нет");
@@ -71,6 +72,10 @@ export async function saveVerdict(db: SupabaseClient, input: VerdictInput, who: 
   if (!row || row.status !== "ok") throw new VerdictInputError("Разбор этой модели не найден");
   const stored = row.attributes?.[input.field];
   if (!stored || stored.nv || !stored.v) throw new VerdictInputError("По этому признаку ИИ написал «не видно» — отмечать нечего");
+  if (input.verdict !== null && row.prompt_version !== PROMPT_VERSION) {
+    // Точность считается только по текущей версии вопроса; отметка по прежней в неё не войдёт — молча принять её значило бы обмануть.
+    throw new VerdictInputError("Эта модель разобрана по прежней версии вопроса и пересоберётся — отметка в точность не войдёт");
+  }
   if (input.verdict === null) {
     const { error: deleteError } = await db.from(TABLE).delete().eq("source_id", input.sourceId).eq("model_key", input.modelKey).eq("field_key", input.field).eq("prompt_version", row.prompt_version);
     if (deleteError) {

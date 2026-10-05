@@ -279,7 +279,10 @@ export function parseCatalogAnswer(direction: AssortmentDirection, text: string)
 // Отчёт по признакам
 
 /** Не сводим в доли: цвет и «сочетания деталей» — свободный текст, фактура — описание вида. */
-const FREE_TEXT_FIELDS = new Set(["color", "details", "texture"]);
+export const FREE_TEXT_FIELDS: ReadonlySet<string> = new Set(["color", "details", "texture"]);
+
+/** Признак, точность которого можно измерить отметками «верно / неверно»: у свободного текста нет значения из словаря, сверять не с чем. */
+export const isJudgeableField = (key: string): boolean => !FREE_TEXT_FIELDS.has(key);
 const OTHER = "другое";
 
 /** Слова словаря признака из подсказок вопроса к ИИ — в том виде, в каком их показываем; пусто — признак описательный. */

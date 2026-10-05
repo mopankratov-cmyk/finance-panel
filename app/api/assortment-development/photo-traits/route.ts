@@ -22,10 +22,11 @@ export async function GET(request: NextRequest) {
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const direction = parseDirection(request.nextUrl.searchParams.get("direction"));
   if (!direction) return NextResponse.json({ error: "direction должен быть jackets или bags" }, { status: 400 });
-  // Точность разбора, измеренная человеком (отметки «верно/неверно»): меняется с каждой отметкой — без кэша. null — таблицы нет.
+  // Точность разбора, измеренная человеком (отметки «верно/неверно»): меняется с каждой отметкой — без кэша. accuracy: null — таблицы
+  // отметок нет (миграция не применена); сбой чтения — ошибка 500, а не тот же null: «нет отметок» и «не прочитали» экран показывает по-разному.
   if (request.nextUrl.searchParams.get("accuracy") === "1") {
     try {
-      return NextResponse.json({ accuracy: await loadAccuracy(db, direction).catch(() => null) }, { headers: { "Cache-Control": "private, no-store" } });
+      return NextResponse.json({ accuracy: await loadAccuracy(db, direction) }, { headers: { "Cache-Control": "private, no-store" } });
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "Точность не посчиталась" }, { status: 500 });
     }
@@ -34,9 +35,15 @@ export async function GET(request: NextRequest) {
     try {
       const seed = (request.nextUrl.searchParams.get("seed") ?? "").slice(0, 40);
       const limit = Number(request.nextUrl.searchParams.get("limit")) || 12;
-      // Сбой чтения отметок примеры не роняет: просто без кнопок «верно/неверно».
-      const verdicts = await loadVerdicts(db, direction).catch(() => null);
       const onlyUnjudged = request.nextUrl.searchParams.get("unjudged") === "1";
+      // Простые примеры сбой чтения отметок не роняет — они и без отметок целы. А разметка без отметок невозможна: не знаем, что уже
+      // размечено, и «таблицы нет» (null) от «не прочитали» (ошибка) надо различать — экран про миграцию говорит только в первом случае.
+      let verdicts: Awaited<ReturnType<typeof loadVerdicts>> | undefined;
+      try {
+        verdicts = await loadVerdicts(db, direction);
+      } catch (error) {
+        if (onlyUnjudged) return NextResponse.json({ error: `Отметки не загрузились (${error instanceof Error ? error.message : "сбой чтения"}) — попробуйте ещё раз` }, { status: 500 });
+      }
       return NextResponse.json({ result: await loadPhotoSamples(db, direction, { seed, limit, verdicts, onlyUnjudged }) }, { headers: { "Cache-Control": "private, no-store" } });
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "Примеры не загрузились" }, { status: 500 });

@@ -8,7 +8,7 @@ import type { StoredVerdict } from "./attributeVerdictsStore";
 import type { Verdict } from "./attributeVerdicts";
 import { CATALOG_SEEN_DAYS } from "./catalog";
 import {
-  allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
+  allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, isJudgeableField, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
   type CatalogAiConfig, type CatalogProvider, type CatalogHead, type ExistingResult, type PhotoTraitsReport, type StoredAttributes, type TraitModel,
 } from "./catalogAi";
 import type { AssortmentDirection } from "./constants";
@@ -712,10 +712,14 @@ export async function loadPhotoSamples(
     limit?: number; seed?: string; nowMs?: number;
     /** Отметки точности раздела: массив — таблица есть (показываем их и разрешаем отмечать); null — таблицы нет; не задано — отметки не запрашивали. */
     verdicts?: StoredVerdict[] | null;
-    /** Только модели, по которым ещё ничего не отмечено, — для разметки подряд. */
+    /**
+     * Для разметки подряд: только модели по текущей версии вопроса (у прежней кнопок нет и отметка в точность не войдёт),
+     * у которых остался хоть один признак, который можно отметить, — размеченная целиком модель не предлагается снова,
+     * а размеченная на один признак из пяти возвращается за остальными.
+     */
     onlyUnjudged?: boolean;
   } = {},
-): Promise<{ samples: PhotoSample[]; analyzed: number; verdictsAvailable: boolean; judgedModels: number } | null> {
+): Promise<{ samples: PhotoSample[]; analyzed: number; verdictsAvailable: boolean; judgedModels: number; unjudgedModels: number } | null> {
   const limit = Math.max(1, Math.min(options.limit ?? 12, 24));
   const heads = await loadCatalogHeads(db, direction, options.nowMs ?? Date.now());
   if (!heads) return null;
@@ -737,7 +741,17 @@ export async function loadPhotoSamples(
       const key = resultKey(v.source_id, v.model_key);
       byModel.set(key, { ...(byModel.get(key) ?? {}), [v.field_key]: v.verdict });
     }
-    const usable = options.onlyUnjudged ? allUsable.filter((r) => !byModel.has(resultKey(r.source_id, r.model_key))) : allUsable;
+    // Признаки, которые у модели ещё предстоит отметить: написанные ИИ (не «не видно») и не свободный текст.
+    const toJudge = (r: Row) => {
+      if (r.prompt_version !== PROMPT_VERSION) return 0;
+      const marked = byModel.get(resultKey(r.source_id, r.model_key)) ?? {};
+      return ATTRIBUTE_FIELDS[direction].filter((f) => {
+        const a = r.attributes?.[f.key];
+        return isJudgeableField(f.key) && a && !a.nv && a.v && !marked[f.key];
+      }).length;
+    };
+    const unjudgedPool = allUsable.filter((r) => toJudge(r) > 0);
+    const usable = options.onlyUnjudged ? unjudgedPool : allUsable;
     const seed = options.seed ?? "";
     const lanes = new Map<string, Row[]>();
     for (const row of usable.slice().sort((a, b) => fnv1a(`${seed}|${a.source_id}|${a.model_key}`) - fnv1a(`${seed}|${b.source_id}|${b.model_key}`))) {
@@ -775,7 +789,8 @@ export async function loadPhotoSamples(
         })),
       };
     });
-    return { samples, analyzed: allUsable.length, verdictsAvailable: Array.isArray(options.verdicts), judgedModels: byModel.size };
+    const judgedModels = allUsable.filter((r) => byModel.has(resultKey(r.source_id, r.model_key))).length;
+    return { samples, analyzed: allUsable.length, verdictsAvailable: Array.isArray(options.verdicts), judgedModels, unjudgedModels: unjudgedPool.length };
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;

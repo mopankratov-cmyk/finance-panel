@@ -7,7 +7,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AccuracySummary, SampleCards, TraitsSection } from "../components/assortment/PhotoTraits.tsx";
 import {
-  ACCURACY_LOWER_MIN, ACCURACY_MIN_JUDGED, accuracyLabel, fieldAccuracy, hiddenReason, summarizeVerdicts, wilsonLower,
+  ACCURACY_LOWER_MIN, ACCURACY_MIN_JUDGED, accuracyLabel, fieldAccuracy, hiddenReason, summarizeVerdicts, wilsonLower, wilsonUpper,
 } from "../lib/assortment/attributeVerdicts.ts";
 import { loadAccuracy, loadVerdicts, saveVerdict, VerdictInputError, VerdictTableMissingError } from "../lib/assortment/attributeVerdictsStore.ts";
 import { PROMPT_VERSION, type PhotoTraitsReport } from "../lib/assortment/catalogAi.ts";
@@ -29,8 +29,8 @@ test("Интервал Уилсона: нет отметок — null; 12 из 1
 
 test("Точность признака: мало отметок — «не измерена»; нижняя граница ≥ порога — надёжна; ниже — ненадёжна; «не понять» в точность не входит", () => {
   assert.equal(fieldAccuracy(10, 0, 0).status, "unmeasured", `10 безошибочных < ${ACCURACY_MIN_JUDGED}`);
-  assert.equal(fieldAccuracy(0, 0, 50).status, "unmeasured", "одни «не понять» — не измерено");
-  assert.equal(fieldAccuracy(0, 0, 50).accuracy, null);
+  assert.equal(fieldAccuracy(0, 0, 10).status, "unmeasured", "горстка «не понять» — просто не измерено");
+  assert.equal(fieldAccuracy(0, 0, 10).accuracy, null);
   const reliable = fieldAccuracy(25, 0, 3);
   assert.equal(reliable.status, "reliable");
   assert.ok((reliable.lower ?? 0) >= ACCURACY_LOWER_MIN);
@@ -39,6 +39,67 @@ test("Точность признака: мало отметок — «не из
   assert.equal(unreliable.status, "unreliable");
   assert.equal(unreliable.accuracy, 0.85);
   assert.equal(fieldAccuracy(19, 1, 0).status, "unreliable", "95% при 20 отметках — нижняя граница всё ещё ниже 80%");
+});
+
+test("«Не понять» не входит в точность, но и не молчит: 20 «верно» при 80 «не понять» — не «надёжно», а «по фото не проверить»; доли такого признака прячутся", () => {
+  const murky = fieldAccuracy(20, 0, 80);
+  assert.equal(murky.status, "unreliable");
+  assert.equal(murky.reason, "unverifiable");
+  assert.equal(murky.accuracy, 1, "точность по тому, что удалось проверить, прежняя");
+  assert.match(hiddenReason(murky)!, /по 100 отметкам «не понять» у 80% \(порог — 30%\): этот признак по фото человеку не проверить/);
+  const allUnclear = fieldAccuracy(0, 0, 30);
+  assert.equal(allUnclear.status, "unreliable", "30 отметок «не понять» и ни одной проверенной — это не «размечено 0 из 20», а признак без проверки");
+  assert.match(accuracyLabel(allUnclear), /размечено 0 из 20; не понять: 30/);
+  assert.equal(fieldAccuracy(25, 0, 10).status, "reliable", "29% «не понять» — в пределах нормы");
+  assert.equal(fieldAccuracy(25, 0, 12).status, "unreliable", "32% — уже нет");
+  assert.match(accuracyLabel(fieldAccuracy(25, 0, 3)), /верно 25 из 25 \(100%, нижняя граница \d+%\); не понять: 3$/, "число «не понять» видно в подписи");
+});
+
+test("Ждать двадцатой отметки незачем, если даже верхняя граница интервала ниже порога: 2 «верно» из 6 прячут доли сразу, 5 из 5 — ещё нет", () => {
+  assert.ok(wilsonUpper(0, 0) === null);
+  assert.ok(wilsonUpper(6, 6)! === 1 || wilsonUpper(6, 6)! > 0.99);
+  const early = fieldAccuracy(2, 4, 0);
+  assert.equal(early.status, "unreliable");
+  assert.equal(early.reason, "low");
+  assert.match(hiddenReason(early)!, /по 6 размеченным моделям верно 33%: даже в лучшем случае \(верхняя граница \d+%\) это ниже порога 80%/);
+  assert.equal(fieldAccuracy(5, 0, 0).status, "unmeasured");
+  assert.equal(fieldAccuracy(1, 3, 0).status, "unmeasured", "4 отметки — меньше, чем нужно, чтобы судить рано");
+});
+
+test("Округление не врёт: нижняя граница 79,x% подписана как 79%, а не «80% ниже порога 80%»", () => {
+  let found = 0;
+  for (let n = 20; n <= 300; n += 1) {
+    for (let ok = 0; ok <= n; ok += 1) {
+      const lower = wilsonLower(ok, n)!;
+      if (lower < 0.795 || lower >= ACCURACY_LOWER_MIN) continue;
+      found += 1;
+      const a = fieldAccuracy(ok, n - ok, 0);
+      assert.equal(a.status, "unreliable");
+      assert.match(hiddenReason(a)!, /нижняя граница 79% ниже порога 80%/, `${ok} из ${n}`);
+      assert.match(accuracyLabel(a), /нижняя граница 79%/);
+    }
+  }
+  assert.ok(found > 0, "нашёлся хотя бы один пограничный случай");
+});
+
+test("Округление верхней границы и доли «не понять»: рядом с порогом никогда не «80% ниже 80%» и не «30%» при условии «больше 30%»", () => {
+  let early = 0;
+  for (let n = 5; n < 20; n += 1) {
+    for (let ok = 0; ok <= n; ok += 1) {
+      const upper = wilsonUpper(ok, n)!;
+      const a = fieldAccuracy(ok, n - ok, 0);
+      if (a.status !== "unreliable") continue;
+      early += 1;
+      const shown = Number(/верхняя граница (\d+)%/.exec(hiddenReason(a)!)![1]);
+      assert.ok(shown < 80, `${ok} из ${n}: верхняя граница ${upper} показана как ${shown}%`);
+    }
+  }
+  assert.ok(early > 0);
+  const murky = hiddenReason(fieldAccuracy(16, 0, 7))!;
+  assert.match(murky, /у 30,4% \(порог — 30%\)/, "доля с десятыми: «30%» рядом с порогом «больше 30%» читалось бы как «не выше порога»");
+  const footnote = flat(renderToStaticMarkup(createElement(TraitsSection, { report: report(), accuracy: {} })));
+  assert.match(footnote, /больше 30% \(при 20 и более отметках\)/, "сноска называет тот же порог, что и код");
+  assert.doesNotMatch(footnote, /трети/);
 });
 
 test("Сводка отметок: по признакам, неизвестный вердикт игнорируется; подписи и причина скрытия доли", () => {
@@ -52,11 +113,14 @@ test("Сводка отметок: по признакам, неизвестны
   assert.equal(s.silhouette.status, "reliable");
   assert.equal(s.silhouette.unclear, 1);
   assert.equal(s.proportions.judged, 10);
-  assert.match(accuracyLabel(s.silhouette), /^верно 21 из 21 \(100%, нижняя граница \d+%\)$/);
-  assert.match(accuracyLabel(s.proportions), /верно 5 из 10 \(50%, нижняя граница \d+%\) — пока мало: нужно 20/);
+  assert.match(accuracyLabel(s.silhouette), /^верно 21 из 21 \(100%, нижняя граница \d+%\); не понять: 1$/);
+  assert.match(accuracyLabel(s.proportions), /верно 5 из 10 \(50%, нижняя граница \d+%\)/);
   assert.match(accuracyLabel(undefined), /точность не измерена: размечено 0 из 20/);
   assert.equal(hiddenReason(s.silhouette), null);
-  assert.equal(hiddenReason(s.proportions), null, "пока мало отметок — доли не прячем, только честно подписываем");
+  assert.match(hiddenReason(s.proportions)!, /даже в лучшем случае/, "5 из 10 при верхней границе ниже порога — прячем, не дожидаясь двадцати");
+  const pending = fieldAccuracy(8, 2, 0);
+  assert.equal(hiddenReason(pending), null, "пока мало отметок и надежда есть — доли не прячем, только честно подписываем");
+  assert.match(accuracyLabel(pending), /верно 8 из 10 \(80%, нижняя граница \d+%\) — пока мало: нужно 20/);
   const bad = fieldAccuracy(17, 3, 0);
   assert.match(hiddenReason(bad)!, /по 20 размеченным моделям верно 85%, нижняя граница \d+% ниже порога 80%/);
 });
@@ -130,6 +194,21 @@ test("Отметка: нет такого признака у раздела, н
   await assert.rejects(() => saveVerdict(noTable.db, input(), "x"), VerdictTableMissingError);
 });
 
+test("Отметка по разбору прежней версии вопроса не принимается (в точность она не войдёт); снять старую отметку можно; цвет и фактура — свободный текст, их не размечают", async () => {
+  const legacy = fakeDb({ assortment_model_attributes: [result({ prompt_version: "catalog-v1" })] });
+  await assert.rejects(() => saveVerdict(legacy.db, input(), "x"), (e: unknown) => e instanceof VerdictInputError && /прежней версии вопроса/.test(e.message));
+  assert.equal(legacy.writes.length, 0, "ничего не записано");
+  await saveVerdict(legacy.db, input({ verdict: null }), "x");
+  assert.equal(legacy.writes[0].op, "delete", "старую отметку снять можно");
+  assert.equal(legacy.writes[0].where?.prompt_version, "catalog-v1");
+  const free = fakeDb({ assortment_model_attributes: [result({ attributes: attrs({ color: { v: "бежевый", c: 0.9 }, texture: { v: "гладкая", c: 0.8 } }) })] });
+  await assert.rejects(() => saveVerdict(free.db, input({ field: "color" }), "x"), (e: unknown) => e instanceof VerdictInputError && /свободный текст/.test(e.message));
+  await assert.rejects(() => saveVerdict(free.db, input({ field: "texture" }), "x"), VerdictInputError);
+  assert.equal(free.writes.length, 0);
+  await saveVerdict(free.db, input(), "x");
+  assert.equal(free.writes.length, 1, "обычный признак той же модели принимается");
+});
+
 test("Чтение отметок: только раздел и текущая версия вопроса; нет таблицы — null (а не пустая точность)", async () => {
   const rows = [
     { source_id: "S1", model_key: "a", direction: "bags", field_key: "silhouette", prompt_version: PROMPT_VERSION, verdict: "ok" },
@@ -179,6 +258,38 @@ test("Примеры: у разбора по текущей версии — е�
   assert.equal(notAsked.verdictsAvailable, false);
 });
 
+function pool(rowsByKey: Record<string, Row>, verdictRows: Row[] = []) {
+  const head = (key: string) => ({ source_id: "S001", source_item_id: key, model_key: `S001|${key}`, direction: "bags", title: `Bag ${key}`, image_urls: [`https://img/${key}.jpg`], model_first_seen_at: "2026-10-01T00:00:00Z", handle: null, product_type: null, model_last_seen_at: "2026-10-05T00:00:00Z", model_baseline: true, reference_id: null, brand: null, badges: null, variants: 1, model_hidden_at: null });
+  return fakeDb({
+    assortment_catalog_heads: Object.keys(rowsByKey).map(head),
+    assortment_sources: [{ source_id: "S001", name: "Zara" }],
+    assortment_model_attributes: Object.entries(rowsByKey).map(([key, over]) => result({ model_key: `S001|${key}`, ...over })),
+    assortment_attribute_verdict: verdictRows,
+  });
+}
+const two = { silhouette: { v: "тоут", c: 0.9 }, proportions: { v: "средняя", c: 0.8 } };
+const mark = (key: string, field: string, verdict = "ok" as const) => ({ source_id: "S001", model_key: `S001|${key}`, field_key: field, verdict });
+
+test("Разметка подряд: прежняя версия разбора в набор не попадает; модель с одним признаком из двух возвращается, с обоими — нет; «не видно» и свободный текст отмечать не требуют", async () => {
+  const verdicts = [mark("partial", "silhouette"), mark("done", "silhouette"), mark("done", "proportions", "unclear" as never)];
+  const { db } = pool({
+    fresh: { attributes: two },
+    partial: { attributes: two },
+    done: { attributes: two },
+    legacy: { attributes: two, prompt_version: "catalog-v1" },
+    onlyNotVisible: { attributes: { silhouette: { v: null, nv: true } } },
+    onlyFreeText: { attributes: { color: { v: "бежевый", c: 0.9 } } },
+  });
+  const r = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts, onlyUnjudged: true }))!;
+  assert.deepEqual(r.samples.map((x) => x.modelKey).sort(), ["S001|fresh", "S001|partial"], "legacy, done, onlyNotVisible и onlyFreeText не предлагаются");
+  assert.equal(r.unjudgedModels, 2, "сколько ещё осталось, считается тем же правилом");
+  assert.equal(r.analyzed, 6, "разобрано — все");
+  assert.equal(r.judgedModels, 2, "размечено — модели, у которых есть хоть одна отметка");
+  const all = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts }))!;
+  assert.equal(all.samples.length, 6, "обычный просмотр показывает всё, включая прежнюю версию");
+  assert.equal(all.unjudgedModels, 2);
+});
+
 // --- экран ---
 
 const sample = (over: Partial<PhotoSample> = {}): PhotoSample => ({
@@ -189,7 +300,7 @@ const sample = (over: Partial<PhotoSample> = {}): PhotoSample => ({
     { key: "carry", label: "Способ ношения", value: null, notVisible: true, confidence: null },
   ], ...over,
 });
-const judging = { currentVersion: PROMPT_VERSION, busyKey: null, onVerdict: () => undefined };
+const judging = { currentVersion: PROMPT_VERSION, busyKeys: new Set<string>(), errors: {} as Record<string, string>, onVerdict: () => undefined };
 
 test("Карточки в режиме разметки: кнопки «Верно / Неверно / Не понять» у написанного ИИ признака ≥40 px; у «не видно» и у прежней версии кнопок нет; без режима — как раньше", () => {
   const html = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ verdicts: { silhouette: "wrong" } })], judging }));
@@ -201,10 +312,34 @@ test("Карточки в режиме разметки: кнопки «Верн
   const legacy = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ promptVersion: "catalog-v1" })], judging }));
   assert.doesNotMatch(legacy, /aria-pressed/, "прежняя версия вопроса — отметка в точность не войдёт, кнопок нет (прячем, не серим)");
   assert.doesNotMatch(legacy, /disabled/);
+  const free = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ attributes: [
+    { key: "color", label: "Цвет", value: "бежевый", notVisible: false, confidence: 0.9 },
+    { key: "texture", label: "Фактура", value: "гладкая", notVisible: false, confidence: 0.9 },
+    { key: "silhouette", label: "Силуэт", value: "тоут", notVisible: false, confidence: 0.9 },
+  ] })], judging }));
+  assert.equal((free.match(/aria-pressed/g) ?? []).length, 3, "кнопки только у «Силуэта»: цвет и фактура — свободный текст");
+  assert.doesNotMatch(free, /aria-label="Точность: (Цвет|Фактура)"/);
   const plain = renderToStaticMarkup(createElement(SampleCards, { samples: [sample()] }));
   assert.doesNotMatch(plain, /aria-pressed/);
   const noKey = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ modelKey: undefined })], judging }));
   assert.doesNotMatch(noKey, /aria-pressed/);
+});
+
+test("Сохранение отметки: кнопки именно этого признака недоступны, остальные рабочие; сбой показан под признаком, а не под всей сеткой", () => {
+  const key = "S001:S001|a:silhouette";
+  const html = renderToStaticMarkup(createElement(SampleCards, {
+    samples: [sample({ attributes: [
+      { key: "silhouette", label: "Силуэт", value: "тоут", notVisible: false, confidence: 0.9 },
+      { key: "proportions", label: "Пропорции", value: "средняя", notVisible: false, confidence: 0.9 },
+    ] })],
+    judging: { ...judging, busyKeys: new Set([key]), errors: { "S001:S001|a:proportions": "Нет связи" } },
+  }));
+  const groups = html.split('role="group"').slice(1);
+  assert.equal(groups.length, 2);
+  assert.equal((groups[0].split("</span>")[0].match(/disabled=""/g) ?? []).length, 3, "у «Силуэта» сохраняется отметка — три кнопки заняты");
+  assert.doesNotMatch(groups[1].split("</dd>")[0], /disabled=""/, "у «Пропорций» кнопки рабочие: клик не теряется");
+  assert.match(html, /role="alert"[^>]*>Не сохранилось: Нет связи/);
+  assert.ok(html.indexOf("Не сохранилось") > html.indexOf('aria-label="Точность: Пропорции"'), "сообщение стоит у признака, у которого не сохранилось");
 });
 
 const report = (): PhotoTraitsReport => ({
@@ -236,9 +371,27 @@ test("Карточка признака: подпись точности; при
   assert.match(empty, /Точность разбора: точность не измерена: размечено 0 из 20/);
 });
 
+test("Точность не загрузилась: доли показаны, но с предупреждением, что проверки по отметкам нет; у свободных полей строки про точность нет никогда", () => {
+  const failed = flat(renderToStaticMarkup(createElement(TraitsSection, { report: report(), accuracy: undefined, accuracyFailed: true })));
+  assert.match(failed, /Точность разбора не загрузилась: доли ниже показаны без проверки по отметкам человека/);
+  assert.match(failed, /средняя 50%/);
+  assert.doesNotMatch(failed, /Точность разбора: /, "строк про точность нет — их не из чего собрать");
+  const ok = flat(renderToStaticMarkup(createElement(TraitsSection, { report: report(), accuracy: {} })));
+  assert.doesNotMatch(ok, /Точность разбора не загрузилась/);
+  const withColor = report();
+  withColor.fields.push({ key: "color", label: "Цвет", visible: 60, notVisible: 0, values: [{ value: "чёрный", models: 30, share: 50, avgSourceShare: null, sources: 3 }], other: null });
+  const t = flat(renderToStaticMarkup(createElement(TraitsSection, { report: withColor, accuracy: {} })));
+  const colorCard = t.slice(t.indexOf("Цвет видно у"));
+  assert.doesNotMatch(colorCard, /Точность разбора/, "цвет не размечается — «не измерена: 0 из 20» висело бы вечно");
+});
+
 test("Сводка точности: по признакам раздела, без цвета/деталей/фактуры; сколько моделей размечено", () => {
   const t = flat(renderToStaticMarkup(createElement(AccuracySummary, { direction: "bags", accuracy: { silhouette: fieldAccuracy(25, 0, 0) }, judgedModels: 14 })));
   assert.match(t, /Размечено моделей: 14\./);
+  assert.match(flat(renderToStaticMarkup(createElement(AccuracySummary, { direction: "bags", accuracy: {}, judgedModels: 14, unjudgedModels: 40 }))), /ещё с неотмеченными признаками: 40/);
+  const failed = flat(renderToStaticMarkup(createElement(AccuracySummary, { direction: "bags", accuracy: undefined, accuracyFailed: true, judgedModels: 3 })));
+  assert.match(failed, /Точность не загрузилась — размечайте дальше/);
+  assert.doesNotMatch(failed, /Силуэт —/);
   assert.match(t, /Силуэт — верно 25 из 25/);
   assert.match(t, /Пропорции — точность не измерена: размечено 0 из 20/);
   assert.doesNotMatch(t, /Цвет —|Фактура —/);
@@ -259,4 +412,6 @@ test("Миграция и роуты: таблица с ключом по вер
   const traits = readFileSync(join(root, "app/api/assortment-development/photo-traits/route.ts"), "utf8");
   assert.match(traits, /searchParams\.get\("accuracy"\) === "1"/);
   assert.match(traits, /searchParams\.get\("unjudged"\) === "1"/);
+  assert.doesNotMatch(traits, /loadAccuracy\(db, direction\)\.catch/, "сбой чтения точности не превращается в null («таблицы нет»)");
+  assert.match(traits, /if \(onlyUnjudged\) return NextResponse\.json\(\{ error: `Отметки не загрузились/, "разметка без прочитанных отметок невозможна — это ошибка, а не «примените миграцию»");
 });
