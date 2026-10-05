@@ -231,6 +231,11 @@ export function cleanResponsible(value: unknown): string | null {
   return clean(value, 120, "Ответственный") || null;
 }
 
+/** Свободный период своей подборки («Осень 2026», «к весне») — тот же запрет денег и пробелов, что у названия; пустой период допустим. */
+export function cleanPeriod(value: string): string {
+  return clean(value, 40, "Период");
+}
+
 export function cleanTitle(value: unknown): string {
   const title = clean(value, 120, "Название");
   if (!title) throw new CollectionInputError("Название подборки не может быть пустым.");

@@ -54,19 +54,88 @@ export function dedupKey(sourceId: string | null, region: string, sourceItemId: 
 /**
  * Ключ находки при импорте по ссылке. Артикул однозначен только внутри сайта: у источника вне паспорта (`sourceId` пуст) ключ был бы
  * «manual||<sku>» без хоста, и товары двух разных сайтов с одним sku склеивались бы в одну находку (фото второго подмешивались к первому).
+ * `pageUrl` — адрес самой страницы после редиректов, а не вставленная ссылка: короткая (bit.ly) и партнёрская ссылка принадлежат
+ * сокращателю, а не магазину.
  */
 export function importDedupKey(sourceId: string | null, region: string, sourceItemId: string | null, normalizedUrl: string, pageUrl: string): string {
   const scoped = sourceItemId && !sourceId ? `${baseDomain(new URL(pageUrl).hostname)}:${sourceItemId}` : sourceItemId;
   return dedupKey(sourceId, region, scoped, normalizedUrl);
 }
 
-const SECOND_LEVEL = new Set(["co.uk", "com.au", "co.jp", "com.cn", "com.tr", "co.kr", "com.hk", "com.br"]);
+/**
+ * Прежний ключ той же находки (до того, как артикул стал привязан к сайту): «manual|<регион>|<sku>». Нужен, чтобы повторный импорт нашёл
+ * карточку, созданную раньше, а не завёл рядом вторую. Null — у этой находки ключ не менялся.
+ */
+export function legacyImportDedupKey(sourceId: string | null, region: string, sourceItemId: string | null, normalizedUrl: string): string | null {
+  return sourceItemId && !sourceId ? dedupKey(sourceId, region, sourceItemId, normalizedUrl) : null;
+}
+
+/** Два адреса — один сайт (по базовому домену); мусор вместо адреса — «нет». */
+export function sameSite(a: string, b: string): boolean {
+  try {
+    return baseDomain(new URL(a).hostname) === baseDomain(new URL(b).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Зоны вида «имя.co.uk»: сайт регистрируется на третьем уровне, а «co.uk» — общий суффикс (его нельзя считать «сайтом»: иначе любой
+ * чужой .com.ua сошёл бы за «тот же сайт»). Список — по публичным суффиксам, которые встречаются у интернет-магазинов.
+ */
+const SECOND_LEVEL = new Set([
+  "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk",
+  "com.au", "net.au", "org.au", "id.au",
+  "co.nz", "net.nz", "org.nz",
+  "co.jp", "ne.jp", "or.jp",
+  "co.kr", "ne.kr", "or.kr",
+  "com.cn", "net.cn", "org.cn",
+  "com.hk", "net.hk", "org.hk",
+  "com.tw", "net.tw", "org.tw", "idv.tw",
+  "com.sg", "net.sg", "org.sg",
+  "com.my", "net.my", "org.my",
+  "com.ph", "net.ph", "org.ph",
+  "com.vn", "net.vn",
+  "co.id", "or.id", "web.id",
+  "co.in", "net.in", "org.in",
+  "co.th", "or.th", "in.th",
+  "co.il", "org.il", "net.il",
+  "com.tr", "net.tr", "org.tr",
+  "com.sa", "com.eg", "com.pk", "com.bd", "com.lk",
+  "co.za", "org.za", "net.za", "web.za",
+  "com.ng", "co.ke",
+  "com.br", "net.br", "org.br",
+  "com.ar", "net.ar", "org.ar",
+  "com.mx", "net.mx", "org.mx",
+  "com.co", "net.co", "org.co",
+  "com.pe", "com.uy", "com.ve", "com.ec",
+  "com.ua", "net.ua", "org.ua", "kiev.ua",
+  "com.pl", "net.pl", "org.pl",
+  "com.ru", "net.ru", "org.ru", "pp.ru", "msk.ru", "spb.ru",
+  "com.kz", "org.kz", "com.by", "com.ge", "com.az", "co.uz", "com.uz",
+  "co.at", "or.at", "com.pt", "com.gr", "com.ro", "com.cy", "com.mt",
+]);
+
+/**
+ * Общие хостинги и конструкторы: «one.myshopify.com» и «two.myshopify.com» — два разных магазина, а не витрины одного, поэтому базовым
+ * доменом считается целый поддомен («one.myshopify.com»), как у зоны «co.uk».
+ */
+const SHARED_HOSTS = new Set([
+  "myshopify.com", "wixsite.com", "wordpress.com", "blogspot.com", "weebly.com", "bigcartel.com", "tilda.ws", "tilda.cc",
+  "webflow.io", "myinsales.ru", "nethouse.ru", "ucoz.ru", "ucoz.com", "jimdofree.com",
+  "vercel.app", "netlify.app", "github.io", "gitlab.io", "pages.dev", "workers.dev", "herokuapp.com", "onrender.com", "fly.dev",
+  "railway.app", "web.app", "firebaseapp.com", "appspot.com", "azurewebsites.net", "cloudfront.net",
+  "ngrok.io", "ngrok.app", "ngrok-free.app",
+]);
 
 /** Домен бренда без поддомена витрины: eng.polene-paris.com и eu.polene-paris.com — один сайт. */
 export function baseDomain(host: string): string {
-  const labels = host.toLowerCase().replace(/^www\./, "").split(".").filter(Boolean);
+  const name = host.toLowerCase().replace(/^www\./, "");
+  // IP-адрес у «домена» не режем: «8.8» из «8.8.8.8» склеило бы разные серверы.
+  if (name.startsWith("[") || /^\d+(?:\.\d+){3}$/.test(name)) return name;
+  const labels = name.split(".").filter(Boolean);
   const tail = labels.slice(-2).join(".");
-  return SECOND_LEVEL.has(tail) ? labels.slice(-3).join(".") : tail;
+  return SECOND_LEVEL.has(tail) || SHARED_HOSTS.has(tail) ? labels.slice(-3).join(".") : tail;
 }
 
 /** Источник по домену: сравниваем с сайтами из паспорта (seed_urls). */
