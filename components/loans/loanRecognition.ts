@@ -243,6 +243,51 @@ export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] 
 /** Exact local parser for bank schedules with Date / operation type / amount columns. */
 export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLoan> {
   const normalize = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/[^а-яa-z0-9]+/g, " ").trim();
+  // Банки нередко отдают готовый аннуитетный график в компактной форме:
+  // «Дата / К оплате / Основной долг / Проценты / Остаток основного долга».
+  // Это не наша помесячная модель: здесь каждая строка уже является точным
+  // договорным платежом. Раньше такой заголовок не распознавался, вследствие
+  // чего внешний разбор мог склеить несколько месяцев в одну строку.
+  const annuityHeaderIndex = grid.findIndex((row) => {
+    const cells = row.map(normalize);
+    return cells.some((cell) => cell === "дата" || /дата.*платеж/.test(cell))
+      && cells.some((cell) => /к оплате|сумма платежа/.test(cell))
+      && cells.some((cell) => /основн.*долг|тело/.test(cell))
+      && cells.some((cell) => /процент/.test(cell))
+      && cells.some((cell) => /остаток.*основн.*долг|остаток.*тела/.test(cell));
+  });
+  if (annuityHeaderIndex >= 0) {
+    const headers = grid[annuityHeaderIndex].map(normalize);
+    const findColumn = (...patterns: RegExp[]) => {
+      for (const pattern of patterns) {
+        const index = headers.findIndex((cell) => pattern.test(cell));
+        if (index >= 0) return index;
+      }
+      return -1;
+    };
+    const dateColumn = findColumn(/^дата$/, /дата.*платеж/);
+    const principalColumn = findColumn(/основн.*долг/, /тело/);
+    const interestColumn = findColumn(/процент/);
+    const balanceAfterColumn = findColumn(/остаток.*основн.*долг/, /остаток.*тела/);
+    const schedule: RecognizedScheduleRow[] = [];
+    for (const row of grid.slice(annuityHeaderIndex + 1)) {
+      const date = spreadsheetDate(row[dateColumn] ?? "");
+      const principal = spreadsheetAmount(row[principalColumn] ?? "");
+      const interest = spreadsheetAmount(row[interestColumn] ?? "");
+      if (!date || principal + interest <= 0) continue;
+      const balanceAfter = balanceAfterColumn >= 0 ? spreadsheetAmount(row[balanceAfterColumn] ?? "") : undefined;
+      schedule.push({
+        date, principal, interest, penalty: 0, fine: 0, status: "planned",
+        balanceAfter,
+        balanceBefore: balanceAfter == null ? undefined : balanceAfter + principal,
+      });
+    }
+    const aggregated = aggregateRecognizedSchedule(schedule);
+    if (aggregated.length) {
+      const openingBalance = aggregated.find((row) => Number(row.balanceBefore) > 0)?.balanceBefore ?? 0;
+      return { principalAmount: openingBalance, dueDate: aggregated.at(-1)?.date ?? "", schedule: aggregated, confidence: 100, warnings: [] };
+    }
+  }
   const detailedHeaderIndex = grid.findIndex((row) => {
     const cells = row.map(normalize);
     return cells.some((cell) => /дата.*платеж/.test(cell))
