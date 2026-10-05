@@ -4,7 +4,7 @@ import {
   ctrPickToWire,
   type CtrCampaignRowInput,
   type CtrDayPickWire,
-  type CtrPaymentModel,
+  type CtrCampaignKind,
 } from "./ctrCampaignPick";
 
 export interface WbFunnelMetricRow {
@@ -73,7 +73,7 @@ export function buildWbFunnelDayMetrics(
    */
   campaigns?: {
     rows: readonly WbAdCampaignRow[];
-    modelOf: (advertId: number) => CtrPaymentModel | "erk" | null;
+    modelOf: (advertId: number) => CtrCampaignKind | null;
   },
 ): { metrics: DayMetrics; ctrPicks: DayCtrPicks } {
   // Кампании собираем отдельной картой: витрина по артикулам остаётся

@@ -4,6 +4,13 @@ import { reliableCtr } from "./ctrQuality";
 /**
  * Какая кампания отвечает за CTR артикула в этот день.
  *
+ * 05.10.2026 владелец: «CTR нужен на всех РК» — ЕРК вернулась в расчёт. Прежнее
+ * правило (11.09) исключало ЕРК, и у кабинета, где вся реклама — ЕРК (Retail
+ * Family), CTR по дням не было вовсе: кампании тратили тысячи рублей и крутили
+ * десятки тысяч показов, а клетки пустые. Смешения шкал внутри артикула по-
+ * прежнему нет: в клетке одна кампания и подпись её вида; ЕРК видна отдельным
+ * вариантом фильтра, и столбец можно привести к одной шкале.
+ *
  * Колонка CTR в воронке годами показывала сумму по всем кампаниям сразу, а это
  * разные шкалы, сложенные в одно число. Живая сверка за 14 дней (12.09.2026):
  *
@@ -19,8 +26,10 @@ import { reliableCtr } from "./ctrQuality";
  * параллельных берём ту, что потратила больше, — она и была рабочей.
  */
 
-/** Модель оплаты для CTR. `erk` и `null` из расчёта выпадают. */
+/** Модель оплаты кампании. */
 export type CtrPaymentModel = "cpc" | "cpm";
+/** Вид кампании для CTR: оплата за клик, за показы или единая ставка. */
+export type CtrCampaignKind = CtrPaymentModel | "erk";
 
 /**
  * Порог «кампания в этот день реально работала».
@@ -42,11 +51,11 @@ export const CTR_MIN_CAMPAIGN_SPEND = 100;
  * уже знает про `bid_type`, ручные переопределения и старые строки синка. Второй
  * разбор разошёлся бы с журналом РК на первой же правке.
  *
- * ЕРК возвращается отдельным значением, а не `null`: у него в карточке WB
- * написано `payment_type: "cpm"`, и правило «берём только cpc и cpm» пропустило
- * бы его внутрь. Отличает ЕРК только тип ставки — `bid_type: "unified"`.
+ * ЕРК возвращается отдельным значением, а не `null` и не «cpm»: у него в
+ * карточке WB написано `payment_type: "cpm"`, и без отдельного значения он
+ * слился бы с обычным CPM. Отличает ЕРК только тип ставки — `bid_type: "unified"`.
  */
-export function ctrPaymentModel(advert: WbAdvertBlockInput | null | undefined): CtrPaymentModel | "erk" | null {
+export function ctrPaymentModel(advert: WbAdvertBlockInput | null | undefined): CtrCampaignKind | null {
   if (!advert) return null;
   const block = wbAdvertBlock(advert);
   if (!block) return null;
@@ -63,43 +72,51 @@ export interface CtrCandidate {
 }
 
 /**
- * Что известно о дне: лучшая кампания каждой модели и сколько отброшено.
+ * Что известно о дне: лучшая кампания каждого вида и сколько отброшено.
  *
- * Хранится по кампании на модель, а не одна выбранная, чтобы фильтр «вид
+ * Хранится по кампании на вид, а не одна выбранная, чтобы фильтр «вид
  * размещения» на экране переключался без похода на сервер и без второго
  * правила отбора на клиенте.
  */
 export interface CtrDayPick {
   cpc: CtrCandidate | null;
   cpm: CtrCandidate | null;
-  /** Сколько кампаний в этот день отброшено: ЕРК, неразмеченные, нерабочие. */
+  erk: CtrCandidate | null;
+  /** Сколько кампаний в этот день отброшено: неразмеченные, нерабочие, уступившие своему виду. */
   dropped: number;
 }
 
-export type CtrModelFilter = "any" | CtrPaymentModel;
+export type CtrModelFilter = "any" | CtrCampaignKind;
 
 /**
  * Лучшая кампания дня при выбранном фильтре.
  *
- * «Больше потратила» — решение владельца: из двух параллельных рабочей была та,
+ * «Больше потратила» — решение владельца: из параллельных рабочей была та,
  * на которую шли деньги. Сравнение по показам дало бы почти то же самое (на
  * живых данных расхождение в одну клетку из 929), но расход — это намерение, а
- * показы — следствие, и объяснять человеку проще намерение.
+ * показы — следствие, и объяснять человеку проще намерение. При ничьей берём
+ * CPM, затем CPC, затем ЕРК — как раньше шли виды: порядок стабилен, число не
+ * прыгает от перезагрузки к перезагрузке.
  */
 export function pickCtrCampaign(pick: CtrDayPick | null | undefined, filter: CtrModelFilter): CtrCandidate | null {
   if (!pick) return null;
   if (filter === "cpc") return pick.cpc;
   if (filter === "cpm") return pick.cpm;
-  if (!pick.cpc) return pick.cpm;
-  if (!pick.cpm) return pick.cpc;
-  return pick.cpm.spent >= pick.cpc.spent ? pick.cpm : pick.cpc;
+  if (filter === "erk") return pick.erk;
+  let best: CtrCandidate | null = null;
+  for (const candidate of [pick.cpm, pick.cpc, pick.erk]) {
+    if (candidate && (!best || candidate.spent > best.spent)) best = candidate;
+  }
+  return best;
 }
 
-/** Какой моделью оплаты посчитан CTR клетки. */
-export function ctrPickModel(pick: CtrDayPick | null | undefined, filter: CtrModelFilter): CtrPaymentModel | null {
+/** Каким видом кампании посчитан CTR клетки. */
+export function ctrPickModel(pick: CtrDayPick | null | undefined, filter: CtrModelFilter): CtrCampaignKind | null {
   const chosen = pickCtrCampaign(pick, filter);
   if (!chosen) return null;
-  return chosen === pick?.cpm ? "cpm" : "cpc";
+  if (chosen === pick?.cpm) return "cpm";
+  if (chosen === pick?.erk) return "erk";
+  return "cpc";
 }
 
 /**
@@ -124,19 +141,19 @@ export interface CtrCampaignRowInput {
 /**
  * Свернуть кампании одного дня в выбор.
  *
- * Кандидат обязан пройти два условия: быть CPC или CPM (ЕРК и неразмеченные
- * выбывают) и потратить не меньше порога. Всё, что не прошло, попадает в
- * `dropped` — число нужно экрану, чтобы сказать человеку, что цифра собрана не
- * из всего, что он видит в столбце показов.
+ * Кандидат обязан пройти два условия: иметь определённый вид (CPC, CPM или
+ * ЕРК — неразмеченные выбывают) и потратить не меньше порога. Всё, что не
+ * прошло, попадает в `dropped` — число нужно экрану, чтобы сказать человеку, что
+ * цифра собрана не из всего, что он видит в столбце показов.
  */
 export function buildCtrDayPick(
   rows: readonly CtrCampaignRowInput[],
-  modelOf: (advertId: number) => CtrPaymentModel | "erk" | null,
+  modelOf: (advertId: number) => CtrCampaignKind | null,
 ): CtrDayPick {
-  const pick: CtrDayPick = { cpc: null, cpm: null, dropped: 0 };
+  const pick: CtrDayPick = { cpc: null, cpm: null, erk: null, dropped: 0 };
   for (const row of rows) {
     const model = modelOf(row.advertId);
-    const working = (model === "cpc" || model === "cpm") && row.spent >= CTR_MIN_CAMPAIGN_SPEND;
+    const working = (model === "cpc" || model === "cpm" || model === "erk") && row.spent >= CTR_MIN_CAMPAIGN_SPEND;
     if (!working) {
       // Пустая строка кампании — не отброшенный кандидат, а её отсутствие:
       // товар был в кампании, но она его в этот день не крутила.
@@ -144,7 +161,7 @@ export function buildCtrDayPick(
       continue;
     }
     const candidate: CtrCandidate = { advertId: row.advertId, views: row.views, clicks: row.clicks, spent: row.spent };
-    const slot = model === "cpc" ? "cpc" : "cpm";
+    const slot = model === "cpc" ? "cpc" : model === "erk" ? "erk" : "cpm";
     const current = pick[slot];
     if (!current || candidate.spent > current.spent) {
       if (current) pick.dropped += 1;
@@ -153,26 +170,41 @@ export function buildCtrDayPick(
       pick.dropped += 1;
     }
   }
+  // Расход округляем ОДИН раз, после выбора лучшей внутри вида: на экран он
+  // едет целым (ctrPickToWire), и выбор между видами при «ничьей» на клиенте
+  // иначе разошёлся бы с окном разбора, считающим по дробным (149,6 против
+  // 150,4: сервер брал ЕРК, клиент после округления — CPM). Внутри вида
+  // сравнение идёт по дробным, пока не выбран победитель.
+  for (const slot of ["cpc", "cpm", "erk"] as const) {
+    const chosen = pick[slot];
+    if (chosen) pick[slot] = { ...chosen, spent: Math.round(chosen.spent) };
+  }
   return pick;
 }
 
-/** Компактная форма для ответа API: массивы вместо объектов экономят мегабайты. */
-export type CtrDayPickWire = [cpc: [number, number, number, number] | null, cpm: [number, number, number, number] | null, dropped: number];
+type CtrCandidateWire = [number, number, number, number];
+/**
+ * Компактная форма для ответа API: массивы вместо объектов экономят мегабайты.
+ * Четвёртый элемент (ЕРК) добавлен 05.10.2026; индексы 0–2 не менялись, а
+ * снимок прежней формы читается — у него ЕРК просто нет.
+ */
+export type CtrDayPickWire = [cpc: CtrCandidateWire | null, cpm: CtrCandidateWire | null, dropped: number, erk?: CtrCandidateWire | null];
 
 export function ctrPickToWire(pick: CtrDayPick): CtrDayPickWire {
   const wire = (candidate: CtrCandidate | null) =>
-    candidate ? ([candidate.advertId, candidate.views, candidate.clicks, Math.round(candidate.spent)] as [number, number, number, number]) : null;
-  return [wire(pick.cpc), wire(pick.cpm), pick.dropped];
+    candidate ? ([candidate.advertId, candidate.views, candidate.clicks, Math.round(candidate.spent)] as CtrCandidateWire) : null;
+  return [wire(pick.cpc), wire(pick.cpm), pick.dropped, wire(pick.erk)];
 }
 
 export function ctrPickFromWire(wire: CtrDayPickWire | null | undefined): CtrDayPick | null {
   if (!Array.isArray(wire)) return null;
-  const candidate = (value: [number, number, number, number] | null): CtrCandidate | null =>
+  const candidate = (value: CtrCandidateWire | null | undefined): CtrCandidate | null =>
     Array.isArray(value) ? { advertId: value[0], views: value[1], clicks: value[2], spent: value[3] } : null;
-  return { cpc: candidate(wire[0]), cpm: candidate(wire[1]), dropped: Number(wire[2] ?? 0) };
+  return { cpc: candidate(wire[0]), cpm: candidate(wire[1]), erk: candidate(wire[3]), dropped: Number(wire[2] ?? 0) };
 }
 
-export const CTR_MODEL_LABEL: Record<CtrPaymentModel, string> = {
+export const CTR_MODEL_LABEL: Record<CtrCampaignKind, string> = {
   cpc: "CPC",
   cpm: "CPM",
+  erk: "ЕРК",
 };

@@ -7,7 +7,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 import { buildWbFunnelDayMetrics, resolveFunnelPeriod } from "@/lib/wb/funnelMetrics";
-import { ctrPaymentModel, type CtrPaymentModel } from "@/lib/wb/ctrCampaignPick";
+import { ctrPaymentModel, type CtrCampaignKind } from "@/lib/wb/ctrCampaignPick";
 import type { WbAdvertBlockInput } from "@/lib/wb/advertBlocks";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +40,10 @@ export async function GET(req: NextRequest) {
     "wb-funnel-day-metrics",
     // Схема снимка: 4 и раньше считали CTR суммой по всем кампаниям сразу —
     // ЕРК, CPC и CPM в одной доле. Снимки той схемы переиспользовать нельзя.
-    { cabinetId: p_cabinet, since, until, schema: 5 },
+    // Схема 6 (05.10.2026): ЕРК вернулась в расчёт CTR и в выбор кампании дня
+    // (четвёртый элемент ctrPicks). Снимок схемы 5 ЕРК не знает — клетки
+    // кабинета на одних ЕРК остались бы пустыми до конца часа.
+    { cabinetId: p_cabinet, since, until, schema: 6 },
     // Обе выборки листаются пачками по четыре страницы: тридцать дней на
     // кабинет с сотнями товаров — это десятки тысяч строк, а каждый заход в
     // базу стоит 100–300 мс. Последовательное листание складывало их в секунды.
@@ -100,7 +103,7 @@ export async function GET(req: NextRequest) {
       // Разметка кампаний: тип ставки и модель оплаты. Без неё ЕРК не отличить
       // от CPM — он и представляется как CPM, а выдаёт его только bid_type.
       const advertIds = [...new Set(campaignRows.map((row) => Number(row.advert_id)).filter(Number.isFinite))];
-      const models = new Map<number, CtrPaymentModel | "erk" | null>();
+      const models = new Map<number, CtrCampaignKind | null>();
       for (let index = 0; index < advertIds.length; index += 500) {
         const chunk = advertIds.slice(index, index + 500);
         const { data: adverts } = await db

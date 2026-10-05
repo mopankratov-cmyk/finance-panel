@@ -10,7 +10,8 @@ import {
   ctrOfPick,
   ctrPaymentModel,
   pickCtrCampaign,
-  type CtrPaymentModel,
+  type CtrCampaignKind,
+  type CtrModelFilter,
 } from "@/lib/wb/ctrCampaignPick";
 import type { WbAdvertBlockInput } from "@/lib/wb/advertBlocks";
 
@@ -33,12 +34,12 @@ export interface CtrCampaignRow {
   /** null — показов слишком мало, чтобы доля что-то значила. */
   ctr: number | null;
   spent: number;
-  /** Модель оплаты: cpc, cpm, erk. null — WB о кампании ничего не сообщает. */
-  model: CtrPaymentModel | "erk" | null;
+  /** Вид кампании: cpc, cpm, erk. null — WB о кампании ничего не сообщает. */
+  model: CtrCampaignKind | null;
   /** Та самая, по которой посчитан CTR клетки. */
   chosen: boolean;
-  /** Почему кампания в расчёт не пошла. null — пошла. */
-  excluded: "erk" | "unknown" | "idle" | "smaller" | null;
+  /** Почему кампания в расчёт не пошла. null — пошла. «filtered» — другой вид, чем выбран в фильтре экрана. */
+  excluded: "unknown" | "idle" | "filtered" | "smaller" | null;
 }
 
 export async function GET(request: NextRequest) {
@@ -49,6 +50,11 @@ export async function GET(request: NextRequest) {
   const cabinetId = cabinetIdFromParam(url.searchParams.get("cabinet"));
   const nmId = Number(url.searchParams.get("nm"));
   const date = String(url.searchParams.get("date") ?? "").trim();
+  // Вид размещения из фильтра экрана: окно обязано выбирать ту же кампанию, что
+  // и клетка, иначе при фильтре «ЕРК» человек видел бы «в расчёте» CPM.
+  // Неизвестное значение — «Любой»: так звали окно до появления параметра.
+  const rawModel = url.searchParams.get("model");
+  const filter: CtrModelFilter = rawModel === "cpc" || rawModel === "cpm" || rawModel === "erk" ? rawModel : "any";
 
   if (!Number.isSafeInteger(nmId) || nmId <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     return NextResponse.json({ error: "Нужны артикул и дата" }, { status: 400 });
@@ -77,7 +83,7 @@ export async function GET(request: NextRequest) {
   // справка: по ним клетка выбирает кампанию, и разбор обязан считать тем же
   // правилом — иначе окно спорит с числом, которое объясняет.
   const names = new Map<number, string>();
-  const models = new Map<number, CtrPaymentModel | "erk" | null>();
+  const models = new Map<number, CtrCampaignKind | null>();
   if (advertIds.length) {
     const { data: adverts } = await db
       .from("wb_adverts")
@@ -93,7 +99,7 @@ export async function GET(request: NextRequest) {
     rows.map((row) => ({ advertId: Number(row.advert_id), views: Number(row.views ?? 0), clicks: Number(row.clicks ?? 0), spent: Number(row.spent ?? 0) })),
     (advertId) => models.get(advertId) ?? null,
   );
-  const chosenCampaign = pickCtrCampaign(pick, "any");
+  const chosenCampaign = pickCtrCampaign(pick, filter);
 
   const campaigns: CtrCampaignRow[] = rows
     .map((row) => {
@@ -105,12 +111,12 @@ export async function GET(request: NextRequest) {
       const chosen = chosenCampaign?.advertId === advertId;
       const excluded: CtrCampaignRow["excluded"] = chosen
         ? null
-        : model === "erk"
-          ? "erk"
-          : model == null
-            ? "unknown"
-            : spent < CTR_MIN_CAMPAIGN_SPEND
-              ? "idle"
+        : model == null
+          ? "unknown"
+          : spent < CTR_MIN_CAMPAIGN_SPEND
+            ? "idle"
+            : filter !== "any" && model !== filter
+              ? "filtered"
               : "smaller";
       return {
         advertId,
@@ -131,14 +137,14 @@ export async function GET(request: NextRequest) {
   const clicks = campaigns.reduce((sum, row) => sum + row.clicks, 0);
 
   return NextResponse.json({
-    meta: { cabinetId, nmId, date, minViews: CTR_MIN_VIEWS, minSpend: CTR_MIN_CAMPAIGN_SPEND },
+    meta: { cabinetId, nmId, date, minViews: CTR_MIN_VIEWS, minSpend: CTR_MIN_CAMPAIGN_SPEND, model: filter },
     data: {
       campaigns,
       // Итог остаётся суммой: показы случились, деньги потрачены. А CTR клетки
       // считается по выбранной кампании — это два разных ответа, и окно
       // показывает оба, чтобы разница была видна, а не спрятана.
       total: { views, clicks, ctr: reliableCtr(views, clicks) },
-      chosen: chosenCampaign ? { advertId: chosenCampaign.advertId, ctr: ctrOfPick(pick, "any") } : null,
+      chosen: chosenCampaign ? { advertId: chosenCampaign.advertId, ctr: ctrOfPick(pick, filter) } : null,
     },
   });
 }

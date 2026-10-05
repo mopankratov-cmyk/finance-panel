@@ -70,9 +70,10 @@ interface DayMetricsData {
  * размещения» в Журнале РК.
  */
 const CTR_MODELS: Array<{ value: CtrModelFilter; label: string; hint: string }> = [
-  { value: "any", label: "Любой", hint: "Из кампаний дня берём ту, что потратила больше. Виды смешиваются между артикулами: CPM и CPC идут по разным шкалам." },
+  { value: "any", label: "Любой", hint: "Из кампаний дня берём ту, что потратила больше, включая ЕРК. Вид кампании подписан в клетке; виды смешиваются между артикулами: CPM, CPC и ЕРК идут по разным шкалам." },
   { value: "cpm", label: "CPM", hint: "Только кампании с оплатой за показы. Столбец приведён к одной шкале, и артикулы сравнимы между собой." },
   { value: "cpc", label: "CPC", hint: "Только кампании с оплатой за клик. Столбец приведён к одной шкале, и артикулы сравнимы между собой." },
+  { value: "erk", label: "ЕРК", hint: "Только кампании с единой ставкой. Столбец приведён к одной шкале, но WB сам распределяет показы ЕРК между поиском, полками и рекомендациями — сравнение артикулов приблизительное." },
 ];
 type MetricKey = "views" | "ctr" | "open_card" | "carts" | "cart_cr" | "cr" | "orders_sum" | "advert_sum" | "drr";
 
@@ -494,7 +495,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                 ))}
               </div>
               <span className="min-w-0 text-[10px] leading-tight text-slate-400">
-                ЕРК из расчёта исключён, из параллельных кампаний берётся та, что потратила больше {CTR_MIN_CAMPAIGN_SPEND} ₽ и больше остальных.
+                В клетках дней CTR считается по рекламе любого вида, включая ЕРК: из параллельных кампаний берётся та, что потратила не меньше {CTR_MIN_CAMPAIGN_SPEND} ₽ и больше остальных.
               </span>
             </div>
           ) : null}
@@ -508,6 +509,7 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
             article={ctrPopup.article}
             cellViews={ctrPopup.views}
             cellClicks={ctrPopup.clicks}
+            model={ctrModel}
             onClose={() => setCtrPopup(null)}
             onNoteSaved={(nm, date, note, color) => setNotes((prev) => {
               const next = new Map(prev);
@@ -598,7 +600,11 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                   // остаётся прежнее число, иначе экран опустел бы на час.
                   const pick = isCtr ? ctrPickFromWire(daily?.ctrPicks?.[String(sku.nm)]?.[date]) : null;
                   const chosen = pick ? pickCtrCampaign(pick, ctrModel) : null;
-                  const value = isCtr && pick ? ctrOfPick(pick, ctrModel) : cell?.[metric];
+                  // Без разбивки по кампаниям вид размещения неизвестен: под фильтром
+                  // CPM/CPC/ЕРК такая клетка пуста, а не показывает смесь шкал под видом
+                  // одной. Под «Любой» остаётся прежнее число снимка.
+                  const noBreakdownUnderFilter = isCtr && !pick && ctrModel !== "any";
+                  const value = isCtr && pick ? ctrOfPick(pick, ctrModel) : noBreakdownUnderFilter ? null : cell?.[metric];
                   const views = pick ? (chosen?.views ?? 0) : (cell?.views ?? 0);
                   const тонкийЗамер = isCtr && views < CTR_MIN_VIEWS;
                   const pickModel = pick ? ctrPickModel(pick, ctrModel) : null;
@@ -624,19 +630,19 @@ export function WbFunnelPage({ embedded = false }: { embedded?: boolean }) {
                             chosen && pickModel
                               ? `Кампания ${chosen.advertId} · ${CTR_MODEL_LABEL[pickModel]} · ${fmt(chosen.views)} показов, ${fmt(chosen.spent)} ₽`
                               : null,
-                            // Почему клетка пуста. Раньше всегда писалось «ни одна не
-                            // потратила 100 ₽» и «меньше 50 показов» — а у кабинета на
-                            // одних ЕРК кампании тратили тысячи и крутили десятки тысяч
-                            // показов (Retail Family, 05.10.2026): подсказка врала.
-                            // Причина — правило: CTR ЕРК не считается (другая шкала).
+                            // Почему клетка пуста. Подсказка не должна врать: «не
+                            // потратила 100 ₽» уместно, только если кампании и правда
+                            // потратили меньше. Для вида из фильтра честнее сказать, что
+                            // кампании этого вида в расчёт не попали.
                             pick && !chosen
                               ? ctrModel === "any"
                                 ? pick.dropped > 0
-                                  ? `Рабочей кампании нет: все кампании дня (${pick.dropped}) вне расчёта — CTR ЕРК по правилу не считается, остальные без разметки или потратили меньше ${CTR_MIN_CAMPAIGN_SPEND} ₽. Разбор по кампаниям — по нажатию`
+                                  ? `Рабочей кампании нет: все кампании дня (${pick.dropped}) вне расчёта — потратили меньше ${CTR_MIN_CAMPAIGN_SPEND} ₽ или WB не сообщает их вид. Разбор по кампаниям — по нажатию`
                                   : "Кампаний с показами в этот день нет"
-                                : `Рабочей кампании нет: ${CTR_MODEL_LABEL[ctrModel as "cpc" | "cpm"]} не потратила ${CTR_MIN_CAMPAIGN_SPEND} ₽ за день`
+                                : `Рабочей кампании нет: ${CTR_MODEL_LABEL[ctrModel]} не потратила ${CTR_MIN_CAMPAIGN_SPEND} ₽ за день или в этот день её не было`
                               : null,
-                            chosen && pick && pick.dropped > 0 ? `Отброшено кампаний: ${pick.dropped} (ЕРК, неразмеченные и нерабочие)` : null,
+                            chosen && pick && pick.dropped > 0 ? `Отброшено кампаний: ${pick.dropped} (вид не определён, расход меньше ${CTR_MIN_CAMPAIGN_SPEND} ₽ или уступили кампании того же вида)` : null,
+                            noBreakdownUnderFilter && cell?.views ? `По этому дню нет разбора по кампаниям — вид размещения неизвестен, CTR под фильтром «${CTR_MODEL_LABEL[ctrModel as "cpc" | "cpm" | "erk"]}» не показан` : null,
                             chosen && тонкийЗамер ? `Меньше ${CTR_MIN_VIEWS} показов — доля клика ничего не значит` : null,
                             "Нажмите: разбор по кампаниям, заметка и цвет",
                           ].filter(Boolean).join(" · ")}

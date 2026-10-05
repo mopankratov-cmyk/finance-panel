@@ -5,10 +5,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CtrCampaignRow } from "@/app/api/wb/ctr-breakdown/route";
 import { Hint } from "@/components/ui/Hint";
+import { CTR_MODEL_LABEL, type CtrModelFilter } from "@/lib/wb/ctrCampaignPick";
 import { CTR_NOTE_COLORS, ctrNoteColor, type CtrNoteColor } from "@/lib/wb/ctrNoteColors";
 
 interface Breakdown {
-  meta: { minViews: number; minSpend?: number };
+  meta: { minViews: number; minSpend?: number; model?: CtrModelFilter };
   data: {
     campaigns: CtrCampaignRow[];
     total: { views: number; clicks: number; ctr: number | null };
@@ -25,17 +26,17 @@ interface Breakdown {
  * месте, приглушённая, с причиной рядом.
  */
 const EXCLUDED_LABEL: Record<NonNullable<CtrCampaignRow["excluded"]>, string> = {
-  erk: "ЕРК",
+  filtered: "другой вид",
   unknown: "вид не определён",
   idle: "не работала",
   smaller: "меньше расход",
 };
 
 const EXCLUDED_HINT: Record<NonNullable<CtrCampaignRow["excluded"]>, string> = {
-  erk: "Единая ставка смешивает поиск, полки и рекомендации в одну кампанию — её доля клика несравнима с обычными. В расчёт CTR не идёт.",
+  filtered: "Кампания другого вида, чем выбран в фильтре «Вид размещения»: столбец приведён к одной шкале, и в расчёт идёт только выбранный вид.",
   unknown: "WB о виде этой кампании ничего не сообщает: обычно это завершённые или удалённые кампании, оставившие статистику. Принять её за CPM было бы догадкой.",
   idle: "За день кампания потратила меньше порога — она крутилась остатками бюджета, и её доля клика описывает обрывок показа, а не обложку.",
-  smaller: "В этот день параллельно работала кампания того же вида с большим расходом — рабочей считаем её.",
+  smaller: "В этот день параллельно работала кампания с большим расходом — рабочей считаем её.",
 };
 
 const fmt = (value: number) => value.toLocaleString("ru-RU");
@@ -54,7 +55,7 @@ const pct = (value: number | null) => (value == null ? "—" : `${value.toFixed(
  * означает каждый цвет, решает сам продавец — панель значения не навязывает.
  */
 export function WbCtrDayPopup({
-  cabinetId, nmId, date, article, cellViews, cellClicks, onClose, onNoteSaved,
+  cabinetId, nmId, date, article, cellViews, cellClicks, model, onClose, onNoteSaved,
 }: {
   cabinetId: string;
   nmId: number;
@@ -64,6 +65,8 @@ export function WbCtrDayPopup({
    *  «разбивку не сохраняли». Без этого пустой разбор врал бы про день. */
   cellViews: number;
   cellClicks: number;
+  /** Вид размещения из фильтра экрана: окно выбирает ту же кампанию, что и клетка. */
+  model: CtrModelFilter;
   onClose: () => void;
   /** Сообщаем таблице, чтобы она обновила пометку без перезагрузки. */
   onNoteSaved: (nmId: number, date: string, note: string, color: CtrNoteColor | null) => void;
@@ -88,7 +91,7 @@ export function WbCtrDayPopup({
     setLoading(true);
     setError(null);
     Promise.all([
-      fetch(`/api/wb/ctr-breakdown?cabinet=${encodeURIComponent(cabinetId)}&nm=${nmId}&date=${date}`, { cache: "no-store", signal: controller.signal })
+      fetch(`/api/wb/ctr-breakdown?cabinet=${encodeURIComponent(cabinetId)}&nm=${nmId}&date=${date}&model=${model}`, { cache: "no-store", signal: controller.signal })
         .then((response) => response.ok ? response.json() as Promise<Breakdown> : Promise.reject(new Error("Не удалось получить разбивку"))),
       fetch(`/api/wb/ctr-notes?cabinet=${encodeURIComponent(cabinetId)}&from=${date}&till=${date}`, { cache: "no-store", signal: controller.signal })
         .then((response) => response.ok ? response.json() : { notes: [] }),
@@ -107,7 +110,7 @@ export function WbCtrDayPopup({
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [cabinetId, nmId, date]);
+  }, [cabinetId, nmId, date, model]);
 
   // Escape закрывает, фокус уходит в окно: клавиатурой пользоваться можно.
   useEffect(() => {
@@ -212,7 +215,7 @@ export function WbCtrDayPopup({
                           CTR
                           <Hint label="Что такое CTR и почему бывает прочерк">
                             CTR — клики, делённые на показы. Прочерк вместо числа стоит там, где показов меньше {data?.meta.minViews ?? 0}: на таком объёме доля клика ничего не значит.
-                            {" "}В таблице воронки стоит CTR одной кампании — той, что помечена «в расчёте»: ЕРК и обычные кампании идут по разным шкалам, и складывать их в одну долю значит отвечать не на тот вопрос.
+                            {" "}В таблице воронки стоит CTR одной кампании — той, что помечена «в расчёте»: ЕРК, CPM и CPC идут по разным шкалам, и складывать их в одну долю значит отвечать не на тот вопрос.
                           </Hint>
                         </span>
                       </th>
@@ -260,7 +263,7 @@ export function WbCtrDayPopup({
                       {/* Сумма всех кампаний — та самая смесь шкал, ради ухода
                           от которой всё и затевалось. Она остаётся видна, но
                           названа тем, чем является, и не выдаётся за CTR дня. */}
-                      <td className="py-2 text-right tabular-nums text-slate-400" title="Доля клика по всем кампаниям сразу, включая ЕРК. Шкалы разные, поэтому в таблицу идёт не эта цифра.">{pct(data.data.total.ctr)}</td>
+                      <td className="py-2 text-right tabular-nums text-slate-400" title="Доля клика по всем кампаниям сразу. Шкалы ЕРК, CPM и CPC разные, поэтому в таблицу идёт не эта цифра, а CTR одной кампании.">{pct(data.data.total.ctr)}</td>
                       <td />
                     </tr>
                     <tr className="font-semibold">
@@ -269,7 +272,9 @@ export function WbCtrDayPopup({
                         <div className="text-[10px] font-normal text-slate-400">
                           {data.data.chosen
                             ? "по кампании «в расчёте»"
-                            : `рабочей кампании нет: ни одна не потратила ${data.meta.minSpend ?? 0} ₽`}
+                            : data.meta.model && data.meta.model !== "any"
+                              ? `рабочей кампании вида ${CTR_MODEL_LABEL[data.meta.model]} нет: не потратила ${data.meta.minSpend ?? 0} ₽ или в этот день её не было`
+                              : `рабочей кампании нет: кампании потратили меньше ${data.meta.minSpend ?? 0} ₽ или WB не сообщает их вид`}
                         </div>
                       </td>
                       <td colSpan={2} />
