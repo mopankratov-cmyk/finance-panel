@@ -5,6 +5,7 @@ import { Check, EyeOff, ExternalLink, ImageOff, LoaderCircle, Search } from "luc
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { formFilterLabel, loadedOnServer, type CatalogBrandStat, type CatalogCard, type CatalogFilters } from "@/lib/assortment/catalog";
+import { showRejectedNote } from "@/lib/assortment/catalogNav";
 import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
 import { isReferenceStatus, STATUS_LABEL } from "@/lib/assortment/decisions";
 import { plural } from "@/lib/warehouse/plural";
@@ -12,7 +13,7 @@ import { plural } from "@/lib/warehouse/plural";
 type State =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; cards: CatalogCard[]; total: number; brands: CatalogBrandStat[] | null; photo: "with" | "all"; photosPending: boolean; loadingMore: boolean; form: string | null };
+  | { kind: "ready"; cards: CatalogCard[]; total: number; brands: CatalogBrandStat[] | null; photo: "with" | "all"; photosPending: boolean; loadingMore: boolean; form: string | null; narrowed: boolean };
 
 const PAGE = 48;
 const day = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" });
@@ -46,7 +47,7 @@ function query(direction: AssortmentDirection, filters: CatalogFilters, offset: 
  * новинки. Фото грузятся с сайта бренда в браузере; не открылось — панель
  * приносит его один раз сама.
  */
-export function CatalogView({ direction, initialFilters, onFiltersChange }: { direction: AssortmentDirection; initialFilters: CatalogFilters; onFiltersChange?: (filters: CatalogFilters) => void }) {
+export function CatalogView({ direction, initialFilters, onFiltersChange, rejectedForm = null, onDismissRejected }: { direction: AssortmentDirection; initialFilters: CatalogFilters; onFiltersChange?: (filters: CatalogFilters) => void; rejectedForm?: string | null; onDismissRejected?: () => void }) {
   const [filters, setFilters] = useState<CatalogFilters>(initialFilters);
   const [search, setSearch] = useState(initialFilters.q);
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -152,6 +153,9 @@ export function CatalogView({ direction, initialFilters, onFiltersChange }: { di
           loadingMore: false,
           // Форма, которую сервер действительно применил: чужой или устаревший ключ он не применяет, и плашка не должна врать.
           form: typeof body.form === "string" ? body.form : null,
+          // Сужают ли выдачу фильтры, с которыми получен ЭТОТ ответ: плашка берёт число и оговорку из одного поколения запроса, а не
+          // число из прошлого ответа с оговоркой по уже изменённым фильтрам.
+          narrowed: Boolean(filters.source || filters.q.trim().length >= 2 || filters.fresh || filters.badge || body.photo === "with"),
         });
       })
       .catch(() => {
@@ -254,9 +258,12 @@ export function CatalogView({ direction, initialFilters, onFiltersChange }: { di
         )}
       </div>
 
+      {/* Ключ формы из адреса раздел не знает: страница его отбросила — говорим об этом, а не молча показываем весь каталог. */}
+      {showRejectedNote(rejectedForm, filters.form, Boolean(ready)) && <FormFilterMissing form={rejectedForm || undefined} onReset={() => onDismissRejected?.()} resetLabel="Понятно" />}
       {filters.form && (ready && ready.form !== filters.form
+        // Сервер форму не применил, хотя страница её приняла (рассинхрон версий): плашка не должна говорить «фильтр включён».
         ? <FormFilterMissing onReset={() => setFilters((f) => ({ ...f, form: null }))} />
-        : <FormFilterNote form={filters.form} direction={direction} total={ready ? ready.total : null} narrowed={Boolean(filters.source || filters.q.trim().length >= 2 || filters.fresh || filters.badge || photoOnly)} onReset={() => setFilters((f) => ({ ...f, form: null }))} />)}
+        : <FormFilterNote form={filters.form} direction={direction} total={ready ? ready.total : null} narrowed={ready ? ready.narrowed : false} onReset={() => setFilters((f) => ({ ...f, form: null }))} />)}
 
       {state.kind === "loading" && <div className="text-sm text-slate-500">Загружаем каталоги…</div>}
       {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
@@ -377,12 +384,12 @@ export function CatalogView({ direction, initialFilters, onFiltersChange }: { di
   );
 }
 
-/** Ключ формы в адресе сервер не принял (чужой раздел, устаревшая ссылка): показан весь каталог — говорим об этом, а не «фильтр включён». */
-export function FormFilterMissing({ onReset }: { onReset: () => void }) {
+/** Ключ формы в адресе раздел не принял (чужой раздел, устаревшая ссылка): фильтр по форме не применён — говорим об этом, а не «фильтр включён». Остальные фильтры из адреса действуют. */
+export function FormFilterMissing({ form, onReset, resetLabel = "Убрать форму" }: { form?: string; onReset: () => void; resetLabel?: string }) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-      <span>Такой формы в этом разделе нет (ссылка устарела или из другого раздела) — показан весь каталог.</span>
-      <button type="button" onClick={onReset} className="inline-flex h-10 items-center rounded-lg border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900 hover:bg-amber-100">Убрать форму</button>
+    <div role="status" className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <span>{form ? <>Формы «<b className="break-anywhere">{form}</b>» в этом разделе нет</> : "Такой формы в этом разделе нет"} (ссылка устарела или из другого раздела) — фильтр по форме не применён.</span>
+      <button type="button" onClick={onReset} className="inline-flex h-10 items-center rounded-lg border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900 hover:bg-amber-100">{resetLabel}</button>
     </div>
   );
 }

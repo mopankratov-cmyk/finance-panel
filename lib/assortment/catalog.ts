@@ -265,6 +265,18 @@ export function catalogFiltersFrom(params: PageParams, direction?: AssortmentDir
   };
 }
 
+/**
+ * Ключ формы из адреса, которого раздел не знает (чужой — «bomber» на сумках, устаревший): `catalogFiltersFrom` его отбрасывает, и
+ * экран должен сказать об этом, а не молча показать весь каталог. null — формы в адресе нет или она принята.
+ */
+export function rejectedFormFrom(params: PageParams, direction: AssortmentDirection): string | null {
+  const raw = one(params, "form");
+  if (!raw || parseFormKey(raw, direction)) return null;
+  // Ключ из адреса попадает на экран в доверенной плашке: показываем только то, что похоже на ключ правила (латиница, цифры, _ и -);
+  // всё остальное — управляющие и bidi-символы, пробелы, готовые фразы — не показываем вовсе ("" — отброшено, но ключа не называем).
+  return /^[a-z0-9_-]{1,40}$/i.test(raw) ? raw : "";
+}
+
 /** Вид раздела: лента находок, «Каталоги брендов» или «Формы» (разбор каталога по формам). */
 export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms";
 

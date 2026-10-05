@@ -14,7 +14,8 @@ import { summarizeCoverage } from "@/lib/assortment/coverage";
 import { plural } from "@/lib/warehouse/plural";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
 import { AddFindingModal } from "./AddFindingModal";
-import { DEFAULT_CATALOG_FILTERS, filtersForForm, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
+import { DEFAULT_CATALOG_FILTERS, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
+import { initialNav, navDismissRejected, navOpenWholeCatalog, navSetFilters, navSetView, navShowModels, urlForView, type CatalogNav } from "@/lib/assortment/catalogNav";
 import { CatalogView } from "./CatalogView";
 import { FormsView } from "./FormsView";
 import { FeedGrid } from "./FeedGrid";
@@ -46,35 +47,32 @@ export function AssortmentSection({
   direction,
   initialView = "new",
   initialCatalogFilters = DEFAULT_CATALOG_FILTERS,
+  rejectedForm = null,
 }: {
   direction: AssortmentDirection;
   /** Вид и фильтры каталога из адреса — их читает серверная страница: без лишнего запроса и мигания. */
   initialView?: SectionView;
   initialCatalogFilters?: CatalogFilters;
+  /** Ключ формы из адреса, которого раздел не знает: фильтр по форме не применён, и об этом говорит плашка (пока её не закрыли или не выбрали форму). */
+  rejectedForm?: string | null;
 }) {
   const sources = useAssortmentSources(direction);
-  const [view, setViewState] = useState<SectionView>(initialView);
+  // Вкладка и фильтры каталога живут здесь: возвращаясь на вкладку, человек попадает на то же место (а не к начальным из адреса, из-за
+  // чего сброшенная форма «залипала» и возвращалась); переходы — чистые функции catalogNav.
+  const [nav, setNav] = useState<CatalogNav>(() => initialNav(initialView, initialCatalogFilters, rejectedForm));
+  const view = nav.view;
   const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
-  // Фильтры каталога живут здесь: возвращаясь на вкладку, человек попадает на то же место (а не к начальным из адреса, из-за
-  // чего сброшенная форма «залипала» и возвращалась), а «Показать модели» с «Форм» задаёт их заново и пересоздаёт каталог.
-  const [catalogFilters, setCatalogFilters] = useState<CatalogFilters>(initialCatalogFilters);
-  const [catalogKey, setCatalogKey] = useState(0);
+  const onCatalogFilters = useCallback((filters: CatalogFilters) => setNav((cur) => navSetFilters(cur, filters)), []);
+  const onDismissRejected = useCallback(() => setNav((cur) => navDismissRejected(cur)), []);
 
   // Вид — в адресе (?view=catalog): после карточки модели возвращаемся туда же.
-  const setView = (next: SectionView) => {
-    setViewState(next);
-    const url = new URL(window.location.href);
-    if (next === "new") url.searchParams.delete("view");
-    else url.searchParams.set("view", next);
-    if (next !== "catalog") for (const key of ["source", "q", "fresh", "badge", "form", "photo"]) url.searchParams.delete(key);
-    window.history.replaceState(null, "", url);
+  const goTo = (next: CatalogNav) => {
+    setNav(next);
+    window.history.replaceState(null, "", urlForView(window.location.href, next.view));
   };
-
-  const showModels = (form: string) => {
-    setCatalogFilters(filtersForForm(form));
-    setCatalogKey((k) => k + 1);
-    setView("catalog");
-  };
+  const setView = (next: SectionView) => goTo(navSetView(nav, next));
+  const showModels = (form: string) => goTo(navShowModels(nav, form));
+  const openWholeCatalog = () => goTo(navOpenWholeCatalog(nav));
 
   // Сколько моделей в каталогах брендов раздела — для вкладки (нет моделей — нет вкладки).
   useEffect(() => {
@@ -213,7 +211,7 @@ export function AssortmentSection({
           ))}
         </div>
 
-        {view === "catalog" && <CatalogView key={catalogKey} direction={direction} initialFilters={catalogFilters} onFiltersChange={setCatalogFilters} />}
+        {view === "catalog" && <CatalogView key={nav.key} direction={direction} initialFilters={nav.filters} onFiltersChange={onCatalogFilters} rejectedForm={nav.rejected} onDismissRejected={onDismissRejected} />}
         {view === "forms" && <FormsView direction={direction} onShowModels={showModels} />}
         {view !== "catalog" && view !== "forms" && feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
         {view !== "catalog" && view !== "forms" && feed.kind === "error" && (
@@ -225,7 +223,7 @@ export function AssortmentSection({
         {view === "new" && catalogTotal ? (
           <p className="text-sm leading-6 text-slate-600">
             Здесь только то, что появилось у брендов после первого обхода.{" "}
-            <button type="button" onClick={() => setView("catalog")} className="font-medium text-violet-700 hover:text-violet-900">
+            <button type="button" onClick={openWholeCatalog} className="font-medium text-violet-700 hover:text-violet-900">
               Весь ассортимент брендов — {catalogTotal.toLocaleString("ru-RU")} {plural(catalogTotal, "модель", "модели", "моделей")}
             </button>
           </p>

@@ -115,7 +115,7 @@ test("Экран каталога: начальный вид — с сервер
   assert.match(page, /await searchParams/);
   assert.match(page, /initialView=\{view\}/);
   const section = readFileSync(join(root, "components/assortment/AssortmentSection.tsx"), "utf8");
-  assert.match(section, /useState<SectionView>\(initialView\)/);
+  assert.match(section, /initialNav\(initialView, initialCatalogFilters, rejectedForm\)/, "начальный вид — из адреса, через состояние переходов раздела");
   assert.match(section, /\.\.\.VIEWS,\s*\.\.\.\(catalogTotal \|\| view === "catalog"/, "вкладка каталога — в конце, не сдвигает остальные");
   assert.match(section, /count=1/, "для вкладки — только число, без строк");
   const view = readFileSync(join(root, "components/assortment/CatalogView.tsx"), "utf8");
