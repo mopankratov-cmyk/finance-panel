@@ -15,7 +15,9 @@ on:
 
 concurrency:
   group: deploy-prod
-  cancel-in-progress: true
+  # Каждый влитый PR должен быть выложен. Отмена предыдущего запуска оставляла
+  # прод на старой версии, если в main попадало несколько PR подряд.
+  cancel-in-progress: false
 
 jobs:
   deploy:
