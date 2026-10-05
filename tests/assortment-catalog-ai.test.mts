@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  allowance, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, pickProvider, polzaKey,
+  allowance, AVERAGE_MIN_COVERAGE, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, pickProvider, polzaKey,
   packAttributes, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, resultKey, type CatalogHead, type ExistingResult, type TraitModel,
 } from "../lib/assortment/catalogAi.ts";
 import { aiKeyConfigured, askFor, isTransientVisionError, loadPhotoSamples, makePolzaVision, runCatalogAi, VisionStopError, type AskVision, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
@@ -623,6 +623,30 @@ test("Значения признаков: основа слова, отрица
   assert.ok(fieldVocabulary("proportions").includes("вытянутая по вертикали"));
   assert.equal(c("proportions", "вытянутая по вертикали"), "вытянутая по вертикали");
   assert.equal(c("length", "до"), "другое", "короткое слово термина — только целиком");
+});
+
+test("Пока разобрано мало: источники с ≥10 моделями дают меньше 80% разобранного — доли по всем моделям (raw), а не среднее по двум-трём источникам", () => {
+  // S1: 12 моделей «полумесяц»; ещё 8 источников по 4 модели «малая» — в среднюю они не попадают (меньше 10)
+  const models: TraitModel[] = [
+    ...Array.from({ length: 12 }, () => tm("S1", { silhouette: v("полумесяц") })),
+    ...["A", "B", "C", "D", "E", "F", "G", "H"].flatMap((id) => Array.from({ length: 4 }, () => tm(id, { silhouette: v("тоут") }))),
+  ];
+  const report = buildPhotoTraits("bags", models, 1000);
+  assert.equal(report.analyzed, 44);
+  assert.equal(report.basis, "raw");
+  assert.equal(report.averageCoverage, 0.273, "12 из 44 моделей — в источнике с ≥10");
+  assert.equal(report.sourcesInAverage, 0);
+  const field = report.fields.find((f) => f.key === "silhouette")!;
+  const tote = field.values.find((x) => x.value === "тоут")!;
+  assert.equal(tote.avgSourceShare, null, "среднего нет — интерфейс покажет сырую долю");
+  assert.equal(tote.share, 72.7, "32 из 44: то, что видно по числу моделей, а не «0%»");
+  assert.equal(field.values[0].value, "тоут", "порядок — по сырой доле, согласован с числами рядом");
+  // как только источники с ≥10 моделями дают 80% — среднее включается
+  const enough = buildPhotoTraits("bags", [...Array.from({ length: 12 }, () => tm("S1", { silhouette: v("полумесяц") })), ...Array.from({ length: 10 }, () => tm("S2", { silhouette: v("тоут") })), ...Array.from({ length: 4 }, () => tm("A", { silhouette: v("тоут") }))], 1000);
+  assert.equal(enough.basis, "averaged");
+  assert.equal(enough.sourcesInAverage, 2);
+  assert.equal(enough.averageCoverage, 0.846);
+  assert.equal(AVERAGE_MIN_COVERAGE, 0.8);
 });
 
 test("Отчёт: «другое» не теряется при длинном списке значений; порядок — по показанной доле", () => {

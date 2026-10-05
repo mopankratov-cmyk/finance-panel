@@ -385,11 +385,21 @@ export interface PhotoTraitsReport {
   catalog: number;
   coverage: number;
   sourcesInAverage: number;
+  /**
+   * averaged — доли «средняя по источникам»; raw — по всем разобранным моделям. Средняя включается, когда источники с
+   * достаточным числом разобранных моделей дают хотя бы 80% разобранного: пока разбор идёт, в среднюю попадают два-три
+   * источника, а остальные (по 3–5 моделей) молча выпадают, и «5% · 14 моделей» рядом с «45% · 12» сбивает с толку.
+   */
+  basis: "averaged" | "raw";
+  /** Доля разобранных моделей, что приходится на источники в средней (0..1). */
+  averageCoverage: number;
   fields: TraitField[];
 }
 
 const pct = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 1000) / 10 : 0);
 const MAX_VALUES = 8;
+/** Средняя по источникам включается, когда источники с ≥10 разобранными моделями дают не меньше этой доли разобранного. */
+export const AVERAGE_MIN_COVERAGE = 0.8;
 
 /**
  * Доли значений признаков по разобранным моделям. Модель с «не видно» по признаку
@@ -399,7 +409,10 @@ const MAX_VALUES = 8;
 export function buildPhotoTraits(direction: AssortmentDirection, models: TraitModel[], catalog: number): PhotoTraitsReport {
   const perSourceTotal = new Map<string, number>();
   for (const m of models) perSourceTotal.set(m.sourceId, (perSourceTotal.get(m.sourceId) ?? 0) + 1);
-  const averaged = [...perSourceTotal.entries()].filter(([, n]) => n >= MIN_SOURCE_MODELS).map(([id]) => id);
+  const eligibleSources = [...perSourceTotal.entries()].filter(([, n]) => n >= MIN_SOURCE_MODELS);
+  const averageCoverage = models.length > 0 ? eligibleSources.reduce((sum, [, n]) => sum + n, 0) / models.length : 0;
+  const basis: PhotoTraitsReport["basis"] = averageCoverage >= AVERAGE_MIN_COVERAGE ? "averaged" : "raw";
+  const averaged = basis === "averaged" ? eligibleSources.map(([id]) => id) : [];
 
   const fields: TraitField[] = [];
   for (const field of ATTRIBUTE_FIELDS[direction]) {
@@ -445,6 +458,8 @@ export function buildPhotoTraits(direction: AssortmentDirection, models: TraitMo
     catalog,
     coverage: pct(models.length, catalog),
     sourcesInAverage: averaged.length,
+    basis,
+    averageCoverage: Math.round(averageCoverage * 1000) / 1000,
     fields,
   };
 }
