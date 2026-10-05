@@ -29,6 +29,30 @@ export const LOAN_CATEGORIES = {
   fine: "Штрафы по кредитам и займам",
 } as const;
 
+/**
+ * Старые строки календаря и банковского импорта использовали более общие
+ * названия, чем график кредита. В обоих случаях это погашение обязательства,
+ * то есть выбытие денег, а не поступление.
+ */
+export const LOAN_REPAYMENT_CATEGORIES = [
+  "Оплаты по кредитам и займам",
+  "Оплата % по кредиту",
+  LOAN_CATEGORIES.principal,
+  LOAN_CATEGORIES.interest,
+  LOAN_CATEGORIES.penalty,
+  LOAN_CATEGORIES.fine,
+] as const;
+
+export function isLoanRepaymentCategory(category: string | null | undefined): boolean {
+  const normalized = (category ?? "").trim();
+  return LOAN_REPAYMENT_CATEGORIES.includes(normalized as typeof LOAN_REPAYMENT_CATEGORIES[number]);
+}
+
+/** Погашение кредита в ДДС всегда расход, независимо от источника ввода. */
+export function amountWithCategoryDirection(category: string | null | undefined, amount: number): number {
+  return isLoanRepaymentCategory(category) ? -Math.abs(amount) : amount;
+}
+
 /** Переводы между своими кошельками — их ставит банковская сверка. */
 export const TRANSFER_CATEGORIES = {
   incoming: "Поступление — Перевод между счетами",

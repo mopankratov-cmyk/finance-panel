@@ -5,6 +5,7 @@ import { DEFAULT_STATE } from "@/lib/constants";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Account, FinanceAction, FinanceState, Loan, Payment } from "@/lib/types";
 import { applyBankLedgerReadModel, type BankAllocationReadRow } from "@/lib/finance/bankLedgerReadModel";
+import { amountWithCategoryDirection } from "@/lib/finance/categories";
 
 type Db = NonNullable<ReturnType<typeof getSupabaseAdmin>>;
 type AccountRow = { id: string; name: string; type: string; currency: string; balance: number; opening_balance?: number | null; opening_date?: string | null; created_at?: string };
@@ -30,8 +31,8 @@ const accountToRow = (account: Account) => ({
 const paymentToRow = (payment: Payment) => ({
   id: payment.id,
   name: payment.name,
-  amount: payment.amount,
-  type: payment.amount >= 0 ? "income" : "expense",
+  amount: amountWithCategoryDirection(payment.category, payment.amount),
+  type: amountWithCategoryDirection(payment.category, payment.amount) >= 0 ? "income" : "expense",
   category: payment.category,
   account_id: payment.accountId,
   company_id: payment.companyId ?? null,

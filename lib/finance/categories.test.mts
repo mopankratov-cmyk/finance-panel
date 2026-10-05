@@ -5,7 +5,9 @@ import {
   categoryOptions,
   DDS_CATEGORIES,
   INTERCOMPANY_LOAN_CATEGORIES,
+  amountWithCategoryDirection,
   isKnownCategory,
+  isLoanRepaymentCategory,
   LOAN_CATEGORIES,
   sectionForCategory,
   TRANSFER_CATEGORIES,
@@ -14,6 +16,21 @@ import {
 test("справочник без дублей и пустых названий", () => {
   assert.equal(new Set(DDS_CATEGORIES).size, DDS_CATEGORIES.length);
   assert.ok(DDS_CATEGORIES.every((category) => category.trim() === category && category.length > 0));
+});
+
+test("погашение кредита и проценты всегда остаются расходами", () => {
+  for (const category of [
+    "Оплаты по кредитам и займам",
+    "Оплата % по кредиту",
+    LOAN_CATEGORIES.principal,
+    LOAN_CATEGORIES.interest,
+    LOAN_CATEGORIES.penalty,
+    LOAN_CATEGORIES.fine,
+  ]) {
+    assert.equal(isLoanRepaymentCategory(category), true, category);
+    assert.equal(amountWithCategoryDirection(category, 12_345), -12_345, category);
+  }
+  assert.equal(amountWithCategoryDirection("Продажи на МП", 12_345), 12_345);
 });
 
 test("всё, что пишут кредиты и банковская сверка, есть в справочнике", () => {
