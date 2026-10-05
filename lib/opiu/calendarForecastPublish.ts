@@ -21,6 +21,12 @@ export interface ForecastPublishScope {
   month: number;
 }
 
+export interface ConfirmedMarketplacePayout {
+  key: string;
+  date: string;
+  amount: number;
+}
+
 const hash = (value: string) => {
   let result = 2166136261;
   for (let index = 0; index < value.length; index++) {
@@ -68,4 +74,65 @@ export function mergeForecastPublication(existing: Payment[], desired: Payment[]
     .filter((payment) => payment.comment?.includes(marker) && payment.status === "planned" && !desiredIds.has(payment.id))
     .map((payment) => ({ ...payment, status: "cancelled" as const }));
   return [...desired, ...stale];
+}
+
+const sourceMarker = (payment: Payment, source: ForecastRowSource) =>
+  payment.comment?.includes(`[forecast-source:${source}]`) ?? false;
+
+/**
+ * Заменяет расчётную часть уже утверждённого календаря точными суммами
+ * финансовых отчётов. Строки, которые уже закрыты фактом ДДС, не воскресают.
+ * Неотчётный остаток сохраняется только пока в календаре есть расчётные строки.
+ */
+export function rowsAfterConfirmedReports(
+  scope: ForecastPublishScope,
+  existing: Payment[],
+  reports: ConfirmedMarketplacePayout[],
+): ForecastPublishRow[] {
+  const planned = existing.filter((payment) => payment.status === "planned");
+  const preliminary = planned.filter((payment) => sourceMarker(payment, "forecast"));
+  const reportRows: ForecastPublishRow[] = reports.map((report) => ({
+    key: report.key,
+    reportId: report.key,
+    date: report.date,
+    amount: Math.round(report.amount * 100) / 100,
+    source: "financial_report",
+  }));
+  const reportPayments = buildForecastPayments(scope, reportRows);
+  const completedIds = new Set(
+    existing.filter((payment) => payment.status === "done").map((payment) => payment.id),
+  );
+  const outstandingReports = reportRows.filter((_, index) => !completedIds.has(reportPayments[index].id));
+
+  if (preliminary.length === 0) return outstandingReports;
+
+  const currentPlannedCents = planned.reduce(
+    (sum, payment) => sum + Math.max(0, Math.round(payment.amount * 100)),
+    0,
+  );
+  const reportCents = outstandingReports.reduce(
+    (sum, report) => sum + Math.max(0, Math.round(report.amount * 100)),
+    0,
+  );
+  const remainderCents = Math.max(0, currentPlannedCents - reportCents);
+  const weights = preliminary.map((payment) => Math.max(0, Math.round(payment.amount * 100)));
+  const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+  if (remainderCents === 0 || totalWeight === 0) return outstandingReports;
+
+  let allocated = 0;
+  const forecastRows = preliminary.map((payment, index) => {
+    const cents = index === preliminary.length - 1
+      ? remainderCents - allocated
+      : Math.floor(remainderCents * weights[index] / totalWeight);
+    allocated += cents;
+    const key = payment.comment?.match(/\[forecast-row:([^\]]+)\]/)?.[1] ?? payment.id;
+    return {
+      key,
+      date: payment.date,
+      amount: cents / 100,
+      source: "forecast" as const,
+    };
+  }).filter((row) => row.amount > 0);
+
+  return [...outstandingReports, ...forecastRows];
 }

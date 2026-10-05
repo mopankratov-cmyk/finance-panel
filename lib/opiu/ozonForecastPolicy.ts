@@ -1,5 +1,6 @@
 import type { PayoutReport } from "./payoutReconciliation";
 import { ozonSellerFetch } from "@/lib/ozon/sellerGate";
+import { marketplacePayoutDate } from "@/lib/opiu/marketplacePayoutDate";
 
 export interface ScheduleRow {
   id: string;
@@ -558,11 +559,8 @@ export async function loadOzonCashFlowReports({
         rejectedRows += 1;
         continue;
       }
-      const periodEnd = parsedTo.date;
-      const estimatedReceiptDate = rules.mode === "weekly"
-        ? nextWeekday(addDays(periodEnd, 1), rules.weeklyDay)
-        : addDays(periodEnd, rules.standardDelayDays);
-      if (!Number.isFinite(estimatedReceiptDate.getTime())) {
+      const estimatedReceiptDate = marketplacePayoutDate(parsedTo.iso);
+      if (!estimatedReceiptDate) {
         rejectedRows += 1;
         continue;
       }
@@ -573,7 +571,7 @@ export async function loadOzonCashFlowReports({
         periodFrom: parsedFrom.iso,
         periodTo: parsedTo.iso,
         amount,
-        estimatedReceiptDate: iso(estimatedReceiptDate),
+        estimatedReceiptDate,
         state: "report_confirmed",
       });
     }

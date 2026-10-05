@@ -13,6 +13,7 @@ import { classifyForecastArticleGaps, type ForecastGap } from "@/lib/opiu/foreca
 import { deriveArticleBreakdown, sumBreakdowns } from "@/lib/opiu/unitEconomics";
 import { getWbCommissionForCabinet, resolveWbRatesForNm } from "@/lib/wb/commissions";
 import { resolveWbPayoutRate } from "@/lib/opiu/wbUnitPayout";
+import { marketplacePayoutDate } from "@/lib/opiu/marketplacePayoutDate";
 
 const num = (value: unknown) => {
   const parsed = Number(value);
@@ -127,11 +128,11 @@ export function deriveWbConfirmedPayoutSchedule(
     if (!reportId || !reportDate) continue;
     const current = groups.get(reportId) ?? {
       id: reportId,
-      date: addBusinessDays(reportDate, 7),
+      date: marketplacePayoutDate(reportDate),
       amount: 0,
       source: "financial_report" as const,
     };
-    const candidateDate = addBusinessDays(reportDate, 7);
+    const candidateDate = marketplacePayoutDate(reportDate);
     if (candidateDate > current.date) current.date = candidateDate;
     current.amount += rowPayout(row);
     groups.set(reportId, current);

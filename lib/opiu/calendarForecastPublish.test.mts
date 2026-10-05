@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildForecastPayments, forecastScopeKey, mergeForecastPublication } from "./calendarForecastPublish.ts";
+import { buildForecastPayments, forecastScopeKey, mergeForecastPublication, rowsAfterConfirmedReports } from "./calendarForecastPublish.ts";
 
 const scope = { marketplace: "ozon" as const, cabinetId: "cab-1", companyId: "company-1", accountId: "account-1", year: 2026, month: 8 };
 
@@ -40,4 +40,29 @@ test("исчезнувшая строка того же прогноза отм�
   const merged = mergeForecastPublication(existing, desired, forecastScopeKey(scope));
   assert.equal(merged.find((row) => row.id === existing[1].id)?.status, "cancelled");
   assert.equal(merged.find((row) => row.id === existing[0].id)?.amount, 150);
+});
+
+test("финансовый отчёт автоматически заменяет часть опубликованного прогноза", () => {
+  const existing = buildForecastPayments(scope, [
+    { key: "week-1", date: "2026-08-12", amount: 100, source: "forecast" },
+    { key: "week-2", date: "2026-08-19", amount: 200, source: "forecast" },
+  ]);
+  const rows = rowsAfterConfirmedReports(scope, existing, [
+    { key: "report-1", date: "2026-09-02", amount: 120 },
+  ]);
+  assert.deepEqual(rows, [
+    { key: "report-1", reportId: "report-1", date: "2026-09-02", amount: 120, source: "financial_report" },
+    { key: "week-1", date: "2026-08-12", amount: 60, source: "forecast" },
+    { key: "week-2", date: "2026-08-19", amount: 120, source: "forecast" },
+  ]);
+});
+
+test("закрытая фактом выплата не создаётся повторно", () => {
+  const [done] = buildForecastPayments(scope, [
+    { key: "report-1", reportId: "report-1", date: "2026-09-02", amount: 120, source: "financial_report" },
+  ]);
+  done.status = "done";
+  assert.deepEqual(rowsAfterConfirmedReports(scope, [done], [
+    { key: "report-1", date: "2026-09-02", amount: 120 },
+  ]), []);
 });
