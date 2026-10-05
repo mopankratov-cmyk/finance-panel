@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
-import { MIN_MODELS_FOR_TRAITS, MIN_VISIBLE_FOR_SHARES, PRELIMINARY_COVERAGE, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
+import { ACCURACY_MIN_JUDGED, accuracyLabel, hiddenReason, type FieldAccuracy, type Verdict } from "@/lib/assortment/attributeVerdicts";
+import { ATTRIBUTE_FIELDS } from "@/lib/assortment/attributes";
+import { MIN_MODELS_FOR_TRAITS, MIN_VISIBLE_FOR_SHARES, PRELIMINARY_COVERAGE, PROMPT_VERSION, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
 import type { PhotoSample } from "@/lib/assortment/catalogAiStore";
 import { plural } from "@/lib/warehouse/plural";
 
@@ -18,6 +20,20 @@ const pct = (n: number) => `${n.toLocaleString("ru-RU", { maximumFractionDigits:
 export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
   const [report, setReport] = useState<PhotoTraitsReport | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Точность, измеренная человеком: undefined — не загружена; null — таблицы отметок нет (строк про точность тогда не показываем).
+  const [accuracy, setAccuracy] = useState<Record<string, FieldAccuracy> | null | undefined>(undefined);
+
+  const loadAccuracy = useCallback(() => {
+    fetch(`/api/assortment-development/photo-traits?direction=${direction}&accuracy=1`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => setAccuracy(body && typeof body === "object" && "accuracy" in body ? (body.accuracy as Record<string, FieldAccuracy> | null) : null))
+      .catch(() => setAccuracy(null));
+  }, [direction]);
+
+  useEffect(() => {
+    setAccuracy(undefined);
+    loadAccuracy();
+  }, [loadAccuracy]);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,13 +61,13 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {ready ? <TraitsSection report={report} /> : (
+      {ready ? <TraitsSection report={report} accuracy={accuracy} /> : (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
           Признаки по фото: разобрано {num(report.analyzed)} из {num(report.catalog)} {plural(report.catalog, "модели", "моделей", "моделей")} с фото. Доли по признакам появятся, когда разобрано будет хотя бы {MIN_MODELS_FOR_TRAITS}; а как ИИ описывает фото, можно посмотреть уже сейчас — на примерах ниже.
           {(report.legacy ?? 0) > 0 && ` Ещё ${num(report.legacy)} ${plural(report.legacy, "модель разобрана", "модели разобраны", "моделей разобрано")} по прежнему вопросу: в долях они не участвуют и пересоберутся.`}
         </p>
       )}
-      <PhotoSamples direction={direction} />
+      <PhotoSamples direction={direction} accuracy={accuracy} onJudged={loadAccuracy} />
     </div>
   );
 }
@@ -61,7 +77,7 @@ export function PhotoTraitsError({ message }: { message: string }) {
   return <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Признаки по фото не загрузились: {message}.</p>;
 }
 
-export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
+export function TraitsSection({ report, accuracy }: { report: PhotoTraitsReport; accuracy?: Record<string, FieldAccuracy> | null }) {
   return (
     <section aria-label="Признаки по фото" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -85,6 +101,9 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
             other ? `другие формулировки — ${num(other.models)} ${plural(other.models, "модель", "модели", "моделей")}${examples ? ` (${examples})` : ""}` : null,
           ].filter(Boolean);
           const tooFew = field.visible < MIN_VISIBLE_FOR_SHARES;
+          // Точность этого признака, измеренная человеком: строка про неё есть, только когда отметки вообще заведены (accuracy не null).
+          const measured = accuracy ? accuracy[field.key] : undefined;
+          const unreliable = accuracy ? hiddenReason(measured) : null;
           const base = (v: (typeof shown)[number]) => v.avgSourceShare ?? v.share;
           return (
             <div key={field.key} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
@@ -92,7 +111,10 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
                 <span className="text-sm font-medium text-slate-900">{field.label}</span>
                 <span className="text-xs text-slate-500">видно у {num(field.visible)} · не видно {num(field.notVisible)}</span>
               </div>
-              {tooFew ? (
+              {accuracy && <p className={`mt-1 text-xs leading-5 ${unreliable ? "text-amber-800" : "text-slate-500"}`}>Точность разбора: {accuracyLabel(measured)}.</p>}
+              {unreliable ? (
+                <p className="mt-2 text-xs leading-5 text-amber-800">Доли не показываем: {unreliable}. Скажите — поправим вопрос или словарь и разберём заново.</p>
+              ) : tooFew ? (
                 <p className="mt-2 text-xs leading-5 text-slate-500">Мало данных: признак виден у {num(field.visible)} {plural(field.visible, "модели", "моделей", "моделей")}, доли покажем, когда будет {MIN_VISIBLE_FOR_SHARES} и больше.</p>
               ) : (
               <ul className="mt-2 flex flex-col gap-1.5">
@@ -109,7 +131,7 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
                 ))}
               </ul>
               )}
-              {!tooFew && unshown.length > 0 && <p className="mt-2 text-xs text-slate-500">Не показано: {unshown.join("; ")}.</p>}
+              {!tooFew && !unreliable && unshown.length > 0 && <p className="mt-2 text-xs text-slate-500">Не показано: {unshown.join("; ")}.</p>}
             </div>
           );
         })}
@@ -120,6 +142,7 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
           ? `Доля — средняя по источникам (учтено ${report.sourcesInAverage}, у каждого не меньше 10 разобранных моделей; вместе они дают ${Math.round(report.averageCoverage * 100)}% разобранного): большой каталог не решает за остальные.`
           : "Пока разобрано мало: источников с 10 и более разобранными моделями недостаточно, чтобы усреднять, поэтому доли — по всем разобранным моделям и зависят от того, какие источники успели разобраться; средняя по источникам включится, когда такие источники будут давать 80% разобранного."}
         {" "}Пока разобрана не вся витрина, картина может сместиться.
+        {accuracy && ` Точность каждого признака измеряется по отметкам «верно / неверно» в блоке проверки ниже: пока по признаку размечено меньше ${ACCURACY_MIN_JUDGED}, она не считается измеренной.`}
         {(report.legacy ?? 0) > 0 && ` Ещё ${num(report.legacy)} ${plural(report.legacy, "модель разобрана", "модели разобраны", "моделей разобрано")} по прежнему вопросу: в долях они не участвуют и пересоберутся.`}
         {" "}Цен нет.
       </p>
@@ -127,47 +150,133 @@ export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
   );
 }
 
-/** Примеры разбора: модель — фото, название и то, что про неё написал ИИ. Сверить с картинкой. */
-function PhotoSamples({ direction }: { direction: AssortmentDirection }) {
-  const [state, setState] = useState<{ kind: "closed" } | { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; samples: PhotoSample[]; analyzed: number }>({ kind: "closed" });
+type SamplesState =
+  | { kind: "closed" }
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "ready"; samples: PhotoSample[]; analyzed: number; judging: boolean; verdictsAvailable: boolean; judgedModels: number };
+
+/**
+ * Примеры разбора: модель — фото, название и то, что про неё написал ИИ. Сверить с картинкой. Второй режим — разметка:
+ * следующие модели без отметок и кнопки «верно / неверно / не понять» по каждому признаку; из отметок складывается точность
+ * (она видна в карточках признаков выше), и доли признака с низкой точностью прячутся.
+ */
+function PhotoSamples({ direction, accuracy, onJudged }: { direction: AssortmentDirection; accuracy?: Record<string, FieldAccuracy> | null; onJudged?: () => void }) {
+  const [state, setState] = useState<SamplesState>({ kind: "closed" });
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [verdictError, setVerdictError] = useState<string | null>(null);
 
   useEffect(() => setState({ kind: "closed" }), [direction]);
 
-  const load = () => {
+  const load = (judging: boolean) => {
     setState({ kind: "loading" });
+    setVerdictError(null);
     const seed = Math.random().toString(36).slice(2, 10);
-    fetch(`/api/assortment-development/photo-traits?direction=${direction}&samples=1&seed=${seed}&limit=12`)
+    fetch(`/api/assortment-development/photo-traits?direction=${direction}&samples=1&seed=${seed}&limit=12${judging ? "&unjudged=1" : ""}`)
       .then(async (r) => {
         const body = await r.json().catch(() => ({}));
         if (!r.ok || !body?.result) setState({ kind: "error", message: body?.error || `Примеры не загрузились (${r.status})` });
-        else setState({ kind: "ready", samples: body.result.samples as PhotoSample[], analyzed: Number(body.result.analyzed) || 0 });
+        else setState({ kind: "ready", samples: body.result.samples as PhotoSample[], analyzed: Number(body.result.analyzed) || 0, judging, verdictsAvailable: Boolean(body.result.verdictsAvailable), judgedModels: Number(body.result.judgedModels) || 0 });
       })
       .catch(() => setState({ kind: "error", message: "Нет связи с сервером" }));
   };
 
+  const judge = async (sample: PhotoSample, field: string, verdict: Verdict | null) => {
+    if (state.kind !== "ready" || !sample.modelKey) return;
+    const key = `${sample.sourceId}:${sample.modelKey}:${field}`;
+    if (busyKey) return;
+    const patch = (next: Verdict | null) => setState((cur) => (cur.kind !== "ready" ? cur : {
+      ...cur,
+      samples: cur.samples.map((x) => {
+        if (x.sourceId !== sample.sourceId || x.modelKey !== sample.modelKey) return x;
+        const verdicts = { ...(x.verdicts ?? {}) };
+        if (next === null) delete verdicts[field];
+        else verdicts[field] = next;
+        return { ...x, verdicts };
+      }),
+    }));
+    const before = sample.verdicts?.[field] ?? null;
+    setBusyKey(key);
+    setVerdictError(null);
+    patch(verdict);
+    try {
+      const response = await fetch("/api/assortment-development/photo-traits/verdict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ direction, sourceId: sample.sourceId, modelKey: sample.modelKey, field, verdict }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body?.error || `Не сохранилось (${response.status})`);
+      onJudged?.();
+    } catch (e) {
+      patch(before);
+      setVerdictError(e instanceof Error ? e.message : "Не сохранилось");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const ready = state.kind === "ready" ? state : null;
+  const judging = ready?.judging && ready.verdictsAvailable;
   return (
     <section aria-label="Проверка разбора" className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-slate-900">Проверить разбор на примерах</h3>
-        <button type="button" onClick={load} disabled={state.kind === "loading"} className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60">
-          {state.kind === "ready" ? "Другие примеры" : state.kind === "loading" ? "Загружаем…" : "Показать 12 случайных моделей"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => load(false)} disabled={state.kind === "loading"} className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60">
+            {ready && !ready.judging ? "Другие примеры" : state.kind === "loading" ? "Загружаем…" : "Показать 12 случайных моделей"}
+          </button>
+          <button type="button" onClick={() => load(true)} disabled={state.kind === "loading"} className="h-10 rounded-lg bg-violet-700 px-4 text-sm font-medium text-white hover:bg-violet-800 disabled:opacity-60">
+            {ready?.judging ? "Следующие 12 без отметок" : "Разметить точность"}
+          </button>
+        </div>
       </div>
-      {state.kind === "closed" && <p className="text-xs leading-5 text-slate-500">Фото рядом с тем, что написал ИИ: так видно, где он ошибается, прежде чем верить долям выше. Выборка идёт по кругу между источниками.</p>}
+      {state.kind === "closed" && <p className="text-xs leading-5 text-slate-500">Фото рядом с тем, что написал ИИ: так видно, где он ошибается, прежде чем верить долям выше. Выборка идёт по кругу между источниками. «Разметить точность» — те же карточки с кнопками «верно / неверно / не понять» по каждому признаку: из отметок складывается точность разбора.</p>}
       {state.kind === "error" && <p className="text-sm text-amber-800">{state.message}</p>}
-      {state.kind === "ready" && state.samples.length === 0 && <p className="text-sm text-slate-600">Пока нечего показывать: разобранных моделей из текущего каталога нет.</p>}
-      {state.kind === "ready" && state.samples.length > 0 && (
+      {ready && ready.judging && !ready.verdictsAvailable && (
+        <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Отметки точности заработают после применения миграции 202610050007_assortment_attribute_verdict.sql. Пока можно только смотреть примеры.</p>
+      )}
+      {ready && ready.samples.length === 0 && <p className="text-sm text-slate-600">{ready.judging ? "Все разобранные модели уже размечены — или разобранных моделей из текущего каталога пока нет." : "Пока нечего показывать: разобранных моделей из текущего каталога нет."}</p>}
+      {ready && ready.samples.length > 0 && (
         <>
-          <SampleCards samples={state.samples} />
-          <p className="text-xs leading-5 text-slate-500">Из {num(state.analyzed)} разобранных. Это оценка ИИ по фото: она ошибается, «не видно» — честный ответ, а не пропуск. Если неверно слишком часто, скажите — поправим вопрос или модель.</p>
+          {judging && <AccuracySummary direction={direction} accuracy={accuracy} judgedModels={ready.judgedModels} />}
+          <SampleCards samples={ready.samples} judging={judging ? { currentVersion: PROMPT_VERSION, busyKey, onVerdict: judge } : undefined} />
+          {verdictError && <p role="alert" className="text-sm text-red-700">{verdictError}</p>}
+          <p className="text-xs leading-5 text-slate-500">Из {num(ready.analyzed)} разобранных. Это оценка ИИ по фото: она ошибается, «не видно» — честный ответ, а не пропуск. Если неверно слишком часто, скажите — поправим вопрос или модель.</p>
         </>
       )}
     </section>
   );
 }
 
+/** Точность по признакам одной строкой каждая — что уже размечено и сколько ещё нужно. */
+export function AccuracySummary({ direction, accuracy, judgedModels }: { direction: AssortmentDirection; accuracy?: Record<string, FieldAccuracy> | null; judgedModels: number }) {
+  const fields = ATTRIBUTE_FIELDS[direction].filter((f) => !["color", "details", "texture"].includes(f.key));
+  return (
+    <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+      <div className="font-medium text-slate-800">Размечено моделей: {num(judgedModels)}. Точность по признакам (нужно {ACCURACY_MIN_JUDGED} отметок на признак):</div>
+      <ul className="mt-1 grid gap-x-4 sm:grid-cols-2">
+        {fields.map((f) => <li key={f.key}>{f.label} — {accuracyLabel(accuracy?.[f.key])}</li>)}
+      </ul>
+    </div>
+  );
+}
+
 /** Карточки примеров — отдельно от загрузки, чтобы их можно было показать на любых данных. */
-export function SampleCards({ samples }: { samples: PhotoSample[] }) {
+export interface JudgingProps {
+  /** Версия вопроса, по которой ставятся отметки: у разбора по прежней версии кнопок нет (отметка в текущую точность не войдёт). */
+  currentVersion: string;
+  busyKey: string | null;
+  onVerdict: (sample: PhotoSample, field: string, verdict: Verdict | null) => void;
+}
+
+const VERDICT_BUTTONS: Array<{ verdict: Verdict; label: string; on: string }> = [
+  { verdict: "ok", label: "Верно", on: "bg-green-700 text-white" },
+  { verdict: "wrong", label: "Неверно", on: "bg-red-700 text-white" },
+  { verdict: "unclear", label: "Не понять", on: "bg-slate-600 text-white" },
+];
+
+export function SampleCards({ samples, judging }: { samples: PhotoSample[]; judging?: JudgingProps }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {samples.map((sample) => (
@@ -186,15 +295,35 @@ export function SampleCards({ samples }: { samples: PhotoSample[] }) {
             </div>
           </div>
           <dl className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-x-2 gap-y-0.5 text-xs">
-            {sample.attributes.map((a) => (
-              <div key={a.key} className="contents">
-                <dt className="text-slate-500">{a.label}</dt>
-                <dd className={a.notVisible ? "text-slate-400" : "text-slate-800"}>
-                  {a.notVisible ? "не видно" : a.value}
-                  {!a.notVisible && a.confidence !== null && a.confidence < 0.6 && <span className="text-amber-700"> · неуверенно</span>}
-                </dd>
-              </div>
-            ))}
+            {sample.attributes.map((a) => {
+              // Отметить можно признак, который ИИ действительно написал, у разбора по текущей версии вопроса.
+              const canJudge = Boolean(judging && sample.modelKey && sample.promptVersion === judging.currentVersion && !a.notVisible);
+              const current = sample.verdicts?.[a.key] ?? null;
+              return (
+                <div key={a.key} className="contents">
+                  <dt className="text-slate-500">{a.label}</dt>
+                  <dd className={a.notVisible ? "text-slate-400" : "text-slate-800"}>
+                    {a.notVisible ? "не видно" : a.value}
+                    {!a.notVisible && a.confidence !== null && a.confidence < 0.6 && <span className="text-amber-700"> · неуверенно</span>}
+                    {canJudge && judging && (
+                      <span role="group" aria-label={`Точность: ${a.label}`} className="mt-1 flex flex-wrap gap-1">
+                        {VERDICT_BUTTONS.map((b) => (
+                          <button
+                            key={b.verdict}
+                            type="button"
+                            aria-pressed={current === b.verdict}
+                            onClick={() => judging.onVerdict(sample, a.key, current === b.verdict ? null : b.verdict)}
+                            className={`h-10 min-w-10 rounded-lg px-2 text-xs ${current === b.verdict ? b.on : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+                          >
+                            {b.label}
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              );
+            })}
           </dl>
         </article>
       ))}

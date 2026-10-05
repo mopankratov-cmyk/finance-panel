@@ -1031,7 +1031,7 @@ test("Карточка признака: пять строк, а то, что н
 test("Маршрут примеров: ветка samples=1 без кэша; отчёт не кэшируется, пока разобрано мало моделей", () => {
   const route = readFileSync(join(import.meta.dirname, "..", "app/api/assortment-development/photo-traits/route.ts"), "utf8");
   assert.match(route, /searchParams\.get\("samples"\) === "1"/);
-  assert.match(route, /loadPhotoSamples\(db, direction, \{ seed, limit \}\)/);
+  assert.match(route, /loadPhotoSamples\(db, direction, \{ seed, limit, verdicts, onlyUnjudged \}\)/);
   assert.match(route, /requireApiSession\(ASSORTMENT_ROLES\)/, "общий круг модуля");
   assert.match(route, /loadPhotoTraitsCached\(db, direction\)/, "кэш — в общем модуле (его же читает полоска «На чём стоят цифры»)");
   const cached = readFileSync(join(import.meta.dirname, "..", "lib/assortment/photoTraitsCached.ts"), "utf8");
