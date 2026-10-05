@@ -49,18 +49,18 @@ export function FormsView({ direction, onShowModels }: { direction: AssortmentDi
     };
   }, [direction]);
 
-  if (state.kind === "loading") {
-    return <div className="flex items-center gap-2 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" /> Считаем формы…</div>;
-  }
-  if (state.kind === "error") {
-    return <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>;
-  }
-
+  // Полоска «На чём стоят цифры» грузится сама, не дожидаясь «Форм»: у неё свой запрос, и она не должна появляться над уже читаемым отчётом.
   return (
     <div className="flex flex-col gap-5">
       <DataReadiness direction={direction} />
-      <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} onShowModels={onShowModels} />
-      <PhotoTraits direction={direction} />
+      {state.kind === "loading" && <div className="flex items-center gap-2 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" /> Считаем формы…</div>}
+      {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
+      {state.kind === "ready" && (
+        <>
+          <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} onShowModels={onShowModels} />
+          <PhotoTraits direction={direction} />
+        </>
+      )}
     </div>
   );
 }

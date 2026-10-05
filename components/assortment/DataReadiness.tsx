@@ -45,7 +45,20 @@ const KIND_STYLE: Record<string, string> = { факт: "bg-slate-100 text-slate-
 /** Сама полоска — отдельно от загрузки, чтобы её можно было показать на любых данных. */
 export function ReadinessStrip({ report }: { report: ReadinessReport }) {
   const [open, setOpen] = useState(report.problem);
-  if (report.groups.length === 0) return null;
+  // Сбой чтения части называем всегда, даже когда остальное свёрнуто или данных больше нет: молчание выглядело бы как «данных нет».
+  const errors = (report.errors ?? []).length > 0
+    ? <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Не загрузилось: {(report.errors ?? []).join("; ")}.</p>
+    : null;
+  if (report.groups.length === 0) return errors;
+  return (
+    <div className="flex flex-col gap-2">
+      {errors}
+      <ReadinessGroups report={report} open={open} setOpen={setOpen} />
+    </div>
+  );
+}
+
+function ReadinessGroups({ report, open, setOpen }: { report: ReadinessReport; open: boolean; setOpen: (fn: (v: boolean) => boolean) => void }) {
   return (
     <section aria-label="На чём стоят цифры" className={`rounded-xl border bg-white ${report.problem ? "border-amber-300" : "border-slate-200"}`}>
       <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open} className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-sm">

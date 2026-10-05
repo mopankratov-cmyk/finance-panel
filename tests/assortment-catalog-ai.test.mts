@@ -1033,8 +1033,10 @@ test("Маршрут примеров: ветка samples=1 без кэша; о�
   assert.match(route, /searchParams\.get\("samples"\) === "1"/);
   assert.match(route, /loadPhotoSamples\(db, direction, \{ seed, limit \}\)/);
   assert.match(route, /requireApiSession\(ASSORTMENT_ROLES\)/, "общий круг модуля");
-  assert.match(route, /CACHE_FROM_ANALYZED = 300/);
-  assert.match(route, /result\.analyzed < CACHE_FROM_ANALYZED\) throw new Uncached\(result\)/);
+  assert.match(route, /loadPhotoTraitsCached\(db, direction\)/, "кэш — в общем модуле (его же читает полоска «На чём стоят цифры»)");
+  const cached = readFileSync(join(import.meta.dirname, "..", "lib/assortment/photoTraitsCached.ts"), "utf8");
+  assert.match(cached, /CACHE_FROM_ANALYZED = 300/);
+  assert.match(cached, /result\.analyzed < CACHE_FROM_ANALYZED\) throw new Uncached\(result\)/);
 });
 
 // --- вопрос к ИИ, версия 2 (по боевым примерам 05.10) ---
@@ -1243,6 +1245,6 @@ test("Пересбор старой строки с неудачными поп�
 });
 
 test("Отчёт по признакам: версия формы в ключе кэша — после выкладки не живёт старый отчёт", () => {
-  const route = readFileSync(join(import.meta.dirname, "..", "app/api/assortment-development/photo-traits/route.ts"), "utf8");
-  assert.match(route, /loadHourlyDashboard\(`assortment-photo-traits-v\$\{TRAITS_REPORT_VERSION\}`/);
+  const cached = readFileSync(join(import.meta.dirname, "..", "lib/assortment/photoTraitsCached.ts"), "utf8");
+  assert.match(cached, /loadHourlyDashboard\(`assortment-photo-traits-v\$\{TRAITS_REPORT_VERSION\}`/);
 });
