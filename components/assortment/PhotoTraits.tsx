@@ -323,17 +323,33 @@ const VERDICT_BUTTONS: Array<{ verdict: Verdict; label: string; on: string }> = 
   { verdict: "unclear", label: "Не понять", on: "bg-slate-600 text-white" },
 ];
 
-export function SampleCards({ samples, judging }: { samples: PhotoSample[]; judging?: JudgingProps }) {
+export type SampleImageStage = "direct" | "proxy" | "failed";
+
+/** Адрес фото примера: сначала ссылка сайта бренда, затем (если известна строка каталога) — через панель. */
+export function sampleImageSrc(sample: Pick<PhotoSample, "sourceId" | "itemId" | "imageUrl">, stage: SampleImageStage): string {
+  if (stage === "proxy" && sample.itemId) {
+    return `/api/assortment-development/catalog/photo?source=${encodeURIComponent(sample.sourceId)}&item=${encodeURIComponent(sample.itemId)}&n=0`;
+  }
+  return sample.imageUrl ?? "";
+}
+
+/**
+ * Одна карточка примера. Фото с сайта бренда не всегда открывается из России: сначала прямая ссылка, не открылась — один раз через панель
+ * (как в каталоге), потом «фото не открылось». Сверить ответ ИИ с картинкой, которой нет, нельзя — кнопок «верно/неверно» без фото нет
+ * (прячем, а не серим), иначе отметки ставились бы вслепую и портили точность.
+ */
+function SampleCard({ sample, judging }: { sample: PhotoSample; judging?: JudgingProps }) {
+  const [stage, setStage] = useState<SampleImageStage>("direct");
+  const src = sampleImageSrc(sample, stage);
+  const photoOk = Boolean(sample.imageUrl) && stage !== "failed";
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {samples.map((sample) => (
-        <article key={`${sample.sourceId}:${sample.title}:${sample.takenAt}`} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
-          <div className="flex gap-3">
-            {sample.imageUrl ? (
+        <article className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
+      <div className="flex gap-3">
+            {sample.imageUrl && stage !== "failed" ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={sample.imageUrl} alt={sample.title} loading="lazy" referrerPolicy="no-referrer" className="h-32 w-24 shrink-0 rounded-lg bg-slate-100 object-cover" />
+              <img src={src} alt={sample.title} loading="lazy" referrerPolicy="no-referrer" onError={() => setStage((cur) => (cur === "direct" && sample.itemId ? "proxy" : "failed"))} className="h-32 w-24 shrink-0 rounded-lg bg-slate-100 object-cover" />
             ) : (
-              <div className="grid h-32 w-24 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs text-slate-400">нет фото</div>
+              <div className="grid h-32 w-24 shrink-0 place-items-center rounded-lg bg-slate-100 px-1 text-center text-xs text-slate-400">{sample.imageUrl ? "фото не открылось" : "нет фото"}</div>
             )}
             <div className="min-w-0">
               <div className="break-anywhere text-sm font-medium text-slate-900">{sample.title || "Без названия"}</div>
@@ -345,7 +361,7 @@ export function SampleCards({ samples, judging }: { samples: PhotoSample[]; judg
             {sample.attributes.map((a) => {
               // Отметить можно признак, который ИИ действительно написал, у разбора по текущей версии вопроса; цвет, фактура и детали —
               // свободный текст, сверять с ним нечего.
-              const canJudge = Boolean(judging && sample.modelKey && sample.promptVersion === judging.currentVersion && !a.notVisible && isJudgeableField(a.key));
+              const canJudge = Boolean(judging && photoOk && sample.modelKey && sample.promptVersion === judging.currentVersion && !a.notVisible && isJudgeableField(a.key));
               const key = verdictKey(sample, a.key);
               const busy = Boolean(judging?.busyKeys.has(key));
               const failure = judging?.errors[key];
@@ -380,8 +396,15 @@ export function SampleCards({ samples, judging }: { samples: PhotoSample[]; judg
               );
             })}
           </dl>
+          {judging && !photoOk && <p className="text-xs leading-5 text-amber-800">{sample.imageUrl ? "Фото не открылось" : "Фото нет"} — отметить признаки нечем: без картинки отметка была бы вслепую.</p>}
         </article>
-      ))}
+  );
+}
+
+export function SampleCards({ samples, judging }: { samples: PhotoSample[]; judging?: JudgingProps }) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {samples.map((sample) => <SampleCard key={`${sample.sourceId}:${sample.title}:${sample.takenAt}`} sample={sample} judging={judging} />)}
     </div>
   );
 }

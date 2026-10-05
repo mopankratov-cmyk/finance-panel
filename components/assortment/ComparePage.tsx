@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { plural } from "@/lib/warehouse/plural";
 import { ArrowLeft, ImageOff } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
@@ -45,7 +46,7 @@ export function ComparePage({ direction, ids }: { direction: AssortmentDirection
           <ArrowLeft className="h-4 w-4" /> {DIRECTION_LABEL[direction]}
         </Link>
         <h1 className="text-2xl font-semibold text-slate-900">
-          Сравнение{state.kind === "ready" && ` · ${state.data.models.length} ${state.data.models.length < 5 ? "модели" : "моделей"}`}
+          Сравнение{state.kind === "ready" && ` · ${state.data.models.length} ${plural(state.data.models.length, "модель", "модели", "моделей")}`}
         </h1>
 
         {state.kind === "loading" && <div className="text-sm text-slate-500">Загружаем модели…</div>}
@@ -62,7 +63,7 @@ export function ComparePage({ direction, ids }: { direction: AssortmentDirection
               <table className="w-full text-sm" style={{ minWidth }}>
                 <thead>
                   <tr>
-                    <th className="w-[180px] p-3" />
+                    <th className="sticky left-0 z-10 w-[180px] bg-white p-3" />
                     {state.data.models.map((m) => (
                       <th key={m.id} className="p-3 text-left align-top font-normal">
                         <Link href={`${base}/${m.id}`} className="block">
@@ -84,7 +85,8 @@ export function ComparePage({ direction, ids }: { direction: AssortmentDirection
                 <tbody className="divide-y divide-slate-100">
                   {state.data.rows.map((row) => (
                     <tr key={row.key}>
-                      <th scope="row" className="p-3 text-left align-top font-normal text-slate-500">{row.label}</th>
+                      {/* Названия признаков не уезжают при прокрутке к третьей модели: иначе значения нечем подписать. */}
+                      <th scope="row" className="sticky left-0 z-10 border-r border-slate-100 bg-white p-3 text-left align-top font-normal text-slate-500">{row.label}</th>
                       {row.values.map((value, index) => (
                         <td key={index} className={`p-3 align-top ${value ? "text-slate-900" : "text-slate-400"}`}>{value ?? "—"}</td>
                       ))}

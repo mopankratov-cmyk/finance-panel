@@ -133,7 +133,7 @@ export function AddFindingModal({
                 {files.map((file, index) => (
                   <li key={`${file.name}-${index}`} className="flex items-center gap-1 rounded-lg bg-slate-100 py-1 pl-3 pr-1 text-xs text-slate-700">
                     <span className="max-w-[160px] truncate">{file.name}</span>
-                    <button type="button" aria-label={`Убрать ${file.name}`} onClick={() => setFiles(files.filter((_, i) => i !== index))} className="grid h-8 w-8 place-items-center rounded-md hover:bg-slate-200">
+                    <button type="button" aria-label={`Убрать ${file.name}`} onClick={() => setFiles(files.filter((_, i) => i !== index))} className="grid h-10 w-10 place-items-center rounded-md hover:bg-slate-200">
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </li>

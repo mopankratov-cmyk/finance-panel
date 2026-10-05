@@ -195,7 +195,7 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
                   key={action.id}
                   type="button"
                   disabled={busy !== null}
-                  onClick={() => (action.needsReason ? setRejecting(true) : void decide(action.id))}
+                  onClick={() => { if (action.needsReason) { setError(null); setRejecting(true); } else void decide(action.id); }}
                   className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60"
                 >
                   {busy === action.id && <LoaderCircle className="h-4 w-4 animate-spin" />}
@@ -208,7 +208,7 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                 <span>{error.message}</span>
                 {error.conflict && (
-                  <button type="button" onClick={() => { setError(null); void load(); }} className="h-9 rounded-lg border border-red-300 bg-white px-3 text-xs">Обновить карточку</button>
+                  <button type="button" onClick={() => { setError(null); void load(); }} className="h-10 rounded-lg border border-red-300 bg-white px-3 text-xs">Обновить карточку</button>
                 )}
               </div>
             )}
@@ -384,6 +384,7 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
       <RejectModal
         open={rejecting}
         busy={busy === "rejected"}
+        error={rejecting ? error?.message ?? null : null}
         onClose={() => setRejecting(false)}
         onSubmit={async (reason, comment) => {
           const ok = await decide("rejected", { reason, comment });
@@ -397,11 +398,14 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
 function RejectModal({
   open,
   busy,
+  error,
   onClose,
   onSubmit,
 }: {
   open: boolean;
   busy: boolean;
+  /** Сбой отклонения — внутри окна: баннер страницы под затемнением не виден. */
+  error: string | null;
   onClose: () => void;
   onSubmit: (reason: RejectReason, comment: string) => void;
 }) {
@@ -425,6 +429,7 @@ function RejectModal({
   return (
     <Modal open={open} onClose={onClose} title="Почему отклоняем" footer={footer} size="sm">
       <div className="flex flex-col gap-3">
+        {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>}
         <p className="text-sm text-slate-600">Причина нужна, чтобы дальше реже показывать похожее.</p>
         <div className="flex flex-col gap-1">
           {(Object.keys(REJECT_REASONS) as RejectReason[]).map((key) => (

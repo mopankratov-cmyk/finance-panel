@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AccuracySummary, SampleCards, TraitsSection } from "../components/assortment/PhotoTraits.tsx";
+import { AccuracySummary, SampleCards, sampleImageSrc, TraitsSection } from "../components/assortment/PhotoTraits.tsx";
 import {
   ACCURACY_LOWER_MIN, ACCURACY_MIN_JUDGED, accuracyLabel, fieldAccuracy, hiddenReason, summarizeVerdicts, wilsonLower, wilsonUpper,
 } from "../lib/assortment/attributeVerdicts.ts";
@@ -293,7 +293,7 @@ test("Разметка подряд: прежняя версия разбора 
 // --- экран ---
 
 const sample = (over: Partial<PhotoSample> = {}): PhotoSample => ({
-  sourceId: "S001", sourceName: "Zara", title: "Bag a", imageUrl: null, model: "polza:m", takenAt: "2026-10-06T08:00:00Z",
+  sourceId: "S001", sourceName: "Zara", title: "Bag a", imageUrl: "https://img/a.jpg", itemId: "a", model: "polza:m", takenAt: "2026-10-06T08:00:00Z",
   modelKey: "S001|a", promptVersion: PROMPT_VERSION, verdicts: {},
   attributes: [
     { key: "silhouette", label: "Силуэт", value: "тоут", notVisible: false, confidence: 0.9 },
@@ -323,6 +323,23 @@ test("Карточки в режиме разметки: кнопки «Верн
   assert.doesNotMatch(plain, /aria-pressed/);
   const noKey = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ modelKey: undefined })], judging }));
   assert.doesNotMatch(noKey, /aria-pressed/);
+});
+
+test("Фото примера: прямая ссылка, затем через панель по строке каталога; без фото кнопок «верно/неверно» нет (отмечать вслепую нельзя) — и это названо", () => {
+  const withPhoto = sample();
+  assert.equal(sampleImageSrc(withPhoto, "direct"), "https://img/a.jpg");
+  assert.equal(sampleImageSrc(withPhoto, "proxy"), "/api/assortment-development/catalog/photo?source=S001&item=a&n=0");
+  assert.equal(sampleImageSrc({ ...withPhoto, itemId: undefined }, "proxy"), "https://img/a.jpg", "строки каталога нет — прокси не из чего собрать");
+  const html = renderToStaticMarkup(createElement(SampleCards, { samples: [withPhoto], judging }));
+  assert.match(html, /<img src="https:\/\/img\/a\.jpg"/);
+  assert.equal((html.match(/aria-pressed/g) ?? []).length, 3);
+  assert.doesNotMatch(flat(html), /отметить признаки нечем/);
+  const noPhoto = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ imageUrl: null })], judging }));
+  assert.doesNotMatch(noPhoto, /aria-pressed/, "картинки нет — кнопок нет (прячем, не серим)");
+  assert.match(flat(noPhoto), /Фото нет — отметить признаки нечем/);
+  assert.match(noPhoto, /нет фото/);
+  const plain = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ imageUrl: null })] }));
+  assert.doesNotMatch(flat(plain), /отметить признаки нечем/, "в обычном просмотре (без разметки) этого сообщения нет");
 });
 
 test("Сохранение отметки: кнопки именно этого признака недоступны, остальные рабочие; сбой показан под признаком, а не под всей сеткой", () => {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, FileText, ImageOff, LoaderCircle, Plus, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import {
   BAGS_MAIN_SLOTS,
@@ -53,6 +53,14 @@ export function CollectionEditor({ id }: { id: string }) {
     void load();
   }, [load]);
 
+  // Ошибка действия принадлежит окну, из которого оно запущено: открытие/закрытие любого окна начинает с чистого листа
+  // (иначе сбой прошлого действия показывался бы в только что открытом окне).
+  useEffect(() => {
+    setError(null);
+  }, [picking, drafting, editing, removing]);
+
+  const lastFailure = useRef("");
+
   const run = async (label: string, request: () => Promise<CollectionDetail>) => {
     setBusy(label);
     setError(null);
@@ -60,7 +68,8 @@ export function CollectionEditor({ id }: { id: string }) {
       setState({ kind: "ready", collection: await request() });
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не получилось");
+      lastFailure.current = e instanceof Error ? e.message : "Не получилось";
+      setError(lastFailure.current);
       return false;
     } finally {
       setBusy(null);
@@ -257,22 +266,35 @@ export function CollectionEditor({ id }: { id: string }) {
             if (ok) setPicking(null);
           }}
           busy={busy}
+          error={error}
         />
       )}
       {drafting && (
         <DraftModal
           collectionId={c.id}
           busy={busy === "draft"}
+          error={error}
           onClose={() => setDrafting(false)}
           onApply={async (picks) => {
+            let applied = 0;
             const ok = await run("draft", async () => {
               let latest: CollectionDetail | null = null;
               for (const pick of picks) {
                 latest = await call(base, { method: "POST", body: JSON.stringify({ referenceId: pick.id, asReserve: pick.place === "reserve" }) });
+                applied += 1;
               }
               return latest ?? (await call(base));
             });
             if (ok) setDrafting(false);
+            else if (applied > 0) {
+              // Часть моделей уже в подборке, остальное не легло: показываем настоящее состояние и сбой, а черновик закрываем —
+              // он собран под прежнее состояние подборки и после частичного применения устарел.
+              // Закрытие окна сбрасывает ошибку (эффект выше) — поэтому сообщение ставится после него и обновления подборки.
+              const reason = lastFailure.current || "сбой";
+              setDrafting(false);
+              await load();
+              setError(`Добавлено ${applied} из ${picks.length}, остальное не добавилось: ${reason}. Подборка обновлена — соберите черновик заново.`);
+            }
           }}
         />
       )}
@@ -281,6 +303,7 @@ export function CollectionEditor({ id }: { id: string }) {
           item={editing}
           briefSupported={c.briefSupported}
           busy={busy === "item"}
+          error={error}
           onClose={() => setEditing(null)}
           onSave={async (patch) => {
             const ok = await run("item", () => call(`${base}/items/${editing.id}`, { method: "PATCH", body: JSON.stringify(patch) }));
@@ -293,6 +316,7 @@ export function CollectionEditor({ id }: { id: string }) {
           item={removing.item}
           replace={removing.replace}
           busy={busy === "remove"}
+          error={error}
           onClose={() => setRemoving(null)}
           onConfirm={async (reason) => {
             const query = reason ? `?reason=${reason}` : "";
@@ -357,7 +381,7 @@ function ItemCard({
 }) {
   const href = `${ASSORTMENT_BASE_PATH}/${isBags ? "bags" : "jackets"}/${item.referenceId}`;
   const filled = Boolean(item.idea || item.details.length || item.brief.differences || item.brief.questions || item.nextStep);
-  const button = "h-9 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60";
+  const button = "h-10 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60";
   return (
     <li className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <Link href={href} className="relative block aspect-[4/5] bg-[#ece9e3]">
@@ -400,11 +424,17 @@ function ItemCard({
   );
 }
 
+/** Сбой действия из окна — внутри окна: оно закрывает страницу затемнением, и баннер страницы под ним не виден (человек видел только остановившийся спиннер). */
+function ModalError({ message }: { message: string | null }) {
+  return message ? <div role="alert" className="mb-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{message}</div> : null;
+}
+
 function CandidatePicker({
   collectionId,
   asReserve,
   isBags,
   busy,
+  error,
   onClose,
   onAdd,
 }: {
@@ -412,6 +442,7 @@ function CandidatePicker({
   asReserve: boolean;
   isBags: boolean;
   busy: string | null;
+  error: string | null;
   onClose: () => void;
   onAdd: (referenceId: string, asReserve: boolean) => void;
 }) {
@@ -433,6 +464,7 @@ function CandidatePicker({
 
   return (
     <Modal open onClose={onClose} title={asReserve ? "Кандидат в резерв" : "Выбрать кандидата"} size="xl">
+      <ModalError message={error} />
       {state.kind === "loading" && <div className="text-sm text-slate-500">Загружаем кандидатов…</div>}
       {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
       {state.kind === "ready" && state.candidates.length === 0 && (
@@ -460,7 +492,7 @@ function CandidatePicker({
                   type="button"
                   disabled={busy !== null}
                   onClick={() => onAdd(candidate.id, asReserve)}
-                  className="mt-auto inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-2 text-xs font-medium text-white hover:bg-violet-800 disabled:opacity-60"
+                  className="mt-auto inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-2 text-xs font-medium text-white hover:bg-violet-800 disabled:opacity-60"
                 >
                   {busy === `add:${candidate.id}` && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
                   {isBags && asReserve ? "В резерв" : "Добавить"}
@@ -477,11 +509,13 @@ function CandidatePicker({
 function DraftModal({
   collectionId,
   busy,
+  error,
   onClose,
   onApply,
 }: {
   collectionId: string;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onApply: (picks: DraftView["picks"]) => void;
 }) {
@@ -519,6 +553,7 @@ function DraftModal({
 
   return (
     <Modal open onClose={onClose} title="Черновик плана" footer={footer} size="lg">
+      <ModalError message={error} />
       {state.kind === "loading" && <div className="text-sm text-slate-500">Подбираем разные конструкции…</div>}
       {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
       {state.kind === "ready" && (
@@ -568,12 +603,14 @@ function ItemEditor({
   item,
   briefSupported,
   busy,
+  error,
   onClose,
   onSave,
 }: {
   item: CollectionItemView;
   briefSupported: boolean;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
@@ -603,6 +640,7 @@ function ItemEditor({
 
   return (
     <Modal open onClose={onClose} title={`Задание · ${item.title}`} footer={footer} size="lg">
+      <ModalError message={error} />
       <div className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5 text-sm text-slate-600">
           Рабочее название идеи
@@ -643,12 +681,14 @@ function RemoveModal({
   item,
   replace,
   busy,
+  error,
   onClose,
   onConfirm,
 }: {
   item: CollectionItemView;
   replace: boolean;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onConfirm: (reason: ReplaceReason | null) => void;
 }) {
@@ -669,6 +709,7 @@ function RemoveModal({
   );
   return (
     <Modal open onClose={onClose} title={replace ? `Заменить «${item.title}»` : `Убрать «${item.title}»`} footer={footer} size="sm">
+      <ModalError message={error} />
       <div className="flex flex-col gap-3">
         <p className="text-sm text-slate-600">{replace ? "Почему меняем? По причинам учимся, что не предлагать." : "Причина необязательна, но помогает реже предлагать похожее."}</p>
         <div className="flex flex-col gap-1">
