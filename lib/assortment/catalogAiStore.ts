@@ -5,8 +5,8 @@ import { moscowToday } from "@/lib/sync/moscowDay";
 import { aiPrompt } from "./aiAttributes";
 import { CATALOG_SEEN_DAYS } from "./catalog";
 import {
-  allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, resultKey,
-  type CatalogAiConfig, type CatalogHead, type ExistingResult, type PhotoTraitsReport, type StoredAttributes, type TraitModel,
+  allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
+  type CatalogAiConfig, type CatalogProvider, type CatalogHead, type ExistingResult, type PhotoTraitsReport, type StoredAttributes, type TraitModel,
 } from "./catalogAi";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
@@ -26,6 +26,8 @@ const MAX_IMAGES = 2;
 const DEAD_BATCHES_STOP = 4;
 /** Сколько моделей источника подряд без единого успеха в прогоне — и источник в этом прогоне пропускаем (фото не скачиваются). */
 const SOURCE_DEAD_FAILS = 6;
+/** Сколько 403 Polza с начала прогона без единого успеха считаем проблемой ключа, а не отказом по запросам. */
+const FORBIDDEN_STOP = 6;
 
 export class CatalogAiTableMissingError extends Error {}
 
@@ -188,6 +190,10 @@ export interface VisionAnswer {
   text: string;
   inputTokens: number;
   outputTokens: number;
+  /** Почему ответ закончился (stop / length / …): length без разобранного JSON — ответ обрезан по лимиту токенов. */
+  finishReason?: string;
+  /** Расход вызова в $, если провайдер сам сообщил его (Polza — usage.cost_rub по курсу); иначе считаем по токенам и цене модели. */
+  costUsd?: number;
   /** Сколько фото реально ушло в вызов (после запасного варианта — одно). */
   images?: number;
 }
@@ -202,8 +208,87 @@ export class VisionStopError extends Error {
   }
 }
 
-export function aiKeyConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY);
+/** Есть ли ключ выбранного провайдера (значения не читаем и не показываем — только факт). */
+export function aiKeyConfigured(provider: CatalogProvider = "anthropic", env: Record<string, string | undefined> = process.env): boolean {
+  if (provider === "polza") return Boolean(polzaKey(env));
+  return Boolean(env.ANTHROPIC_API_KEY?.trim());
+}
+
+const POLZA_URL = "https://polza.ai/api/v1/chat/completions";
+
+/** Короткий кусок текста ошибки провайдера для сообщения владельцу: без переносов, не длиннее 160 знаков. */
+function snippet(text: unknown): string {
+  return String(text ?? "").replace(/\s+/g, " ").trim().slice(0, 160);
+}
+
+/**
+ * Polza.ai: тот же вопрос, до двух фото по ссылкам, OpenAI-совместимый формат. Ответ несёт usage.cost_rub — сколько
+ * реально списано в рублях; по курсу это и есть расход вызова в учёте (цена модели из таблицы нужна только для оценки
+ * «сколько вызовов влезет» до ответа).
+ *
+ * Ошибки (по документации Polza): 401 — ключ; 402 / INSUFFICIENT_BALANCE — нет средств или исчерпан лимит расходов
+ * ключа; 429 — лимит запросов; 404 или «нет провайдеров для модели» — неверная модель: всё это останавливает прогон.
+ * 403 — «доступ запрещён, в том числе запрос отклонён модерацией»: чаще отказ по конкретному запросу, чем ключ, поэтому
+ * это неудача МОДЕЛИ (прогон остановится, только если 403 пошли подряд без единого успеха). 408 и любые 5xx — временные
+ * (в том числе 503 «провайдер недоступен», даже с noProvidersForModel). Остальное (фото не скачалось) — неудача модели.
+ */
+export function makePolzaVision(rubPerUsd: number, fetchImpl: typeof fetch = fetch): AskVision {
+  return async (direction, imageUrls, model) => {
+    const key = polzaKey();
+    const response = await fetchImpl(POLZA_URL, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        // Рассуждения (thinking) для описания признаков по фото не нужны, а их токены входят в ответ и стоят как ответ:
+        // у Gemini выключаем (документированный reasoning.effort = "none"). Остальным моделям параметр не шлём.
+        ...(model.startsWith("google/") ? { reasoning: { effort: "none" } } : {}),
+        max_tokens: 3000,
+        messages: [
+          { role: "system", content: aiPrompt(direction) },
+          { role: "user", content: [{ type: "text", text: "Опиши признаки по этим фото." }, ...imageUrls.slice(0, MAX_IMAGES).map((url) => ({ type: "image_url", image_url: { url } }))] },
+        ],
+      }),
+      signal: AbortSignal.timeout(55_000),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      choices?: Array<{ message?: { content?: unknown }; finish_reason?: string }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; cost_rub?: number | string; cost?: number | string };
+      error?: { code?: string; message?: string; metadata?: { reason?: string } };
+    } | null;
+    if (!response.ok) {
+      const code = payload?.error?.code ?? "";
+      const message = payload?.error?.message || `Polza вернула ${response.status}`;
+      const detail = snippet(message);
+      if (response.status === 401) throw new VisionStopError(`Polza: ключ не принят (401): ${detail}`, "auth");
+      if (response.status === 402 || code === "INSUFFICIENT_BALANCE") throw new VisionStopError(`Polza: на счёте нет средств или исчерпан лимит расходов ключа: ${detail}`, "billing");
+      if (response.status === 429) throw new VisionStopError(`Polza: лимит запросов: ${detail}`, "rate_limit");
+      // Временное раньше «модели нет»: 503 с noProvidersForModel — «провайдер недоступен», а не неверная модель.
+      if (response.status === 408 || response.status >= 500) throw Object.assign(new Error(message), { status: response.status });
+      if (response.status === 404 || payload?.error?.metadata?.reason === "noProvidersForModel") throw new VisionStopError(`Polza: модель ${model} недоступна: ${detail}`, "config");
+      // 403 и остальное: отказ по этому запросу, а не остановка всего прогона.
+      throw Object.assign(new Error(`Polza ${response.status}: ${detail}`), { status: response.status, forbidden: response.status === 403 });
+    }
+    // 200, но тела нет или оно без choices (оборвано чтение): это не «разобрали пустое», а сбой сети — временный.
+    if (!payload || !Array.isArray(payload.choices) || payload.choices.length === 0) {
+      throw Object.assign(new Error("Polza: ответ без содержимого (обрыв чтения)"), { status: 502 });
+    }
+    const content = payload.choices[0]?.message?.content;
+    const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((part) => (part && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "")).join("\n") : "";
+    const rub = Number(payload.usage?.cost_rub ?? payload.usage?.cost);
+    return {
+      text,
+      finishReason: payload.choices[0]?.finish_reason,
+      inputTokens: Number(payload.usage?.prompt_tokens) || 0,
+      outputTokens: Number(payload.usage?.completion_tokens) || 0,
+      costUsd: Number.isFinite(rub) && rub >= 0 && payload.usage && (payload.usage.cost_rub != null || payload.usage.cost != null) ? Math.round((rub / rubPerUsd) * 100_000) / 100_000 : undefined,
+    };
+  };
+}
+
+/** Вызов ИИ для настроенного провайдера. */
+export function askFor(config: CatalogAiConfig): AskVision {
+  return config.provider === "polza" ? makePolzaVision(config.rubPerUsd) : askAnthropicVision;
 }
 
 /** Реальный вызов Anthropic: до двух фото модели по ссылкам с сайта бренда, ответ — JSON признаков. */
@@ -246,6 +331,8 @@ export function isTransientVisionError(error: unknown): boolean {
 
 export interface RunSummary {
   skipped: string | null;
+  /** Машинная причина пропуска: no_price — модель без цены (ошибка настройки, о ней должно быть слышно). */
+  skippedBecause?: "no_price";
   candidates: number;
   allowed: number;
   allowReason: string;
@@ -290,7 +377,13 @@ export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Pro
   const summary: RunSummary = { skipped: null, candidates: 0, allowed: 0, allowReason: "ok", done: 0, failed: 0, transient: 0, deadSources: [], costUsd: 0, stoppedBy: null, spend: null, stopMessage: null };
 
   if (!config.enabled) return { ...summary, skipped: "выключено (ASSORTMENT_CATALOG_AI=off)" };
-  if (!config.price) return { ...summary, skipped: `нет цены модели ${config.model}: бюджет нечем считать — задайте ASSORTMENT_CATALOG_AI_PRICE_IN/OUT` };
+  if (!config.price) {
+    const hint = config.provider === "polza"
+      ? `выберите модель из таблицы POLZA_PRICES_RUB или задайте ASSORTMENT_CATALOG_AI_POLZA_PRICE_IN_RUB и ASSORTMENT_CATALOG_AI_POLZA_PRICE_OUT_RUB (₽ за млн токенов)`
+      : `задайте ASSORTMENT_CATALOG_AI_PRICE_IN и ASSORTMENT_CATALOG_AI_PRICE_OUT ($ за млн токенов)`;
+    const wrongProvider = config.provider === "anthropic" && config.model.includes("/") ? " (имя вида «автор/модель» — это модель Polza: задайте ASSORTMENT_CATALOG_AI_PROVIDER=polza)" : "";
+    return { ...summary, skipped: `нет цены модели ${config.model} у провайдера ${config.provider === "polza" ? "Polza" : "Anthropic"}${wrongProvider}: бюджет нечем считать — ${hint}`, skippedBecause: "no_price" };
+  }
 
   const spend = await loadSpend(db, startedAt);
   if (!spend) return { ...summary, skipped: "нет таблиц признаков (миграция 202610050005)" };
@@ -329,6 +422,8 @@ async function processQueue(
   let callsToday = spend.callsToday;
   let doneInRun = 0;
   let deadBatches = 0;
+  let forbiddenInRun = 0;
+  let lastError = "";
   // Источник, у которого в этом прогоне шесть моделей подряд не разобрались (фото не скачиваются), пропускаем до конца
   // прогона: иначе он съедает пачки, а остальные источники ждут. Временные сбои (сеть, перегрузка) источник не «убивают».
   const lanes = new Map<string, { ok: number; failed: number }>();
@@ -370,6 +465,8 @@ async function processQueue(
     let transient = 0;
     let stop: VisionStopError | null = null;
     for (const outcome of outcomes) {
+      if (outcome.errorMessage) lastError = outcome.errorMessage;
+      if (outcome.forbidden) forbiddenInRun += 1;
       batchCost += outcome.costUsd;
       batchTokens = { in: batchTokens.in + outcome.inputTokens, out: batchTokens.out + outcome.outputTokens };
       if (outcome.status === "ok") ok += 1;
@@ -402,12 +499,19 @@ async function processQueue(
       summary.stopMessage = stop.message;
       break;
     }
+    // 403 у Polza — чаще отказ по конкретному запросу (модерация), но если с самого начала прогона их шесть и ни одной
+    // разобранной модели, это уже про ключ или права: стоп как «ключ/права», а не молчаливая трата попыток.
+    if (summary.done === 0 && forbiddenInRun >= FORBIDDEN_STOP) {
+      summary.stoppedBy = "auth";
+      summary.stopMessage = `Polza вернула 403 на ${forbiddenInRun} моделях без единого успеха: проверьте ключ, права и модерацию (${lastError.slice(0, 120)})`;
+      break;
+    }
     // Четыре пачки подряд без единого успеха — похоже на системный сбой (сеть, ответ ИИ), а не на мёртвые фото одного
     // источника: стоп, а не сто двадцать пустых попыток. Мёртвые фото отдельных моделей пачку «не убивают».
     deadBatches = ok === 0 ? deadBatches + 1 : 0;
     if (deadBatches >= DEAD_BATCHES_STOP) {
       summary.stoppedBy = "errors";
-      summary.stopMessage = `${DEAD_BATCHES_STOP} пачки подряд без единого разобранного фото`;
+      summary.stopMessage = `${DEAD_BATCHES_STOP} пачки подряд без единого разобранного фото${lastError ? `: ${lastError.slice(0, 120)}` : ""}`;
       break;
     }
   }
@@ -418,6 +522,10 @@ async function processQueue(
 
 interface Outcome {
   status: "ok" | "failed";
+  /** Текст ошибки неудачи модели — для сообщения остановки и журнала. */
+  errorMessage?: string;
+  /** 403 Polza (модерация или права): отказ по запросу; серия таких без единого успеха — признак ключа. */
+  forbidden?: boolean;
   /** Временный сбой: попытка модели не записана. */
   transient?: boolean;
   costUsd: number;
@@ -426,15 +534,25 @@ interface Outcome {
   stop?: VisionStopError;
 }
 
-/** Два фото; не скачалось второе — пробуем по первому: сбой на скачивании ничего не стоит. */
+/**
+ * Два фото; не скачалось второе — пробуем по первому: сбой на скачивании ничего не стоит. После таймаута, 5xx или обрыва
+ * сети запасного вызова нет: первый мог дойти до модели и быть оплачен (Polza оплачивает уже сгенерированное при обрыве
+ * со стороны клиента), а второй удвоил бы расход и время модели.
+ */
 async function askWithFallback(ask: AskVision, head: CatalogHead, model: string): Promise<VisionAnswer> {
   const urls = head.imageUrls.slice(0, MAX_IMAGES);
   try {
     return { ...(await ask(head.direction, urls, model)), images: urls.length };
   } catch (error) {
-    if (error instanceof VisionStopError || urls.length < 2) throw error;
+    if (error instanceof VisionStopError || urls.length < 2 || isTransientVisionError(error) || (error as { forbidden?: boolean })?.forbidden) throw error;
     return { ...(await ask(head.direction, urls.slice(0, 1), model)), images: 1 };
   }
+}
+
+/** Обрыв по нашему таймауту: запрос мог дойти до модели и быть оплачен, хотя ответа мы не получили. */
+function isTimeoutError(error: unknown): boolean {
+  const name = (error as Error | null)?.name ?? "";
+  return name === "TimeoutError" || name === "AbortError" || /timed out|timeout|aborted/i.test((error as Error | null)?.message ?? "");
 }
 
 async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<string, ExistingResult>, config: CatalogAiConfig, ask: AskVision, now: () => number): Promise<Outcome> {
@@ -447,7 +565,7 @@ async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<s
     source_item_id: head.sourceItemId,
     image_count: Math.min(head.imageUrls.length, MAX_IMAGES),
     prompt_version: PROMPT_VERSION,
-    model: config.model,
+    model: config.provider === "polza" ? `polza:${config.model}` : config.model,
     attempts,
     taken_at: new Date(now()).toISOString(),
   };
@@ -473,25 +591,34 @@ async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<s
     answer = await askWithFallback(ask, head, config.model);
   } catch (error) {
     if (error instanceof VisionStopError) return { status: "failed", costUsd: 0, inputTokens: 0, outputTokens: 0, stop: error };
-    if (isTransientVisionError(error)) return { status: "failed", transient: true, costUsd: 0, inputTokens: 0, outputTokens: 0 };
+    if (isTransientVisionError(error)) {
+      // Обрыв по таймауту у Polza оплачивается (уже сгенерированная часть), а ответа с суммой нет: пишем оценку вызова,
+      // а не ноль — иначе бюджет недели недосчитывает именно самые долгие вызовы. Остальные временные сбои (5xx,
+      // перегрузка) провайдер не списывает.
+      const estimate = isTimeoutError(error) && config.price ? estimatedCallUsd(config.price, config.provider === "polza" ? 1500 : 600) : 0;
+      return { status: "failed", transient: true, costUsd: estimate, inputTokens: 0, outputTokens: 0 };
+    }
     // Фото не скачалось, ответ не тот: запоминаем попытку, чтобы не биться в одну и ту же модель каждый прогон.
+    const message = error instanceof Error ? error.message : "ошибка";
     try {
-      await recordFailure(error instanceof Error ? error.message : "ошибка", { input_tokens: null, output_tokens: null, cost_usd: 0 });
+      await recordFailure(message, { input_tokens: null, output_tokens: null, cost_usd: 0 });
     } catch {
       // Не записалось — модель просто попадёт в очередь снова.
     }
-    return { status: "failed", costUsd: 0, inputTokens: 0, outputTokens: 0 };
+    return { status: "failed", errorMessage: message, forbidden: Boolean((error as { forbidden?: boolean })?.forbidden), costUsd: 0, inputTokens: 0, outputTokens: 0 };
   }
 
   // Ответ получен и оплачен: что бы дальше ни случилось с записью, расход этого вызова в учёте есть.
-  const cost = costUsd({ inputTokens: answer.inputTokens, outputTokens: answer.outputTokens }, config.price!);
+  const cost = answer.costUsd ?? costUsd({ inputTokens: answer.inputTokens, outputTokens: answer.outputTokens }, config.price!);
   const paid = { costUsd: cost, inputTokens: answer.inputTokens, outputTokens: answer.outputTokens };
   const usage = { input_tokens: answer.inputTokens, output_tokens: answer.outputTokens, cost_usd: cost };
   try {
     const attributes: StoredAttributes | null = parseCatalogAnswer(head.direction, answer.text);
     if (!attributes) {
-      await recordFailure("ответ ИИ не разобрался в признаки", usage);
-      return { status: "failed", ...paid };
+      // Ответ оборван по лимиту токенов — отдельная причина (у моделей с рассуждениями так бывает), а не «не разобрался».
+      const why = answer.finishReason === "length" ? "ответ обрезан по лимиту токенов (finish_reason=length)" : "ответ ИИ не разобрался в признаки";
+      await recordFailure(why, usage);
+      return { status: "failed", errorMessage: why, ...paid };
     }
     await save({ status: "ok", attributes, last_error: null, image_count: answer.images ?? base.image_count, ...usage });
     return { status: "ok", ...paid };

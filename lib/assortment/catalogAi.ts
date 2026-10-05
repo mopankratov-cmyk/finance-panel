@@ -28,13 +28,60 @@ export const MODEL_PRICES: Record<string, { in: number; out: number }> = {
   "claude-haiku-4-5-20251001": { in: 1, out: 5 },
 };
 
+/** Polza.ai — российский агрегатор моделей (OpenAI-совместимый API, оплата в рублях). Модели других провайдеров через неё же. */
+export const DEFAULT_POLZA_MODEL = "google/gemini-2.5-flash";
+/** Курс для перевода рублей Polza в доллары учёта (бюджет движка — в $); занижен намеренно: ниже курс — больше «долларов» в учёте. */
+export const DEFAULT_RUB_PER_USD = 80;
+
+/**
+ * Цены моделей на Polza, ₽ за миллион токенов (снято с публичного GET polza.ai/api/v1/models 05.10.2026). Нужны, чтобы
+ * ДО вызова оценить, сколько вызовов влезет в бюджет; фактический расход берётся из ответа (usage.cost_rub). Модель
+ * без цены не запускаем — как и у Anthropic. Свою цену можно задать ASSORTMENT_CATALOG_AI_POLZA_PRICE_IN_RUB / _OUT_RUB.
+ */
+export const POLZA_PRICES_RUB: Record<string, { in: number; out: number }> = {
+  "google/gemini-2.5-flash": { in: 17.493, out: 145.775 },
+  "google/gemini-2.5-flash-lite": { in: 5.831, out: 23.324 },
+  "google/gemini-3.1-flash-lite": { in: 14.5775, out: 87.465 },
+  // Не включены сознательно: anthropic/claude-haiku-4.5 стоит у Polza плоские 49,98/49,98 (похоже на заглушку каталога),
+  // openai/gpt-4o-mini считает токены картинок по-своему (запас 4 000 входных на вызов для него занижен в разы).
+};
+
+export type CatalogProvider = "anthropic" | "polza";
+
+export const PROVIDER_LABEL: Record<CatalogProvider, string> = { anthropic: "Anthropic", polza: "Polza" };
+/** Имя переменной с ключом провайдера — для сообщений. */
+export const PROVIDER_KEY_NAME: Record<CatalogProvider, string> = { anthropic: "ANTHROPIC_API_KEY", polza: "POLZA_API_KEY" };
+
 export interface CatalogAiConfig {
+  provider: CatalogProvider;
+  /** Провайдер задан явно (ASSORTMENT_CATALOG_AI_PROVIDER), а не выбран по ключу. */
+  providerForced: boolean;
   model: string;
+  /** Цена модели в $ за миллион токенов (у Polza — рубли по курсу rubPerUsd). */
   price: { in: number; out: number } | null;
+  /** Курс ₽/$ для пересчёта расхода Polza в доллары учёта. */
+  rubPerUsd: number;
   weeklyBudgetUsd: number;
   dailyLimit: number;
   /** Выключатель: ASSORTMENT_CATALOG_AI=off. */
   enabled: boolean;
+}
+
+/**
+ * Провайдер: ASSORTMENT_CATALOG_AI_PROVIDER=anthropic|polza; не задан — какой ключ есть (Anthropic раньше Polza); нет
+ * ни одного — anthropic (сборщик скажет, что ключа нет).
+ */
+export function pickProvider(env: Record<string, string | undefined>): CatalogProvider {
+  const forced = (env.ASSORTMENT_CATALOG_AI_PROVIDER ?? "").trim().toLowerCase();
+  if (forced === "anthropic" || forced === "polza") return forced;
+  if (env.ANTHROPIC_API_KEY?.trim()) return "anthropic";
+  if (polzaKey(env)) return "polza";
+  return "anthropic";
+}
+
+/** Ключ Polza: POLZA_API_KEY, иначе POLZA_AI_API_KEY (как у старого сборщика находок); пусто — нет. Одна функция на выбор, проверку и вызов. */
+export function polzaKey(env: Record<string, string | undefined> = process.env): string {
+  return env.POLZA_API_KEY?.trim() || env.POLZA_AI_API_KEY?.trim() || "";
 }
 
 /** Ноль — значение (владелец ставит 0, чтобы остановить расход), а не «не задано»; мусор и минус — значение по умолчанию. */
@@ -51,13 +98,33 @@ function nonNegative(value: string | undefined, fallback: number): number {
  * assortment-ai-attributes на основной модели панели) в учёт не входит.
  */
 export function catalogAiConfig(env: Record<string, string | undefined> = process.env): CatalogAiConfig {
-  const model = env.ASSORTMENT_CATALOG_AI_MODEL?.trim() || DEFAULT_CATALOG_MODEL;
-  const priceIn = Number(env.ASSORTMENT_CATALOG_AI_PRICE_IN);
-  const priceOut = Number(env.ASSORTMENT_CATALOG_AI_PRICE_OUT);
-  const override = Number.isFinite(priceIn) && priceIn > 0 && Number.isFinite(priceOut) && priceOut > 0 ? { in: priceIn, out: priceOut } : null;
+  const provider = pickProvider(env);
+  const providerForced = (env.ASSORTMENT_CATALOG_AI_PROVIDER ?? "").trim().toLowerCase() === provider;
+  const rubPerUsd = (() => {
+    const n = Number(env.ASSORTMENT_CATALOG_AI_RUB_PER_USD);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_RUB_PER_USD;
+  })();
+  const pair = (a: string | undefined, b: string | undefined) => {
+    const x = Number(a);
+    const y = Number(b);
+    return Number.isFinite(x) && x > 0 && Number.isFinite(y) && y > 0 ? { in: x, out: y } : null;
+  };
+  let model: string;
+  let price: { in: number; out: number } | null;
+  if (provider === "polza") {
+    model = env.ASSORTMENT_CATALOG_AI_MODEL?.trim() || DEFAULT_POLZA_MODEL;
+    const rub = pair(env.ASSORTMENT_CATALOG_AI_POLZA_PRICE_IN_RUB, env.ASSORTMENT_CATALOG_AI_POLZA_PRICE_OUT_RUB) ?? POLZA_PRICES_RUB[model] ?? null;
+    price = rub ? { in: rub.in / rubPerUsd, out: rub.out / rubPerUsd } : null;
+  } else {
+    model = env.ASSORTMENT_CATALOG_AI_MODEL?.trim() || DEFAULT_CATALOG_MODEL;
+    price = pair(env.ASSORTMENT_CATALOG_AI_PRICE_IN, env.ASSORTMENT_CATALOG_AI_PRICE_OUT) ?? MODEL_PRICES[model] ?? null;
+  }
   return {
+    provider,
+    providerForced,
     model,
-    price: override ?? MODEL_PRICES[model] ?? null,
+    rubPerUsd,
+    price,
     weeklyBudgetUsd: nonNegative(env.ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD, 20),
     dailyLimit: Math.floor(nonNegative(env.ASSORTMENT_CATALOG_AI_DAILY_LIMIT, 300)),
     enabled: (env.ASSORTMENT_CATALOG_AI ?? "").trim().toLowerCase() !== "off",
@@ -68,9 +135,12 @@ export function costUsd(usage: { inputTokens: number; outputTokens: number }, pr
   return Math.round(((usage.inputTokens * price.in + usage.outputTokens * price.out) / 1_000_000) * 100_000) / 100_000;
 }
 
-/** Запас на один вызов для проверки бюджета до ответа: два фото + вопрос ≈ 4 000 токенов на входе, ≤ 600 на выходе. */
-export function estimatedCallUsd(price: { in: number; out: number }): number {
-  return costUsd({ inputTokens: 4000, outputTokens: 600 }, price);
+/**
+ * Запас на один вызов для проверки бюджета до ответа: два фото + вопрос ≈ 4 000 токенов на входе, ≤ 600 на выходе;
+ * у моделей с рассуждениями (Gemini через Polza) ответ длиннее за счёт токенов рассуждения — запас 1 500.
+ */
+export function estimatedCallUsd(price: { in: number; out: number }, outputTokens = 600): number {
+  return costUsd({ inputTokens: 4000, outputTokens }, price);
 }
 
 export interface Allowance {
@@ -86,7 +156,7 @@ export interface Allowance {
  */
 export function allowance(config: CatalogAiConfig, spentWeekUsd: number, callsToday: number, runCap: number): Allowance {
   if (!config.price) return { models: 0, reason: "budget" };
-  const perCall = estimatedCallUsd(config.price);
+  const perCall = estimatedCallUsd(config.price, config.provider === "polza" ? 1500 : 600);
   const byBudget = Math.floor(Math.max(0, config.weeklyBudgetUsd - spentWeekUsd) / perCall);
   const byDay = Math.max(0, config.dailyLimit - callsToday);
   const models = Math.min(runCap, byBudget, byDay);

@@ -162,10 +162,12 @@ ffmpeg — это правка `package.json` и установка на mini, �
 - Модель задаётся в `lib/ai/models.ts` (`ANTHROPIC_MODEL`), клиент — в
   `lib/agent/client.ts` (`createClaudeClient`). Через него работают CTR-анализ
   фото и раздел «Лаборатория».
-- Polza (`POLZA_API_KEY`, `POLZA_MODEL`) подключена только в
-  `lib/loans/aiRecognition.ts` (сначала Anthropic, при ошибке Polza) и в
-  `lib/finance/bankStatementPdf.ts` (оба параллельно). Общей обёртки с
-  переключением на резервный сервис нет.
+- Polza (`POLZA_API_KEY`, `POLZA_MODEL`) подключена в `lib/loans/aiRecognition.ts`
+  (сначала Anthropic, при ошибке Polza), в `lib/finance/bankStatementPdf.ts` (оба
+  параллельно), в старом сборщике признаков находок (`lib/assortment/aiAttributesStore.ts`,
+  резерв) и в сборщике признаков каталога (`lib/assortment/catalogAiStore.ts`) — там Polza
+  полноценный провайдер со своим учётом расхода (см. §13). Общей обёртки с переключением
+  на резервный сервис нет: у сборщика каталога провайдер выбирается настройкой.
 - **С mini Anthropic недоступен:** `api.anthropic.com` отвечает 403 через
   гонконгский выход. Polza с mini отвечает за 0,08 с. Значит, извлечение
   признаков нужно запускать на Vercel. С mini — только через Polza.
@@ -286,7 +288,7 @@ ffmpeg — это правка `package.json` и установка на mini, �
 | `/api/sync/assortment-digest` | 07:00 вс (10:00) | сводка в Telegram; `?dryRun=1` — только текст |
 | `/api/sync/assortment-freshness` | 09:30 ежедневно (12:30) | сторож в Telegram: молчащие сборщики источников и остановившиеся служебные задачи движка (срезы WB, признаки по фото); `?dryRun=1` — только проверка |
 | `/api/sync/assortment-wb-queries` | каждые 6 ч, :15 | недельные срезы частотности запросов WB (MPSTATS) по 11 предметам-силуэтам → `assortment_wb_query_snapshot`; снимает только то, что пора (раз в 7 дней на предмет), по одному предмету за раз; `?dryRun=1` — план без вызовов MPSTATS |
-| `/api/sync/assortment-catalog-ai` | каждые 2 ч, :40 | признаки каталога по фото (Haiku, ≤ 2 фото на модель) → `assortment_model_attributes`; расход считается в `assortment_ai_usage`; `?dryRun=1` — очередь и разрешённый объём без вызовов, показывает `keyConfigured` |
+| `/api/sync/assortment-catalog-ai` | каждые 2 ч, :40 | признаки каталога по фото (Haiku у Anthropic либо модель из `POLZA_PRICES_RUB` через Polza, по умолчанию `google/gemini-2.5-flash`; ≤ 2 фото на модель) → `assortment_model_attributes`; расход считается в `assortment_ai_usage`; `?dryRun=1` — очередь и разрешённый объём без вызовов, показывает `provider`, `keyConfigured`, `priced` |
 
 Все кроны можно вызвать вручную под сессией руководителя (GET в браузере).
 Пульс каждого — строка `sync_log` (job `assortment-*`) и у источников
@@ -311,7 +313,13 @@ ffmpeg — это правка `package.json` и установка на mini, �
 (резерв), `FINANCE_TELEGRAM_BOT_TOKEN` / `FINANCE_TELEGRAM_CHAT_ID`,
 `FINANCE_PANEL_URL` (ссылки в сводке; по умолчанию finance-panel-two),
 `ASSORTMENT_AI_DAILY_LIMIT` (по умолчанию 20; это старый разбор находок на основной модели, в учёт расхода каталога не входит).
-Разбор каталога по фото (`assortment-catalog-ai`): `ASSORTMENT_CATALOG_AI=off` — выключатель;
+Разбор каталога по фото (`assortment-catalog-ai`): провайдер — `ASSORTMENT_CATALOG_AI_PROVIDER=anthropic|polza`
+(не задан — какой ключ есть, Anthropic раньше Polza: **если есть оба ключа, а работать должен Polza, задайте
+`ASSORTMENT_CATALOG_AI_PROVIDER=polza`** — ключ Anthropic без баланса остановит прогон, а Polza молча не подхватит); у Polza ключ `POLZA_API_KEY` (или `POLZA_AI_API_KEY`), по умолчанию
+модель `google/gemini-2.5-flash`, цены в ₽ за млн токенов — в таблице `POLZA_PRICES_RUB`
+(`lib/assortment/catalogAi.ts`) или `ASSORTMENT_CATALOG_AI_POLZA_PRICE_IN_RUB` / `..._OUT_RUB`; расход берётся из ответа
+(`usage.cost_rub`) и пересчитывается в $ учёта по `ASSORTMENT_CATALOG_AI_RUB_PER_USD` (по умолчанию 80);
+`ASSORTMENT_CATALOG_AI=off` — выключатель;
 `ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD` (по умолчанию 20 — бюджет недели только этого сборщика; из $30 на весь движок);
 `ASSORTMENT_CATALOG_AI_DAILY_LIMIT` (по умолчанию 300 моделей в сутки; 0 — остановить); `ASSORTMENT_CATALOG_AI_MODEL`
 (по умолчанию `claude-haiku-4-5-20251001`; для другой модели обязательны `ASSORTMENT_CATALOG_AI_PRICE_IN` и

@@ -3,10 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import test from "node:test";
 import {
-  allowance, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, estimatedCallUsd, fieldVocabulary,
+  allowance, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, pickProvider, polzaKey,
   packAttributes, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, resultKey, type CatalogHead, type ExistingResult, type TraitModel,
 } from "../lib/assortment/catalogAi.ts";
-import { isTransientVisionError, runCatalogAi, VisionStopError, type AskVision } from "../lib/assortment/catalogAiStore.ts";
+import { aiKeyConfigured, askFor, isTransientVisionError, makePolzaVision, runCatalogAi, VisionStopError, type AskVision } from "../lib/assortment/catalogAiStore.ts";
 
 /** Признаки каталога по фото: бюджет считается и соблюдается, очередь честная, отчёт не выдаёт оценку ИИ за факт. */
 
@@ -470,9 +470,10 @@ test("Крон: ровно один, GET, за секретом, запас по
   assert.match(route, /export async function GET\(/);
   assert.match(route, /checkCronAuth/);
   assert.match(route, /ASSORTMENT_CATALOG_AI=off/);
-  assert.match(route, /нет ключа Anthropic/);
+  assert.match(route, /нет ключа \$\{keyName\}/);
   // нет ключа при непустой очереди — строка-ошибка в журнале (сторож скажет в Telegram), а не тишина
-  assert.match(route, /writeSyncLog\(JOB, "error", null, `нет ключа Anthropic/);
+  assert.match(route, /writeSyncLog\(JOB, "error", null, `нет ключа \$\{keyName\}/);
+  assert.match(route, /askFor\(config\)/, "вызов ИИ — по провайдеру из настроек");
   assert.match(route, /keyConfigured/, "dryRun показывает, есть ли ключ");
   // лимит запросов при уже разобранных моделях — не «сломалось»
   assert.match(route, /rateLimited && summary\.done === 0/);
@@ -633,4 +634,261 @@ test("Отчёт: «другое» не теряется при длинном �
   assert.ok(field.other!.share > 50);
   assert.equal(field.values[0].value, "бомбер");
   assert.ok(field.values.every((v, i, all) => i === 0 || (all[i - 1].avgSourceShare ?? all[i - 1].share) >= (v.avgSourceShare ?? v.share)));
+});
+
+// --- Polza ---
+
+test("Провайдер: заданный явно; иначе по ключу (Anthropic раньше Polza); ключей нет — Anthropic (сборщик скажет, что ключа нет)", () => {
+  assert.equal(pickProvider({ ASSORTMENT_CATALOG_AI_PROVIDER: "polza", ANTHROPIC_API_KEY: "k" }), "polza", "явный выбор сильнее ключей");
+  assert.equal(pickProvider({ ASSORTMENT_CATALOG_AI_PROVIDER: "Anthropic", POLZA_API_KEY: "k" }), "anthropic");
+  assert.equal(pickProvider({ ANTHROPIC_API_KEY: "a", POLZA_API_KEY: "p" }), "anthropic");
+  assert.equal(pickProvider({ POLZA_API_KEY: "p" }), "polza");
+  assert.equal(pickProvider({ POLZA_AI_API_KEY: "p" }), "polza", "второе имя переменной");
+  assert.equal(pickProvider({ ANTHROPIC_API_KEY: "  ", POLZA_API_KEY: "p" }), "polza", "пустой ключ — нет ключа");
+  assert.equal(pickProvider({ ASSORTMENT_CATALOG_AI_PROVIDER: "openai" }), "anthropic");
+  assert.equal(pickProvider({}), "anthropic");
+  assert.equal(aiKeyConfigured("polza", { POLZA_API_KEY: "p" }), true);
+  assert.equal(aiKeyConfigured("polza", { ANTHROPIC_API_KEY: "a" }), false, "ключ другого провайдера не считается");
+  assert.equal(aiKeyConfigured("anthropic", { ANTHROPIC_API_KEY: "a" }), true);
+  assert.equal(aiKeyConfigured("anthropic", {}), false);
+});
+
+test("Polza: модель и цена — рубли по курсу в доллары учёта; неизвестная модель без цены не запускается; своя цена и курс", () => {
+  const cfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  assert.equal(cfg.provider, "polza");
+  assert.equal(cfg.model, DEFAULT_POLZA_MODEL);
+  assert.equal(cfg.rubPerUsd, 80);
+  assert.ok(cfg.price && Math.abs(cfg.price.in - 17.493 / 80) < 1e-9 && Math.abs(cfg.price.out - 145.775 / 80) < 1e-9, "17,493 ₽ / 80 = $0,2187 за млн входных");
+  assert.equal(catalogAiConfig({ POLZA_API_KEY: "p", ASSORTMENT_CATALOG_AI_MODEL: "vendor/new-model" }).price, null, "цены модели не знаем — бюджет нечем оценить");
+  const own = catalogAiConfig({ POLZA_API_KEY: "p", ASSORTMENT_CATALOG_AI_MODEL: "vendor/new-model", ASSORTMENT_CATALOG_AI_POLZA_PRICE_IN_RUB: "40", ASSORTMENT_CATALOG_AI_POLZA_PRICE_OUT_RUB: "160", ASSORTMENT_CATALOG_AI_RUB_PER_USD: "100" });
+  assert.deepEqual(own.price, { in: 0.4, out: 1.6 });
+  assert.equal(catalogAiConfig({ POLZA_API_KEY: "p", ASSORTMENT_CATALOG_AI_RUB_PER_USD: "0" }).rubPerUsd, 80, "курс 0 невозможен — по умолчанию");
+  assert.equal(catalogAiConfig({ POLZA_API_KEY: "p", ASSORTMENT_CATALOG_AI_RUB_PER_USD: "abc" }).rubPerUsd, 80);
+  // цены Anthropic для Polza-режима не применяются, а USD-цены Anthropic — только для Anthropic
+  assert.deepEqual(catalogAiConfig({}).price, { in: 1, out: 5 });
+  assert.equal(catalogAiConfig({ ASSORTMENT_CATALOG_AI_PROVIDER: "polza", ASSORTMENT_CATALOG_AI_PRICE_IN: "1", ASSORTMENT_CATALOG_AI_PRICE_OUT: "5" }).price?.in, 17.493 / 80, "USD-цена не подменяет рублёвую у Polza");
+  // оценка вызова и разрешённый объём при дешёвой модели
+  const per = estimatedCallUsd(cfg.price!, 1500);
+  assert.ok(per > 0.0015 && per < 0.0045, "≈ $0,0036 на вызов с запасом на рассуждения — вдвое дешевле $0,007 у Haiku");
+  assert.equal(allowance(cfg, 0, 0, 120).models, 120);
+  // запас на рассуждения: бюджет $0,01 → 2 вызова (по 0,0036), а не 5 (по 0,002 без запаса)
+  assert.equal(allowance({ ...cfg, weeklyBudgetUsd: 0.01 }, 0, 0, 120).models, 2);
+});
+
+function fakePolza(handler: (url: string, init: RequestInit) => { status?: number; body: unknown }) {
+  const calls: Array<{ url: string; init: RequestInit; body: Record<string, unknown> }> = [];
+  const impl = (async (url: string | URL | Request, init?: RequestInit) => {
+    const call = { url: String(url), init: init ?? {}, body: JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown> };
+    calls.push(call);
+    const out = handler(call.url, call.init);
+    return new Response(JSON.stringify(out.body), { status: out.status ?? 200, headers: { "Content-Type": "application/json" } });
+  }) as typeof fetch;
+  return { impl, calls };
+}
+const okBody = (over: Record<string, unknown> = {}) => ({ choices: [{ message: { role: "assistant", content: GOOD } }], usage: { prompt_tokens: 3900, completion_tokens: 280, cost_rub: 0.2, cost: 0.2 }, ...over });
+
+test("Polza: запрос — OpenAI-формат с картинками по ссылкам; ответ — текст, токены и списанные рубли → доллары учёта", async () => {
+  process.env.POLZA_API_KEY = "test-key";
+  try {
+    const { impl, calls } = fakePolza(() => ({ body: okBody() }));
+    const answer = await makePolzaVision(80, impl)("jackets", ["https://img/1.jpg", "https://img/2.jpg", "https://img/3.jpg"], "google/gemini-2.5-flash");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, "https://polza.ai/api/v1/chat/completions");
+    assert.equal((calls[0].init.headers as Record<string, string>).Authorization, "Bearer test-key");
+    assert.equal(calls[0].body.model, "google/gemini-2.5-flash");
+    assert.ok(Number(calls[0].body.max_tokens) >= 2000, "запас под токены рассуждений");
+    const messages = calls[0].body.messages as Array<{ role: string; content: unknown }>;
+    assert.equal(messages[0].role, "system");
+    assert.match(String(messages[0].content), /Ответь ТОЛЬКО JSON/);
+    const parts = messages[1].content as Array<{ type: string; image_url?: { url: string } }>;
+    assert.deepEqual(parts.filter((p) => p.type === "image_url").map((p) => p.image_url!.url), ["https://img/1.jpg", "https://img/2.jpg"], "не больше двух фото");
+    assert.equal(answer.text, GOOD);
+    assert.deepEqual([answer.inputTokens, answer.outputTokens], [3900, 280]);
+    assert.equal(answer.costUsd, 0.0025, "0,2 ₽ / 80 = $0,0025");
+  } finally {
+    delete process.env.POLZA_API_KEY;
+  }
+});
+
+test("Polza: ответ без cost — расход не придумывается (считается по токенам и цене в прогоне); содержимое-массив частей склеивается", async () => {
+  const { impl } = fakePolza(() => ({ body: { choices: [{ message: { content: [{ type: "text", text: '{"attributes":' }, { type: "text", text: '{"length":"до бедра"}}' }] } }], usage: { prompt_tokens: 100, completion_tokens: 10 } } }));
+  const answer = await makePolzaVision(80, impl)("jackets", ["https://img/1.jpg"], "m");
+  assert.equal(answer.costUsd, undefined);
+  assert.equal(answer.text, '{"attributes":\n{"length":"до бедра"}}');
+  // null в cost — это «не сообщили», а не «бесплатно»: нулём в учёт не пишем
+  const { impl: nullCost } = fakePolza(() => ({ body: okBody({ usage: { prompt_tokens: 1, completion_tokens: 1, cost_rub: null, cost: null } }) }));
+  assert.equal((await makePolzaVision(80, nullCost)("jackets", ["https://img/1.jpg"], "m")).costUsd, undefined);
+  const { impl: strCost } = fakePolza(() => ({ body: okBody({ usage: { prompt_tokens: 1, completion_tokens: 1, cost_rub: "0.08" } }) }));
+  assert.equal((await makePolzaVision(80, strCost)("jackets", ["https://img/1.jpg"], "m")).costUsd, 0.001, "стоимость строкой тоже читается");
+});
+
+test("Polza: ошибки — 401, деньги, лимит, неверная модель останавливают прогон (с текстом ошибки); 403 — отказ по запросу, а не остановка; 408 и 5xx — временные", async () => {
+  const run = async (status: number, error: Record<string, unknown>) => {
+    const { impl } = fakePolza(() => ({ status, body: { error } }));
+    try {
+      await makePolzaVision(80, impl)("jackets", ["https://img/1.jpg"], "m");
+      return null;
+    } catch (e) {
+      return e;
+    }
+  };
+  const stop = (e: unknown) => (e instanceof VisionStopError ? e.code : null);
+  assert.equal(stop(await run(401, { code: "UNAUTHORIZED", message: "Неверный ключ" })), "auth");
+  assert.equal(stop(await run(402, { code: "INSUFFICIENT_BALANCE" })), "billing");
+  assert.equal(stop(await run(400, { code: "INSUFFICIENT_BALANCE" })), "billing", "по коду, а не только по статусу");
+  assert.equal(stop(await run(429, { code: "TOO_MANY_REQUESTS" })), "rate_limit");
+  assert.equal(stop(await run(404, { code: "NOT_FOUND" })), "config");
+  assert.equal(stop(await run(400, { code: "BAD_REQUEST", metadata: { reason: "noProvidersForModel" } })), "config");
+  const billing = (await run(402, { code: "INSUFFICIENT_BALANCE", message: "Исчерпан лимит расходов ключа\nна неделю" })) as VisionStopError;
+  assert.match(billing.message, /нет средств или исчерпан лимит расходов ключа: Исчерпан лимит расходов ключа на неделю/, "причина из ответа — в сообщении, без переносов");
+  // 403: модерация или права — отказ по этому запросу
+  const forbidden = (await run(403, { code: "FORBIDDEN", message: "Запрос отклонён модерацией" })) as Error & { forbidden?: boolean };
+  assert.ok(forbidden instanceof Error && !(forbidden instanceof VisionStopError), "403 — не остановка прогона");
+  assert.equal(forbidden.forbidden, true);
+  assert.equal(isTransientVisionError(forbidden), false);
+  assert.match(forbidden.message, /403: Запрос отклонён модерацией/);
+  for (const status of [408, 500, 502, 503]) {
+    const e = await run(status, { code: "X", message: "oops" });
+    assert.ok(e instanceof Error && !(e instanceof VisionStopError));
+    assert.equal(isTransientVisionError(e), true, `${status} — временный сбой`);
+  }
+  // 503 «провайдер недоступен» даже с noProvidersForModel — временное, а не «модели нет»
+  const unavailable = await run(503, { code: "SERVICE_UNAVAILABLE", metadata: { reason: "noProvidersForModel" } });
+  assert.equal(stop(unavailable), null);
+  assert.equal(isTransientVisionError(unavailable), true);
+  const bad = await run(400, { code: "BAD_REQUEST", message: "Unable to download image" });
+  assert.ok(bad instanceof Error && !(bad instanceof VisionStopError));
+  assert.equal(isTransientVisionError(bad), false, "фото не скачалось — сбой модели, а не сети");
+});
+
+test("Polza: 200 без тела или без choices — обрыв чтения (временный сбой), а не «успешно разобрали пустое»", async () => {
+  for (const body of [{}, { choices: [] }, { usage: { prompt_tokens: 1 } }]) {
+    const { impl } = fakePolza(() => ({ body }));
+    const e = await makePolzaVision(80, impl)("jackets", ["https://img/1.jpg"], "m").then(() => null, (err) => err);
+    assert.ok(e instanceof Error, JSON.stringify(body));
+    assert.equal(isTransientVisionError(e), true);
+  }
+  const impl = (async () => new Response("<<не json>>", { status: 200 })) as typeof fetch;
+  const e = await makePolzaVision(80, impl)("jackets", ["https://img/1.jpg"], "m").then(() => null, (err) => err);
+  assert.equal(isTransientVisionError(e), true, "нечитаемое тело");
+});
+
+test("Polza: рассуждения выключаются у Gemini (reasoning.effort = none) и не шлются остальным; finish_reason читается", async () => {
+  const { impl, calls } = fakePolza(() => ({ body: okBody({ choices: [{ message: { content: GOOD }, finish_reason: "length" }] }) }));
+  const ask = makePolzaVision(80, impl);
+  const answer = await ask("jackets", ["https://img/1.jpg"], "google/gemini-2.5-flash");
+  assert.deepEqual(calls[0].body.reasoning, { effort: "none" });
+  assert.equal(answer.finishReason, "length");
+  await ask("jackets", ["https://img/1.jpg"], "vendor/other-model");
+  assert.equal("reasoning" in calls[1].body, false, "параметр не шлём моделям, о которых не знаем, что он им подходит");
+});
+
+test("Прогон на Polza: один отказ 403 не останавливает очередь; шесть подряд без единого успеха — остановка «ключ/права»", async () => {
+  const heads = Array.from({ length: 10 }, (_, i) => headRow("S1", `m${i}`, { model_first_seen_at: `2026-10-03T00:${String(59 - i).padStart(2, "0")}:00Z` }));
+  const forbid = (ids: string[]): AskVision => async (_d, urls) => {
+    const id = urls[0].match(/img\/(m\d)-/)![1];
+    if (ids.includes(id)) throw Object.assign(new Error("Polza 403: Запрос отклонён модерацией"), { status: 403, forbidden: true });
+    return { text: GOOD, inputTokens: 100, outputTokens: 10 };
+  };
+  const one = fakeDb({ heads });
+  const a = await runCatalogAi(one.db, { ask: forbid(["m3"]), config: cfg, now: clock, parallel: 1 });
+  assert.equal(a.stoppedBy, null, "один 403 — отказ по запросу");
+  assert.deepEqual([a.done, a.failed], [9, 1]);
+  const row = one.tables.assortment_model_attributes.find((r) => r.model_key === "S1|m3")!;
+  assert.equal(row.status, "failed");
+  assert.match(String(row.last_error), /модерацией/);
+  // 403 на каждой модели: после шести — стоп, в сообщении причина
+  const all = fakeDb({ heads });
+  const b = await runCatalogAi(all.db, { ask: forbid(heads.map((_, i) => `m${i}`)), config: cfg, now: clock, parallel: 3 });
+  assert.equal(b.stoppedBy, "auth");
+  assert.equal(b.failed, 6);
+  assert.match(b.stopMessage ?? "", /403 на 6 моделях без единого успеха: проверьте ключ, права и модерацию \(Polza 403: Запрос отклонён модерацией\)/);
+  // успех до серии — серия «ключ» не засчитывается (ключ явно рабочий)
+  let n = 0;
+  const okFirst: AskVision = async (d, urls, m) => { n += 1; if (n === 1) return { text: GOOD, inputTokens: 100, outputTokens: 10 }; return forbid(heads.map((_, i) => `m${i}`))(d, urls, m); };
+  const c = await runCatalogAi(fakeDb({ heads }).db, { ask: okFirst, config: cfg, now: clock, parallel: 3 });
+  assert.notEqual(c.stoppedBy, "auth");
+});
+
+test("Таймаут и 5xx: запасного вызова с одним фото нет (первый мог быть оплачен); обрыв по таймауту пишется в расход оценкой вызова, 5xx — нулём", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  let calls = 0;
+  const timeout: AskVision = async () => { calls += 1; throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" }); };
+  const a = fakeDb({ heads: [headRow("S1", "a")] });
+  const outA = await runCatalogAi(a.db, { ask: timeout, config: polzaCfg, now: clock, parallel: 1 });
+  assert.equal(calls, 1, "без запасного вызова");
+  assert.equal(outA.transient, 1);
+  assert.equal(outA.costUsd, estimatedCallUsd(polzaCfg.price!, 1500), "оплаченный обрыв — оценкой, а не нулём");
+  assert.equal(a.tables.assortment_model_attributes.length, 0, "попытка модели не потрачена");
+  assert.equal(usageOf(a.tables)?.cost_usd, outA.costUsd);
+  calls = 0;
+  const overloaded: AskVision = async () => { calls += 1; throw Object.assign(new Error("Service Unavailable"), { status: 503 }); };
+  const b = fakeDb({ heads: [headRow("S1", "a")] });
+  const outB = await runCatalogAi(b.db, { ask: overloaded, config: polzaCfg, now: clock, parallel: 1 });
+  assert.equal(calls, 1);
+  assert.equal(outB.costUsd, 0, "5xx провайдер не списывает");
+  // ошибка скачивания (400) — по-прежнему запасной вызов с одним фото
+  const seen: number[] = [];
+  const download: AskVision = async (_d, urls) => { seen.push(urls.length); if (urls.length === 2) throw new Error("Unable to download image"); return { text: GOOD, inputTokens: 100, outputTokens: 10 }; };
+  const c = await runCatalogAi(fakeDb({ heads: [headRow("S1", "a")] }).db, { ask: download, config: polzaCfg, now: clock, parallel: 1 });
+  assert.deepEqual(seen, [2, 1]);
+  assert.equal(c.done, 1);
+});
+
+test("Ответ оборван по лимиту токенов — причина названа в записи, а не «не разобрался»; расход учтён", async () => {
+  const ask: AskVision = async () => ({ text: '{"attributes":{"length":"до', inputTokens: 3900, outputTokens: 3000, finishReason: "length" });
+  const { db, tables } = fakeDb({ heads: [headRow("S1", "a")] });
+  const out = await runCatalogAi(db, { ask, config: cfg, now: clock });
+  assert.equal(out.failed, 1);
+  assert.ok(out.costUsd > 0);
+  assert.match(String(tables.assortment_model_attributes[0].last_error), /finish_reason=length/);
+});
+
+test("Модель без цены: сообщение по провайдеру (Polza — рублёвые переменные), причина no_price, подсказка про провайдера; одна функция ключа Polza", async () => {
+  const polza = await runCatalogAi(fakeDb().db, { ask: okAsk(), config: catalogAiConfig({ POLZA_API_KEY: "p", ASSORTMENT_CATALOG_AI_MODEL: "vendor/new" }), now: clock });
+  assert.equal(polza.skippedBecause, "no_price");
+  assert.match(polza.skipped ?? "", /Polza/);
+  assert.match(polza.skipped ?? "", /ASSORTMENT_CATALOG_AI_POLZA_PRICE_IN_RUB/);
+  assert.doesNotMatch(polza.skipped ?? "", /ASSORTMENT_CATALOG_AI_PRICE_IN\b/, "долларовые переменные Anthropic для Polza не называем");
+  const wrong = await runCatalogAi(fakeDb().db, { ask: okAsk(), config: catalogAiConfig({ ANTHROPIC_API_KEY: "a", ASSORTMENT_CATALOG_AI_MODEL: "google/gemini-2.5-flash" }), now: clock });
+  assert.match(wrong.skipped ?? "", /модель Polza: задайте ASSORTMENT_CATALOG_AI_PROVIDER=polza/, "модель Polza при провайдере Anthropic");
+  assert.equal(polzaKey({ POLZA_API_KEY: "  ", POLZA_AI_API_KEY: " k2 " }), "k2");
+  assert.equal(polzaKey({ POLZA_API_KEY: "k1", POLZA_AI_API_KEY: "k2" }), "k1");
+  assert.equal(polzaKey({}), "");
+  assert.equal(catalogAiConfig({ ASSORTMENT_CATALOG_AI_PROVIDER: "polza" }).providerForced, true);
+  assert.equal(catalogAiConfig({ POLZA_API_KEY: "p" }).providerForced, false, "выбран по ключу");
+  assert.equal(catalogAiConfig({ ASSORTMENT_CATALOG_AI_PROVIDER: "openai", POLZA_API_KEY: "p" }).providerForced, false);
+  const route = readFileSync(join(import.meta.dirname, "..", "app/api/sync/assortment-catalog-ai/route.ts"), "utf8");
+  assert.match(route, /skippedBecause === "no_price"[\s\S]*writeSyncLog\(JOB, "error"/, "модель без цены — строка-ошибка в журнале");
+  assert.match(route, /ASSORTMENT_CATALOG_AI_PROVIDER=polza/, "подсказка про явный выбор Polza при остановке Anthropic");
+  assert.match(route, /ANTHROPIC_API_KEY или POLZA_API_KEY/, "ключей нет совсем — называем оба");
+});
+
+test("Прогон на Polza: расход берётся из ответа (рубли → доллары), а не из токенов; в записи — polza:модель; оценка вызова — по таблице цен", async () => {
+  process.env.POLZA_API_KEY = "test-key";
+  try {
+    const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+    const { impl } = fakePolza(() => ({ body: okBody() }));
+    const { db, tables } = fakeDb({ heads: [headRow("S1", "a"), headRow("S1", "b")] });
+    const out = await runCatalogAi(db, { ask: makePolzaVision(polzaCfg.rubPerUsd, impl), config: polzaCfg, now: clock });
+    assert.equal(out.done, 2);
+    assert.equal(out.costUsd, 0.005, "2 × 0,2 ₽ / 80 — списанное из ответа, а не токены × цена модели (там вышло бы ≈ $0,00136)");
+    const row = tables.assortment_model_attributes[0];
+    assert.equal(row.model, "polza:google/gemini-2.5-flash");
+    assert.equal(row.cost_usd, 0.0025);
+    assert.equal(usageOf(tables)?.cost_usd, 0.005);
+    // askFor выбирает вызов по провайдеру
+    assert.notEqual(askFor(polzaCfg), askFor(catalogAiConfig({ ANTHROPIC_API_KEY: "a" })));
+  } finally {
+    delete process.env.POLZA_API_KEY;
+  }
+});
+
+test("Прогон на Polza: без cost в ответе расход считается по токенам и цене модели (бюджет не обходится)", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  const ask: AskVision = async () => ({ text: GOOD, inputTokens: 4000, outputTokens: 300 });
+  const { db } = fakeDb({ heads: [headRow("S1", "a")] });
+  const out = await runCatalogAi(db, { ask, config: polzaCfg, now: clock });
+  assert.equal(out.costUsd, costUsd({ inputTokens: 4000, outputTokens: 300 }, polzaCfg.price!));
+  assert.ok(out.costUsd > 0);
 });

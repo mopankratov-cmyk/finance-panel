@@ -98,7 +98,7 @@ export function jobsAlertPlan(freshness: JobsFreshness, openKeys: string[]): Job
   return { send: ours.length ? "recovered" : null, openKey: null, resolveKeys: ours };
 }
 
-export const JOBS_STALL_ACTION = "Проверьте журнал синхронизаций (sync_log) по этим задачам. Спрос WB — квота и токен MPSTATS; признаки по фото — ключ и баланс Anthropic.";
+export const JOBS_STALL_ACTION = "Проверьте журнал синхронизаций (sync_log) по этим задачам. Спрос WB — квота и токен MPSTATS; признаки по фото — ключ и баланс ИИ-провайдера (Anthropic или Polza, см. текст ошибки выше; провайдер выбирает ASSORTMENT_CATALOG_AI_PROVIDER).";
 
 export function jobsStallMessage(freshness: JobsFreshness): string {
   return `Остановились задачи движка тенденций (${freshness.stalled.length}): ${freshness.stalled.map((j) => j.label).join("; ")}`;
