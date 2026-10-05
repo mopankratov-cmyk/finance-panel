@@ -153,6 +153,17 @@ export function planProgress(kind: CollectionKind, items: PlanItemLite[]): PlanP
   return { main: main.length, reserves, target: BAGS_MAIN_SLOTS, label, freeSlots };
 }
 
+/**
+ * Сообщение, когда черновик лёг в подборку не целиком. Что именно уже добавлено — сказано всегда; если подборку после этого
+ * перечитать не удалось, так и написано: на экране состояние после последнего добавления, оно может отставать.
+ */
+export function draftPartialNotice(args: { applied: number; total: number; reason: string; refreshed: boolean }): string {
+  const head = `Добавлено ${args.applied} из ${args.total}, остальное не добавилось: ${args.reason.replace(/[.\s]+$/, "")}.`;
+  return args.refreshed
+    ? `${head} Подборка обновлена — соберите черновик заново.`
+    : `${head} Подборку перечитать не удалось: на экране состояние после последнего добавления, оно может отставать. Обновите подборку.`;
+}
+
 export function modelsWord(n: number): string {
   const mod10 = n % 10;
   const mod100 = n % 100;

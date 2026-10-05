@@ -97,7 +97,7 @@ export function AddFindingModal({
   );
 
   return (
-    <Modal open={open} onClose={close} title={`Добавить находку · ${DIRECTION_LABEL[direction]}`} footer={footer} size="md">
+    <Modal open={open} onClose={close} title={`Добавить находку · ${DIRECTION_LABEL[direction]}`} footer={footer} error={result ? null : error} size="md">
       {result ? (
         <div className="flex flex-col gap-3">
           <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
@@ -149,7 +149,6 @@ export function AddFindingModal({
             Заметка
             <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={1000} placeholder="Что зацепило в модели" className="rounded-xl border border-slate-300 px-3 py-2 text-base text-slate-900 outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-100" />
           </label>
-          {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
         </div>
       )}
     </Modal>

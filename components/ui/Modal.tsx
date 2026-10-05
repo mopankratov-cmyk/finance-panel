@@ -11,6 +11,11 @@ interface ModalProps {
   children: ReactNode;
   /** Кнопки внизу окна. На телефоне закрепляются и не уезжают с прокруткой. */
   footer?: ReactNode;
+  /**
+   * Сбой действия из окна. Лежит в закреплённой части (над кнопками), а не в прокручиваемом теле: тело на телефоне длиннее окна,
+   * и сообщение в его начале остаётся за краем — человек нажал «Сохранить», спиннер погас, а причины не видно.
+   */
+  error?: ReactNode;
   /** Ширина на планшете и десктопе. На телефоне окно всегда во всю ширину. */
   size?: "sm" | "md" | "lg" | "xl";
 }
@@ -37,7 +42,7 @@ const WIDTH: Record<NonNullable<ModalProps["size"]>, string> = {
  *
  * Escape, ловушка фокуса и блокировка прокрутки фона — в useDialogBehavior.
  */
-export function Modal({ open, onClose, title, children, footer, size = "md" }: ModalProps) {
+export function Modal({ open, onClose, title, children, footer, error, size = "md" }: ModalProps) {
   const panel = useRef<HTMLDivElement>(null);
   useDialogBehavior(open, onClose, panel);
 
@@ -72,6 +77,13 @@ export function Modal({ open, onClose, title, children, footer, size = "md" }: M
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
           {children}
         </div>
+
+        {error ? (
+          // Длинный ответ сервера не должен съесть всё окно: баннер ограничен по высоте и сам прокручивается.
+          <div role="alert" className="max-h-[30dvh] shrink-0 overflow-y-auto border-t border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800 break-anywhere sm:px-6">
+            {error}
+          </div>
+        ) : null}
 
         {footer ? (
           <div className="shrink-0 border-t border-slate-200 bg-white px-4 py-3 pb-[calc(0.75rem+var(--safe-b))] sm:px-6 sm:pb-3">
