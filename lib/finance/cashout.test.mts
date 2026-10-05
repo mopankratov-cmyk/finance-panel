@@ -27,6 +27,12 @@ test("не считает ручные, прочие поступления, ю�
   assert.equal(cashoutKind(payment({ name: "СБП", comment: "[dds-bank-transfer:pair]" })), null);
 });
 
+test("банковская комиссия не попадает в обнал даже если в назначении есть СБП", () => {
+  assert.equal(cashoutKind(payment({
+    name: "Комиссия Банка по операции Прочая выплата через СБП",
+  })), null);
+});
+
 test("выбирает только Панкратова и РИО", () => {
   assert.equal(isCashoutCompanyName("ИП Панкратов"), true);
   assert.equal(isCashoutCompanyName("ООО «РИО»"), true);
