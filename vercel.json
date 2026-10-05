@@ -198,6 +198,10 @@
     {
       "path": "/api/sync/assortment-catalog-ai",
       "schedule": "40 */2 * * *"
+    },
+    {
+      "path": "/api/sync/seo-positions",
+      "schedule": "13,43 1-4 * * *"
     }
   ]
 }

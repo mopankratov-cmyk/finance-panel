@@ -295,13 +295,13 @@ export function WbSeoPage() {
               {!keywordsLoading && keywords && keywords.words.length ? (
                 <div className="scroll-x rounded-xl border border-slate-200 bg-white">
                   <table className="min-w-full border-collapse text-[10px]">
-                    <thead><tr className="h-8 bg-slate-50 text-slate-500"><th className="sticky left-0 z-10 min-w-[210px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left">Запрос</th><th className="min-w-[70px] border-b border-r border-slate-200 px-2 text-right">Частота</th>{keywords.days.map((day) => <th key={day} className="min-w-[48px] border-b border-r border-slate-200 px-1 text-center">{day.slice(8, 10)}.{day.slice(5, 7)}</th>)}</tr></thead>
+                    <thead><tr className="h-10 bg-slate-50 text-slate-500"><th className="sticky left-0 z-10 min-w-[210px] border-b border-r border-slate-200 bg-slate-50 px-3 text-left">Запрос</th><th title="Сколько раз запрос искали за один день по данным WB; в колонке — максимум по дням из показанной истории (до 30 дней)." className="min-w-[96px] border-b border-r border-slate-200 px-2 text-right leading-tight">Частота за день<span className="block text-[9px] font-normal text-slate-400">макс. за период</span></th>{keywords.days.map((day) => <th key={day} className="min-w-[48px] border-b border-r border-slate-200 px-1 text-center">{day.slice(8, 10)}.{day.slice(5, 7)}</th>)}</tr></thead>
                     <tbody>{keywords.words.map((word) => <tr key={word.keyword} className="h-9 border-b border-slate-100 last:border-b-0"><td className="sticky left-0 z-10 max-w-[240px] truncate border-r border-slate-100 bg-white px-3 font-medium text-slate-700">{word.keyword}</td><td className="border-r border-slate-100 px-2 text-right tabular-nums text-slate-500">{fmt(word.shows)}</td>{word.daily.map((day, index) => <td key={`${word.keyword}-${keywords.days[index]}`} className="border-r border-slate-100 p-1 text-center"><span className={`inline-grid h-6 min-w-7 place-items-center rounded-md px-1 tabular-nums ${positionTone(day.pos)}`}>{day.pos ?? "—"}</span></td>)}</tr>)}</tbody>
                   </table>
                 </div>
               ) : null}
-              {!keywordsLoading && keywords && keywords.words.length === 0 && !keywordsError ? <WbEmptyState>Позиции ещё не накоплены. Для живых запросов нужна подписка WB «Джем».</WbEmptyState> : null}
-              {keywords?.note ? <p className="mt-2 text-[10px] leading-4 text-amber-700">{keywords.note}</p> : null}
+              {!keywordsLoading && keywords && keywords.words.length === 0 && !keywordsError ? <WbEmptyState>{keywords.note ?? "По этому товару пока нет запросов с позицией."}</WbEmptyState> : null}
+              {keywords?.note && keywords.words.length > 0 ? <p className="mt-2 text-[10px] leading-4 text-amber-700">{keywords.note}</p> : null}
             </div>
           </aside>
         </>
