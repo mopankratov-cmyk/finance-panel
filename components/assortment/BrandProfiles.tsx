@@ -7,7 +7,9 @@ import {
   BRAND_SOURCE_HINTS, SEASONS, profileCompleteness, profileForms, type BrandProfile,
 } from "@/lib/assortment/brandProfiles";
 import type { FormsReport } from "@/lib/assortment/forms";
+import type { OwnModelsReport } from "@/lib/assortment/ownModels";
 import { formNumbers, undecidedByDemand, type FormNumbers } from "@/lib/assortment/profileNumbers";
+import { plural } from "@/lib/warehouse/plural";
 import type { FormDemandReport } from "@/lib/assortment/wbQueries";
 
 type State =
@@ -31,6 +33,8 @@ export function BrandProfiles() {
   const [state, setState] = useState<State>({ kind: "loading" });
   // Числа по формам (доля поисков и доля каталогов) — справка рядом с решениями; сбой чтения профили не роняет.
   const [numbers, setNumbers] = useState<Partial<Record<AssortmentDirection, Map<string, FormNumbers>>>>({});
+  // «У нас»: собственные модели бренда на WB по формам (только числа). Нет ответа — строк «у нас» просто нет.
+  const [own, setOwn] = useState<Record<string, OwnModelsReport>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -57,6 +61,13 @@ export function BrandProfiles() {
         .then((body) => {
           if (cancelled || !body?.report) return;
           setNumbers((prev) => ({ ...prev, [direction]: formNumbers(body.report as FormsReport, (body.demand as FormDemandReport | null) ?? null) }));
+        })
+        .catch(() => undefined);
+      fetch(`/api/assortment-development/own-models?direction=${direction}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (cancelled || !Array.isArray(body?.own)) return;
+          setOwn((prev) => ({ ...prev, ...Object.fromEntries((body.own as OwnModelsReport[]).map((o) => [o.brandKey, o])) }));
         })
         .catch(() => undefined);
     }
@@ -86,7 +97,7 @@ export function BrandProfiles() {
           </div>
         )}
         {state.kind === "ready" && state.profiles.map((profile) => (
-          <ProfileCard key={`${profile.brandKey}:${profile.version}`} profile={profile} editable={state.canEdit && state.persisted} numbers={numbers[profile.direction]} />
+          <ProfileCard key={`${profile.brandKey}:${profile.version}`} profile={profile} editable={state.canEdit && state.persisted} numbers={numbers[profile.direction]} own={own[profile.brandKey]} />
         ))}
       </div>
     </div>
@@ -97,7 +108,7 @@ function toggle(list: string[], key: string): string[] {
   return list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
 }
 
-export function ProfileCard({ profile, editable, numbers }: { profile: BrandProfile; editable: boolean; numbers?: Map<string, FormNumbers> }) {
+export function ProfileCard({ profile, editable, numbers, own }: { profile: BrandProfile; editable: boolean; numbers?: Map<string, FormNumbers>; own?: OwnModelsReport }) {
   const [saved, setSaved] = useState(profile);
   const [audience, setAudience] = useState(profile.audience ?? "");
   const [fit, setFit] = useState(profile.fitForms);
@@ -180,6 +191,17 @@ export function ProfileCard({ profile, editable, numbers }: { profile: BrandProf
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium text-slate-800">Формы</legend>
         <p className="text-xs text-slate-500">Что бренду подходит, а что нет. Не отмеченное — «не решено».</p>
+        {own && !own.found && (
+          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">
+            Карточек с брендом «{profile.wbBrandNames.join(" / ")}» в базе WB не нашлось — «у нас» не проверено (не «0»): проверьте, под каким названием бренда заведены карточки и подключён ли кабинет.
+          </p>
+        )}
+        {own && own.found && (
+          <p className="text-xs leading-5 text-slate-500">
+            У нас на WB: {own.models.toLocaleString("ru-RU")} {plural(own.models, "модель", "модели", "моделей")} ({own.cards.toLocaleString("ru-RU")} {plural(own.cards, "карточка", "карточки", "карточек")}); форма — по названию карточки, не по фото.
+            {own.unrecognized > 0 ? ` У ${own.unrecognized.toLocaleString("ru-RU")} название формы не называет.` : ""}
+          </p>
+        )}
         {undecided.length > 0 && (
           <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
             Не решено по формам с самым большим спросом на WB: {undecided.map((n) => `${n.label} (${pctText(n.demandShare)} поисков)`).join(", ")}.
@@ -194,7 +216,7 @@ export function ProfileCard({ profile, editable, numbers }: { profile: BrandProf
               <div key={form.key} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
                 <span className="flex min-w-0 flex-col">
                   <span className="text-sm text-slate-800">{form.label}</span>
-                  {n && <span className="text-xs text-slate-500">{numbersLine(n)}</span>}
+                  {(n || (own && own.found)) && <span className="text-xs text-slate-500">{[n ? numbersLine(n) : null, own && own.found ? `у нас ${(own.byForm[form.key] ?? 0).toLocaleString("ru-RU")} ${plural(own.byForm[form.key] ?? 0, "модель", "модели", "моделей")}` : null].filter(Boolean).join(" · ")}</span>}
                 </span>
                 {editable ? (
                   <div role="radiogroup" aria-label={form.label} className="flex gap-1">
