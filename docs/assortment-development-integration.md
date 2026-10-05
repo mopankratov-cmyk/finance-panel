@@ -321,7 +321,7 @@ ffmpeg — это правка `package.json` и установка на mini, �
 (`usage.cost_rub`) и пересчитывается в $ учёта по `ASSORTMENT_CATALOG_AI_RUB_PER_USD` (по умолчанию 80);
 `ASSORTMENT_CATALOG_AI=off` — выключатель;
 `ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD` (по умолчанию 20 — бюджет недели только этого сборщика; из $30 на весь движок);
-`ASSORTMENT_CATALOG_AI_DAILY_LIMIT` (по умолчанию 300 моделей в сутки; 0 — остановить); `ASSORTMENT_CATALOG_AI_MODEL`
+`ASSORTMENT_CATALOG_AI_DAILY_LIMIT` (по умолчанию 1500 моделей в сутки — это потолок кронов: один прогон ≤120 моделей, 12 прогонов; 0 — остановить); `ASSORTMENT_CATALOG_AI_MODEL`
 (по умолчанию `claude-haiku-4-5-20251001`; для другой модели обязательны `ASSORTMENT_CATALOG_AI_PRICE_IN` и
 `ASSORTMENT_CATALOG_AI_PRICE_OUT` — $ за млн токенов, иначе сборщик не запускается: бюджет нечем считать).
 Переменная, добавленная после сборки, видна только после редеплоя.

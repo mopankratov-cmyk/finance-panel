@@ -25,7 +25,7 @@ test("Настройки: по умолчанию Haiku с известной ц
   assert.equal(def.model, DEFAULT_CATALOG_MODEL);
   assert.deepEqual(def.price, { in: 1, out: 5 });
   assert.equal(def.weeklyBudgetUsd, 20);
-  assert.equal(def.dailyLimit, 300);
+  assert.equal(def.dailyLimit, 1500);
   assert.equal(def.enabled, true);
   assert.equal(catalogAiConfig({ ASSORTMENT_CATALOG_AI: "off" }).enabled, false);
   assert.equal(catalogAiConfig({ ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD: "5", ASSORTMENT_CATALOG_AI_DAILY_LIMIT: "40" }).weeklyBudgetUsd, 5);
@@ -47,8 +47,8 @@ test("Разрешённый объём: бюджет недели, потоло
   assert.deepEqual(allowance(cfg, 19.9, 0, 120), { models: 14, reason: "ok" }, "остаток $0,10 / 0,007 = 14 вызовов");
   assert.deepEqual(allowance(cfg, 20, 0, 120), { models: 0, reason: "budget" });
   assert.deepEqual(allowance(cfg, 25, 0, 120), { models: 0, reason: "budget" }, "перерасход не уходит в минус");
-  assert.deepEqual(allowance(cfg, 0, 295, 120), { models: 5, reason: "ok" });
-  assert.deepEqual(allowance(cfg, 0, 300, 120), { models: 0, reason: "daily_limit" });
+  assert.deepEqual(allowance(cfg, 0, 1495, 120), { models: 5, reason: "ok" });
+  assert.deepEqual(allowance(cfg, 0, 1500, 120), { models: 0, reason: "daily_limit" });
   assert.equal(allowance({ ...cfg, price: null }, 0, 0, 120).models, 0);
 });
 
@@ -258,7 +258,7 @@ test("Прогон: бюджет недели исчерпан — ни одно
   assert.equal(calls, 0);
   assert.equal(a.stoppedBy, "budget");
   assert.equal(a.allowReason, "budget");
-  const limited = fakeDb({ heads, usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 300, cost_usd: 1.5 }] });
+  const limited = fakeDb({ heads, usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 1500, cost_usd: 1.5 }] });
   const b = await runCatalogAi(limited.db, { ask, config: cfg, now: clock });
   assert.equal(calls, 0);
   assert.equal(b.allowReason, "daily_limit");

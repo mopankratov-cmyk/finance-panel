@@ -95,7 +95,7 @@ function nonNegative(value: string | undefined, fallback: number): number {
 /**
  * Настройки из окружения: модель, цена, недельный бюджет разбора каталога в $
  * (ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD, по умолчанию 20 из 30 на весь движок), потолок моделей
- * в сутки (300). Бюджет считает только этот сборщик; прочий расход на ИИ (признаки находок,
+ * в сутки (1500 ≈ 12 прогонов крона по ≤ 120 моделей). Бюджет считает только этот сборщик; прочий расход на ИИ (признаки находок,
  * assortment-ai-attributes на основной модели панели) в учёт не входит.
  */
 export function catalogAiConfig(env: Record<string, string | undefined> = process.env): CatalogAiConfig {
@@ -127,7 +127,7 @@ export function catalogAiConfig(env: Record<string, string | undefined> = proces
     rubPerUsd,
     price,
     weeklyBudgetUsd: nonNegative(env.ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD, 20),
-    dailyLimit: Math.floor(nonNegative(env.ASSORTMENT_CATALOG_AI_DAILY_LIMIT, 300)),
+    dailyLimit: Math.floor(nonNegative(env.ASSORTMENT_CATALOG_AI_DAILY_LIMIT, 1500)),
     enabled: (env.ASSORTMENT_CATALOG_AI ?? "").trim().toLowerCase() !== "off",
   };
 }
