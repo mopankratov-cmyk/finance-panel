@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, CalendarClock, ChevronRight, Download, ExternalLink, FileText, Pencil, Plus, RefreshCw, Sparkles, Trash2, WalletCards, X } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LoanForm, type LoanFormResult, type LoanScheduleDraft } from "./LoanForm";
 import { deleteLoanDocument, downloadLoanDocument, listLoanDocuments, openListedLoanDocument, saveLoanDocument, type LoanDocumentInfo } from "./loanDocuments";
@@ -717,6 +718,7 @@ export function LoansPage() {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0"><h1 className="text-2xl font-bold text-slate-950">Кредиты и займы</h1><p className="mt-1 text-sm text-slate-500">Договоры, графики, остаток долга и ближайшие оплаты</p></div>
           <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap xl:justify-end xl:shrink-0">
+            <Link href="/loans/settlements" className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-600"><WalletCards className="h-4 w-4" /> Взаиморасчёты</Link>
             <button aria-label="Восстановить графики из исходных файлов" onClick={() => void restoreSchedulesFromDocuments()} disabled={restoringSchedules} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${restoringSchedules ? "animate-spin" : ""}`} /> Исправить графики</button>
             <button aria-label="Сверить платежи с ДДС" onClick={() => void reconcileWithDds(true)} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"><RefreshCw className="h-4 w-4" /> Сверить ДДС</button>
             <button aria-label="Сверить удержания Wildberries" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="inline-flex min-h-11 whitespace-nowrap items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-3 text-sm font-semibold text-violet-800 hover:bg-violet-100 disabled:opacity-50"><RefreshCw className={`h-4 w-4 ${marketplaceLoading ? "animate-spin" : ""}`} /> Сверить WB</button>
