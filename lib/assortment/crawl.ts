@@ -54,7 +54,13 @@ function imageUrls(raw: unknown): string[] {
 }
 
 export const CATALOG_PAGE_SIZE = 250;
-export const MAX_CATALOG_PAGES = 8;
+/**
+ * Потолок страниц каталога Shopify. Был 8 (2 000 товаров), и у JW PEI — в каталоге 2 515 товаров (замер 05.10: 10 полных страниц и
+ * ещё 15) — обход всегда заканчивался «окном», а «пропало» по источнику (≈45% сумок) определить было нельзя; недосмотренной
+ * оставалась пятая часть каталога. Источник, чей каталог короче потолка, останавливается на неполной странице и потолка не касается.
+ * 16 (4 000) — запас на рост JW PEI в полтора раза; дальше обход снова скажет «окно», а не промолчит.
+ */
+export const MAX_CATALOG_PAGES = 16;
 
 export function parseCatalogPage(json: unknown): CatalogItem[] {
   const products = (json as { products?: unknown })?.products;

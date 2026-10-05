@@ -114,6 +114,24 @@ test("Метки сайта по тегам — строго: «not-new», «new
 test("Shopify: полнота обхода — конец каталога full, потолок страниц window, дедлайн partial", async () => {
   const { coverageOf } = await import("../lib/assortment/crawlStore.ts");
   assert.equal(coverageOf("end"), "full");
-  assert.equal(coverageOf("cap"), "window", "JW PEI: каталог больше 8 × 250 — видим только начало, «пропал» судить нельзя");
+  assert.equal(coverageOf("cap"), "window", "каталог больше потолка страниц — видим только начало, «пропал» судить нельзя");
   assert.equal(coverageOf("deadline"), "partial");
+});
+
+test("Потолок страниц покрывает JW PEI (2 515 товаров на 05.10 — 11 страниц) с запасом; старые товары за прежним потолком новинками не становятся", async () => {
+  const { MAX_CATALOG_PAGES, CATALOG_PAGE_SIZE, crawlPlan } = await import("../lib/assortment/crawl.ts");
+  assert.ok(MAX_CATALOG_PAGES * CATALOG_PAGE_SIZE >= 2515 * 1.5, "потолок — не меньше полуторного каталога JW PEI: он рос бы до окна снова");
+  const NOW = Date.parse("2026-10-06T00:00:00Z");
+  const item = (id: number, publishedAt: string | null) => ({ sourceItemId: String(id), handle: `p-${id}`, title: `Bag ${id}`, productType: "Bags", tags: [], publishedAt, images: [], vendor: null });
+  // Обход видел первые 2 000 товаров; потолок подняли — в окно впервые попали ещё 515: 500 опубликованы давно, 15 — на этой неделе.
+  const known = new Set(Array.from({ length: 2000 }, (_, i) => String(i + 1)));
+  const fetched = [
+    ...Array.from({ length: 2000 }, (_, i) => item(i + 1, "2025-03-01T00:00:00Z")),
+    ...Array.from({ length: 500 }, (_, i) => item(2001 + i, "2025-04-01T00:00:00Z")),
+    ...Array.from({ length: 15 }, (_, i) => item(2501 + i, "2026-10-03T00:00:00Z")),
+  ];
+  const plan = crawlPlan(known, fetched as never, NOW);
+  assert.equal(plan.baseline, false);
+  assert.equal(plan.late.length, 500, "давно опубликованные — в базу, а не в ленту «Новое за 7 дней»");
+  assert.equal(plan.fresh.length, 15, "настоящие новинки по-прежнему видны");
 });

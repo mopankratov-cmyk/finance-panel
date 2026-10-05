@@ -50,9 +50,8 @@ async function fetchPages(urlFor: (page: number) => string, maxPages: number, de
 
 /**
  * Полнота обхода каталога — от неё зависит доверие к «появилось/пропало»:
- * full — дошли до конца; window — упёрлись в потолок страниц (каталог больше,
- * у JW PEI больше двух тысяч товаров; новинки видны через коллекции); partial —
- * оборвались по дедлайну.
+ * full — дошли до конца; window — упёрлись в потолок страниц MAX_CATALOG_PAGES
+ * (каталог больше; новинки видны через коллекции); partial — оборвались по дедлайну.
  */
 export function coverageOf(end: PagesEnd): "full" | "window" | "partial" {
   return end === "end" ? "full" : end === "cap" ? "window" : "partial";
