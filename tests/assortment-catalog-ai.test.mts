@@ -10,7 +10,7 @@ import { aiKeyConfigured, askFor, isTransientVisionError, loadPhotoSamples, make
 import { catalogPrompt, catalogUserText } from "../lib/assortment/aiAttributes.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { SampleCards } from "../components/assortment/PhotoTraits.tsx";
+import { SampleCards, TraitsSection } from "../components/assortment/PhotoTraits.tsx";
 
 /** Признаки каталога по фото: бюджет считается и соблюдается, очередь честная, отчёт не выдаёт оценку ИИ за факт. */
 
@@ -1010,6 +1010,22 @@ test("Карточки примеров: название, источник, ф�
   assert.match(html, /Капюшон[\s\S]*не видно/);
   assert.match(html, /нет фото/);
   assert.match(html, /polza:m/);
+});
+
+test("Карточка признака: пять строк, а то, что не показано (редкие значения и «другое»), названо — иначе полоски не сходятся к «видно у N»", () => {
+  const v = (value: string, models: number, of: number) => ({ value, models, share: Math.round((models / of) * 1000) / 10, avgSourceShare: null, sources: 1 });
+  const silhouette = {
+    key: "silhouette", label: "Силуэт", visible: 61, notVisible: 1,
+    values: [v("полумесяц", 12, 61), v("шопер", 9, 61), v("багет", 7, 61), v("кросс-боди", 7, 61), v("тоут", 6, 61), v("седло", 6, 61), v("ведро", 5, 61)],
+    other: v("другое", 9, 61),
+  };
+  const proportions = { key: "proportions", label: "Пропорции", visible: 62, notVisible: 0, values: [v("средняя", 32, 62), v("малая", 14, 62), v("большая", 9, 62), v("мини", 4, 62), v("вытянутая", 3, 62)], other: null };
+  const report = { direction: "bags" as const, analyzed: 62, catalog: 1172, coverage: 5.3, sourcesInAverage: 0, basis: "raw" as const, averageCoverage: 0, fields: [silhouette, proportions] };
+  const html = renderToStaticMarkup(createElement(TraitsSection, { report }));
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.match(text, /Не показано: редкие значения — 11 моделей; другие формулировки — 9 моделей\./, "61 − (12+9+7+7+6) − 9 = 11");
+  assert.doesNotMatch(text, /седло|ведро/, "строки за пятой не рисуются");
+  assert.equal((text.match(/Не показано/g) ?? []).length, 1, "у признака, где показано всё, строки нет");
 });
 
 test("Маршрут примеров: ветка samples=1 без кэша; отчёт не кэшируется, пока разобрано мало моделей", () => {

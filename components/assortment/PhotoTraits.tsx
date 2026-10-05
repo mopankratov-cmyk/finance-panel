@@ -47,7 +47,7 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
   );
 }
 
-function TraitsSection({ report }: { report: PhotoTraitsReport }) {
+export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
   return (
     <section aria-label="Признаки по фото" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -60,6 +60,12 @@ function TraitsSection({ report }: { report: PhotoTraitsReport }) {
         {report.fields.map((field) => {
           const shown = field.values.slice(0, 5);
           const other = field.other;
+          // Модели в значениях за пятой строкой: без этой строки полоски и «другие формулировки» не сходятся к «видно у N».
+          const hidden = Math.max(0, field.visible - shown.reduce((sum, v) => sum + v.models, 0) - (other?.models ?? 0));
+          const unshown = [
+            hidden > 0 ? `редкие значения — ${num(hidden)} ${plural(hidden, "модель", "модели", "моделей")}` : null,
+            other ? `другие формулировки — ${num(other.models)} ${plural(other.models, "модель", "модели", "моделей")}` : null,
+          ].filter(Boolean);
           const base = (v: (typeof shown)[number]) => v.avgSourceShare ?? v.share;
           return (
             <div key={field.key} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
@@ -80,7 +86,7 @@ function TraitsSection({ report }: { report: PhotoTraitsReport }) {
                   </li>
                 ))}
               </ul>
-              {other && <p className="mt-2 text-xs text-slate-500">Другие формулировки — {num(other.models)} {plural(other.models, "модель", "модели", "моделей")}.</p>}
+              {unshown.length > 0 && <p className="mt-2 text-xs text-slate-500">Не показано: {unshown.join("; ")}.</p>}
             </div>
           );
         })}
