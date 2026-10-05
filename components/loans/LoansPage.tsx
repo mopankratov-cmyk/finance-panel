@@ -83,6 +83,19 @@ async function ignoreClosedWbContract(contractNumber: string): Promise<void> {
   if (!response.ok) throw new Error(body.error || "Не удалось скрыть закрытый договор WB");
 }
 
+type WbAllocationResult = { allocatedRows?: number; allocatedAmountRub?: number; unresolvedFacts?: number; error?: string };
+
+async function allocateWbContractAutomatically(contractNumber: string): Promise<WbAllocationResult> {
+  const response = await fetch("/api/finance/loans/marketplace-facts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "allocate-contract", contractNumber }),
+  });
+  const body = await response.json().catch(() => ({})) as WbAllocationResult;
+  if (!response.ok) throw new Error(body.error || "Не удалось распределить удержания WB");
+  return body;
+}
+
 const marker = (loanId: string) => `[loan:${loanId}:`;
 const receiptMarker = (loanId: string) => `[loan:${loanId}:receipt]`;
 const scheduleMarker = (loanId: string, rowId: string, kind: "principal" | "interest" | "penalty" | "fine") => `[loan:${loanId}:schedule:${rowId}:${kind}]`;
@@ -460,6 +473,19 @@ export function LoansPage() {
     setMarketplaceLoading(true);
     try {
       const facts = await loadMarketplaceFacts();
+      // Когда номер WB уже связан с договором, дальнейший выбор строк не
+      // нужен: удержания разносятся по наиболее ранним просроченным строкам
+      // того же вида. Нераспознанные договоры по-прежнему остаются в очереди.
+      const linkedContracts = [...new Set(facts
+        .filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber)
+        .map((fact) => fact.contractNumber!))];
+      let allocatedAmount = 0;
+      let allocatedRows = 0;
+      for (const contractNumber of linkedContracts) {
+        const result = await allocateWbContractAutomatically(contractNumber);
+        allocatedAmount += result.allocatedAmountRub ?? 0;
+        allocatedRows += result.allocatedRows ?? 0;
+      }
       const ready = facts.filter((fact) => fact.state === "ready" && fact.scheduleRowId);
       let closed = 0;
       for (const fact of ready) {
@@ -475,7 +501,8 @@ export function LoansPage() {
       dispatch({ type: "LOAD", payload: fresh });
       setScheduleRows(schedule.rows);
       const review = freshFacts.filter((fact) => fact.state === "review" || fact.state === "unassigned").length;
-      alert(closed ? `WB: автоматически отмечено оплатой ${closed} строк графика.${review ? ` Ещё ${review} удержаний ждут проверки.` : ""}` : review ? `WB: точных совпадений нет. ${review} удержаний ждут проверки в очереди.` : "Новых удержаний WB по кредитам не найдено.");
+      const automatic = allocatedAmount > 0 ? `WB: автоматически распределено ${formatMoney(allocatedAmount)}${allocatedRows ? `, полностью закрыто строк: ${allocatedRows}` : ""}.` : "";
+      alert([automatic, closed ? `Автоматически отмечено оплатой ещё ${closed} строк графика.` : "", review ? `На проверке осталось ${review} удержаний без связанного договора или подходящей строки.` : ""].filter(Boolean).join(" ") || "Новых удержаний WB по кредитам не найдено.");
     } catch (error) {
       alert(error instanceof Error ? error.message : "Не удалось сверить удержания WB");
     } finally {
@@ -513,14 +540,9 @@ export function LoansPage() {
   }, []);
 
   const allocateWbContract = useCallback(async (contractNumber: string) => {
-    if (!window.confirm(`Распределить удержания WB по договору № ${contractNumber}?\n\nСистема закроет только полностью покрытые старые строки того же вида платежа в хронологическом порядке. Пени, которых нет в графике, будут добавлены отдельными оплаченными строками датой удержания. Непоместившийся остаток не будет списан наугад.`)) return;
     setWbAllocatingContract(contractNumber);
     try {
-      const response = await fetch("/api/finance/loans/marketplace-facts", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "allocate-contract", contractNumber }),
-      });
-      const body = await response.json().catch(() => ({})) as { allocatedRows?: number; allocatedAmountRub?: number; unresolvedFacts?: number; error?: string };
-      if (!response.ok) throw new Error(body.error || "Не удалось распределить удержания WB");
+      const body = await allocateWbContractAutomatically(contractNumber);
       const [freshFacts, fresh, schedule] = await Promise.all([loadMarketplaceFacts(), loadFinanceState(), loadLoanScheduleRows()]);
       setMarketplaceFacts(freshFacts);
       dispatch({ type: "LOAD", payload: fresh });
@@ -761,7 +783,7 @@ export function LoansPage() {
           <div className="flex flex-col gap-3 border-b border-amber-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="font-bold text-amber-950">Удержания WB ждут проверки</h2>
-              <p className="mt-1 text-sm text-amber-900">Точное совпадение закрывается автоматически. Для неизвестного номера укажите договор панели один раз — следующие удержания WB найдутся сами.</p>
+              <p className="mt-1 text-sm text-amber-900">Связанные договоры распределяются автоматически по дате и виду платежа, включая частичные суммы. Вручную нужно указать только неизвестный номер договора.</p>
             </div>
             <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-50">Обновить сверку</button>{[...new Set(marketplaceFacts.filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber).map((fact) => fact.contractNumber!))].map((contractNumber) => <button key={contractNumber} type="button" onClick={() => void allocateWbContract(contractNumber)} disabled={wbAllocatingContract !== null} className="min-h-11 shrink-0 rounded-xl bg-amber-700 px-4 text-sm font-semibold text-white hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:opacity-50">{wbAllocatingContract === contractNumber ? "Распределяю…" : `Распределить № ${contractNumber}`}</button>)}</div>
           </div>
