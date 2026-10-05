@@ -30,7 +30,7 @@ test("справочник ОПиУ содержит все заполненны
   assert.equal(MONTHLY_OPIU_ARTICLES.length, 32);
   assert.equal(new Set(MONTHLY_OPIU_ARTICLES.map((article) => article.id)).size, 32);
   assert.ok(MONTHLY_OPIU_ARTICLES.some((article) => article.label === "Продажи на МП"));
-  assert.ok(MONTHLY_OPIU_ARTICLES.some((article) => article.label === "Выплаты процентов по займам и кредитам"));
+  assert.ok(MONTHLY_OPIU_ARTICLES.some((article) => article.label === "Начисленные проценты и пени по займам и кредитам"));
 });
 
 test("маркетплейсы складываются по направлениям, но неизвестные расходы не превращаются в ноль", () => {

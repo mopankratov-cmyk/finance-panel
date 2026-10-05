@@ -146,8 +146,13 @@ export async function GET(request: NextRequest) {
         .from("loan_schedule_rows")
         .select("id,loan_id,due_date,amount_rub,kind,status,calendar_payment_id")
         .gte("due_date", range.from).lte("due_date", range.to)
-        .eq("kind", "interest").neq("status", "cancelled")
-        .order("due_date").order("id").range(from, to), { label: "Детализация ОПиУ: проценты", maxPages: 20 });
+        .in("kind", ["interest", "penalty"]).neq("status", "cancelled")
+        .order("due_date").order("id").range(from, to), { label: "Детализация ОПиУ: проценты и пени", maxPages: 20 });
+      const loanIds = [...new Set(schedule.map((row) => String(row.loan_id ?? "")).filter(Boolean))];
+      const loans = loanIds.length ? await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
+        .from("loans").select("id,creditor").in("id", loanIds)
+        .order("id").range(from, to), { label: "Детализация ОПиУ: договоры кредитов", maxPages: 20 }) : [];
+      const loanById = new Map(loans.map((row) => [String(row.id), String(row.creditor ?? "Договор без названия")]));
       const paymentIds = [...new Set(schedule.map((row) => String(row.calendar_payment_id ?? "")).filter(Boolean))];
       const linkedPayments = paymentIds.length ? await loadAllSupabasePages<Record<string, unknown>>((from, to) => db
         .from("payments").select("id,company_id,name,comment").in("id", paymentIds)
@@ -157,15 +162,25 @@ export async function GET(request: NextRequest) {
         .from("payments").select("company_id,comment").not("company_id", "is", null).like("comment", "%:receipt]%")
         .order("id").range(from, to), { label: "Детализация ОПиУ: компании договоров", maxPages: 20 });
       const companyByLoan = loanCompanyByReceiptPayments(receiptPayments.map((row) => ({ companyId: row.company_id ? String(row.company_id) : null, comment: row.comment ? String(row.comment) : null })));
+      const seenInterestAccruals = new Set<string>();
       const items = schedule.flatMap<MonthlyOpiuDetailItem>((row) => {
         const payment = paymentById.get(String(row.calendar_payment_id ?? ""));
+        const loanId = String(row.loan_id ?? "");
+        const dueDate = String(row.due_date).slice(0, 10);
+        const kind = String(row.kind);
         const companyId = (payment?.company_id ? String(payment.company_id) : null) ?? companyByLoan.get(String(row.loan_id ?? "").toLowerCase()) ?? null;
         if (companySelected && (!companyId || !companyIds.includes(companyId))) return [];
+        if (kind === "interest") {
+          const key = `${loanId}|${dueDate}|${Math.abs(num(row.amount_rub))}`;
+          if (seenInterestAccruals.has(key)) return [];
+          seenInterestAccruals.add(key);
+        }
+        const kindLabel = kind === "penalty" ? "Пени" : "Проценты";
         return [{
           id: `loan:${String(row.id)}`,
           source: "loan",
-          date: String(row.due_date).slice(0, 10),
-          title: String(payment?.name ?? "Проценты по договору"),
+          date: dueDate,
+          title: `${kindLabel} — ${loanById.get(loanId) ?? String(payment?.name ?? "договор без названия")}`,
           subtitle: `График кредита · ${String(row.status) === "paid" ? "оплачено" : "начислено"}`,
           amount: Math.abs(num(row.amount_rub)),
           href: "/loans",

@@ -111,7 +111,7 @@ export function loanCompanyByReceiptPayments(rows: readonly LoanReceiptCompanyFa
 }
 
 /**
- * ОПиУ работает по начислению: проценты и комиссии берём из графика за месяц,
+ * ОПиУ работает по начислению: проценты и пени берём из графика за месяц,
  * независимо от того, успел ли платёж перейти из плана в факт. Тело кредита
  * здесь намеренно не учитывается — это движение баланса, а не расход.
  */
@@ -120,18 +120,30 @@ export function aggregateLoanScheduleMonthlyFacts(
   companyIds: readonly string[] = [],
 ): Record<string, MonthlySharedFact> {
   const selected = new Set(companyIds);
-  const relevant = rows.filter((row) =>
-    row.kind === "interest" &&
-    row.status !== "cancelled" &&
-    (!selected.size || (row.companyId ? selected.has(row.companyId) : false)),
-  );
+  const seenInterestAccruals = new Set<string>();
+  const relevant = rows.filter((row) => {
+    if ((row.kind !== "interest" && row.kind !== "penalty")
+      || row.status === "cancelled"
+      || (selected.size && (!row.companyId || !selected.has(row.companyId)))) return false;
+
+    // В старых данных повторное сохранение графика могло оставить две
+    // одинаковые строки процентов с разными UUID. Экономически это одно
+    // начисление одного договора за одну дату. Пени не дедуплицируем: несколько
+    // отдельных санкций в один день могут быть самостоятельными фактами.
+    if (row.kind === "interest" && row.loanId && row.dueDate) {
+      const key = `${row.loanId}|${row.dueDate}|${Math.abs(Number(row.amount) || 0)}`;
+      if (seenInterestAccruals.has(key)) return false;
+      seenInterestAccruals.add(key);
+    }
+    return true;
+  });
   if (!relevant.length) return {};
   const amount = Math.round(relevant.reduce((total, row) => total + Math.abs(Number(row.amount) || 0), 0) * 100) / 100;
   return {
     loan_interest: {
       amount,
       status: "complete",
-      note: "Начисленные проценты по графикам кредитов за месяц",
+      note: "Начисленные проценты и пени по графикам кредитов за месяц",
     },
   };
 }
