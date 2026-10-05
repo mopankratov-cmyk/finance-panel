@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 120;
 
 const BUCKET = "finance-loan-documents";
-const KINDS: ScheduleRowKind[] = ["principal", "interest", "penalty", "fine"];
+// Только те виды, что есть в распознанной строке графика (RecognizedScheduleRow); «fee» в ней нет. Узкий тип нужен, чтобы row[kind] проходил tsc.
+const KINDS = ["principal", "interest", "penalty", "fine"] as const satisfies readonly ScheduleRowKind[];
 
 type StoredDocument = {
   loan_id: string;
