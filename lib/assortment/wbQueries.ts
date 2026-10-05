@@ -1,6 +1,7 @@
 import type { AssortmentDirection } from "./constants";
 import { normalizeTitle, rulesFor } from "./forms";
 import { growth, MIN_GROWTH_BASE, type KeywordRow } from "./wbDemand";
+import { excludedReason, type ExcludedReason } from "./wbExclusions";
 
 export { MIN_GROWTH_BASE };
 
@@ -236,24 +237,8 @@ export function distinctQueries(subjects: Array<Pick<SubjectQueries, "current" |
   return out;
 }
 
-export type ExcludedReason = "men" | "kids" | "other";
-
-const MEN_RE = /мужск|мужчин|для муж\b/;
-const KIDS_RE = /детск|для дет|мальчик|девоч|подрост|школьн|малыш|новорожден/;
-const OTHER_RE = /сигнальн|спасательн|для собак|для кошек|собак|ноутбук|туристическ|тактическ|военн|охотнич|рыболовн|строительн/;
-
-/**
- * Какие запросы к нашему спросу не относятся: каталоги и профили — женские, и
- * «пуховик мужской» или «рюкзак школьный» не показывает, какую форму искать
- * женщинам. Запрос без указания пола считается нейтральным и остаётся.
- */
-export function excludedReason(word: string): ExcludedReason | null {
-  const text = normalizeTitle(word);
-  if (MEN_RE.test(text)) return "men";
-  if (KIDS_RE.test(text)) return "kids";
-  if (OTHER_RE.test(text)) return "other";
-  return null;
-}
+/** Правила исключения живут в wbExclusions.ts (их читает и спрос по модели); здесь — для прежних импортов. */
+export { excludedReason, type ExcludedReason };
 
 export interface FormDemandRow {
   key: string;
@@ -269,11 +254,35 @@ export interface FormDemandRow {
   top: Array<{ word: string; searches: number }>;
 }
 
+/**
+ * Можно ли доверять «росту»: none — прошлого среза нет; identical — у почти всех общих запросов частотность та же, что и
+ * в прошлом срезе (это не два разных периода: срез сняли повторно или MPSTATS отдал те же числа); ok — срезы различаются.
+ */
+export type GrowthBase = "ok" | "none" | "identical";
+/** Доля общих запросов с той же частотностью, с которой срезы считаются «совпавшими» (порог наш, не свойство данных). */
+export const GROWTH_IDENTICAL_SHARE = 0.9;
+/** Меньше общих запросов — судить, совпали ли срезы, рано. */
+export const GROWTH_IDENTICAL_MIN_QUERIES = 30;
+
+export function growthBaseOf(entries: Iterable<{ now: number; before: number | null }>): GrowthBase {
+  let compared = 0;
+  let same = 0;
+  for (const e of entries) {
+    if (e.before == null) continue;
+    compared += 1;
+    if (e.before === e.now) same += 1;
+  }
+  if (compared === 0) return "none";
+  return compared >= GROWTH_IDENTICAL_MIN_QUERIES && same / compared >= GROWTH_IDENTICAL_SHARE ? "identical" : "ok";
+}
+
 export interface FormDemandReport {
   direction: AssortmentDirection;
   /** Дата, на которую снята свежая частотность (самая поздняя среди предметов). */
   windowTo: string;
   previousTo: string | null;
+  /** Годится ли «рост» как сравнение двух разных периодов; при identical рост по формам не считается. */
+  growthBase: GrowthBase;
   subjects: string[];
   /** Сколько предметов раздела в расчёте и сколько их всего: срез мог не сняться по части предметов. */
   subjectsTotal: number;
@@ -299,6 +308,7 @@ export function demandByForm(direction: AssortmentDirection, allSubjects: Subjec
   const laggingSubjects = lagging.map((s) => s.subject);
   const rules = rulesFor(direction);
   const distinct = distinctQueries(subjects);
+  const growthBase = growthBaseOf([...distinct.values()].filter((e) => !excludedReason(e.word)));
   const excluded = { queries: 0, searches: 0, men: 0, kids: 0, other: 0 };
   const acc = new Map<string, { queries: number; searches: number; now: number; before: number; list: Array<{ word: string; searches: number }> }>();
   let searches = 0;
@@ -342,7 +352,7 @@ export function demandByForm(direction: AssortmentDirection, allSubjects: Subjec
       queries: row.queries,
       searches: row.searches,
       shareOfNamed: rule.generic ? null : pct1(row.searches, named),
-      growthPct: row.before >= MIN_GROWTH_BASE ? growth(row.now, row.before) : null,
+      growthPct: growthBase === "ok" && row.before >= MIN_GROWTH_BASE ? growth(row.now, row.before) : null,
       top: row.list.sort((a, b) => b.searches - a.searches || a.word.localeCompare(b.word)).slice(0, 3),
     };
   });
@@ -354,6 +364,7 @@ export function demandByForm(direction: AssortmentDirection, allSubjects: Subjec
     direction,
     windowTo,
     previousTo: previousTos[0] ?? null,
+    growthBase,
     subjects: subjects.map((s) => s.subject),
     subjectsTotal,
     laggingSubjects,

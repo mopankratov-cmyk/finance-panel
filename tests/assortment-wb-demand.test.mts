@@ -99,3 +99,21 @@ test("«Новый в топе» — только у предмета, у кот
   assert.equal(noPrev.compared, false, "предмет без прошлого среза: сравнивать не с чем");
   assert.equal(noPrev.queries[0].before, null);
 });
+
+test("Спрос по модели: мужские и детские запросы не считаются — как на «Формах» (каталоги и профили женские)", () => {
+  const current = [
+    { word: "бомбер женский", wb_count: 3000 },
+    { word: "бомбер мужской", wb_count: 9000 },
+    { word: "бомбер детский", wb_count: 4000 },
+    { word: "бомбер для мальчика", wb_count: 2000 },
+    { word: "бомбер", wb_count: 1000 },
+  ];
+  const previous = [{ word: "бомбер женский", wb_count: 2000 }, { word: "бомбер мужской", wb_count: 8000 }];
+  const s = matchDemand("Куртки", "бомбер", current, previous);
+  assert.deepEqual(s.queries.map((q) => q.word), ["бомбер женский", "бомбер"]);
+  assert.equal(s.total, 4000);
+  assert.equal(s.totalBefore, 2000, "мужской запрос не попадает и в прошлый срез");
+  const whole = demandForTerm("бомбер", [{ subject: "Куртки", current, previous }]);
+  assert.equal(whole.total, 4000);
+  assert.equal(whole.subjects[0].queries.some((q) => /муж|дет|мальч/.test(q.word)), false);
+});

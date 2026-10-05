@@ -9,6 +9,7 @@
  */
 
 import type { AssortmentDirection } from "./constants";
+import { excludedReason } from "./wbExclusions";
 
 export interface KeywordRow {
   word: string;
@@ -83,7 +84,8 @@ export function growth(now: number, before: number): number | null {
 /** Запросы предмета, где встречается каждое слово термина. */
 export function matchDemand(subject: string, term: string, current: KeywordRow[], previous: KeywordRow[]): SubjectDemand {
   const matches = termMatcher(term);
-  const hits = (row: KeywordRow) => matches(row.word);
+  // Каталоги и профили женские: «бомбер мужской» и детские запросы не показывают спрос на нашу форму — как и на «Формах».
+  const hits = (row: KeywordRow) => matches(row.word) && !excludedReason(row.word);
   const before = new Map(previous.filter(hits).map((r) => [norm(r.word), r.wb_count]));
   const queries = current.filter(hits)
     .map((r) => ({ word: r.word, now: Number(r.wb_count) || 0, before: before.get(norm(r.word)) ?? null, items: r.items_count != null ? Number(r.items_count) : null }))
@@ -115,7 +117,7 @@ export interface SubjectKeywords {
 export function demandForTerm(term: string, subjects: SubjectKeywords[]): DemandResult {
   const perSubject = subjects.map((s) => matchDemand(s.subject, term, s.current, s.previous)).filter((s) => s.queries.length > 0).sort((a, b) => b.total - a.total);
   const matches = termMatcher(term);
-  const hits = (row: KeywordRow) => matches(row.word);
+  const hits = (row: KeywordRow) => matches(row.word) && !excludedReason(row.word);
   const now = new Map<string, number>();
   const before = new Map<string, number>();
   for (const s of subjects) {

@@ -10,7 +10,12 @@ import {
   subjectsFor, WB_SUBJECTS, type SnapshotTask, type SubjectQueries,
 } from "../lib/assortment/wbQueries.ts";
 import { collectWbQuerySnapshots, readDemandSubjects } from "../lib/assortment/wbQueriesStore.ts";
-import { excludedReason, splitLagging } from "../lib/assortment/wbQueries.ts";
+import { excludedReason, GROWTH_IDENTICAL_MIN_QUERIES, growthBaseOf, splitLagging } from "../lib/assortment/wbQueries.ts";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { FormDemand } from "../components/assortment/FormDemand.tsx";
+import { FormsReportView } from "../components/assortment/FormsView.tsx";
+import { StatusCell } from "../components/assortment/ObservationState.tsx";
 import { formOf } from "../lib/assortment/forms.ts";
 
 /** Спрос WB как собственная история: сжатие ответа MPSTATS, план недельных снимков, спрос по формам. */
@@ -147,17 +152,17 @@ test("Запросы по сумкам: тоут и шопер — одна фо
 
 test("Спрос и каталоги: две доли среди названных форм, разница в п.п., общие формы не сравниваются", () => {
   const models = [
-    ...Array.from({ length: 6 }, (_, i) => ({ sourceId: "S1", sourceName: "A", title: `Bomber jacket ${i}` })),
-    ...Array.from({ length: 2 }, (_, i) => ({ sourceId: "S1", sourceName: "A", title: `Puffer jacket ${i}` })),
+    ...Array.from({ length: 15 }, (_, i) => ({ sourceId: "S1", sourceName: "A", title: `Bomber jacket ${i}` })),
+    ...Array.from({ length: 5 }, (_, i) => ({ sourceId: "S1", sourceName: "A", title: `Puffer jacket ${i}` })),
     ...Array.from({ length: 4 }, (_, i) => ({ sourceId: "S1", sourceName: "A", title: `Jacket plain ${i}` })),
   ];
   const supply = buildFormsReport("jackets", models);
   const demand = demandByForm("jackets", [subject("Куртки", [["куртка", 50000], ["бомбер", 1000], ["пуховик", 3000]])])!;
   const { rows, basis } = compareSupplyDemand(supply, demand);
-  assert.equal(basis, "normalized", "источник с каталогом от 10 моделей есть");
+  assert.equal(basis, "normalized", "источник с каталогом от 10 моделей и от 10 с названной формой есть");
   assert.deepEqual(rows.map((r) => r.key), ["puffer", "bomber"], "по числу поисков; общая «куртка» не входит");
   const puffer = rows[0];
-  assert.equal(puffer.supplyShare, 25, "2 из 8 моделей с названной формой");
+  assert.equal(puffer.supplyShare, 25, "5 из 20 моделей с названной формой");
   assert.equal(puffer.demandShare, 75);
   assert.equal(puffer.gap, 50);
   const bomber = rows[1];
@@ -390,4 +395,97 @@ test("Сборщик: крон-роут держит запас по време�
   assert.match(route, /f\.kind === "current"/, "сбой одного «прошлого» среза не краснит журнал");
   const client = readFileSync(join(import.meta.dirname, "..", "lib/mpstats/client.ts"), "utf8");
   assert.match(client, /timeoutMs: 85_000, attempts: 2/);
+});
+
+// --- честность чисел на «Формах» (05.10) ---
+
+test("Средняя доля каталогов: источник с одной названной формой в среднюю не входит — порог по названным формам, не «хоть одна»", () => {
+  const models = [
+    // S1: 40 моделей, 4 бомбера и 36 пуховиков → бомбер 10% названных
+    ...Array.from({ length: 4 }, (_, i) => ({ sourceId: "S1", sourceName: "Zara", title: `Bomber jacket ${i}` })),
+    ...Array.from({ length: 36 }, (_, i) => ({ sourceId: "S1", sourceName: "Zara", title: `Puffer jacket ${i}` })),
+    // S2: 12 моделей, одна с названной формой (бомбер), остальные — просто «куртка»: у неё бомбер был бы «100%»
+    { sourceId: "S2", sourceName: "Shop", title: "Bomber jacket x" },
+    ...Array.from({ length: 11 }, (_, i) => ({ sourceId: "S2", sourceName: "Shop", title: `Jacket model ${i}` })),
+  ];
+  const { rows, sourcesInAverage } = compareSupplyDemand(buildFormsReport("jackets", models), demandByForm("jackets", [subject("Куртки", [["бомбер", 2000]])])!);
+  assert.equal(sourcesInAverage, 1, "S2: названных форм 1 < 10");
+  assert.equal(rows.find((r) => r.key === "bomber")?.supplyShare, 10, "а не (10 + 100) / 2 = 55");
+});
+
+test("Рост поисков: срезы совпали (≥90% общих запросов с той же частотностью) — рост не считаем; прошлого нет — none; разные — ok", () => {
+  const words = Array.from({ length: GROWTH_IDENTICAL_MIN_QUERIES }, (_, i) => `бомбер вариант ${i}`);
+  const cur = words.map((w): [string, number] => [w, 1000]);
+  const same = demandByForm("jackets", [subject("Куртки", cur, cur)])!;
+  assert.equal(same.growthBase, "identical");
+  assert.ok(same.rows.every((r) => r.growthPct === null), "ни у одной формы роста нет");
+  const different = demandByForm("jackets", [subject("Куртки", cur, words.map((w): [string, number] => [w, 500]))])!;
+  assert.equal(different.growthBase, "ok");
+  assert.equal(different.rows.find((r) => r.key === "bomber")?.growthPct, 100);
+  assert.equal(demandByForm("jackets", [subject("Куртки", cur)])!.growthBase, "none");
+  assert.equal(growthBaseOf([{ now: 5, before: 5 }]), "ok", "мало общих запросов — судить, совпали ли срезы, рано");
+  assert.equal(growthBaseOf([]), "none");
+});
+
+test("Правила форм: отделка мехом — не меховая вещь, «button-down» — не пуховик, падежные «парки»", () => {
+  const jacket = (title: string) => formOf("jackets", title)?.key ?? null;
+  assert.equal(jacket("Coat with faux fur collar"), "coat");
+  assert.equal(jacket("Puffer jacket with fur trim hood"), "puffer");
+  assert.equal(jacket("Fur-trimmed parka"), "parka");
+  assert.equal(jacket("Faux fur jacket"), "fur", "меховая вещь остаётся мехом");
+  assert.equal(jacket("Fur coat"), "fur");
+  assert.equal(jacket("Button-down shirt jacket"), "overshirt");
+  assert.equal(jacket("Down jacket"), "puffer", "настоящий «down» остаётся пуховиком");
+  assert.equal(jacket("Куртка парки женская"), "parka");
+  assert.equal(jacket("паркинг куртка"), "jacket", "«паркинг» — не парка");
+});
+
+// Три источника по 12 моделей поровну бомберов и пуховиков: ни одна форма не «сосредоточена» у одного.
+const forms12 = buildFormsReport("jackets", ["S1", "S2", "S3"].flatMap((id) => [
+  ...Array.from({ length: 6 }, (_, i) => ({ sourceId: id, sourceName: id, title: `Bomber jacket ${i}` })),
+  ...Array.from({ length: 6 }, (_, i) => ({ sourceId: id, sourceName: id, title: `Puffer jacket ${i}` })),
+]));
+const text = (html: string) => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+
+test("Экран спроса: видимые пояснения вместо подсказок, нейтральная разница и рост без красного/зелёного, «повод посмотреть», доли общего слова", () => {
+  const demand = demandByForm("jackets", [subject("Куртки", [["куртка женская", 60000], ["бомбер", 1000], ["пуховик", 9000], ["женская зимняя", 1000]], [["куртка женская", 60000], ["бомбер", 500], ["пуховик", 12000], ["женская зимняя", 1000]])])!;
+  const html = renderToStaticMarkup(createElement(FormDemand, { report: forms12, demand }));
+  assert.doesNotMatch(html, /title=/, "на телефоне и iPad наведения нет — пояснения видимым текстом");
+  assert.doesNotMatch(html, /text-red-|text-green-|text-violet-/, "рост и разница без красного/зелёного и без подсветки");
+  const t = text(html);
+  assert.match(t, /расчёт по оценке MPSTATS/);
+  assert.match(t, /Доля поисков среди названных форм/);
+  assert.match(t, /Из всех поисков по предметам .*% — общее «куртка»/, "сколько занимает общее слово — видимой строкой над таблицей");
+  assert.match(t, /Рост поисков к 05\.09, возможно сезон/);
+  assert.match(t, /повод посмотреть, а не вывод/, "у формы, где поисков заметно больше, чем моделей");
+  assert.match(t, /«Не в топе» — среди самых частых запросов/);
+});
+
+test("Экран спроса: пояснение «—» в росте и причина, когда роста нет вовсе", () => {
+  const withPrev = demandByForm("jackets", [subject("Куртки", [["бомбер", 1000]], [["бомбер", 900]])])!;
+  assert.match(text(renderToStaticMarkup(createElement(FormDemand, { report: forms12, demand: withPrev }))), /«—» в росте — у формы мало запросов в обоих срезах/);
+  const none = demandByForm("jackets", [subject("Куртки", [["бомбер", 1000]])])!;
+  assert.match(text(renderToStaticMarkup(createElement(FormDemand, { report: forms12, demand: none }))), /Прошлого среза для роста пока нет/);
+  const words = Array.from({ length: GROWTH_IDENTICAL_MIN_QUERIES }, (_, i): [string, number] => [`бомбер вариант ${i}`, 1000]);
+  const identical = demandByForm("jackets", [subject("Куртки", words, words)])!;
+  assert.match(text(renderToStaticMarkup(createElement(FormDemand, { report: forms12, demand: identical }))), /Рост не считаем: у почти всех общих запросов частотность та же/);
+});
+
+test("Экран форм: нет обещания «определится по фото», у H&M названа повторная расцветка, расчёт помечен, подсказок при наведении нет", () => {
+  const withUnrecognized = buildFormsReport("jackets", [...Array.from({ length: 12 }, (_, i) => ({ sourceId: "S1", sourceName: "Zara", title: `Bomber jacket ${i}` })), { sourceId: "S1", sourceName: "Zara", title: "Numero Un" }]);
+  const html = renderToStaticMarkup(createElement(FormsReportView, { report: withUnrecognized, unrecognizedOpen: true }));
+  assert.doesNotMatch(html, /title=/);
+  const t = text(html);
+  assert.match(t, /расчёт по названиям/);
+  assert.match(t, /у H&amp;M каждая расцветка — отдельная карточка, поэтому его модели могут считаться несколько раз/);
+  assert.doesNotMatch(t, /Каждая модель считается один раз — расцветки склеены/);
+  assert.doesNotMatch(t, /определится по фото/);
+  assert.match(t, /Форму таких моделей мы не определяем и не угадываем/, "раздел «Название не называет форму» раскрыт и честен");
+});
+
+test("Состояние данных: что значит статус — видимым текстом, а не подсказкой при наведении", () => {
+  const html = renderToStaticMarkup(createElement(StatusCell, { status: "window_only" }));
+  assert.doesNotMatch(html, /title=/);
+  assert.match(text(html), /Только верх выдачи/);
+  assert.match(text(html), /«новинка» значит «впервые попало в окно»/);
 });
