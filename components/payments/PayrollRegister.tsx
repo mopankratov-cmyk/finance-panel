@@ -41,6 +41,9 @@ import {
 import { allocatePayrollPayment, deletePayrollAllocation, deletePayrollEmployee, importPayrollStaffFile, importPayrollStaffPrivateFile, loadPayrollData, savePayrollDebt, savePayrollEmployee, savePayrollPeriod } from "./payrollStore";
 
 const EMPTY_DATA: PayrollData = { employees: [], periods: [], entries: [], debts: [], allocations: [] };
+// Начальный долг внесён в панели на эту дату. Более ранние платежи уже учтены в нём
+// и не должны повторно уменьшать долг при сверке с ДДС.
+const PAYROLL_RECONCILIATION_START_DATE = "2026-09-01";
 // Разбор штатного Excel — на сервере (lib/payroll/staffSheet.ts); форма только отправляет файл.
 
 export function PayrollRegister({ accounts, companies, payments, scheduleRows, onCalendarUpdated }: { accounts: Account[]; companies: DdsCompany[]; payments: Payment[]; scheduleRows: ScheduleRowRecord[] | null; onCalendarUpdated: () => Promise<void> }) {
@@ -148,6 +151,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
     for (const item of data.allocations) allocated.set(item.paymentId, (allocated.get(item.paymentId) ?? 0) + item.amount);
     const consumed = consumedFactIds(payments, undefined, scheduleRows);
     return payments.filter((payment) => {
+      if (payment.date < PAYROLL_RECONCILIATION_START_DATE) return false;
       if (!paymentIsPayrollCandidate(payment)) return false;
       const payrollAllocated = allocated.get(payment.id) ?? 0;
       if (consumed.has(payment.id) && payrollAllocated <= 0) return false;
@@ -457,7 +461,7 @@ type PayrollEntryTarget = {
 
 function PaymentAllocationQueue({ payments, data, disabled, onAllocate }: { payments: Payment[]; data: PayrollData; disabled: boolean; onAllocate: (input: AllocationInput) => Promise<void> }) {
   return <Card>
-    <div className="border-b border-slate-100 p-5"><div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-violet-700" /><h2 className="font-bold text-slate-950">Оплаты с категорией «Зарплата» в ДДС</h2><span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">{payments.length}</span></div><p className="mt-1 text-sm text-slate-500">Показываем только проведённые расходы, которым в ДДС явно назначена статья зарплаты. Одну оплату можно подтвердить частями: сначала отнести часть в долг, затем оставшуюся сумму — в другое начисление.</p></div>
+    <div className="border-b border-slate-100 p-5"><div className="flex items-center gap-2"><CheckCircle2 className="h-5 w-5 text-violet-700" /><h2 className="font-bold text-slate-950">Оплаты с категорией «Зарплата» в ДДС</h2><span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-bold text-violet-800">{payments.length}</span></div><p className="mt-1 text-sm text-slate-500">Показываем проведённые расходы с 1 сентября 2026 года, которым в ДДС явно назначена статья зарплаты. Более ранние платежи уже учтены в начальном долге и не участвуют в сверке. Одну оплату можно подтвердить частями: сначала отнести часть в долг, затем оставшуюся сумму — в другое начисление.</p></div>
     <div className="divide-y divide-slate-100">
       {payments.length === 0 ? <p className="p-5 text-sm text-slate-500">Нераспределённых зарплатных оплат нет.</p> : payments.map((payment) => <PaymentAllocationRow key={payment.id} payment={payment} data={data} disabled={disabled} onAllocate={onAllocate} />)}
     </div>
