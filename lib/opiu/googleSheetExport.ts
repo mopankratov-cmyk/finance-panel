@@ -15,7 +15,7 @@ export const OPIU_SECTION_BEFORE: Partial<Record<OpiuTableRow["id"], string>> = 
   orders: "Выручка",
   commission: "Производственные расходы · Переменные",
   ads: "Прямые постоянные",
-  loan_transfer: "Расходы ниже EBITDA",
+  loan_interest: "Расходы ниже EBITDA",
 };
 
 function safeSheetName(value: string): string {

@@ -3,10 +3,12 @@ import {
   aggregateWeek,
   buildCostLookup,
   findMissingCostArticles,
+  NO_SHARED_LOAN,
   sumWeeks,
   type MissingCostArticle,
   type OpiuOrder,
   type ProductCostRow,
+  type SharedLoanAmounts,
   type WeekRawMetrics,
 } from "./metrics";
 import type { WbAdStat, WbReportRow } from "@/lib/wb/types";
@@ -29,6 +31,12 @@ export interface OpiuReport {
   warehouseByWeek: Record<string, number>;
   /** Артикулы без карточки в /costs — их Себестоимость/Подготовка сейчас 0, а не "и правда бесплатно". */
   missingCostArticles: MissingCostArticle[];
+  /**
+   * Компании, у которых не заполнены налоговый режим/ставка/НДС ("ИП X: ставка
+   * налога"). Пока список не пуст, Налог, НДС и Чистая прибыль не считаются
+   * (показываем "—"), а не молча занижаем налог до нуля.
+   */
+  taxSettingGaps?: string[];
 }
 
 function pct(numerator: number, denominator: number): number | null {
@@ -70,7 +78,15 @@ function derived(m: WeekRawMetrics) {
     marginalPct: pct(marginal, m.revenueWithoutSpp),
     gross,
     grossPct: pct(gross, m.revenue),
+    // Чистая прибыль = Валовая прибыль (после рекламы) − проценты по кредиту −
+    // пени − налог − НДС. Тело кредита сюда НЕ входит — это возврат долга.
+    netProfit: gross - m.loanInterest - m.penaltyLoan - m.tax - m.vat,
   };
+}
+
+/** Валовая прибыль недели — база для налога у компаний на «Доходы минус расходы» (см. weeklyTaxes.ts). */
+export function grossProfitOf(m: WeekRawMetrics): number {
+  return derived(m).gross;
 }
 
 function rowValues(
@@ -90,7 +106,7 @@ export function buildOpiuReport(
   adStats: WbAdStat[],
   costs: ProductCostRow[],
   warehouseByWeek: Record<string, number>,
-  loanTransferByWeek: Record<string, number> = {},
+  sharedLoanByWeek: Record<string, SharedLoanAmounts> = {},
   paidStorageByWeek: Record<string, number> | null = null,
   adsSpendBySourceByWeek: Record<string, { balance: number; bonus: number }> | null = null,
 ): OpiuReport {
@@ -105,7 +121,7 @@ export function buildOpiuReport(
       adStats,
       costLookup,
       warehouseByWeek[w.weekStart] ?? 0,
-      loanTransferByWeek[w.weekStart] ?? 0,
+      sharedLoanByWeek[w.weekStart] ?? NO_SHARED_LOAN,
       paidStorageByWeek ? (paidStorageByWeek[w.weekStart] ?? 0) : null,
       adsSpendBySourceByWeek ? (adsSpendBySourceByWeek[w.weekStart] ?? { balance: 0, bonus: 0 }) : null,
     ),
@@ -126,6 +142,7 @@ export function buildOpiuReportFromWeekMetrics(
   weekMetrics: WeekRawMetrics[],
   missingCostArticles: MissingCostArticle[],
   warehouseByWeek: Record<string, number>,
+  taxSettingGaps: string[] = [],
 ): OpiuReport {
   const cols = (fn: (m: WeekRawMetrics) => number) =>
     rowValues(weekMetrics, (m) => fn(m));
@@ -135,6 +152,10 @@ export function buildOpiuReportFromWeekMetrics(
 
   const zero = weeks.map(() => null as number | null).concat([null]);
   const sep = (id: string): OpiuTableRow => ({ id, label: "", kind: "separator", values: zero });
+  // Нет налоговых настроек хотя бы у одной компании — налог, НДС и чистая
+  // прибыль не считаем вовсе ("—"), иначе чистая прибыль молча завышена.
+  const taxReady = taxSettingGaps.length === 0;
+  const taxCols = (fn: (m: WeekRawMetrics) => number) => (taxReady ? cols(fn) : zero);
 
   const rows: OpiuTableRow[] = [
     { id: "orders",         label: "Заказы, руб",                                     kind: "metric",  values: cols((m) => m.ordersRub) },
@@ -172,11 +193,19 @@ export function buildOpiuReportFromWeekMetrics(
     { id: "gross",          label: "Валовая прибыль",                                 kind: "metric",  values: rowValues(weekMetrics, (_m, d) => d.gross) },
     { id: "gross_pct",      label: "Рентабельность, %",                               kind: "percent", values: pctCols((d) => d.grossPct) },
     sep("sep4"),
-    { id: "loan_transfer",  label: "Перевод на баланс заёмщика (займ/кредит)",        kind: "metric",  expense: true, values: cols((m) => m.loanTransfer) },
+    // Блок «РАСХОДЫ НИЖЕ EBITDA»: заголовок вставляется перед loan_interest
+    // (OPIU_SECTION_BEFORE в googleSheetExport.ts — общий для экрана и выгрузки).
+    { id: "loan_interest",  label: "Проценты по кредиту",                             kind: "metric",  expense: true, values: cols((m) => m.loanInterest) },
     { id: "penalty_loan",   label: "Пени",                                            kind: "metric",  expense: true, values: cols((m) => m.penaltyLoan) },
+    { id: "tax",            label: "Налог",                                           kind: "metric",  expense: true, values: taxCols((m) => m.tax) },
+    { id: "vat",            label: "НДС",                                             kind: "metric",  expense: true, values: taxCols((m) => m.vat) },
+    { id: "net_profit",     label: "Чистая прибыль",                                  kind: "metric",  values: taxReady ? rowValues(weekMetrics, (_m, d) => d.netProfit) : zero },
+    sep("sep5"),
+    // Справочно: возврат долга — не расход, в Чистую прибыль не входит.
+    { id: "loan_principal", label: "Тело кредита (основной долг) — справочно, в расчёт не входит", kind: "metric", expense: true, values: cols((m) => m.loanPrincipal) },
   ];
 
-  return { weeks, rows, warehouseByWeek, missingCostArticles };
+  return { weeks, rows, warehouseByWeek, missingCostArticles, taxSettingGaps };
 }
 
 /**

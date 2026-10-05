@@ -48,10 +48,16 @@ export interface WeekRawMetrics {
   withdrawNow: number;
   /** Платная приёмка (acceptance). */
   acceptance: number;
-  /** Перевод на баланс заёмщика для платежа/долга/процентов/комиссии по займу (deduction). */
-  loanTransfer: number;
+  /** Тело кредита (основной долг) — справочно, в чистую прибыль не входит. */
+  loanPrincipal: number;
+  /** Проценты и комиссия по кредиту — расход ниже EBITDA. */
+  loanInterest: number;
   /** Перевод на баланс заёмщика для оплаты пени (deduction). */
   penaltyLoan: number;
+  /** Налог (оценка по настройкам компании) — проставляется после aggregateWeek, см. weeklyTaxes.ts. */
+  tax: number;
+  /** НДС, входящий в выручку (оценка по настройкам компании) — см. weeklyTaxes.ts. */
+  vat: number;
   /** Расход на рекламу с БАЛАНСА (реальные деньги) — участвует в валовой прибыли. */
   adsSpend: number;
   /** Расход на рекламу промо-бонусами WB — справочная строка, в валовую прибыль НЕ входит. */
@@ -371,22 +377,56 @@ export function storageFeeRub(row: WbReportRow): number {
   return expenseRub(row.storage_fee);
 }
 
-export function loanTransferRub(row: WbReportRow): number {
+/**
+ * "Перевод на баланс заёмщика" делится на тело кредита (основной долг) и
+ * проценты. Тело — не расход, а возврат долга: в чистую прибыль оно не
+ * входит, показывается справочно. Проценты (и комиссия по кредиту) — расход
+ * ниже EBITDA. «Платёж по договору займа» WB не разделяет на тело/проценты —
+ * в данных он не встречался ни разу, на случай появления относим его к
+ * процентам (расход), чтобы не занизить затраты.
+ */
+function loanTransferKind(row: WbReportRow): "principal" | "interest" | null {
   const bt = bonusType(row);
-  const isLoan =
-    bt.startsWith("перевод на баланс заёмщика для платежа по договору займа") ||
-    bt.startsWith("перевод на баланс заёмщика для оплаты основного долга по кредиту") ||
+  if (bt.startsWith("перевод на баланс заёмщика для оплаты основного долга по кредиту")) return "principal";
+  if (
+    bt.startsWith("перевод на баланс заёмщика для оплаты процентов по кредиту") ||
     bt.startsWith("перевод на баланс заёмщика для оплаты комиссии по кредиту") ||
-    bt.startsWith("перевод на баланс заёмщика для оплаты процентов по кредиту");
-  return isLoan ? expenseRub(row.deduction) : 0;
+    bt.startsWith("перевод на баланс заёмщика для платежа по договору займа")
+  ) return "interest";
+  return null;
 }
 
-function penaltyLoanRub(row: WbReportRow): number {
+export function loanPrincipalRub(row: WbReportRow): number {
+  return loanTransferKind(row) === "principal" ? expenseRub(row.deduction) : 0;
+}
+
+export function loanInterestRub(row: WbReportRow): number {
+  return loanTransferKind(row) === "interest" ? expenseRub(row.deduction) : 0;
+}
+
+/** Тело + проценты — всё, что в "Прочие удержания" учитывать не нужно. */
+export function loanTransferRub(row: WbReportRow): number {
+  return loanPrincipalRub(row) + loanInterestRub(row);
+}
+
+export function penaltyLoanRub(row: WbReportRow): number {
   const bt = bonusType(row);
   return bt.startsWith("перевод на баланс заёмщика для оплаты пени")
     ? expenseRub(row.deduction)
     : 0;
 }
+
+/**
+ * Общекабинетные кредитные списания (без артикула), уже поделённые между
+ * суб-брендами кабинета — см. sharedLoanTransferByWeek в loadMonth.ts.
+ */
+export interface SharedLoanAmounts {
+  principal: number;
+  interest: number;
+  penalty: number;
+}
+
+export const NO_SHARED_LOAN: SharedLoanAmounts = { principal: 0, interest: 0, penalty: 0 };
 
 /**
  * Единственный источник себестоимости/подготовки — /costs (product_costs).
@@ -536,7 +576,7 @@ export function aggregateWeek(
   adStats: WbAdStat[],
   costLookup: ReturnType<typeof buildCostLookup>,
   warehousePackaging: number,
-  sharedLoanTransfer = 0,
+  sharedLoan: SharedLoanAmounts = NO_SHARED_LOAN,
   paidStorage: number | null = null,
   adsSpendBySource: { balance: number; bonus: number } | null = null,
 ): WeekRawMetrics {
@@ -590,11 +630,16 @@ export function aggregateWeek(
     // Строки "Перевод на баланс заёмщика" в финотчёте WB не привязаны ни к
     // артикулу, ни к nm_id (общекабинетный расход) — при разделении общего
     // кабинета на суб-бренды по префиксу артикула (Norvia/Heaton) их некому
-    // приписать, и они выпадали из отчёта у обоих. sharedLoanTransfer — уже
-    // поделённая на число суб-брендов доля, посчитанная выше по стеку
-    // (loadMonth.ts) по НЕотфильтрованным строкам кабинета.
-    loanTransfer: weekSales.reduce((s, r) => s + loanTransferRub(r), 0) + sharedLoanTransfer,
-    penaltyLoan: weekSales.reduce((s, r) => s + penaltyLoanRub(r), 0),
+    // приписать, и они выпадали из отчёта у обоих. sharedLoan — уже
+    // поделённая на число суб-брендов доля (тело/проценты/пени), посчитанная
+    // выше по стеку (loadMonth.ts) по НЕотфильтрованным строкам кабинета.
+    loanPrincipal: weekSales.reduce((s, r) => s + loanPrincipalRub(r), 0) + sharedLoan.principal,
+    loanInterest: weekSales.reduce((s, r) => s + loanInterestRub(r), 0) + sharedLoan.interest,
+    penaltyLoan: weekSales.reduce((s, r) => s + penaltyLoanRub(r), 0) + sharedLoan.penalty,
+    // Налог и НДС зависят от настроек компании и от валовой прибыли — их
+    // проставляет weeklyTaxes.ts уже после агрегации недели.
+    tax: 0,
+    vat: 0,
     // adsSpend с БАЛАНСА — из "Истории затрат" WB (adv/v1/upd), если для
     // кабинета/недели есть синканные данные; иначе откат на прежний общий
     // расход (fullstats, wb_advert_nm_daily — баланс+бонусы смешаны, деление
@@ -630,8 +675,11 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       transitDelivery: acc.transitDelivery + w.transitDelivery,
       withdrawNow: acc.withdrawNow + w.withdrawNow,
       acceptance: acc.acceptance + w.acceptance,
-      loanTransfer: acc.loanTransfer + w.loanTransfer,
+      loanPrincipal: acc.loanPrincipal + w.loanPrincipal,
+      loanInterest: acc.loanInterest + w.loanInterest,
       penaltyLoan: acc.penaltyLoan + w.penaltyLoan,
+      tax: acc.tax + w.tax,
+      vat: acc.vat + w.vat,
       adsSpend: acc.adsSpend + w.adsSpend,
       adsBonus: acc.adsBonus + w.adsBonus,
       warehousePackaging: acc.warehousePackaging + w.warehousePackaging,
@@ -653,8 +701,11 @@ export function sumWeeks(weeks: WeekRawMetrics[]): WeekRawMetrics {
       transitDelivery: 0,
       withdrawNow: 0,
       acceptance: 0,
-      loanTransfer: 0,
+      loanPrincipal: 0,
+      loanInterest: 0,
       penaltyLoan: 0,
+      tax: 0,
+      vat: 0,
       adsSpend: 0,
       adsBonus: 0,
       warehousePackaging: 0,
