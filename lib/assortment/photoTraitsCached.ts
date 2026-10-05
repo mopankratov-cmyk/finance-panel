@@ -33,5 +33,18 @@ export async function loadPhotoTraitsCached(db: SupabaseClient, direction: Assor
 
 /** Очередь раздела без отчёта по признакам — с часовым кэшем: чтение тяжёлое, а у раздела, где ничего не разобрано, число стоит на месте. */
 export async function loadQueueCached(db: SupabaseClient, direction: AssortmentDirection): Promise<QueueFacts> {
-  return loadHourlyDashboard("assortment-queue-direct-v1", { direction }, () => loadQueueDirect(db, direction));
+  // «Нет вида каталога» в кэш не кладём: после применения миграции полоска не должна час говорить «каталога нет».
+  class Missing extends Error {
+    constructor(readonly facts: QueueFacts) {
+      super("catalog_missing");
+    }
+  }
+  return loadHourlyDashboard("assortment-queue-direct-v1", { direction }, async () => {
+    const facts = await loadQueueDirect(db, direction);
+    if (facts.catalogMissing) throw new Missing(facts);
+    return facts;
+  }).catch((error) => {
+    if (error instanceof Missing) return error.facts;
+    throw error;
+  });
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { summarizeHistory, type RunRow } from "../lib/assortment/observationState.ts";
+import { onlyKnownSources, summarizeHistory, type RunRow } from "../lib/assortment/observationState.ts";
 
 const TODAY = "2026-10-20";
 const run = (source_id: string, observed_on: string, coverage: RunRow["coverage"], over: Partial<RunRow> = {}): RunRow => ({
@@ -78,4 +78,10 @@ test("Чтение журнала: окно 120 дней по московско
   const missing = await loadHistoryState(runsDb({ error: { code: "42P01", message: 'relation "public.assortment_run" does not exist' } }).db, new Date("2026-10-20T10:00:00Z"));
   assert.deepEqual([missing.available, missing.sources.length], [false, 0]);
   await assert.rejects(() => loadHistoryState(runsDb({ error: { message: "boom" } }).db), /boom/);
+});
+
+test("История на экране «Источники»: чужие источники (их строки показывались бы сырыми ключами S212) отбрасываются; список источников ещё не загружен — не режем", () => {
+  const rows = [{ sourceId: "S1" }, { sourceId: "S212" }, { sourceId: "S3" }];
+  assert.deepEqual(onlyKnownSources(rows, new Set(["S1", "S3"])).map((r) => r.sourceId), ["S1", "S3"]);
+  assert.equal(onlyKnownSources(rows, new Set()).length, 3, "известных источников нет — показываем как есть, а не пустоту");
 });

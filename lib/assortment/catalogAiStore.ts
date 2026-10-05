@@ -697,6 +697,8 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
 export interface QueueFacts {
   eligible: number;
   queue: QueueSummary;
+  /** Вида каталога нет (миграция 202610050002): очередь не «пуста», а неизвестна — об этом надо сказать, а не писать «очередь разобрана». */
+  catalogMissing?: boolean;
 }
 
 /**
@@ -706,8 +708,8 @@ export interface QueueFacts {
  */
 export async function loadQueueDirect(db: SupabaseClient, direction: AssortmentDirection, nowMs = Date.now()): Promise<QueueFacts> {
   const heads = await loadCatalogHeads(db, direction, nowMs);
-  // Вида каталога ещё нет (миграция): разбирать нечего.
-  if (!heads) return { eligible: 0, queue: { queued: 0, exhausted: 0, unstable: 0 } };
+  // Вида каталога ещё нет (миграция): очередь неизвестна, а не пуста.
+  if (!heads) return { eligible: 0, queue: { queued: 0, exhausted: 0, unstable: 0 }, catalogMissing: true };
   const existing = (await loadExisting(db)) ?? new Map();
   return { eligible: heads.filter((h) => h.imageUrls.length > 0 && !isRuSource(h.sourceId)).length, queue: summarizeQueue(heads, existing) };
 }

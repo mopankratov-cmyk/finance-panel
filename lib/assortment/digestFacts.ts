@@ -12,15 +12,18 @@ import { cardSignal, type ObservationLite } from "./signals";
 
 /** Пульс автообхода по источникам; null — колонок пульса нет или обход не запускался. */
 async function loadCrawlHealth(db: SupabaseClient, since: string): Promise<DigestFacts["crawl"]> {
-  const { data, error } = await db.from("assortment_sources").select("name,last_attempt_at,last_error").not("last_attempt_at", "is", null);
+  const { data, error } = await db.from("assortment_sources").select("source_id,name,last_attempt_at,last_error").not("last_attempt_at", "is", null);
   if (error) {
     if (isMissingColumnError(error)) return null;
     throw new Error(error.message);
   }
-  if (!data || data.length === 0) return null;
+  // «Рынок РФ» (WB, Lime на WB) — замер рынка, а не автообход каталога: Lime на WB каждую неделю честно пишет «нет продаж», и в сводке
+  // это была бы вечная ⚠️; сторож (freshness) его по той же причине не смотрит.
+  const crawled = (data ?? []).filter((row) => !isRuSource(row.source_id ? String(row.source_id) : null));
+  if (crawled.length === 0) return null;
   const ok: string[] = [];
   const failing: Array<{ name: string; error: string }> = [];
-  for (const row of data) {
+  for (const row of crawled) {
     const name = String(row.name);
     if (row.last_error) failing.push({ name, error: String(row.last_error) });
     else if (String(row.last_attempt_at) < since) failing.push({ name, error: "обход не запускался больше недели" });

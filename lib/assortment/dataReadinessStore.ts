@@ -61,9 +61,11 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
   const sinceIso = new Date(now.getTime() - RECENT_DAYS * DAY_MS).toISOString();
   // Удача — разобрано без ошибки (last_error пуст). Неудачный ПЕРЕСБОР старой строки статус «ok» сохраняет и только пишет last_error
   // с новой taken_at: считать его удачей значило бы занижать долю неудач и показывать время неудачной попытки как «последняя модель разобрана».
-  const recentOk = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "ok").is("last_error", null).gte("taken_at", sinceIso).limit(1))) ?? 0;
-  const recentFailedNew = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "failed").gte("taken_at", sinceIso).limit(1))) ?? 0;
-  const recentFailedRebuild = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("status", "ok").not("last_error", "is", null).gte("taken_at", sinceIso).limit(1))) ?? 0;
+  // Доля неудач — по ЭТОМУ разделу: чужие сбои (у сумок не качаются фото брендов) в разделе, где их нет, красной тревоги не дают.
+  // Жив ли сборщик вообще (последняя попытка, последняя удача), судим по всей таблице: он общий.
+  const recentOk = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("direction", direction).eq("status", "ok").is("last_error", null).gte("taken_at", sinceIso).limit(1))) ?? 0;
+  const recentFailedNew = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("direction", direction).eq("status", "failed").gte("taken_at", sinceIso).limit(1))) ?? 0;
+  const recentFailedRebuild = (await count(db, (q) => q.select("model_key", { count: "exact" }).eq("direction", direction).eq("status", "ok").not("last_error", "is", null).gte("taken_at", sinceIso).limit(1))) ?? 0;
   // Сбой этих двух чтений не молчит (строка в errors) и не превращается в «ни одной удачи»: время неизвестно — null и без тревоги.
   const last = await db.from(RESULTS).select("taken_at").eq("status", "ok").is("last_error", null).order("taken_at", { ascending: false }).limit(1);
   if (last.error) note(`время последней разобранной модели (${last.error.message.slice(0, 120)})`);
@@ -94,7 +96,9 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
   let otherQueued: number | null = null;
   try {
     const otherReport = await traits(db, other).catch(() => null);
-    otherQueued = (await queueOf(db, other, otherReport, queue)).queue.queued;
+    const otherFacts = await queueOf(db, other, otherReport, queue);
+    if (otherFacts.catalogMissing) note("очередь другого раздела (нет вида каталога — миграция 202610050002)");
+    else otherQueued = otherFacts.queue.queued;
   } catch (error) {
     note(`очередь другого раздела${error instanceof Error && error.message ? ` (${error.message.slice(0, 120)})` : ""}`);
   }
@@ -113,6 +117,7 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
     analyzed,
     legacy,
     eligible: Math.max(own.eligible, analyzed + legacy),
+    catalogMissing: Boolean(own.catalogMissing),
     queued: own.queue.queued,
     exhausted: own.queue.exhausted,
     unstable: own.queue.unstable,
@@ -159,9 +164,15 @@ async function loadHistory(db: SupabaseClient, direction: AssortmentDirection, n
   if (!state.available) return null;
   const sources = state.sources.filter((s) => !isRuSource(s.sourceId));
   if (sources.length === 0) return null;
-  const { data } = await db.from("assortment_sources").select("source_id,name");
-  const nameOf = new Map(((data ?? []) as Array<{ source_id: string; name: string | null }>).map((r) => [String(r.source_id), String(r.name ?? "")]));
-  return { sources: sources.map((s) => ({ name: nameOf.get(s.sourceId) || s.sourceId, status: s.status, firstDay: s.firstDay, firstFullDay: s.firstFullDay })) };
+  const { data } = await db.from("assortment_sources").select("source_id,name,categories");
+  const rows = (data ?? []) as Array<{ source_id: string; name: string | null; categories: string[] | null }>;
+  const nameOf = new Map(rows.map((r) => [String(r.source_id), String(r.name ?? "")]));
+  // Прогон Shopify-источника пишется без раздела (обход целиком), поэтому история «Курток» включала бы источники, у которых
+  // куртки не собираются вообще: источник берём, только если раздел — в его категориях (категорий нет — не отбрасываем).
+  const inSection = new Map(rows.map((r) => [String(r.source_id), !Array.isArray(r.categories) || r.categories.length === 0 || r.categories.includes(direction)]));
+  const mine = sources.filter((s) => inSection.get(s.sourceId) !== false);
+  if (mine.length === 0) return null;
+  return { sources: mine.map((s) => ({ name: nameOf.get(s.sourceId) || s.sourceId, status: s.status, firstDay: s.firstDay, firstFullDay: s.firstFullDay })) };
 }
 
 /**

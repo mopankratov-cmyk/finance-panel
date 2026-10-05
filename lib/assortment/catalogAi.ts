@@ -191,7 +191,7 @@ export interface ExistingResult {
 
 export const MAX_ATTEMPTS = 3;
 /** Версия формы отчёта по признакам (корзины значений, legacy, examples): входит в ключ кэша, чтобы после выкладки не жил старый отчёт. */
-export const TRAITS_REPORT_VERSION = 3;
+export const TRAITS_REPORT_VERSION = 4;
 export const RETRY_AFTER_MS = 24 * 3600 * 1000;
 
 const keyOf = (sourceId: string, modelKey: string) => `${sourceId}\u0000${modelKey}`;
@@ -382,6 +382,9 @@ const EXTRA_TERMS: Record<string, string[]> = {
   subtype: ["жилет", "плащ", "дубленка", "кейп", "пончо", "олимпийка"],
   // По боевым ответам (замер 05.10, 91 модель сумок): «мешок» и «трапеция» по 4, мессенджер, боулер, саквояж — по одному-двум.
   silhouette: ["мешок", "трапеция", "мессенджер", "боулер", "саквояж"],
+  // Вопрос v2 велит называть декор точно, а в подсказке «стразы или пайетки» — один термин из трёх слов: «стразы» и «пайетки»
+  // по отдельности (и «бисер», которого в подсказке нет) уходили в «другое».
+  decor: ["стразы", "пайетки", "бисер"],
 };
 
 /**
@@ -494,6 +497,13 @@ export interface TraitField {
   values: TraitValue[];
   /** Формулировки вне словаря — отдельно и всегда: они не должны теряться за обрезкой списка. */
   other: TraitValue | null;
+  /**
+   * averaged — у значений есть «средняя по источникам» (признак виден минимум у MIN_SOURCES_FOR_FIELD_AVERAGE источников не меньше
+   * чем у MIN_SOURCE_VISIBLE моделей); raw — доли по всем моделям, где признак виден (источников для средней мало). Нет — отчёт старой формы.
+   */
+  basis?: "averaged" | "raw";
+  /** Сколько источников вошло в среднюю этого признака (0 при raw). */
+  sourcesInFieldAverage?: number;
 }
 
 export interface PhotoTraitsReport {
@@ -528,6 +538,13 @@ export const MIN_VISIBLE_FOR_SHARES = 20;
 export const PRELIMINARY_COVERAGE = 90;
 /** Средняя по источникам включается, когда источники с ≥10 разобранными моделями дают не меньше этой доли разобранного. */
 export const AVERAGE_MIN_COVERAGE = 0.8;
+/**
+ * В среднюю по признаку идёт источник, где признак виден хотя бы у стольких моделей: у источника с одной-двумя видимыми моделями
+ * («капюшон» у одной из 12) единичная модель весила бы наравне с источником, где видно 12 из 12 — «1 модель = 33,3%».
+ */
+export const MIN_SOURCE_VISIBLE = 5;
+/** Меньше стольких таких источников — «средней по источникам» у признака нет, доля считается по всем моделям. */
+export const MIN_SOURCES_FOR_FIELD_AVERAGE = 2;
 
 /**
  * Доли значений признаков по разобранным моделям. Модель с «не видно» по признаку
@@ -570,7 +587,9 @@ export function buildPhotoTraits(direction: AssortmentDirection, models: TraitMo
       counts.set(value, entry);
     }
     if (visible === 0) continue;
-    const usable = averaged.filter((id) => (visibleBySource.get(id) ?? 0) > 0);
+    // Источники, по которым у ЭТОГО признака можно судить о доле; их меньше двух — средней по признаку нет (basis raw).
+    const eligibleForField = averaged.filter((id) => (visibleBySource.get(id) ?? 0) >= MIN_SOURCE_VISIBLE);
+    const usable = eligibleForField.length >= MIN_SOURCES_FOR_FIELD_AVERAGE ? eligibleForField : [];
     const values: TraitValue[] = [...counts.entries()].map(([value, entry]) => ({
       value,
       models: entry.models,
@@ -590,7 +609,7 @@ export function buildPhotoTraits(direction: AssortmentDirection, models: TraitMo
         .slice(0, MAX_OTHER_EXAMPLES)
         .map(([text, count]) => ({ text, models: count }));
     }
-    fields.push({ key: field.key, label: field.label, visible, notVisible, values: named.slice(0, MAX_VALUES), other: otherValue });
+    fields.push({ key: field.key, label: field.label, visible, notVisible, values: named.slice(0, MAX_VALUES), other: otherValue, basis: usable.length > 0 ? "averaged" : "raw", sourcesInFieldAverage: usable.length });
   }
   return {
     direction,

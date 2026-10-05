@@ -15,6 +15,9 @@ import type { AssortmentDirection } from "./constants";
  * жилет). Названия на английском, русском и немецком (витрина Zalando — немецкая).
  * Без \b для кириллицы и немецких составных слов («Daunenjacke», «Umhängetasche»):
  * \b их не видит. Латинские слова — с \b, чтобы «vest» не ловился в «investment».
+ *
+ * 🔴 Правила пишутся по НОРМАЛИЗОВАННОМУ тексту (normalizeTitle): «й» там — это «и» («блейзер» → «блеизер»), «ё» — «е».
+ * Регулярка с буквой «й» не совпадёт никогда (так молча не работали «блейзер», «кейп», «дутый», «оверсайз») — тест на это есть.
  */
 
 export interface FormRule {
@@ -43,17 +46,17 @@ export const JACKET_FORMS: readonly FormRule[] = [
   { key: "parka", label: "Парка", re: /парка|парк[иу](?![а-я])|аляск|\bparkas?\b/ },
   { key: "windbreaker", label: "Ветровка / анорак", re: /ветровк|windbreaker|storm ?breaker|штормовк|\banorak|анорак|windjacke|\bshell\b|hardshell|regenjacke|дождевик|raincoat|\brain jacket|waterproof|непромокаем/ },
   { key: "vest", label: "Жилет", re: /жилет|\bvest\b|\bgilet\b|\bweste\b|\bwaistcoat/ },
-  { key: "puffer", label: "Пуховик", re: /пуховик|дутик|дутая|дутый|дутые|\bpuffer|\bpuffa|daunen|(?:^|\s)down\b|doudoune|пухов/ },
+  { key: "puffer", label: "Пуховик", re: /пуховик|дутик|дутая|дутыи|дутые|\bpuffer|\bpuffa|daunen|(?:^|\s)down\b|doudoune|пухов/ },
   { key: "quilted", label: "Стёганая / утеплённая", re: /стеган|\bquilted|steppjacke|\bpadded|wattiert/ },
   { key: "denim", label: "Джинсовая", re: /джинсов|\bdenim|jeansjacke|\bjean jacket/ },
   { key: "fleece", label: "Флис / тедди", re: /флис|\bfleece|\bteddy|\bsherpa|плюшев/ },
   // «Fur collar/trim/lined» — отделка пальто или пуховика, а не меховая вещь: «coat with faux fur collar» остаётся пальто.
   // По-русски то же: «с меховым воротником», «воротник из эко-меха» — отделка, а не меховая вещь.
   { key: "fur", label: "Мех / дублёнка", re: /^(?!.*(?:мехов[а-я]*\s+(?:воротник|капюшон|отделк|манжет|подкладк|опушк)|(?:воротник|капюшон|отделк|манжет|подкладк|опушк)[а-я]*\s+из\s+(?:эко-?)?мех)).*?(?:дубленк|шуб[аыу]|шубк|\bshearling|\b(?:faux )?fur\b(?![ -](?:collar|trim|lining|lined|hood|cuff|detail))|mouton|pelz|kunstfell|эко-?мех|мехов)/ },
-  { key: "blazer", label: "Жакет / пиджак", re: /блейзер|пиджак|жакет|\bblazer|\bsakko/ },
+  { key: "blazer", label: "Жакет / пиджак", re: /блеизер|пиджак|жакет|\bblazer|\bsakko/ },
   { key: "coat", label: "Пальто", re: /пальто|полупальто|\bcoat\b|\bcoats\b|\bmantel|\bovercoat|\bduffle/ },
   { key: "overshirt", label: "Рубашка-куртка", re: /overshirt|shirt jacket|рубашк[аи]-куртк|куртк[аи]-рубашк|hemdjacke/ },
-  { key: "cape", label: "Кейп / пончо", re: /\bcape\b|\bponcho|кейп|пончо|накидк/ },
+  { key: "cape", label: "Кейп / пончо", re: /\bcape\b|\bponcho|кеип|пончо|накидк/ },
   { key: "jacket", label: "Куртка (форма не названа)", generic: true, re: /куртк|курточк|\bjacket|\bjacke\b|jacke$|\bjacken\b|\bblouson|\bbolero/ },
 ];
 
@@ -109,7 +112,7 @@ export function traitsOf(direction: AssortmentDirection, title: string | null | 
     return { ...empty, size, material };
   }
   const length = /\bcrop(?:ped)?\b|укорочен|коротк|\bkurz\b|\bshort\b(?! sleeve)/.test(t) ? "cropped" : /\blong(?:line)?\b|удлинен|длинн|\blang\b|\bmaxi\b/.test(t) ? "long" : null;
-  const fit = /oversize|оверсайз|\bboxy\b|свободн|\brelaxed\b|\bloose\b/.test(t) ? "oversized" : /\bfitted\b|приталенн|\bslim\b|\bskinny\b/.test(t) ? "fitted" : null;
+  const fit = /oversize|оверсаиз|\bboxy\b|свободн|\brelaxed\b|\bloose\b/.test(t) ? "oversized" : /\bfitted\b|приталенн|\bslim\b|\bskinny\b/.test(t) ? "fitted" : null;
   const hooded = /\bhood(?:ed)?\b|капюшон|kapuze/.test(t);
   const material = /замш|\bsuede\b|wildleder/.test(t) ? "suede" : /кожан|экокож|\bleather\b|\bleder\b|kunstleder|lederjacke|\bfaux leather\b/.test(t) ? "leather" : null;
   return { ...empty, length, fit, hooded, material };

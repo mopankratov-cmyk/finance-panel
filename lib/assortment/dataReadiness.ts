@@ -64,6 +64,8 @@ export interface TraitsFacts {
   lastAttemptAt: string | null;
   /** Чтение времени последней модели/попытки не удалось: «ни одной удачи» по null не заключаем. */
   readFailed?: boolean;
+  /** Вида каталога нет (миграция 202610050002): очередь и «из M» неизвестны — ноль не рисуем. */
+  catalogMissing?: boolean;
   /** Сколько сборщик ещё возьмёт в ДРУГОМ разделе: очередь общая; null — не удалось узнать (строка в errors). */
   otherQueued: number | null;
   callsToday: number;
@@ -158,7 +160,10 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
   const otherKnown = t.otherQueued !== null;
   const other = t.otherQueued ?? 0;
   const total = remaining + other;
-  if (total === 0 && otherKnown) {
+  if (t.catalogMissing) {
+    lines.push({ kind: "факт", text: "Каталога для разбора ещё нет (не применена миграция 202610050002): сколько моделей осталось разобрать, посчитать нельзя.", problem: true });
+    problem = true;
+  } else if (total === 0 && otherKnown) {
     lines.push({ kind: "факт", text: "Очередь разобрана: новые модели подхватятся следующими прогонами." });
   } else if (total === 0) {
     lines.push({ kind: "факт", text: "В этом разделе очередь пуста; очередь другого раздела не прочиталась — общий срок посчитать нельзя." });
@@ -199,7 +204,11 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
       const stalled = nowMs - lastTry > STALL_HOURS * 3600 * 1000;
       if (stalled) {
         const at = new Date(lastTry + 3 * 3600 * 1000).toISOString();
-        lines.push({ kind: "факт", text: `Сборщик ничего не пробовал разобрать больше ${STALL_HOURS} часов (последняя попытка ${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК) при непустой очереди — разбор не движется (проверьте журнал крона и ключ).`, problem: true });
+        // Вызовы сегодня есть, а записанных попыток нет: ответы приходят временными сбоями (таймаут, перегрузка) — они в таблицу не пишутся.
+        const text = t.callsToday > 0
+          ? `Вызовы идут (сегодня ${num(t.callsToday)}), но ни одна модель не записана больше ${STALL_HOURS} часов (последняя запись ${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК) при непустой очереди — похоже, все ответы провайдера временные сбои (таймаут, перегрузка): проверьте журнал крона.`
+          : `Сборщик ничего не пробовал разобрать больше ${STALL_HOURS} часов (последняя попытка ${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК) при непустой очереди — разбор не движется (проверьте журнал крона и ключ).`;
+        lines.push({ kind: "факт", text, problem: true });
         problem = true;
       }
     }

@@ -67,7 +67,7 @@ test("Остановки по настройке названы и раскры�
 });
 
 test("«Не движется»: условия рабочие, очередь есть, последняя модель разобрана больше суток назад — проблема; свежая — нет; при остановке по настройке не дублируется", () => {
-  const stalled = buildReadiness(input({ traits: traits({ lastOkAt: "2026-10-04T08:00:00Z", lastAttemptAt: "2026-10-04T08:00:00Z" }) }));
+  const stalled = buildReadiness(input({ traits: traits({ lastOkAt: "2026-10-04T08:00:00Z", lastAttemptAt: "2026-10-04T08:00:00Z", callsToday: 0 }) }));
   assert.equal(stalled.problem, true);
   assert.match(lines(stalled, "traits"), /Последняя модель разобрана 04\.10 в 11:00 МСК\./);
   assert.match(lines(stalled, "traits"), /Сборщик ничего не пробовал разобрать больше 24 часов \(последняя попытка 04\.10 в 11:00 МСК\) при непустой очереди — разбор не движется/);
@@ -132,9 +132,25 @@ test("«Не движется» — по последней ПОПЫТКЕ: в �
   assert.equal(retriesOnly.problem, false, "последняя удача 30 часов назад, но попытка — 2 часа назад");
   assert.match(lines(retriesOnly, "traits"), /Последняя модель разобрана 05\.10 в 07:00 МСК\./);
   assert.doesNotMatch(lines(retriesOnly, "traits"), /не движется/);
-  const silent = buildReadiness(input({ traits: traits({ queued: 3, lastOkAt: "2026-10-05T04:00:00Z", lastAttemptAt: "2026-10-05T04:00:00Z" }) }));
+  const silent = buildReadiness(input({ traits: traits({ queued: 3, lastOkAt: "2026-10-05T04:00:00Z", lastAttemptAt: "2026-10-05T04:00:00Z", callsToday: 0 }) }));
   assert.equal(silent.problem, true);
   assert.match(lines(silent, "traits"), /Сборщик ничего не пробовал разобрать больше 24 часов \(последняя попытка 05\.10 в 07:00 МСК\)/);
+});
+
+test("Вызовы сегодня есть, а записанных попыток больше суток нет: не «ничего не пробовал» (это ложь), а «вызовы идут, но ни одна модель не записана — временные сбои провайдера»", () => {
+  const r = buildReadiness(input({ traits: traits({ queued: 50, callsToday: 36, lastOkAt: "2026-10-04T08:00:00Z", lastAttemptAt: "2026-10-04T08:00:00Z" }) }));
+  const t = lines(r, "traits");
+  assert.match(t, /Вызовы идут \(сегодня 36\), но ни одна модель не записана больше 24 часов \(последняя запись 04\.10 в 11:00 МСК\) при непустой очереди — похоже, все ответы провайдера временные сбои/);
+  assert.doesNotMatch(t, /ничего не пробовал/);
+  assert.equal(r.problem, true);
+});
+
+test("Нет вида каталога (миграция 202610050002): «0 из 0» и «Очередь разобрана» не пишем — очередь неизвестна, это проблема с названием миграции", () => {
+  const r = buildReadiness(input({ traits: traits({ analyzed: 0, eligible: 0, queued: 0, catalogMissing: true, lastOkAt: null, lastAttemptAt: null }) }));
+  const t = lines(r, "traits");
+  assert.match(t, /Каталога для разбора ещё нет \(не применена миграция 202610050002\)/);
+  assert.doesNotMatch(t, /Очередь разобрана/);
+  assert.equal(r.problem, true);
 });
 
 test("«Ни одна модель не разобрана» — только когда разобранных нет вовсе: есть разобранные (в т.ч. по прежнему вопросу) или время не прочиталось — строки и тревоги нет", () => {
@@ -389,6 +405,52 @@ test("Чтение базы: не прочиталось время послед
   assert.doesNotMatch(lines(r, "traits"), /Ни одна модель не разобрана/);
   assert.deepEqual(queued.sort(), ["bags", "jackets"], "очередь двух разделов — через загрузчик, а не прямым чтением вида голов");
   assert.match(lines(r, "traits"), /Осталось разобрать 38 \(в другом разделе ещё 38/);
+});
+
+test("Чтение базы: доля неудач за 7 суток — по ЭТОМУ разделу: сбои сумок в «Куртках», где их нет, тревоги не дают; жив ли сборщик — по всей таблице", async () => {
+  const rows = [
+    ...Array.from({ length: 30 }, () => attr("failed", { direction: "jackets", last_error: "фото не скачалось" })),
+    ...Array.from({ length: 5 }, () => attr("ok", { direction: "jackets" })),
+    ...Array.from({ length: 25 }, () => attr("ok", { direction: "bags" })),
+  ];
+  const traitsLoader = (async (_db: unknown, direction: string) => report({ direction: direction as "bags" | "jackets", analyzed: 25, queue: { queued: 10, exhausted: 0, unstable: 0 } })) as never;
+  const bags = await loadReadiness(fakeDb({ assortment_model_attributes: rows }).db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: traitsLoader });
+  assert.equal(bags.problem, false, "у сумок 25 удач и ни одной неудачи");
+  assert.doesNotMatch(lines(bags, "traits"), /неудачных/);
+  const jackets = await loadReadiness(fakeDb({ assortment_model_attributes: rows }).db, "jackets", new Date("2026-10-06T10:00:00Z"), { traits: traitsLoader });
+  assert.match(lines(jackets, "traits"), /За 7 суток неудачных 86% попыток/, "у курток 30 неудач из 35");
+  assert.equal(jackets.problem, true);
+  assert.doesNotMatch(lines(bags, "traits"), /ничего не пробовал/, "сборщик жив: последняя попытка свежая по всей таблице");
+});
+
+test("Чтение базы: нет вида каталога — «из 0» и «очередь разобрана» не пишутся; миграция названа; очередь другого раздела — в errors", async () => {
+  const { db } = fakeDb({ assortment_model_attributes: [attr("failed", { last_error: "x" })] }, { missing: ["assortment_catalog_heads"] });
+  const r = await loadReadiness(db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => null) as never });
+  const t = lines(r, "traits");
+  assert.match(t, /Каталога для разбора ещё нет \(не применена миграция 202610050002\)/);
+  assert.doesNotMatch(t, /Очередь разобрана/);
+  assert.ok(r.errors.some((e) => /очередь другого раздела \(нет вида каталога/.test(e)));
+  assert.equal(r.problem, true);
+});
+
+test("История на экране «Куртки»: источники, у которых куртки не собираются (категории только сумки), не перечисляются, хотя прогон Shopify пишется без раздела", async () => {
+  const run = (source: string, day: string, direction: string | null = null) => ({ source_id: source, direction, observed_on: day, coverage: "full", seen: 10, added: 0, error: null, started_at: `${day}T08:00:00Z` });
+  const { db } = fakeDb({
+    assortment_model_attributes: [],
+    assortment_run: [run("S001", "2026-09-27", "jackets"), run("S001", "2026-10-04", "jackets"), run("S027", "2026-09-27"), run("S027", "2026-10-04"), run("S040", "2026-09-27"), run("S040", "2026-10-04")],
+    assortment_sources: [
+      { source_id: "S001", name: "Zara", categories: ["jackets", "bags"] },
+      { source_id: "S027", name: "JW PEI", categories: ["bags"] },
+      { source_id: "S040", name: "Rains", categories: ["jackets", "bags"] },
+    ],
+  });
+  const jackets = await loadReadiness(db, "jackets", new Date("2026-10-06T10:00:00Z"), { traits: (async () => null) as never });
+  const h = lines(jackets, "history");
+  assert.match(h, /Zara/);
+  assert.match(h, /Rains/);
+  assert.doesNotMatch(h, /JW PEI/, "сумочный бренд в истории курток не нужен");
+  const bags = await loadReadiness(db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => null) as never });
+  assert.match(lines(bags, "history"), /JW PEI/);
 });
 
 test("Чтение базы: неудачный пересбор считается неудачей — доля за 7 суток растёт, даже когда «не разобралось» пусто", async () => {

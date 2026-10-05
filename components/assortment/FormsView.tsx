@@ -5,7 +5,7 @@ import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { FORM_UNRECOGNIZED } from "@/lib/assortment/catalog";
 import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
-import type { FormRow, FormsReport } from "@/lib/assortment/forms";
+import { MIN_SOURCE_MODELS, type FormRow, type FormsReport } from "@/lib/assortment/forms";
 import { fitFor, type BrandProfile } from "@/lib/assortment/brandProfiles";
 import type { FormDemandReport } from "@/lib/assortment/wbQueries";
 import { DataReadiness } from "./DataReadiness";
@@ -97,7 +97,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
           <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">расчёт по названиям</span>
           Форма определена по названию модели, а не по фото. Это срез на сегодня, а не динамика: история наблюдений только накапливается, и «растёт» или «падает» пока сказать нельзя.
           Расцветки одной модели склеены у JW PEI, Polène, Songmont, Rains и ASOS, где сайт отдаёт каждый цвет отдельным товаром; у остальных источников строка каталога — это модель так, как её отдаёт сайт, а у H&M каждая расцветка — отдельная карточка, поэтому его модели могут считаться несколько раз.
-          «Средняя по источникам» — каждый источник с каталогом от 10 моделей весит одинаково: большой каталог не делает форму «сильнее».
+          «Средняя по источникам» — каждый источник с каталогом от {MIN_SOURCE_MODELS} моделей весит одинаково: большой каталог не делает форму «сильнее».
         </p>
       </div>
 
@@ -137,7 +137,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
             <div className="mt-2 text-sm leading-6 text-slate-600">
               <p>
                 Например: {report.unrecognized.samples.join(" · ")}. Это имена моделей без слова о форме (так у части брендов сумок)
-                или обрывки описаний. Форму таких моделей мы не определяем и не угадываем: в долях форм по названиям они не участвуют.
+                или обрывки описаний. Форму таких моделей мы не определяем и не угадываем: ни одной формы они не прибавляют, но в знаменателе долей («Доля каталога», «Средняя по источникам») остаются — это доля от всего каталога, а не только от моделей с названной формой.
                 Как их описывает ИИ по фото, видно в блоке «Признаки по фото» ниже — но это отдельная оценка, она в эти доли не входит.
               </p>
               {report.viaHeads !== false && <div className="mt-2"><ModelsLink direction={report.direction} form={FORM_UNRECOGNIZED} count={report.unrecognized.count} onShow={onShowModels} /></div>}

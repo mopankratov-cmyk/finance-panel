@@ -1133,6 +1133,60 @@ test("Словарь: ничего лишнего не ловится — «не
   assert.equal(canonicalValue("hood", "нет"), "нет");
 });
 
+test("Декор: «стразы», «пайетки», «бисер» по отдельности и через запятую — свои значения, а не «другое»; «стразы или пайетки» из подсказки — как раньше", () => {
+  assert.equal(canonicalValue("decor", "стразы"), "стразы");
+  assert.equal(canonicalValue("decor", "пайетки"), "пайетки");
+  assert.equal(canonicalValue("decor", "бисер"), "бисер");
+  assert.equal(canonicalValue("decor", "бисер, стразы"), "бисер", "названо раньше — главное");
+  assert.equal(canonicalValue("decor", "стразы или пайетки"), "стразы или пайетки");
+  assert.equal(canonicalValue("decor", "вышивка"), "вышивка");
+  assert.equal(canonicalValue("decor", "что-то блестящее"), "другое");
+});
+
+test("Средняя по источникам для признака: источник с 1–2 видимыми моделями весом не владеет; невидимые источники в среднюю не входят; источников для средней меньше двух — доли по всем моделям и пометка", () => {
+  // S1: 20 моделей, у всех «капюшон: есть»; S2: 12 моделей, капюшон виден у ОДНОЙ («нет»); S3: 12 моделей, капюшон нигде не виден.
+  const models: TraitModel[] = [
+    ...Array.from({ length: 20 }, () => tm("S1", { hood: v("есть"), length: v("до бедра") })),
+    tm("S2", { hood: v("нет"), length: v("до бедра") }),
+    ...Array.from({ length: 11 }, () => tm("S2", { hood: nv, length: v("до бедра") })),
+    ...Array.from({ length: 12 }, () => tm("S3", { hood: nv, length: v("ниже колена") })),
+  ];
+  const report = buildPhotoTraits("jackets", models, 100);
+  assert.equal(report.basis, "averaged", "три источника с ≥10 моделей дают всё разобранное");
+  const hood = report.fields.find((f) => f.key === "hood")!;
+  assert.equal(hood.visible, 21);
+  assert.equal(hood.basis, "raw", "источник, где капюшон виден хотя бы у 5 моделей, один (S1): средней по источникам нет");
+  assert.equal(hood.sourcesInFieldAverage, 0);
+  const has = hood.values.find((x) => x.value === "есть")!;
+  assert.equal(has.avgSourceShare, null);
+  assert.equal(has.share, 95.2, "по всем моделям: 20 из 21 — а не «1 модель = 50%» из двух источников");
+  // У «длины» видят все три источника — средняя считается честно, по трём.
+  const length = report.fields.find((f) => f.key === "length")!;
+  assert.equal(length.basis, "averaged");
+  assert.equal(length.sourcesInFieldAverage, 3);
+  assert.equal(length.values.find((x) => x.value === "до бедра")!.avgSourceShare, 66.7, "(100% + 100% + 0%) / 3");
+  // Два источника с достаточным числом видимых: средняя — по ним, невидимый S3 в неё не входит (100%, а не 66,7%).
+  const two: TraitModel[] = [
+    ...Array.from({ length: 20 }, () => tm("S1", { hood: v("есть") })),
+    ...Array.from({ length: 10 }, () => tm("S2", { hood: v("есть") })),
+    ...Array.from({ length: 12 }, () => tm("S3", { hood: nv })),
+  ];
+  const hood2 = buildPhotoTraits("jackets", two, 100).fields.find((f) => f.key === "hood")!;
+  assert.equal(hood2.basis, "averaged");
+  assert.equal(hood2.sourcesInFieldAverage, 2);
+  assert.equal(hood2.values[0].avgSourceShare, 100, "S3 без видимого признака в среднюю не входит");
+});
+
+test("Карточка признака: при средней по источникам и признаке без неё (raw) — пометка «по всем моделям»", () => {
+  const val = (value: string, models: number, of: number) => ({ value, models, share: Math.round((models / of) * 1000) / 10, avgSourceShare: null, sources: 1 });
+  const field = (key: string, label: string, basis: "averaged" | "raw") => ({ key, label, visible: 40, notVisible: 0, values: [val("есть", 30, 40)], other: null, basis, sourcesInFieldAverage: basis === "averaged" ? 3 : 0 });
+  const report = { direction: "jackets" as const, analyzed: 60, legacy: 0, catalog: 100, coverage: 60, sourcesInAverage: 3, basis: "averaged" as const, averageCoverage: 0.9, fields: [field("hood", "Капюшон", "raw"), field("length", "Длина", "averaged")] };
+  const html = renderToStaticMarkup(createElement(TraitsSection, { report }));
+  const text = html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+  assert.match(text, /Капюшон видно у 40.*Доли — по всем моделям, где признак виден: источников, где он виден хотя бы у 5 моделей, меньше 2, средней по источникам нет\./);
+  assert.equal((text.match(/средней по источникам нет/g) ?? []).length, 1, "у признака со средней пометки нет");
+});
+
 test("Отчёт: «другое» раскрыто сырыми формулировками (частые первыми), версия вопроса — отдельным счётчиком, мало данных видно по полю", () => {
   const models: TraitModel[] = [
     ...Array.from({ length: 4 }, () => tm("S1", { silhouette: v("Сумка-ушко") })),

@@ -80,6 +80,15 @@ export interface AiAttributeValue {
   confidence: number | null;
 }
 
+/**
+ * «Не видно» в любом написании, как модель его отдаёт: «не видно.», «Не видно на фото», «не видны», «нет данных», «не определить».
+ * Раньше признавалась только точная строка — остальные варианты считались видимым значением и попадали в «другое».
+ */
+export function isNotVisibleText(text: string): boolean {
+  const t = text.replace(/[.!…;,\s]+$/g, "").replace(/\s+/g, " ").trim();
+  return /^(?:(?:признак |деталь )?не (?:видн[оаы]|виден)|не (?:определяется|определить|определен[оаы]?|определён[оаы]?)|невозможно определить|нет данных|н\/д)(?: (?:на|по) (?:фото|фотографии|изображении|картинке))?$/.test(t);
+}
+
 /** Разбор ответа модели: только признаки раздела, без денег, короткие строки. */
 export function parseAiAttributes(direction: AssortmentDirection, raw: unknown): Record<string, AiAttributeValue> {
   const body = (typeof raw === "string" ? safeJson(raw) : raw) as { attributes?: Record<string, unknown>; confidence?: Record<string, unknown> } | null;
@@ -92,7 +101,7 @@ export function parseAiAttributes(direction: AssortmentDirection, raw: unknown):
     if (!text || text.length > 60 || containsMoney(text)) continue;
     const c = Number(body.confidence?.[key]);
     const confidence = Number.isFinite(c) ? Math.max(0, Math.min(1, c)) : null;
-    out[key] = text === "не видно" || text === "не видна" || text === "нет данных"
+    out[key] = isNotVisibleText(text)
       ? { value: null, notVisible: true, confidence }
       : { value: text, notVisible: false, confidence };
   }

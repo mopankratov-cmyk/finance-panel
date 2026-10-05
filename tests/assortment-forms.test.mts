@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildFormsReport, CONCENTRATION_MIN_MODELS, formOf, MIN_SOURCE_MODELS, normalizeTitle, traitsOf, type FormModel } from "../lib/assortment/forms.ts";
+import { BAG_FORMS, buildFormsReport, CONCENTRATION_MIN_MODELS, formOf, JACKET_FORMS, MIN_SOURCE_MODELS, normalizeTitle, traitsOf, type FormModel } from "../lib/assortment/forms.ts";
 
 const jacket = (title: string) => formOf("jackets", title)?.key ?? null;
 const bag = (title: string) => formOf("bags", title)?.key ?? null;
@@ -32,6 +32,19 @@ test("Куртки: форма по названию на английском, 
   assert.equal(jacket("Blazer"), "blazer");
   assert.equal(jacket("Куртка-рубашка из хлопка"), "overshirt");
   assert.equal(jacket("Плащ-кейп как из бумаги"), "trench", "плащ в начале названия решает");
+});
+
+test("Буква «й»: normalizeTitle превращает её в «и», поэтому «блейзер», «кейп», «дутый» и «оверсайз» должны находиться — и находятся; ни одно правило не содержит «й» (иначе оно не совпало бы никогда)", () => {
+  assert.equal(normalizeTitle("Блейзер Кейп Дутый Оверсайз"), "блеизер кеип дутыи оверсаиз", "й → и: правила пишутся по нормализованному тексту");
+  assert.equal(jacket("Блейзер из шерсти"), "blazer", "раньше уходил в «название не называет форму»");
+  assert.equal(jacket("Двубортный блейзер"), "blazer");
+  assert.equal(jacket("Кейп из шерсти"), "cape");
+  assert.equal(jacket("Кейп-жилет"), "vest", "жилет в названии решает раньше кейпа — порядок правил не менялся");
+  assert.equal(jacket("Дутый жилет"), "vest");
+  assert.equal(jacket("Куртка дутый крой"), "puffer", "«дутый» — пуховик, а не просто куртка");
+  assert.equal(traitsOf("jackets", "Куртка оверсайз").fit, "oversized", "оверсайз по-русски попадает в «Уточнения из названий»");
+  assert.equal(traitsOf("jackets", "Oversize jacket").fit, "oversized");
+  for (const rule of [...JACKET_FORMS, ...BAG_FORMS]) assert.doesNotMatch(rule.re.source, /[йЙ]/, `правило «${rule.key}» содержит «й» — по нормализованному тексту оно не совпадёт никогда`);
 });
 
 test("Куртки: порядок правил — жилет и косуха важнее материала и общей формы", () => {

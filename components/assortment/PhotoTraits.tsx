@@ -4,7 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
 import { ACCURACY_MIN_JUDGED, ACCURACY_UNCLEAR_MAX, accuracyLabel, hiddenReason, type FieldAccuracy, type Verdict } from "@/lib/assortment/attributeVerdicts";
 import { ATTRIBUTE_FIELDS } from "@/lib/assortment/attributes";
-import { isJudgeableField, MIN_MODELS_FOR_TRAITS, MIN_VISIBLE_FOR_SHARES, PRELIMINARY_COVERAGE, PROMPT_VERSION, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
+import { MIN_SOURCE_MODELS } from "@/lib/assortment/forms";
+import { AVERAGE_MIN_COVERAGE, isJudgeableField, MIN_MODELS_FOR_TRAITS, MIN_SOURCE_VISIBLE, MIN_SOURCES_FOR_FIELD_AVERAGE, MIN_VISIBLE_FOR_SHARES, PRELIMINARY_COVERAGE, PROMPT_VERSION, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
 import type { PhotoSample } from "@/lib/assortment/catalogAiStore";
 import { plural } from "@/lib/warehouse/plural";
 
@@ -134,6 +135,7 @@ export function TraitsSection({ report, accuracy, accuracyFailed }: { report: Ph
                 <span className="text-sm font-medium text-slate-900">{field.label}</span>
                 <span className="text-xs text-slate-500">видно у {num(field.visible)} · не видно {num(field.notVisible)}</span>
               </div>
+              {report.basis === "averaged" && field.basis === "raw" && <p className="mt-1 text-xs leading-5 text-slate-500">Доли — по всем моделям, где признак виден: источников, где он виден хотя бы у {MIN_SOURCE_VISIBLE} моделей, меньше {MIN_SOURCES_FOR_FIELD_AVERAGE}, средней по источникам нет.</p>}
               {accuracy && judgeable && <p className={`mt-1 text-xs leading-5 ${unreliable ? "text-amber-800" : "text-slate-500"}`}>Точность разбора: {accuracyLabel(measured)}.</p>}
               {unreliable ? (
                 <p className="mt-2 text-xs leading-5 text-amber-800">Доли не показываем: {unreliable}. Скажите — поправим вопрос или словарь и разберём заново.</p>
@@ -162,8 +164,8 @@ export function TraitsSection({ report, accuracy, accuracyFailed }: { report: Ph
       <p className="text-xs leading-5 text-slate-500">
         Это оценка ИИ по фото модели (до двух), а не факт с сайта и не ручная проверка: что на фото не видно, ИИ не угадывает, и такие модели в долях признака не участвуют.
         Полоска — доля от 100%, а не от самого частого значения. {report.basis === "averaged"
-          ? `Доля — средняя по источникам (учтено ${report.sourcesInAverage}, у каждого не меньше 10 разобранных моделей; вместе они дают ${Math.round(report.averageCoverage * 100)}% разобранного): большой каталог не решает за остальные.`
-          : "Пока разобрано мало: источников с 10 и более разобранными моделями недостаточно, чтобы усреднять, поэтому доли — по всем разобранным моделям и зависят от того, какие источники успели разобраться; средняя по источникам включится, когда такие источники будут давать 80% разобранного."}
+          ? `Доля — средняя по источникам (учтено ${report.sourcesInAverage}, у каждого не меньше ${MIN_SOURCE_MODELS} разобранных моделей; вместе они дают ${Math.round(report.averageCoverage * 100)}% разобранного): большой каталог не решает за остальные.`
+          : `Пока разобрано мало: источников с ${MIN_SOURCE_MODELS} и более разобранными моделями недостаточно, чтобы усреднять, поэтому доли — по всем разобранным моделям и зависят от того, какие источники успели разобраться; средняя по источникам включится, когда такие источники будут давать ${Math.round(AVERAGE_MIN_COVERAGE * 100)}% разобранного.`}
         {" "}Пока разобрана не вся витрина, картина может сместиться.
         {accuracy && ` Точность каждого признака — расчёт по отметкам человека «верно / неверно» в блоке проверки ниже (нижняя граница 95% интервала Уилсона): пока по признаку размечено меньше ${ACCURACY_MIN_JUDGED}, она не считается измеренной; «не понять» в неё не входит, но если таких отметок больше ${Math.round(ACCURACY_UNCLEAR_MAX * 100)}% (при ${ACCURACY_MIN_JUDGED} и более отметках), признак по фото не проверить и доли прячутся.`}
         {(report.legacy ?? 0) > 0 && ` Ещё ${num(report.legacy)} ${plural(report.legacy, "модель разобрана", "модели разобраны", "моделей разобрано")} по прежнему вопросу: в долях они не участвуют и пересоберутся.`}

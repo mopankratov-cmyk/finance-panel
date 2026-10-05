@@ -109,6 +109,14 @@ export function summarizeHistory(rows: RunRow[], today: string): SourceHistory[]
   return out.sort((a, b) => a.sourceId.localeCompare(b.sourceId));
 }
 
+/**
+ * Журнал прогонов общий для разделов, а экран «Источники» показывает источники одного раздела: чужие строки (с сырыми ключами вроде
+ * S212 вместо названий) не показываем. Известных источников нет (список ещё не загрузился) — не режем.
+ */
+export function onlyKnownSources<T extends { sourceId: string }>(rows: T[], known: ReadonlySet<string>): T[] {
+  return known.size === 0 ? rows : rows.filter((row) => known.has(row.sourceId));
+}
+
 export const HISTORY_STATUS_LABEL: Record<HistoryStatus, string> = {
   none: "Истории нет",
   building: "Копится",

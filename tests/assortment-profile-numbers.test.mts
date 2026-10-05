@@ -53,8 +53,8 @@ const norvia = { ...BRAND_DEFAULTS[0] };
 test("Карточка профиля: числа у каждой формы, сверху «не решено» с большим спросом и оговорка «спрос — справка»", () => {
   const html = renderToStaticMarkup(createElement(ProfileCard, { profile: norvia, editable: true, numbers: formNumbers(forms, demand) }));
   const t = flat(html);
-  assert.match(t, /Пуховик поиски 45% · каталоги 50% · 18 моделей в каталогах/);
-  assert.match(t, /Парка поиски 20% · каталоги 0% · 0 моделей в каталогах/, "форма есть в поиске, в каталогах нет");
+  assert.match(t, /Пуховик поиски 45% · каталоги 50% среди названных форм · 18 моделей в каталогах/);
+  assert.match(t, /Парка поиски 20% · каталоги 0% среди названных форм · 0 моделей в каталогах/, "форма есть в поиске, в каталогах нет");
   assert.match(t, /Не решено по формам с самым большим спросом на WB: Пуховик \(45% поисков\), Пальто \(30% поисков\), Парка \(20% поисков\)\./);
   assert.match(t, /Спрос — справка, а не вывод: «ищут много» не значит «подходит бренду», это решаете вы\./);
   const decided = flat(renderToStaticMarkup(createElement(ProfileCard, { profile: { ...norvia, fitForms: ["puffer", "coat", "parka", "bomber"] }, editable: true, numbers: formNumbers(forms, demand) })));

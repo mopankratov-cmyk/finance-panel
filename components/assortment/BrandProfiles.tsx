@@ -23,7 +23,7 @@ function numbersLine(n: FormNumbers): string {
   const models = `${n.models.toLocaleString("ru-RU")} моделей в каталогах`;
   if (n.demandShare === null && n.supplyShare === null) return models;
   const search = n.inDemandTop ? `поиски ${pctText(n.demandShare)}` : "не в топе поисков";
-  return `${search} · каталоги ${pctText(n.supplyShare)} · ${models}${n.concentrated ? " (почти всё у одного источника)" : ""}`;
+  return `${search} · каталоги ${pctText(n.supplyShare)} среди названных форм · ${models}${n.concentrated ? " (почти всё у одного источника)" : ""}`;
 }
 
 const dmy = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;

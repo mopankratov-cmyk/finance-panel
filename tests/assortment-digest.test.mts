@@ -129,6 +129,27 @@ test("Сводка: история наблюдений — у каких ист
   assert.doesNotMatch(text, /растёт|падает|усилилось|ослабло|тенденци/i);
 });
 
+test("Сводка: автообход каталогов — без «Рынка РФ»: Lime на WB каждую неделю пишет «нет продаж» и не должен давать вечную ⚠️, а «Wildberries — рынок» не «автообход»", async () => {
+  const db = fakeDb({
+    assortment_references: [], assortment_observations: [], assortment_decisions: [], assortment_collections: [], assortment_run: [],
+    assortment_sources: [
+      { source_id: "S001", name: "Polène", last_attempt_at: "2026-10-09T05:00:00Z", last_error: null },
+      { source_id: "S002", name: "Rains", last_attempt_at: "2026-10-09T05:00:00Z", last_error: "HTTP 429" },
+      { source_id: "S128", name: "Wildberries — рынок", last_attempt_at: "2026-10-06T05:00:00Z", last_error: null },
+      { source_id: "S129", name: "Lime на Wildberries", last_attempt_at: "2026-10-06T05:00:00Z", last_error: "MPSTATS: у Lime на WB нет продаж — официального магазина нет" },
+    ],
+  });
+  const facts = await loadDigestFacts(db as never, new Date("2026-10-04T07:00:00Z"), new Date("2026-10-11T07:00:00Z"), "https://panel.example");
+  assert.deepEqual(facts.crawl, { ok: ["Polène"], failing: [{ name: "Rains", error: "HTTP 429" }] });
+  const text = digestMessage(facts);
+  assert.doesNotMatch(text, /Lime|Wildberries/);
+  const onlyRu = fakeDb({
+    assortment_references: [], assortment_observations: [], assortment_decisions: [], assortment_collections: [], assortment_run: [],
+    assortment_sources: [{ source_id: "S129", name: "Lime на Wildberries", last_attempt_at: "2026-10-06T05:00:00Z", last_error: "нет продаж" }],
+  });
+  assert.equal((await loadDigestFacts(onlyRu as never, new Date("2026-10-04T07:00:00Z"), new Date("2026-10-11T07:00:00Z"), "https://panel.example")).crawl, null, "остались одни RU-источники — блока автообхода нет");
+});
+
 test("Сводка: нет журнала прогонов — блока истории нет; длинный список имён обрезается", () => {
   assert.doesNotMatch(digestMessage(facts({ history: null })), /История каталогов/);
   assert.doesNotMatch(digestMessage(facts({ history: [] })), /История каталогов/);

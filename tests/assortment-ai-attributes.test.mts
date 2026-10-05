@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { AI_META_KEY, aiPrompt, mergeAiAttributes, parseAiAttributes } from "../lib/assortment/aiAttributes.ts";
+import { AI_META_KEY, aiPrompt, isNotVisibleText, mergeAiAttributes, parseAiAttributes } from "../lib/assortment/aiAttributes.ts";
 import { ATTRIBUTE_FIELDS, attributeRows, type Attributes } from "../lib/assortment/attributes.ts";
 
 /** Признаки по фото: только видимое, «оценка ИИ», ручное и опубликованное не трогает. */
@@ -58,4 +58,19 @@ test("Разбор раз в день с лимитом; кнопка — под
   assert.match(cron, /ASSORTMENT_AI_DAILY_LIMIT \|\| 20/);
   assert.match(cron, /export async function GET/);
   assert.match(readFileSync(join(root, "app/api/assortment-development/references/[id]/ai-attributes/route.ts"), "utf8"), /requireApiSession\(ASSORTMENT_ROLES\)/);
+});
+
+test("«Не видно» в любом написании модели — не значение: «не видно.», «Не видно на фото», «не видны», «нет данных», «не определить»; настоящие значения («не видно застёжки»?) не задеты", () => {
+  for (const text of ["не видно", "не видно.", "Не видно на фото", "не видно по фото!", "не видны", "не виден", "не видна", "нет данных", "нет данных.", "не определить", "не определяется", "невозможно определить", "н/д", "  не   видно  "]) {
+    assert.equal(isNotVisibleText(text.trim().toLowerCase()), true, text);
+  }
+  for (const text of ["не видно застёжки", "нет", "без застёжки", "есть", "видно", "не видно, но похоже на молнию", "невидимая молния", "данные"]) {
+    assert.equal(isNotVisibleText(text), false, text);
+  }
+  const parsed = parseAiAttributes("bags", JSON.stringify({ attributes: { silhouette: "Не видно.", carry: "не видны", flap: "нет", rigidity: "полужёсткая" }, confidence: { silhouette: 0.2 } }));
+  assert.equal(parsed.silhouette.notVisible, true);
+  assert.equal(parsed.silhouette.value, null);
+  assert.equal(parsed.carry.notVisible, true);
+  assert.equal(parsed.flap.notVisible, false, "«нет» — ответ про клапан, а не «не видно»");
+  assert.equal(parsed.rigidity.value, "полужёсткая");
 });
