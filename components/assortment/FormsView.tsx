@@ -6,6 +6,7 @@ import type { AssortmentDirection } from "@/lib/assortment/constants";
 import type { FormRow, FormsReport } from "@/lib/assortment/forms";
 import { fitFor, type BrandProfile } from "@/lib/assortment/brandProfiles";
 import type { FormDemandReport } from "@/lib/assortment/wbQueries";
+import { DataReadiness } from "./DataReadiness";
 import { FormDemand } from "./FormDemand";
 import { PhotoTraits } from "./PhotoTraits";
 import { plural } from "@/lib/warehouse/plural";
@@ -55,6 +56,7 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
 
   return (
     <div className="flex flex-col gap-5">
+      <DataReadiness direction={direction} />
       <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} />
       <PhotoTraits direction={direction} />
     </div>

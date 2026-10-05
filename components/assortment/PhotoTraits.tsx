@@ -17,21 +17,29 @@ const pct = (n: number) => `${n.toLocaleString("ru-RU", { maximumFractionDigits:
  */
 export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
   const [report, setReport] = useState<PhotoTraitsReport | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setReport(null);
+    setError(null);
     fetch(`/api/assortment-development/photo-traits?direction=${direction}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body) => {
-        if (!cancelled && body?.report) setReport(body.report as PhotoTraitsReport);
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!response.ok) setError(body?.error || `Не загрузилось (${response.status})`);
+        else if (body?.report) setReport(body.report as PhotoTraitsReport);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setError("Нет связи с сервером");
+      });
     return () => {
       cancelled = true;
     };
   }, [direction]);
 
+  // Сбой чтения не прячем: молчание выглядело бы как «разбора нет». Пока ничего не разобрано (report пуст) — блока нет.
+  if (error) return <PhotoTraitsError message={error} />;
   if (!report) return null;
   const ready = report.analyzed >= MIN_MODELS_FOR_TRAITS && report.fields.length > 0;
 
@@ -46,6 +54,11 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
       <PhotoSamples direction={direction} />
     </div>
   );
+}
+
+/** Признаки по фото не загрузились — говорим об этом, а не молчим. */
+export function PhotoTraitsError({ message }: { message: string }) {
+  return <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Признаки по фото не загрузились: {message}.</p>;
 }
 
 export function TraitsSection({ report }: { report: PhotoTraitsReport }) {
