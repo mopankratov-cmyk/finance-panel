@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Check, EyeOff, ExternalLink, ImageOff, LoaderCircle, Search } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
-import { loadedOnServer, type CatalogBrandStat, type CatalogCard, type CatalogFilters } from "@/lib/assortment/catalog";
+import { formFilterLabel, loadedOnServer, type CatalogBrandStat, type CatalogCard, type CatalogFilters } from "@/lib/assortment/catalog";
 import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
 import { isReferenceStatus, STATUS_LABEL } from "@/lib/assortment/decisions";
 import { plural } from "@/lib/warehouse/plural";
@@ -25,6 +25,7 @@ function writeFilters(filters: CatalogFilters) {
   set("q", filters.q.trim() || null);
   set("fresh", filters.fresh ? "1" : null);
   set("badge", filters.badge ? "1" : null);
+  set("form", filters.form);
   set("photo", filters.photo === "auto" ? null : filters.photo);
   window.history.replaceState(null, "", url);
 }
@@ -35,6 +36,7 @@ function query(direction: AssortmentDirection, filters: CatalogFilters, offset: 
   if (filters.q.trim().length >= 2) params.set("q", filters.q.trim());
   if (filters.fresh) params.set("fresh", "1");
   if (filters.badge) params.set("badge", "1");
+  if (filters.form) params.set("form", filters.form);
   if (photo !== "auto") params.set("photo", photo);
   return `/api/assortment-development/catalog?${params}`;
 }
@@ -244,6 +246,8 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
         )}
       </div>
 
+      {filters.form && <FormFilterNote form={filters.form} direction={direction} total={ready ? ready.total : null} onReset={() => setFilters((f) => ({ ...f, form: null }))} />}
+
       {state.kind === "loading" && <div className="text-sm text-slate-500">Загружаем каталоги…</div>}
       {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
       {ready?.photosPending && (
@@ -297,6 +301,7 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
                 <div className="flex flex-1 flex-col gap-1.5 px-3 pb-3 pt-2">
                   <div className="break-anywhere line-clamp-2 text-sm font-medium leading-5 text-slate-900">{card.title}</div>
                   <div className="text-xs text-slate-500">{card.brand} · в каталоге с {day(card.firstSeenAt)}{card.variants > 1 ? ` · ${card.variants} ${plural(card.variants, "вариант", "варианта", "вариантов")}` : ""}</div>
+                  {card.form && <div className="text-xs text-slate-500">Форма: {card.form.label} <span className="text-slate-400">· по названию</span></div>}
                   <div className="mt-auto flex flex-wrap items-center gap-2 pt-1">
                     {card.referenceId && (
                       <Link href={`${ASSORTMENT_BASE_PATH}/${direction}/${card.referenceId}`} className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-violet-50 px-3 text-xs font-medium text-violet-800 hover:bg-violet-100">
@@ -358,6 +363,20 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
           </div>
         </Modal>
       )}
+    </div>
+  );
+}
+
+/** Плашка активного фильтра «Форма» (пришли с экрана «Формы»): что отобрано и как сбросить. */
+export function FormFilterNote({ form, direction, total, onReset }: { form: string; direction: AssortmentDirection; total: number | null; onReset: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-900">
+      <span>
+        Форма по названию: <b>{formFilterLabel(form, direction)}</b>
+        {total !== null ? ` — ${total.toLocaleString("ru-RU")} ${plural(total, "модель", "модели", "моделей")}` : ""}.
+        Форма определена по названию, а не по фото.
+      </span>
+      <button type="button" onClick={onReset} className="inline-flex h-10 items-center rounded-lg border border-violet-300 bg-white px-3 text-xs font-medium text-violet-900 hover:bg-violet-100">Сбросить форму</button>
     </div>
   );
 }

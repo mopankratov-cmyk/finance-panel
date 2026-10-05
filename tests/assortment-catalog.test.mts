@@ -10,7 +10,7 @@ const NOW = Date.parse("2026-10-04T12:00:00Z");
 
 test("Фильтры каталога: бренд, поиск, новое, метки, без фото, порции — с пределами", () => {
   const q = parseCatalogQuery(new URLSearchParams("source=S131&q=  кожаная   сумка &fresh=1&badge=1&photo=all&offset=96&limit=500"), "bags");
-  assert.deepEqual(q, { direction: "bags", sourceId: "S131", search: "кожаная сумка", fresh: true, badge: true, photo: "all", offset: 96, limit: 96 });
+  assert.deepEqual(q, { direction: "bags", sourceId: "S131", search: "кожаная сумка", fresh: true, badge: true, form: null, photo: "all", offset: 96, limit: 96 });
   const d = parseCatalogQuery(new URLSearchParams("source=../x&q=a&offset=-5"), "jackets");
   assert.equal(d.sourceId, null, "чужой номер источника не проходит");
   assert.equal(d.search, null, "одна буква — не поиск");
@@ -106,8 +106,8 @@ test("Вид и фильтры из адреса: только известны�
   assert.equal(sectionViewFrom({ view: "catalog" }), "catalog");
   assert.equal(sectionViewFrom({ view: "evil" }), "new");
   assert.equal(sectionViewFrom({ view: ["catalog", "x"] }), "new", "массив параметров — не наш случай");
-  assert.deepEqual(catalogFiltersFrom({ source: "S131", q: "сумка", fresh: "1", photo: "with" }), { source: "S131", q: "сумка", fresh: true, badge: false, photo: "with" });
-  assert.deepEqual(catalogFiltersFrom({ source: "../x", photo: "evil" }), { source: null, q: "", fresh: false, badge: false, photo: "auto" });
+  assert.deepEqual(catalogFiltersFrom({ source: "S131", q: "сумка", fresh: "1", photo: "with" }), { source: "S131", q: "сумка", fresh: true, badge: false, form: null, photo: "with" });
+  assert.deepEqual(catalogFiltersFrom({ source: "../x", photo: "evil" }), { source: null, q: "", fresh: false, badge: false, form: null, photo: "auto" });
 });
 
 test("Экран каталога: начальный вид — с сервера (без мигания «Новинок»), вкладка в конце ряда, прокрутка не теряется", () => {

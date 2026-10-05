@@ -62,7 +62,7 @@ export function AssortmentSection({
     const url = new URL(window.location.href);
     if (next === "new") url.searchParams.delete("view");
     else url.searchParams.set("view", next);
-    if (next !== "catalog") for (const key of ["source", "q", "fresh", "badge", "photo"]) url.searchParams.delete(key);
+    if (next !== "catalog") for (const key of ["source", "q", "fresh", "badge", "form", "photo"]) url.searchParams.delete(key);
     window.history.replaceState(null, "", url);
   };
 

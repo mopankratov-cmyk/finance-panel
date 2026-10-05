@@ -11,6 +11,7 @@
 
 import type { AssortmentDirection } from "./constants";
 import { productUrl } from "./crawl";
+import { formOf, rulesFor } from "./forms";
 import type { CatalogBadge } from "./sourceItems";
 
 export const CATALOG_PAGE = 48;
@@ -26,6 +27,8 @@ export interface CatalogQuery {
   search: string | null;
   fresh: boolean;
   badge: boolean;
+  /** Форма модели по названию (ключ правила форм) или «unrecognized» — название формы не называет; null/нет — без фильтра. */
+  form?: string | null;
   /**
    * with — только с фото, all — и без фото, auto — решает сервер: пока фото
    * есть меньше чем у половины моделей (обходы только начали их собирать),
@@ -38,6 +41,22 @@ export interface CatalogQuery {
 
 export type CatalogPhotoMode = "with" | "all" | "auto";
 
+/** Значение фильтра формы для моделей, чьё название формы не называет (блок «Название не называет форму» на «Формах»). */
+export const FORM_UNRECOGNIZED = "unrecognized";
+
+/** Ключ формы из адреса: известное правило раздела или «unrecognized»; остальное — без фильтра. */
+export function parseFormKey(raw: string | null, direction: AssortmentDirection): string | null {
+  if (!raw) return null;
+  if (raw === FORM_UNRECOGNIZED) return raw;
+  return rulesFor(direction).some((rule) => rule.key === raw) ? raw : null;
+}
+
+/** Подпись фильтра формы для экрана. */
+export function formFilterLabel(form: string, direction: AssortmentDirection): string {
+  if (form === FORM_UNRECOGNIZED) return "Название не называет форму";
+  return rulesFor(direction).find((rule) => rule.key === form)?.label ?? form;
+}
+
 export function parseCatalogQuery(params: URLSearchParams, direction: AssortmentDirection): CatalogQuery {
   const source = params.get("source");
   const search = (params.get("q") ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -49,6 +68,7 @@ export function parseCatalogQuery(params: URLSearchParams, direction: Assortment
     search: search.length >= 2 ? search : null,
     fresh: params.get("fresh") === "1",
     badge: params.get("badge") === "1",
+    form: parseFormKey(params.get("form"), direction),
     photo: params.get("photo") === "all" ? "all" : params.get("photo") === "with" ? "with" : "auto",
     offset: Math.floor(offset),
     limit: Math.floor(limit),
@@ -126,6 +146,8 @@ export interface CatalogCard {
   badges: CatalogBadge[];
   /** Расцветок одной модели (карточка — одна на модель; цвета склеены ключом модели). */
   variants: number;
+  /** Форма по названию (не по фото) — та же, что считают «Формы»; null — название формы не называет. */
+  form: { key: string; label: string } | null;
   referenceId: string | null;
   /** Статус находки, если модель уже среди находок (новинка, отобрана, отклонена…). */
   referenceStatus?: string | null;
@@ -145,7 +167,12 @@ export function catalogProductUrl(handle: string | null, seedUrl: string | null)
   }
 }
 
-export function toCatalogCard(row: CatalogRow, source: { name: string; seedUrl: string | null } | undefined, nowMs: number): CatalogCard {
+function cardForm(direction: AssortmentDirection | undefined, title: string | null): CatalogCard["form"] {
+  const rule = direction ? formOf(direction, title) : null;
+  return rule ? { key: rule.key, label: rule.label } : null;
+}
+
+export function toCatalogCard(row: CatalogRow, source: { name: string; seedUrl: string | null } | undefined, nowMs: number, direction?: AssortmentDirection): CatalogCard {
   const freshSince = nowMs - CATALOG_FRESH_DAYS * 24 * 3600 * 1000;
   return {
     sourceId: row.source_id,
@@ -159,6 +186,7 @@ export function toCatalogCard(row: CatalogRow, source: { name: string; seedUrl: 
     isNew: !row.baseline && Date.parse(row.first_seen_at) >= freshSince,
     badges: (row.badges ?? []).filter((b): b is CatalogBadge => b === "new" || b === "bestseller"),
     variants: Math.max(1, Math.trunc(Number(row.variants) || 1)),
+    form: cardForm(direction, row.title),
     referenceId: row.reference_id,
   };
 }
@@ -202,11 +230,13 @@ export interface CatalogFilters {
   q: string;
   fresh: boolean;
   badge: boolean;
+  /** Форма по названию (ключ правила форм или «unrecognized»); приходит ссылкой с экрана «Формы». */
+  form: string | null;
   /** with / all — выбор человека; auto — решает сервер по доле моделей с фото. */
   photo: CatalogPhotoMode;
 }
 
-export const DEFAULT_CATALOG_FILTERS: CatalogFilters = { source: null, q: "", fresh: false, badge: false, photo: "auto" };
+export const DEFAULT_CATALOG_FILTERS: CatalogFilters = { source: null, q: "", fresh: false, badge: false, form: null, photo: "auto" };
 
 type PageParams = Record<string, string | string[] | undefined>;
 const one = (params: PageParams, key: string) => {
@@ -223,6 +253,8 @@ export function catalogFiltersFrom(params: PageParams): CatalogFilters {
     q: (one(params, "q") ?? "").slice(0, 80),
     fresh: one(params, "fresh") === "1",
     badge: one(params, "badge") === "1",
+    // Ключ формы проверяет сервер по правилам раздела; здесь — только безопасный вид, чтобы адрес не нёс чужого.
+    form: ((value) => (value && /^[a-z_]{2,24}$/.test(value) ? value : null))(one(params, "form")),
     photo: photo === "all" || photo === "with" ? photo : "auto",
   };
 }

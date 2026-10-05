@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { ChevronDown, ChevronRight, LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { AssortmentDirection } from "@/lib/assortment/constants";
+import { FORM_UNRECOGNIZED } from "@/lib/assortment/catalog";
+import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
 import type { FormRow, FormsReport } from "@/lib/assortment/forms";
 import { fitFor, type BrandProfile } from "@/lib/assortment/brandProfiles";
 import type { FormDemandReport } from "@/lib/assortment/wbQueries";
@@ -64,8 +66,8 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
 }
 
 /** Отчёт по формам — отдельно от загрузки: его можно показать на любых данных. */
-export function FormsReportView({ report, demand = null, profiles = [], unrecognizedOpen = false }: { report: FormsReport; demand?: FormDemandReport | null; profiles?: BrandProfile[]; unrecognizedOpen?: boolean }) {
-  const [open, setOpen] = useState<Set<string>>(new Set());
+export function FormsReportView({ report, demand = null, profiles = [], unrecognizedOpen = false, openForms = [] }: { report: FormsReport; demand?: FormDemandReport | null; profiles?: BrandProfile[]; unrecognizedOpen?: boolean; openForms?: string[] }) {
+  const [open, setOpen] = useState<Set<string>>(new Set(openForms));
   const [showUnrecognized, setShowUnrecognized] = useState(unrecognizedOpen);
   if (report.models === 0) {
     return (
@@ -107,7 +109,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
           <span className="text-right">Средняя по источникам</span>
           <span className="text-right">Источников</span>
         </div>
-        {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} profiles={profiles} />)}
+        {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} profiles={profiles} direction={report.direction} />)}
       </section>
 
       <FormDemand report={report} demand={demand} />
@@ -138,6 +140,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
                 или обрывки описаний. Форму таких моделей мы не определяем и не угадываем: в долях форм по названиям они не участвуют.
                 Как их описывает ИИ по фото, видно в блоке «Признаки по фото» ниже — но это отдельная оценка, она в эти доли не входит.
               </p>
+              <div className="mt-2"><ModelsLink direction={report.direction} form={FORM_UNRECOGNIZED} count={report.unrecognized.count} /></div>
             </div>
           )}
         </section>
@@ -151,7 +154,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
   );
 }
 
-function FormLine({ row, max, open, onToggle, profiles }: { row: FormRow; max: number; open: boolean; onToggle: () => void; profiles: BrandProfile[] }) {
+function FormLine({ row, max, open, onToggle, profiles, direction }: { row: FormRow; max: number; open: boolean; onToggle: () => void; profiles: BrandProfile[]; direction: AssortmentDirection }) {
   const top = row.perSource[0];
   const decisions = profiles.map((p) => ({ profile: p, fit: fitFor(p, row.key) })).filter((d) => d.fit !== null);
   return (
@@ -195,8 +198,24 @@ function FormLine({ row, max, open, onToggle, profiles }: { row: FormRow; max: n
           {row.perSource.map((s) => (
             <span key={s.sourceId}>{s.name} — {num(s.count)} <span className="text-slate-400">({pct(s.pct)} каталога источника)</span></span>
           ))}
+          <ModelsLink direction={direction} form={row.key} count={row.models} />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Переход от формы к моделям: каталог с фильтром «Форма» (адрес можно переслать). Режим «и без фото» включён, чтобы
+ * число в каталоге совпало со строкой формы: «Формы» считают все модели, а не только с фото.
+ */
+export function ModelsLink({ direction, form, count }: { direction: AssortmentDirection; form: string; count: number }) {
+  return (
+    <Link
+      href={`${ASSORTMENT_BASE_PATH}/${direction}?view=catalog&form=${encodeURIComponent(form)}&photo=all`}
+      className="inline-flex h-10 items-center rounded-lg border border-violet-300 bg-violet-50 px-3 text-xs font-medium text-violet-900 hover:bg-violet-100"
+    >
+      Показать модели · {num(count)}
+    </Link>
   );
 }

@@ -4,6 +4,9 @@ import {
   type CatalogBrandStat, type CatalogCard, type CatalogQuery, type CatalogRow,
 } from "./catalog";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
+import { FORM_UNRECOGNIZED } from "./catalog";
+import { formOf } from "./forms";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export interface CatalogPage {
   cards: CatalogCard[];
@@ -50,13 +53,11 @@ async function sourcesMap(db: SupabaseClient, nowMs: number) {
   return map;
 }
 
-function selectHeads(db: SupabaseClient, query: CatalogQuery, nowMs: number, photo: "with" | "all") {
+/** Общие фильтры вида голов: раздел, «виден за 30 дней», не скрыта, фото, метка, бренд, поиск, новинка. */
+function headsFilters<T extends { eq: Function; gte: Function; is: Function; not: Function; or: Function }>(builder: T, query: CatalogQuery, nowMs: number, photo: "with" | "all"): T {
   const seenSince = new Date(nowMs - CATALOG_SEEN_DAYS * 24 * 3600 * 1000).toISOString();
-  let q = db.from(HEADS_VIEW)
-    .select(HEADS_COLUMNS, { count: "exact" })
-    .eq("direction", query.direction)
-    .gte("model_last_seen_at", seenSince)
-    .is("model_hidden_at", null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let q: any = builder.eq("direction", query.direction).gte("model_last_seen_at", seenSince).is("model_hidden_at", null);
   if (photo === "with") q = q.not("image_urls", "is", null);
   if (query.badge) q = q.not("badges", "is", null);
   if (query.sourceId) q = q.eq("source_id", query.sourceId);
@@ -66,11 +67,62 @@ function selectHeads(db: SupabaseClient, query: CatalogQuery, nowMs: number, pho
   }
   // Новинка — по самой ранней расцветке модели: новый цвет старой модели новинкой не становится.
   if (query.fresh) q = q.eq("model_baseline", false).gte("model_first_seen_at", new Date(nowMs - CATALOG_FRESH_DAYS * 24 * 3600 * 1000).toISOString());
-  return q
+  return q as T;
+}
+
+function selectHeads(db: SupabaseClient, query: CatalogQuery, nowMs: number, photo: "with" | "all") {
+  return headsFilters(db.from(HEADS_VIEW).select(HEADS_COLUMNS, { count: "exact" }), query, nowMs, photo)
     .order("model_first_seen_at", { ascending: false })
     .order("source_id", { ascending: true })
     .order("source_item_id", { ascending: true })
     .range(query.offset, query.offset + query.limit - 1);
+}
+
+interface LightHead {
+  source_id: string;
+  source_item_id: string;
+  title: string | null;
+}
+
+/**
+ * Модели одной формы. Форма считается по названию (регулярные выражения — в PostgREST их не перевести), поэтому
+ * список строится так же, как на «Формах»: все модели раздела по тем же фильтрам, форма по названию — в памяти,
+ * порядок и страница — как у обычного каталога. Полные карточки (фото, бренд) читаются только для страницы.
+ * null — вида голов нет (миграция 202610050002): фильтр по форме до неё недоступен.
+ */
+async function loadCatalogByForm(
+  db: SupabaseClient, query: CatalogQuery, nowMs: number, photo: "with" | "all",
+): Promise<{ rows: CatalogRow[]; total: number } | null> {
+  const form = query.form!;
+  let light: LightHead[];
+  try {
+    light = await loadAllSupabasePages<LightHead>((from, to) => headsFilters(db.from(HEADS_VIEW).select("source_id,source_item_id,title"), query, nowMs, photo)
+      .order("model_first_seen_at", { ascending: false })
+      .order("source_id", { ascending: true })
+      .order("source_item_id", { ascending: true })
+      .range(from, to) as unknown as PromiseLike<{ data: LightHead[] | null; error: { message: string } | null }>, { label: "Модели формы", pageSize: 1000 });
+  } catch (error) {
+    if (headsUnavailable({ message: error instanceof Error ? error.message : "" })) return null;
+    throw error;
+  }
+  const matching = light.filter((r) => {
+    const rule = formOf(query.direction, r.title);
+    return form === FORM_UNRECOGNIZED ? !rule : rule?.key === form;
+  });
+  const pageIds = matching.slice(query.offset, query.offset + query.limit);
+  if (pageIds.length === 0) return { rows: [], total: matching.length };
+  // Полные строки страницы — по источникам: `in` сам берёт в кавычки значения с запятыми и скобками.
+  const bySource = new Map<string, string[]>();
+  for (const r of pageIds) bySource.set(r.source_id, [...(bySource.get(r.source_id) ?? []), r.source_item_id]);
+  const fetched = await Promise.all([...bySource.entries()].map(async ([sourceId, ids]) => {
+    const { data, error } = await db.from(HEADS_VIEW).select(HEADS_COLUMNS).eq("direction", query.direction).eq("source_id", sourceId).in("source_item_id", ids);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as unknown as CatalogRow[];
+  }));
+  const byKey = new Map(fetched.flat().map((r) => [`${r.source_id}:${r.source_item_id}`, r]));
+  // Порядок страницы — как в списке (свежие первыми), а не как ответили запросы.
+  const rows = pageIds.map((r) => byKey.get(`${r.source_id}:${r.source_item_id}`)).filter((r): r is CatalogRow => Boolean(r));
+  return { rows, total: matching.length };
 }
 
 /** Ошибка «вида (или его колонки) ещё нет» — миграцию 202610050002 не применили. */
@@ -109,6 +161,16 @@ async function loadStats(db: SupabaseClient, query: CatalogQuery, names: Map<str
   return brandStats((data ?? []) as Array<{ source_id: string; direction: string; models: number; with_photo: number; new_7d: number }>, query.direction, names);
 }
 
+/** Статус уже связанных находок — один запрос на порцию (до 96 id): карточка показывает правду. true — запрос был. */
+async function attachStatuses(db: SupabaseClient, cards: CatalogCard[]): Promise<boolean> {
+  const linked = [...new Set(cards.map((c) => c.referenceId).filter((id): id is string => Boolean(id)))];
+  if (linked.length === 0) return false;
+  const { data: refs } = await db.from("assortment_references").select("id,status").in("id", linked);
+  const status = new Map((refs ?? []).map((r) => [String(r.id), String(r.status)]));
+  for (const card of cards) if (card.referenceId) card.referenceStatus = status.get(card.referenceId) ?? null;
+  return true;
+}
+
 /**
  * Порция каталога: один запрос к базе обхода (индекс по разделу и дате), без
  * подписанных ссылок и без списков id; счётчики брендов — параллельно. До
@@ -124,6 +186,15 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   const stats = query.photo === "auto" ? await statsPromise : null;
   const photo = resolvePhotoMode(query.photo, stats, query.sourceId);
   let photosPending = false;
+  if (query.form) {
+    const byForm = await loadCatalogByForm(db, query, nowMs, photo);
+    if (!byForm) throw new Error(`Фильтр по форме заработает после применения миграции 202610050002 (вид assortment_catalog_heads): без него в базе нет моделей одной карточкой.`);
+    timing?.("items");
+    const cards = byForm.rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs, query.direction));
+    await attachStatuses(db, cards);
+    timing?.("statuses");
+    return { cards, total: byForm.total, brands: query.offset === 0 ? await statsPromise : null, photo, photosPending: false };
+  }
   // Откат решает ошибка САМОГО запроса к виду, а не общий флаг: два запроса
   // уходят одновременно (счётчик вкладки и первая порция), и пока один выставил
   // флаг «вида нет», второй обязан откатиться тоже — иначе ложная ошибка.
@@ -143,15 +214,8 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   if (result.error) throw new Error(result.error.message);
   timing?.("items");
   const rows = (result.data ?? []) as unknown as CatalogRow[];
-  const cards = rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs));
-  // Статус уже связанных находок — один запрос на порцию (до 96 id): карточка показывает правду.
-  const linked = [...new Set(cards.map((c) => c.referenceId).filter((id): id is string => Boolean(id)))];
-  if (linked.length) {
-    const { data: refs } = await db.from("assortment_references").select("id,status").in("id", linked);
-    const status = new Map((refs ?? []).map((r) => [String(r.id), String(r.status)]));
-    for (const card of cards) if (card.referenceId) card.referenceStatus = status.get(card.referenceId) ?? null;
-    timing?.("statuses");
-  }
+  const cards = rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs, query.direction));
+  if (await attachStatuses(db, cards)) timing?.("statuses");
   return { cards, total: result.count ?? cards.length, brands: query.offset === 0 ? brands : null, photo: photosPending ? "all" : photo, photosPending };
 }
 
