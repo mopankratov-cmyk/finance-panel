@@ -14,7 +14,7 @@ import { summarizeCoverage } from "@/lib/assortment/coverage";
 import { plural } from "@/lib/warehouse/plural";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
 import { AddFindingModal } from "./AddFindingModal";
-import { DEFAULT_CATALOG_FILTERS, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
+import { DEFAULT_CATALOG_FILTERS, filtersForForm, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
 import { CatalogView } from "./CatalogView";
 import { FormsView } from "./FormsView";
 import { FeedGrid } from "./FeedGrid";
@@ -55,6 +55,10 @@ export function AssortmentSection({
   const sources = useAssortmentSources(direction);
   const [view, setViewState] = useState<SectionView>(initialView);
   const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
+  // Фильтры каталога живут здесь: возвращаясь на вкладку, человек попадает на то же место (а не к начальным из адреса, из-за
+  // чего сброшенная форма «залипала» и возвращалась), а «Показать модели» с «Форм» задаёт их заново и пересоздаёт каталог.
+  const [catalogFilters, setCatalogFilters] = useState<CatalogFilters>(initialCatalogFilters);
+  const [catalogKey, setCatalogKey] = useState(0);
 
   // Вид — в адресе (?view=catalog): после карточки модели возвращаемся туда же.
   const setView = (next: SectionView) => {
@@ -64,6 +68,12 @@ export function AssortmentSection({
     else url.searchParams.set("view", next);
     if (next !== "catalog") for (const key of ["source", "q", "fresh", "badge", "form", "photo"]) url.searchParams.delete(key);
     window.history.replaceState(null, "", url);
+  };
+
+  const showModels = (form: string) => {
+    setCatalogFilters(filtersForForm(form));
+    setCatalogKey((k) => k + 1);
+    setView("catalog");
   };
 
   // Сколько моделей в каталогах брендов раздела — для вкладки (нет моделей — нет вкладки).
@@ -203,8 +213,8 @@ export function AssortmentSection({
           ))}
         </div>
 
-        {view === "catalog" && <CatalogView direction={direction} initialFilters={initialCatalogFilters} />}
-        {view === "forms" && <FormsView direction={direction} />}
+        {view === "catalog" && <CatalogView key={catalogKey} direction={direction} initialFilters={catalogFilters} onFiltersChange={setCatalogFilters} />}
+        {view === "forms" && <FormsView direction={direction} onShowModels={showModels} />}
         {view !== "catalog" && view !== "forms" && feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
         {view !== "catalog" && view !== "forms" && feed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{feed.message}</div>

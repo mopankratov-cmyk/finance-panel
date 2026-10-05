@@ -25,7 +25,7 @@ const pct = (n: number) => `${n.toLocaleString("ru-RU", { maximumFractionDigits:
  * Формы моделей каталога по названиям. Это срез на сегодня, а не динамика: история
  * наблюдений только начинает копиться. Признак один — название модели; не фото.
  */
-export function FormsView({ direction }: { direction: AssortmentDirection }) {
+export function FormsView({ direction, onShowModels }: { direction: AssortmentDirection; onShowModels?: (form: string) => void }) {
   const [state, setState] = useState<State>({ kind: "loading" });
 
   useEffect(() => {
@@ -59,14 +59,14 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
   return (
     <div className="flex flex-col gap-5">
       <DataReadiness direction={direction} />
-      <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} />
+      <FormsReportView report={state.report} demand={state.demand} profiles={state.profiles} onShowModels={onShowModels} />
       <PhotoTraits direction={direction} />
     </div>
   );
 }
 
 /** Отчёт по формам — отдельно от загрузки: его можно показать на любых данных. */
-export function FormsReportView({ report, demand = null, profiles = [], unrecognizedOpen = false, openForms = [] }: { report: FormsReport; demand?: FormDemandReport | null; profiles?: BrandProfile[]; unrecognizedOpen?: boolean; openForms?: string[] }) {
+export function FormsReportView({ report, demand = null, profiles = [], unrecognizedOpen = false, openForms = [], onShowModels }: { report: FormsReport; demand?: FormDemandReport | null; profiles?: BrandProfile[]; unrecognizedOpen?: boolean; openForms?: string[]; onShowModels?: (form: string) => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set(openForms));
   const [showUnrecognized, setShowUnrecognized] = useState(unrecognizedOpen);
   if (report.models === 0) {
@@ -109,7 +109,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
           <span className="text-right">Средняя по источникам</span>
           <span className="text-right">Источников</span>
         </div>
-        {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} profiles={profiles} direction={report.direction} />)}
+        {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} profiles={profiles} direction={report.direction} showModels={report.viaHeads !== false} onShowModels={onShowModels} />)}
       </section>
 
       <FormDemand report={report} demand={demand} />
@@ -140,7 +140,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
                 или обрывки описаний. Форму таких моделей мы не определяем и не угадываем: в долях форм по названиям они не участвуют.
                 Как их описывает ИИ по фото, видно в блоке «Признаки по фото» ниже — но это отдельная оценка, она в эти доли не входит.
               </p>
-              <div className="mt-2"><ModelsLink direction={report.direction} form={FORM_UNRECOGNIZED} count={report.unrecognized.count} /></div>
+              {report.viaHeads !== false && <div className="mt-2"><ModelsLink direction={report.direction} form={FORM_UNRECOGNIZED} count={report.unrecognized.count} onShow={onShowModels} /></div>}
             </div>
           )}
         </section>
@@ -154,7 +154,7 @@ export function FormsReportView({ report, demand = null, profiles = [], unrecogn
   );
 }
 
-function FormLine({ row, max, open, onToggle, profiles, direction }: { row: FormRow; max: number; open: boolean; onToggle: () => void; profiles: BrandProfile[]; direction: AssortmentDirection }) {
+function FormLine({ row, max, open, onToggle, profiles, direction, showModels, onShowModels }: { row: FormRow; max: number; open: boolean; onToggle: () => void; profiles: BrandProfile[]; direction: AssortmentDirection; showModels: boolean; onShowModels?: (form: string) => void }) {
   const top = row.perSource[0];
   const decisions = profiles.map((p) => ({ profile: p, fit: fitFor(p, row.key) })).filter((d) => d.fit !== null);
   return (
@@ -198,7 +198,7 @@ function FormLine({ row, max, open, onToggle, profiles, direction }: { row: Form
           {row.perSource.map((s) => (
             <span key={s.sourceId}>{s.name} — {num(s.count)} <span className="text-slate-400">({pct(s.pct)} каталога источника)</span></span>
           ))}
-          <ModelsLink direction={direction} form={row.key} count={row.models} />
+          {showModels && <ModelsLink direction={direction} form={row.key} count={row.models} onShow={onShowModels} />}
         </div>
       )}
     </div>
@@ -206,15 +206,17 @@ function FormLine({ row, max, open, onToggle, profiles, direction }: { row: Form
 }
 
 /**
- * Переход от формы к моделям: каталог с фильтром «Форма» (адрес можно переслать). Режим «и без фото» включён, чтобы
- * число в каталоге совпало со строкой формы: «Формы» считают все модели, а не только с фото.
+ * Переход от формы к моделям: каталог с фильтром «Форма». Режим «и без фото» включён, чтобы число в каталоге совпало со
+ * строкой формы: «Формы» считают все модели, а не только с фото. Внутри раздела — кнопка (раздел сам перестраивает каталог,
+ * повторный переход к той же форме работает); отдельно от раздела — ссылка с адресом, который можно переслать.
  */
-export function ModelsLink({ direction, form, count }: { direction: AssortmentDirection; form: string; count: number }) {
+export function ModelsLink({ direction, form, count, onShow }: { direction: AssortmentDirection; form: string; count: number; onShow?: (form: string) => void }) {
+  const className = "inline-flex h-10 items-center rounded-lg border border-violet-300 bg-violet-50 px-3 text-xs font-medium text-violet-900 hover:bg-violet-100";
+  if (onShow) {
+    return <button type="button" onClick={() => onShow(form)} className={className}>Показать модели · {num(count)}</button>;
+  }
   return (
-    <Link
-      href={`${ASSORTMENT_BASE_PATH}/${direction}?view=catalog&form=${encodeURIComponent(form)}&photo=all`}
-      className="inline-flex h-10 items-center rounded-lg border border-violet-300 bg-violet-50 px-3 text-xs font-medium text-violet-900 hover:bg-violet-100"
-    >
+    <Link href={`${ASSORTMENT_BASE_PATH}/${direction}?view=catalog&form=${encodeURIComponent(form)}&photo=all`} className={className}>
       Показать модели · {num(count)}
     </Link>
   );

@@ -6,6 +6,7 @@ import {
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { FORM_UNRECOGNIZED } from "./catalog";
 import { formOf } from "./forms";
+import { baseHeadsFilters } from "./headsBase";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 
 export interface CatalogPage {
@@ -17,6 +18,8 @@ export interface CatalogPage {
   photo: "with" | "all";
   /** Миграции 202610040001 нет: фото и фильтры каталога появятся после неё. */
   photosPending: boolean;
+  /** Фильтр формы, который сервер применил (нет — не применял: ключ неизвестен разделу или фильтра не было). */
+  form?: string | null;
 }
 
 /**
@@ -55,9 +58,8 @@ async function sourcesMap(db: SupabaseClient, nowMs: number) {
 
 /** Общие фильтры вида голов: раздел, «виден за 30 дней», не скрыта, фото, метка, бренд, поиск, новинка. */
 function headsFilters<T extends { eq: Function; gte: Function; is: Function; not: Function; or: Function }>(builder: T, query: CatalogQuery, nowMs: number, photo: "with" | "all"): T {
-  const seenSince = new Date(nowMs - CATALOG_SEEN_DAYS * 24 * 3600 * 1000).toISOString();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let q: any = builder.eq("direction", query.direction).gte("model_last_seen_at", seenSince).is("model_hidden_at", null);
+  let q: any = baseHeadsFilters(builder, query.direction, nowMs);
   if (photo === "with") q = q.not("image_urls", "is", null);
   if (query.badge) q = q.not("badges", "is", null);
   if (query.sourceId) q = q.eq("source_id", query.sourceId);
@@ -184,7 +186,8 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   const needStats = query.offset === 0 || query.photo === "auto";
   const statsPromise = needStats ? loadStats(db, query, names) : Promise.resolve(null);
   const stats = query.photo === "auto" ? await statsPromise : null;
-  const photo = resolvePhotoMode(query.photo, stats, query.sourceId);
+  // С фильтром формы «auto» не решаем по общей доле фото: число в плашке должно совпасть со строкой формы (там считаются все модели).
+  const photo = query.form && query.photo === "auto" ? "all" : resolvePhotoMode(query.photo, stats, query.sourceId);
   let photosPending = false;
   if (query.form) {
     const byForm = await loadCatalogByForm(db, query, nowMs, photo);
@@ -193,7 +196,7 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
     const cards = byForm.rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs, query.direction));
     await attachStatuses(db, cards);
     timing?.("statuses");
-    return { cards, total: byForm.total, brands: query.offset === 0 ? await statsPromise : null, photo, photosPending: false };
+    return { cards, total: byForm.total, brands: query.offset === 0 ? await statsPromise : null, photo, photosPending: false, form: query.form };
   }
   // Откат решает ошибка САМОГО запроса к виду, а не общий флаг: два запроса
   // уходят одновременно (счётчик вкладки и первая порция), и пока один выставил
@@ -216,7 +219,7 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   const rows = (result.data ?? []) as unknown as CatalogRow[];
   const cards = rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs, query.direction));
   if (await attachStatuses(db, cards)) timing?.("statuses");
-  return { cards, total: result.count ?? cards.length, brands: query.offset === 0 ? brands : null, photo: photosPending ? "all" : photo, photosPending };
+  return { cards, total: result.count ?? cards.length, brands: query.offset === 0 ? brands : null, photo: photosPending ? "all" : photo, photosPending, form: null };
 }
 
 /**

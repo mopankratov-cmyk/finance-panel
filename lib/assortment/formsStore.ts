@@ -4,6 +4,7 @@ import { CATALOG_SEEN_DAYS } from "./catalog";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { buildFormsReport, type FormModel, type FormsReport } from "./forms";
+import { baseHeadsFilters } from "./headsBase";
 import { modelKey } from "./modelKey";
 
 /**
@@ -29,23 +30,19 @@ function unavailable(error: { code?: string | null; message?: string | null }): 
   return isMissingAssortmentSchema(new Error(error.message ?? "")) || isMissingColumnError(error) || error.code === "PGRST205" || error.code === "42P01";
 }
 
-/** Модели раздела для разбора по формам. */
-export async function loadFormModels(db: SupabaseClient, direction: AssortmentDirection, nowMs = Date.now()): Promise<FormModel[]> {
+/** Модели раздела для разбора по формам и откуда они прочитаны: viaHeads — из вида голов (по нему работает фильтр «Форма» в каталоге). */
+export async function loadFormModelsInfo(db: SupabaseClient, direction: AssortmentDirection, nowMs = Date.now()): Promise<{ models: FormModel[]; viaHeads: boolean }> {
   const seenSince = new Date(nowMs - CATALOG_SEEN_DAYS * 24 * 3600 * 1000).toISOString();
   const names = await sourceNames(db);
   const name = (id: string) => names.get(id) ?? id;
 
-  // Вид голов: одна строка на модель. Выборка режется на тысяче строк — листаем.
+  // Вид голов: одна строка на модель. Выборка режется на тысяче строк — листаем. Набор моделей — общий с каталогом (headsBase).
   try {
-    const heads = await loadAllSupabasePages<HeadRow>((from, to) => db.from("assortment_catalog_heads")
-      .select("source_id,source_item_id,title")
-      .eq("direction", direction)
-      .gte("model_last_seen_at", seenSince)
-      .is("model_hidden_at", null)
+    const heads = await loadAllSupabasePages<HeadRow>((from, to) => baseHeadsFilters(db.from("assortment_catalog_heads").select("source_id,source_item_id,title"), direction, nowMs)
       .order("source_id", { ascending: true })
       .order("source_item_id", { ascending: true })
       .range(from, to) as unknown as PromiseLike<{ data: HeadRow[] | null; error: { message: string } | null }>, { label: "Формы каталога", pageSize: 1000 });
-    return heads.map((r) => ({ sourceId: r.source_id, sourceName: name(r.source_id), title: r.title ?? "" }));
+    return { models: heads.map((r) => ({ sourceId: r.source_id, sourceName: name(r.source_id), title: r.title ?? "" })), viaHeads: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (!unavailable({ message })) throw error;
@@ -67,9 +64,14 @@ export async function loadFormModels(db: SupabaseClient, direction: AssortmentDi
     seen.add(key);
     models.push({ sourceId: r.source_id, sourceName: name(r.source_id), title: r.title ?? "" });
   }
-  return models;
+  return { models, viaHeads: false };
+}
+
+export async function loadFormModels(db: SupabaseClient, direction: AssortmentDirection, nowMs = Date.now()): Promise<FormModel[]> {
+  return (await loadFormModelsInfo(db, direction, nowMs)).models;
 }
 
 export async function loadFormsReport(db: SupabaseClient, direction: AssortmentDirection, nowMs = Date.now()): Promise<FormsReport> {
-  return buildFormsReport(direction, await loadFormModels(db, direction, nowMs));
+  const { models, viaHeads } = await loadFormModelsInfo(db, direction, nowMs);
+  return { ...buildFormsReport(direction, models), viaHeads };
 }
