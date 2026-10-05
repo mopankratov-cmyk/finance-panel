@@ -139,9 +139,10 @@ export async function PUT(request: Request) {
 }
 
 /**
- * Разносит только один явно названный договор WB. Агрегированное удержание
- * закрывает последовательно самые ранние строки того же вида, только когда
- * хватает суммы на строку целиком. Остаток не списывается «на глаз».
+ * Разносит только один явно названный договор WB. Удержания одного вида
+ * последовательно покрывают самые ранние просроченные строки того же вида.
+ * Сумма может частично закрыть строку: остаток сохраняется в журнале
+ * распределений и строка становится оплаченной только после полного зачёта.
  */
 export async function POST(request: Request) {
   const denied = await requireApiSession(["director", "fin_director", "financier"]);
@@ -175,10 +176,10 @@ export async function POST(request: Request) {
     ]);
     const rows = scheduleDbRows.map(scheduleRowFromDb);
     const allocatedBySource = new Map<string, number>();
-    const allocatedRowIds = new Set<string>();
+    const allocatedByRow = new Map<string, number>();
     for (const allocation of allocationRows) {
       allocatedBySource.set(allocation.marketplace_source, roundMoney((allocatedBySource.get(allocation.marketplace_source) ?? 0) + Number(allocation.amount_rub)));
-      allocatedRowIds.add(allocation.schedule_row_id);
+      allocatedByRow.set(allocation.schedule_row_id, roundMoney((allocatedByRow.get(allocation.schedule_row_id) ?? 0) + Number(allocation.amount_rub)));
     }
     // До этой миграции точное удержание хранилось прямо в строке графика.
     // Считаем такие старые записи уже полностью учтёнными, чтобы новый
@@ -186,7 +187,7 @@ export async function POST(request: Request) {
     for (const row of rows) {
       if (!row.paidByMarketplaceSource || allocatedBySource.has(row.paidByMarketplaceSource)) continue;
       allocatedBySource.set(row.paidByMarketplaceSource, row.amountRub);
-      allocatedRowIds.add(row.id);
+      allocatedByRow.set(row.id, row.amountRub);
     }
     let allocatedRows = 0;
     let allocatedAmountRub = 0;
@@ -214,7 +215,7 @@ export async function POST(request: Request) {
         .insert({ schedule_row_id: row.id, marketplace_source: fact.source, amount_rub: amount });
       if (allocation.error) throw allocation.error;
       rows.push(row);
-      allocatedRowIds.add(row.id);
+      allocatedByRow.set(row.id, amount);
       allocatedBySource.set(fact.source, roundMoney((allocatedBySource.get(fact.source) ?? 0) + amount));
       allocatedRows++;
       allocatedAmountRub = roundMoney(allocatedAmountRub + amount);
@@ -227,26 +228,34 @@ export async function POST(request: Request) {
     for (const fact of facts) {
       let remaining = roundMoney(Math.max(0, fact.amountRub - (allocatedBySource.get(fact.source) ?? 0)));
       if (remaining <= 0.01) continue;
-      const candidates = rows.filter((row) => row.status === "planned" && row.kind === fact.kind && row.dueDate <= fact.date && !allocatedRowIds.has(row.id));
+      const candidates = rows.filter((row) => row.status === "planned" && row.kind === fact.kind && row.dueDate <= fact.date);
       for (const row of candidates) {
-        if (row.amountRub > remaining + 0.01) break;
-        const inserted = await db.from("loan_schedule_marketplace_allocations").insert({ schedule_row_id: row.id, marketplace_source: fact.source, amount_rub: row.amountRub });
+        const alreadyAllocated = allocatedByRow.get(row.id) ?? 0;
+        const rowRemainder = roundMoney(Math.max(0, row.amountRub - alreadyAllocated));
+        if (rowRemainder <= 0.01) continue;
+        const allocationAmount = roundMoney(Math.min(remaining, rowRemainder));
+        const inserted = await db.from("loan_schedule_marketplace_allocations").insert({ schedule_row_id: row.id, marketplace_source: fact.source, amount_rub: allocationAmount });
         if (inserted.error) throw inserted.error;
-        const now = new Date().toISOString();
-        const updated = await db.from("loan_schedule_rows").update({ status: "paid", paid_by_marketplace_source: fact.source, updated_at: now }).eq("id", row.id).eq("status", "planned").select("id");
-        if (updated.error || (updated.data ?? []).length !== 1) throw new Error(updated.error?.message ?? "Строка графика уже закрыта");
-        if (row.calendarPaymentId) {
-          const planned = await db.from("payments").select("comment").eq("id", row.calendarPaymentId).maybeSingle();
-          const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by-marketplace:[^\]]+\]/g, "").trim()} [paid-by-marketplace:${fact.source}]`.trim();
-          const payment = await db.from("payments").update({ status: "cancelled", comment }).eq("id", row.calendarPaymentId);
-          if (payment.error) throw payment.error;
+        const totalAllocated = roundMoney(alreadyAllocated + allocationAmount);
+        allocatedByRow.set(row.id, totalAllocated);
+        allocatedBySource.set(fact.source, roundMoney((allocatedBySource.get(fact.source) ?? 0) + allocationAmount));
+        remaining = roundMoney(remaining - allocationAmount);
+        allocatedAmountRub = roundMoney(allocatedAmountRub + allocationAmount);
+        if (totalAllocated + 0.01 >= row.amountRub) {
+          const now = new Date().toISOString();
+          const updated = await db.from("loan_schedule_rows").update({ status: "paid", paid_by_marketplace_source: fact.source, updated_at: now }).eq("id", row.id).eq("status", "planned").select("id");
+          if (updated.error || (updated.data ?? []).length !== 1) throw new Error(updated.error?.message ?? "Строка графика уже закрыта");
+          if (row.calendarPaymentId) {
+            const planned = await db.from("payments").select("comment").eq("id", row.calendarPaymentId).maybeSingle();
+            const comment = `${String(planned.data?.comment ?? "").replace(/\s*\[paid-by-marketplace:[^\]]+\]/g, "").trim()} [paid-by-marketplace:${fact.source}]`.trim();
+            const payment = await db.from("payments").update({ status: "cancelled", comment }).eq("id", row.calendarPaymentId);
+            if (payment.error) throw payment.error;
+          }
+          row.status = "paid";
+          row.paidByMarketplaceSource = fact.source;
+          allocatedRows++;
         }
-        row.status = "paid";
-        row.paidByMarketplaceSource = fact.source;
-        allocatedRowIds.add(row.id);
-        remaining = roundMoney(remaining - row.amountRub);
-        allocatedRows++;
-        allocatedAmountRub = roundMoney(allocatedAmountRub + row.amountRub);
+        if (remaining <= 0.01) break;
       }
       if (fact.kind === "penalty" && remaining > 0.01) {
         await addPaidPenalty(fact, remaining);
