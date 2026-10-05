@@ -2,21 +2,35 @@
 
 import { Check, LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { DIRECTION_LABEL } from "@/lib/assortment/constants";
+import { DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
 import {
   BRAND_SOURCE_HINTS, SEASONS, profileCompleteness, profileForms, type BrandProfile,
 } from "@/lib/assortment/brandProfiles";
+import type { FormsReport } from "@/lib/assortment/forms";
+import { formNumbers, undecidedByDemand, type FormNumbers } from "@/lib/assortment/profileNumbers";
+import type { FormDemandReport } from "@/lib/assortment/wbQueries";
 
 type State =
   | { kind: "loading" }
   | { kind: "error"; message: string }
   | { kind: "ready"; profiles: BrandProfile[]; persisted: boolean; canEdit: boolean };
 
+const pctText = (n: number | null) => (n === null ? "—" : `${n.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}%`);
+/** Числа формы одной строкой: поиски, каталоги, моделей; без среза спроса — только модели. */
+function numbersLine(n: FormNumbers): string {
+  const models = `${n.models.toLocaleString("ru-RU")} моделей в каталогах`;
+  if (n.demandShare === null && n.supplyShare === null) return models;
+  const search = n.inDemandTop ? `поиски ${pctText(n.demandShare)}` : "не в топе поисков";
+  return `${search} · каталоги ${pctText(n.supplyShare)} · ${models}${n.concentrated ? " (почти всё у одного источника)" : ""}`;
+}
+
 const dmy = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}.${iso.slice(0, 4)}`;
 
 /** Экран «Профили брендов»: аудитория, формы, сезоны, палитра — заполняет владелец. */
 export function BrandProfiles() {
   const [state, setState] = useState<State>({ kind: "loading" });
+  // Числа по формам (доля поисков и доля каталогов) — справка рядом с решениями; сбой чтения профили не роняет.
+  const [numbers, setNumbers] = useState<Partial<Record<AssortmentDirection, Map<string, FormNumbers>>>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +47,24 @@ export function BrandProfiles() {
     };
   }, []);
 
+  const directions = state.kind === "ready" ? [...new Set(state.profiles.map((p) => p.direction))].join(",") : "";
+  useEffect(() => {
+    if (!directions) return;
+    let cancelled = false;
+    for (const direction of directions.split(",") as AssortmentDirection[]) {
+      fetch(`/api/assortment-development/forms?direction=${direction}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((body) => {
+          if (cancelled || !body?.report) return;
+          setNumbers((prev) => ({ ...prev, [direction]: formNumbers(body.report as FormsReport, (body.demand as FormDemandReport | null) ?? null) }));
+        })
+        .catch(() => undefined);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [directions]);
+
   return (
     <div className="px-3 pb-16 pt-4 sm:px-6 md:pb-6">
       <div className="mx-auto flex max-w-4xl flex-col gap-5">
@@ -41,6 +73,9 @@ export function BrandProfiles() {
           <p className="text-sm text-slate-500">
             Кому, какие формы и в какой сезон делает бренд — решение владельца. Движок ничего сюда не подставляет, а пока поле пустое, не судит, «подходит ли бренду»: это «не решено», а не «подходит».
             HEATON и NORVIA — два профиля; артикул HT- бренд не определяет, бренд берётся из поля бренда на WB.
+          </p>
+          <p className="text-sm text-slate-500">
+            Пока движок использует только решения по формам (они видны на «Формах» у каждой формы). Аудитория, сезоны и палитра нигде не используются — это записи для вас и команды.
           </p>
         </header>
         {state.kind === "loading" && <div className="flex items-center gap-2 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" /> Загружаем профили…</div>}
@@ -51,7 +86,7 @@ export function BrandProfiles() {
           </div>
         )}
         {state.kind === "ready" && state.profiles.map((profile) => (
-          <ProfileCard key={`${profile.brandKey}:${profile.version}`} profile={profile} editable={state.canEdit && state.persisted} />
+          <ProfileCard key={`${profile.brandKey}:${profile.version}`} profile={profile} editable={state.canEdit && state.persisted} numbers={numbers[profile.direction]} />
         ))}
       </div>
     </div>
@@ -62,7 +97,7 @@ function toggle(list: string[], key: string): string[] {
   return list.includes(key) ? list.filter((k) => k !== key) : [...list, key];
 }
 
-function ProfileCard({ profile, editable }: { profile: BrandProfile; editable: boolean }) {
+export function ProfileCard({ profile, editable, numbers }: { profile: BrandProfile; editable: boolean; numbers?: Map<string, FormNumbers> }) {
   const [saved, setSaved] = useState(profile);
   const [audience, setAudience] = useState(profile.audience ?? "");
   const [fit, setFit] = useState(profile.fitForms);
@@ -76,6 +111,8 @@ function ProfileCard({ profile, editable }: { profile: BrandProfile; editable: b
   const [error, setError] = useState<string | null>(null);
 
   const forms = useMemo(() => profileForms(profile.direction), [profile.direction]);
+  // «Не решено» считаем по тому, что на экране сейчас (включая несохранённые отметки), а не по сохранённой версии.
+  const undecided = useMemo(() => (numbers ? undecidedByDemand({ fitForms: fit, avoidForms: avoid }, numbers) : []), [numbers, fit, avoid]);
   const hints = BRAND_SOURCE_HINTS[profile.brandKey] ?? [];
   const same = (a: string[], b: string[]) => a.length === b.length && a.every((v) => b.includes(v));
   const dirty = audience !== (saved.audience ?? "") || !same(fit, saved.fitForms) || !same(avoid, saved.avoidForms) || !same(seasons, saved.seasons)
@@ -143,29 +180,45 @@ function ProfileCard({ profile, editable }: { profile: BrandProfile; editable: b
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium text-slate-800">Формы</legend>
         <p className="text-xs text-slate-500">Что бренду подходит, а что нет. Не отмеченное — «не решено».</p>
+        {undecided.length > 0 && (
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
+            Не решено по формам с самым большим спросом на WB: {undecided.map((n) => `${n.label} (${pctText(n.demandShare)} поисков)`).join(", ")}.
+            Спрос — справка, а не вывод: «ищут много» не значит «подходит бренду», это решаете вы.
+          </p>
+        )}
         <div className="flex flex-col divide-y divide-slate-100">
           {forms.map((form) => {
             const value = fit.includes(form.key) ? "fit" : avoid.includes(form.key) ? "avoid" : "none";
+            const n = numbers?.get(form.key);
             return (
               <div key={form.key} className="flex flex-wrap items-center justify-between gap-2 py-1.5">
-                <span className="text-sm text-slate-800">{form.label}</span>
-                <div role="radiogroup" aria-label={form.label} className="flex gap-1">
-                  {([["fit", "Подходит"], ["none", "Не решено"], ["avoid", "Не подходит"]] as const).map(([option, label]) => (
-                    <button
-                      key={option}
-                      type="button"
-                      role="radio"
-                      aria-checked={value === option}
-                      disabled={!editable}
-                      onClick={() => setForm(form.key, option)}
-                      className={`h-9 rounded-full px-3 text-xs ${value === option
-                        ? option === "fit" ? "bg-green-700 font-medium text-white" : option === "avoid" ? "bg-red-700 font-medium text-white" : "bg-slate-200 font-medium text-slate-700"
-                        : "border border-slate-200 bg-white text-slate-600"} ${editable ? "hover:bg-slate-50" : "cursor-default"}`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                <span className="flex min-w-0 flex-col">
+                  <span className="text-sm text-slate-800">{form.label}</span>
+                  {n && <span className="text-xs text-slate-500">{numbersLine(n)}</span>}
+                </span>
+                {editable ? (
+                  <div role="radiogroup" aria-label={form.label} className="flex gap-1">
+                    {([["fit", "Подходит"], ["none", "Не решено"], ["avoid", "Не подходит"]] as const).map(([option, label]) => (
+                      <button
+                        key={option}
+                        type="button"
+                        role="radio"
+                        aria-checked={value === option}
+                        onClick={() => setForm(form.key, option)}
+                        className={`h-10 rounded-full px-3 text-xs ${value === option
+                          ? option === "fit" ? "bg-green-700 font-medium text-white" : option === "avoid" ? "bg-red-700 font-medium text-white" : "bg-slate-200 font-medium text-slate-700"
+                          : "border border-slate-200 bg-white text-slate-600"} hover:bg-slate-50`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  // Править может директор; остальным — решение текстом, а не три отключённые кнопки.
+                  <span className={`rounded-full px-3 py-1 text-xs font-medium ${value === "fit" ? "bg-green-50 text-green-800" : value === "avoid" ? "bg-red-50 text-red-800" : "bg-slate-100 text-slate-600"}`}>
+                    {value === "fit" ? "Подходит" : value === "avoid" ? "Не подходит" : "Не решено"}
+                  </span>
+                )}
               </div>
             );
           })}
@@ -174,23 +227,26 @@ function ProfileCard({ profile, editable }: { profile: BrandProfile; editable: b
 
       <fieldset className="flex flex-col gap-2">
         <legend className="text-sm font-medium text-slate-800">Сезоны</legend>
-        <div className="flex flex-wrap gap-2">
-          {SEASONS.map((season) => {
-            const on = seasons.includes(season.key);
-            return (
-              <button
-                key={season.key}
-                type="button"
-                aria-pressed={on}
-                disabled={!editable}
-                onClick={() => setSeasons((prev) => toggle(prev, season.key))}
-                className={`h-9 rounded-full px-4 text-sm ${on ? "bg-violet-700 font-medium text-white" : "border border-slate-300 bg-white text-slate-700"} ${editable ? "hover:opacity-90" : "cursor-default"}`}
-              >
-                {season.label}
-              </button>
-            );
-          })}
-        </div>
+        {editable ? (
+          <div className="flex flex-wrap gap-2">
+            {SEASONS.map((season) => {
+              const on = seasons.includes(season.key);
+              return (
+                <button
+                  key={season.key}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setSeasons((prev) => toggle(prev, season.key))}
+                  className={`h-10 rounded-full px-4 text-sm ${on ? "bg-violet-700 font-medium text-white" : "border border-slate-300 bg-white text-slate-700"} hover:opacity-90`}
+                >
+                  {season.label}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="text-sm text-slate-700">{seasons.length > 0 ? SEASONS.filter((x) => seasons.includes(x.key)).map((x) => x.label).join(", ") : "Не решено"}</p>
+        )}
       </fieldset>
 
       <div className="grid gap-3 sm:grid-cols-2">
