@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { digestMessage, telegramEscape, topFindings, type DigestDirection, type DigestFacts } from "../lib/assortment/digest.ts";
+import { loadDigestFacts } from "../lib/assortment/digestFacts.ts";
 
 /** Воскресная сводка модуля в Telegram (решение владельца 01.10.2026). */
 
@@ -62,4 +63,77 @@ test("Пульс автообхода: работающие и отказавш�
   assert.match(text, /<b>Автообход каталогов<\/b>\nРаботает: Polène, Rains\.\n⚠️ JW PEI: HTTP 429/);
   assert.match(text, /новых моделей не появилось ни в каталогах, ни среди ручных находок/);
   assert.doesNotMatch(text, /пока не подключён/);
+});
+
+// --- «Рынок РФ» не находка недели; история наблюдений названа (05.10) ---
+
+type Row = Record<string, unknown>;
+/** Подставная база: цепочки select/eq/gte/lt/in/not/order/limit/range с ожиданием, как у PostgREST. */
+function fakeDb(tables: Record<string, Row[]>) {
+  return {
+    from: (table: string) => {
+      const filters: Array<(r: Row) => boolean> = [];
+      const rows = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+      const q: Record<string, unknown> = {
+        select: () => q, order: () => q, limit: () => q,
+        eq: (c: string, v: unknown) => { filters.push((r) => r[c] === v); return q; },
+        gte: (c: string, v: unknown) => { filters.push((r) => String(r[c] ?? "") >= String(v)); return q; },
+        lt: (c: string, v: unknown) => { filters.push((r) => String(r[c] ?? "") < String(v)); return q; },
+        in: (c: string, v: unknown[]) => { filters.push((r) => v.includes(r[c])); return q; },
+        not: (c: string, _op: string, v: unknown) => { filters.push((r) => (r[c] ?? null) !== v); return q; },
+        range: (from: number, to: number) => Promise.resolve({ data: rows().slice(from, to + 1), error: null }),
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: rows(), error: null }).then(resolve),
+      };
+      return q;
+    },
+  };
+}
+
+test("Сводка: «Рынок РФ» (топ WB, Lime на WB) в новые находки не попадает, ручные и из каталогов — попадают", async () => {
+  const ref = (id: string, direction: string, source: string | null, title: string): Row => ({ id, direction, title, brand: null, source_id: source, attributes: {}, first_seen_at: "2026-10-08T10:00:00Z" });
+  const db = fakeDb({
+    assortment_references: [
+      ref("a", "bags", "S001", "Tote Polène"),
+      ...Array.from({ length: 5 }, (_, i) => ref(`wb${i}`, "bags", "S128", `WB bag ${i}`)),
+      ref("lime", "jackets", "S129", "Lime on WB"),
+      ref("hand", "jackets", null, "Ручная находка"),
+    ],
+    assortment_observations: [], assortment_decisions: [], assortment_collections: [], assortment_sources: [], assortment_run: [],
+  });
+  const facts = await loadDigestFacts(db as never, new Date("2026-10-04T07:00:00Z"), new Date("2026-10-11T07:00:00Z"), "https://panel.example");
+  assert.equal(facts.directions.bags.newCount, 1, "из шести сумок пять — «Рынок РФ»");
+  assert.deepEqual(facts.directions.bags.top.map((f) => f.title), ["Tote Polène"]);
+  assert.equal(facts.directions.jackets.newCount, 1, "Lime на WB не считается, ручная находка — да");
+  assert.deepEqual(facts.directions.jackets.top.map((f) => f.title), ["Ручная находка"]);
+});
+
+test("Сводка: история наблюдений — у каких источников «появилось/пропало» уже наблюдение, у каких копится; «Рынок РФ» и слова про динамику не попадают", async () => {
+  const run = (source: string, day: string, coverage: string): Row => ({ source_id: source, direction: "bags", observed_on: day, coverage, seen: 100, added: 0, error: null, started_at: `${day}T08:00:00Z` });
+  const db = fakeDb({
+    assortment_references: [], assortment_observations: [], assortment_decisions: [], assortment_collections: [],
+    assortment_sources: [{ source_id: "S001", name: "Polène" }, { source_id: "S002", name: "Rains" }, { source_id: "S003", name: "ASOS" }, { source_id: "S128", name: "Рынок РФ: WB" }],
+    assortment_run: [
+      run("S001", "2026-10-01", "full"), run("S001", "2026-10-09", "full"),
+      run("S002", "2026-10-09", "full"),
+      run("S003", "2026-10-09", "window"),
+      run("S128", "2026-10-09", "window"),
+    ],
+  });
+  const facts = await loadDigestFacts(db as never, new Date("2026-10-04T07:00:00Z"), new Date("2026-10-11T07:00:00Z"), "https://panel.example");
+  assert.deepEqual(facts.history, [
+    { name: "Polène", status: "appearance" }, { name: "Rains", status: "building" }, { name: "ASOS", status: "window_only" },
+  ]);
+  const text = digestMessage(facts);
+  assert.match(text, /<b>История каталогов<\/b>\n«Появилось» и «пропало» — наблюдение: Polène\.\nИстория копится \(нужны два полных прогона с разрывом от 7 дней\): Rains\.\nТолько верх выдачи \(пропажу не определить\): ASOS\./);
+  assert.doesNotMatch(text, /Рынок РФ/);
+  assert.doesNotMatch(text, /растёт|падает|усилилось|ослабло|тенденци/i);
+});
+
+test("Сводка: нет журнала прогонов — блока истории нет; длинный список имён обрезается", () => {
+  assert.doesNotMatch(digestMessage(facts({ history: null })), /История каталогов/);
+  assert.doesNotMatch(digestMessage(facts({ history: [] })), /История каталогов/);
+  const many = Array.from({ length: 11 }, (_, i) => ({ name: `Источник ${i + 1}`, status: "building" as const }));
+  const text = digestMessage(facts({ history: many }));
+  assert.match(text, /Источник 8 и ещё 3\./);
+  assert.doesNotMatch(text, /Источник 9/);
 });

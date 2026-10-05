@@ -9,6 +9,7 @@
 
 import type { AssortmentDirection } from "./constants";
 import { DIRECTION_LABEL } from "./constants";
+import type { HistoryStatus } from "./observationState";
 
 export interface DigestFinding {
   id: string;
@@ -35,6 +36,8 @@ export interface DigestFacts {
   collections: Array<{ id: string; title: string; progress: string; status: string; version: number }>;
   /** Пульс автообхода; null — обход ещё не запускался или миграции нет. */
   crawl: { ok: string[]; failing: Array<{ name: string; error: string }> } | null;
+  /** Глубина истории наблюдений по источникам каталогов; null — журнала прогонов нет. Без слов «растёт/падает»: динамика — не раньше четырёх недель. */
+  history?: Array<{ name: string; status: HistoryStatus }> | null;
   baseUrl: string;
 }
 
@@ -57,6 +60,27 @@ function findingsWord(n: number): string {
   if (mod10 === 1 && mod100 !== 11) return "новая находка";
   if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "новые находки";
   return "новых находок";
+}
+
+const HISTORY_GROUPS: Array<{ statuses: HistoryStatus[]; text: string }> = [
+  { statuses: ["dynamics"], text: "Можно смотреть динамику" },
+  { statuses: ["appearance"], text: "«Появилось» и «пропало» — наблюдение" },
+  { statuses: ["building", "none"], text: "История копится (нужны два полных прогона с разрывом от 7 дней)" },
+  { statuses: ["window_only"], text: "Только верх выдачи (пропажу не определить)" },
+];
+const MAX_NAMES = 8;
+
+/** Что уже можно утверждать по накопленной истории — чтобы «нового нет» не читалось как «ничего не изменилось». */
+function historyLines(history: DigestFacts["history"]): string[] {
+  if (!history || history.length === 0) return [];
+  const lines: string[] = [];
+  for (const group of HISTORY_GROUPS) {
+    const names = history.filter((h) => group.statuses.includes(h.status)).map((h) => h.name);
+    if (names.length === 0) continue;
+    const shown = names.slice(0, MAX_NAMES).map(telegramEscape).join(", ");
+    lines.push(`${group.text}: ${shown}${names.length > MAX_NAMES ? ` и ещё ${names.length - MAX_NAMES}` : ""}.`);
+  }
+  return lines.length > 0 ? ["", "<b>История каталогов</b>", ...lines] : [];
 }
 
 export function digestMessage(facts: DigestFacts): string {
@@ -98,6 +122,7 @@ export function digestMessage(facts: DigestFacts): string {
     if (facts.crawl.ok.length > 0) lines.push(`Работает: ${telegramEscape(facts.crawl.ok.join(", "))}.`);
     for (const f of facts.crawl.failing) lines.push(`⚠️ ${telegramEscape(f.name)}: ${telegramEscape(f.error)}`);
   }
+  lines.push(...historyLines(facts.history));
   if (!anything) {
     lines.push("", facts.crawl?.ok.length
       ? "За неделю новых моделей не появилось ни в каталогах, ни среди ручных находок."

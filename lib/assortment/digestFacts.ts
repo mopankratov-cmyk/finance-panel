@@ -6,6 +6,8 @@ import type { AssortmentDirection } from "./constants";
 import { topFindings, type DigestDirection, type DigestFacts, type DigestFinding } from "./digest";
 import { reasonKey, REASON_SHORT, type LessonReason } from "./learning";
 import { isMissingColumnError } from "./errors";
+import { loadHistoryState } from "./observationStateStore";
+import { isRuSource } from "./ruMarket";
 import { cardSignal, type ObservationLite } from "./signals";
 
 /** Пульс автообхода по источникам; null — колонок пульса нет или обход не запускался. */
@@ -55,6 +57,8 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
   for (const ref of refs ?? []) {
     const direction = ref.direction as AssortmentDirection;
     if (!directions[direction]) continue;
+    // «Рынок РФ» (топ WB, Lime на WB) — замер рынка, а не находка недели: он каждую неделю вписывает в «новые» сотни позиций.
+    if (isRuSource(ref.source_id ? String(ref.source_id) : null)) continue;
     const obs = observations.get(String(ref.id)) ?? [];
     // Отобранное из каталога — выбор человека, а не новинка: оно уже среди решений «отобрано».
     if (obs.some((o) => o.metric === "catalog_pick")) continue;
@@ -101,5 +105,19 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
     .filter((c) => c.status !== "archived")
     .map((c) => ({ id: c.id, title: c.title, progress: c.progress.label, status: COLLECTION_STATUS_LABEL[c.status].toLowerCase(), version: c.version }));
 
-  return { from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), baseUrl };
+  return { from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), history: await loadHistoryLine(db, to), baseUrl };
+}
+
+/**
+ * Глубина истории наблюдений по источникам каталогов (без «Рынка РФ»): сводка прямо говорит, у каких «появилось/пропало»
+ * уже наблюдение, а у каких история ещё копится. null — журнала прогонов нет или он пуст.
+ */
+async function loadHistoryLine(db: SupabaseClient, now: Date): Promise<DigestFacts["history"]> {
+  const state = await loadHistoryState(db, now);
+  if (!state.available) return null;
+  const sources = state.sources.filter((s) => !isRuSource(s.sourceId));
+  if (sources.length === 0) return null;
+  const { data } = await db.from("assortment_sources").select("source_id,name");
+  const nameOf = new Map((data ?? []).map((r) => [String(r.source_id), String(r.name ?? "")]));
+  return sources.map((s) => ({ name: nameOf.get(s.sourceId) || s.sourceId, status: s.status }));
 }
