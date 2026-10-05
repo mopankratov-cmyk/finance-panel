@@ -10,6 +10,7 @@ import type { FormDemandReport } from "./wbQueries";
  * Доля каталогов — средняя по источникам, как в таблице форм выше: каждый
  * источник с достаточным каталогом весит одинаково. Сырая доля моделей даёт
  * большому каталогу (Zara — сотни моделей) решать, «много» ли формы в каталогах.
+ * Источник входит в среднюю, если у него не меньше MIN_SOURCE_MODELS моделей и не меньше стольких же с названной формой.
  * Если ни один источник не набирает минимума, остаётся сырая доля — с пометкой.
  *
  * Это расчёт двух долей, а не прогноз: «ищут много, в каталогах мало» — повод
@@ -44,8 +45,9 @@ const round = (n: number) => Math.round(n * 10) / 10;
 export function compareSupplyDemand(report: FormsReport, demand: FormDemandReport): SupplyDemand {
   const supply = new Map(report.rows.filter((r) => !r.generic).map((r) => [r.key, r]));
   const wanted = new Map(demand.rows.filter((r) => !r.generic).map((r) => [r.key, r]));
-  // Источники, у которых каталог достаточен и есть хоть одна модель с названной формой.
-  const averaged = report.perSource.filter((s) => s.models >= MIN_SOURCE_MODELS && s.specific > 0);
+  // Источники, у которых каталог достаточен И названных форм хватает, чтобы судить о доле: у источника с одной названной формой
+  // эта форма — «100%» и весила бы в средней как Zara (на синтетике доля бомбера 10% превращалась в 28%).
+  const averaged = report.perSource.filter((s) => s.models >= MIN_SOURCE_MODELS && s.specific >= MIN_SOURCE_MODELS);
   const basis: SupplyDemand["basis"] = averaged.length > 0 ? "normalized" : "raw";
 
   const supplyShareOf = (key: string): number | null => {

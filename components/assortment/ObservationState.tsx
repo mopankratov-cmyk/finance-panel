@@ -26,6 +26,16 @@ const CHIP: Record<HistoryStatus, string> = {
  * на ней уже можно верить. История копится с первого обхода после выкладки слоя
  * наблюдений и не наверстывается задним числом.
  */
+/** Статус истории и что он значит — видимым текстом: подсказок при наведении на телефоне и iPad нет. */
+export function StatusCell({ status }: { status: HistoryStatus }) {
+  return (
+    <span className="flex flex-col items-start gap-1">
+      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${CHIP[status]}`}>{HISTORY_STATUS_LABEL[status]}</span>
+      <span className="text-xs leading-5 text-slate-500">{HISTORY_STATUS_HINT[status]}</span>
+    </span>
+  );
+}
+
 export function ObservationState({ sources }: { sources: AssortmentSource[] }) {
   const [state, setState] = useState<State>({ kind: "loading" });
 
@@ -68,9 +78,7 @@ export function ObservationState({ sources }: { sources: AssortmentSource[] }) {
             {state.sources.map((h) => (
               <div key={h.sourceId} className="flex flex-col gap-1 py-2 md:grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1.4fr)_minmax(0,1.6fr)] md:items-center md:gap-3">
                 <span className="text-sm font-medium text-slate-900">{names.get(h.sourceId) ?? h.sourceId}</span>
-                <span>
-                  <span title={HISTORY_STATUS_HINT[h.status]} className={`rounded-full px-2.5 py-1 text-xs font-medium ${CHIP[h.status]}`}>{HISTORY_STATUS_LABEL[h.status]}</span>
-                </span>
+                <StatusCell status={h.status} />
                 <span className="text-xs leading-5 text-slate-600">
                   {h.days} {plural(h.days, "день", "дня", "дней")} наблюдений
                   {h.firstDay ? ` с ${dm(h.firstDay)}` : ""}

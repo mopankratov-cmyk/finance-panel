@@ -62,9 +62,9 @@ export function FormsView({ direction }: { direction: AssortmentDirection }) {
 }
 
 /** Отчёт по формам — отдельно от загрузки: его можно показать на любых данных. */
-export function FormsReportView({ report, demand = null, profiles = [] }: { report: FormsReport; demand?: FormDemandReport | null; profiles?: BrandProfile[] }) {
+export function FormsReportView({ report, demand = null, profiles = [], unrecognizedOpen = false }: { report: FormsReport; demand?: FormDemandReport | null; profiles?: BrandProfile[]; unrecognizedOpen?: boolean }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
-  const [showUnrecognized, setShowUnrecognized] = useState(false);
+  const [showUnrecognized, setShowUnrecognized] = useState(unrecognizedOpen);
   if (report.models === 0) {
     return (
       <section className="flex min-h-[200px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
@@ -90,8 +90,10 @@ export function FormsReportView({ report, demand = null, profiles = [] }: { repo
           Форма названа у <b>{pct(report.coverage)}</b>, а конкретная (не просто «куртка» или «сумка») — у <b>{pct(report.specificCoverage)}</b>.
         </p>
         <p className="mt-1 text-slate-500">
+          <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-600">расчёт по названиям</span>
           Форма определена по названию модели, а не по фото. Это срез на сегодня, а не динамика: история наблюдений только накапливается, и «растёт» или «падает» пока сказать нельзя.
-          Каждая модель считается один раз — расцветки склеены.
+          Расцветки одной модели склеены у JW PEI, Polène, Songmont, Rains и ASOS, где сайт отдаёт каждый цвет отдельным товаром; у остальных источников строка каталога — это модель так, как её отдаёт сайт, а у H&M каждая расцветка — отдельная карточка, поэтому его модели могут считаться несколько раз.
+          «Средняя по источникам» — каждый источник с каталогом от 10 моделей весит одинаково: большой каталог не делает форму «сильнее».
         </p>
       </div>
 
@@ -100,7 +102,7 @@ export function FormsReportView({ report, demand = null, profiles = [] }: { repo
           <span>Форма</span>
           <span className="text-right">Моделей</span>
           <span className="text-right">Доля каталога</span>
-          <span className="text-right" title="Каждый источник весит одинаково: большой каталог не делает форму «сильнее»">Средняя по источникам</span>
+          <span className="text-right">Средняя по источникам</span>
           <span className="text-right">Источников</span>
         </div>
         {report.rows.map((row) => <FormLine key={row.key} row={row} max={max} open={open.has(row.key)} onToggle={() => toggle(row.key)} profiles={profiles} />)}
@@ -131,7 +133,8 @@ export function FormsReportView({ report, demand = null, profiles = [] }: { repo
             <div className="mt-2 text-sm leading-6 text-slate-600">
               <p>
                 Например: {report.unrecognized.samples.join(" · ")}. Это имена моделей без слова о форме (так у части брендов сумок)
-                или обрывки описаний. Их форма определится по фото, когда признаки по фото дойдут до всего каталога.
+                или обрывки описаний. Форму таких моделей мы не определяем и не угадываем: в долях форм по названиям они не участвуют.
+                Как их описывает ИИ по фото, видно в блоке «Признаки по фото» ниже — но это отдельная оценка, она в эти доли не входит.
               </p>
             </div>
           )}
@@ -173,7 +176,6 @@ function FormLine({ row, max, open, onToggle, profiles }: { row: FormRow; max: n
           {decisions.map(({ profile, fit }) => (
             <span
               key={profile.brandKey}
-              title={profile.status === "confirmed" ? "Профиль подтверждён владельцем" : "Профиль — черновик, владелец ещё не подтвердил"}
               className={`rounded-full px-2.5 py-0.5 text-xs ${fit === "fit" ? "bg-green-50 text-green-800" : "bg-red-50 text-red-800"}`}
             >
               {profile.displayName}: {fit === "fit" ? "подходит" : "не подходит"}{profile.status === "confirmed" ? "" : " (черновик)"}
