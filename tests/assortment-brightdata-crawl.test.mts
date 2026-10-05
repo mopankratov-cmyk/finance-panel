@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripMoney } from "../lib/assortment/brightdata.ts";
+import { clearDeadZaraPhotos, collectBrightData, triggerBrightData } from "../lib/assortment/brightdataCrawl.ts";
 import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
@@ -254,7 +255,7 @@ test("Фото Zara заказываются сами после сбора Zara
   assert.match(crawl, /r\.image_urls\.every\(\(u\) => typeof u !== "string" \|\| isDeadImageUrl\(u\)\)/, "мёртвые ссылки в базе — как «фото нет»");
   assert.match(crawl, /refs\.filter\(\(r\) => !withMedia\.has\(r\.id\)\)\.slice\(0, 20\)/, "потолок 20 — только по находкам без фото");
   assert.match(crawl, /imagesKnown: options\.imagesKnown && !livePhotos\.has\(r\.sourceItemId\)/, "еженедельный сбор не стирает живые фото из второго набора — не покупаем их заново");
-  assert.match(crawl, /if \(isMissingColumnError\(error\)\) return \[\];\s*throw new Error\(error\.message\);/, "сбой базы не глотается");
+  assert.match(crawl, /isMissingColumnError\(error instanceof Error \? error : new Error\(String\(error\)\)\)\) return \[\];\s*throw error;/, "сбой базы не глотается");
   assert.match(crawl, /photoLeft\.push\(pending\);/, "сбой применения — выборка остаётся в очереди");
   assert.match(crawl, /if \(waiting\.length === 0\) \{\s*const next = await triggerZaraPhotos/, "вручную — новую выборку только если до вызова ничего не ждало: повторный вызов не покупает ещё одну");
   const route = readFileSync(join(root, "app/api/sync/assortment-brightdata/route.ts"), "utf8");
@@ -274,4 +275,120 @@ test("Мёртвые ссылки Zara снимаются сразу при ра
   assert.match(crawl, /r\.image_urls\.every\(\(u\) => typeof u !== "string" \|\| isDeadImageUrl\(u\)\)\)\s*\.map\(\(r\) => \(\{ source_id: ZARA_PHOTOS\.sourceId, source_item_id: r\.source_item_id, image_urls: null \}\)\)/, "снимаем только строки, где живых нет");
   assert.match(crawl, /const cleared = await clearDeadZaraPhotos\(db\);/, "ручной запуск");
   assert.match(crawl, /await clearDeadZaraPhotos\(db\)\.catch/, "плановый сбор");
+});
+
+// --- поведение: платная выборка не теряется, запуск не покупает дважды (аудит 05.10) ---
+
+type Caps = Record<string, unknown>;
+/** Паспорт источников: у каждого свои capabilities; чужие таблицы (строки каталога) пусты. */
+function sourcesDb(initial: Record<string, Caps>) {
+  const state = { caps: { ...initial } as Record<string, Caps>, patches: [] as Array<{ id: string; patch: Record<string, unknown> }> };
+  const db = {
+    from: (table: string) => {
+      let patch: Record<string, unknown> | null = null;
+      let id = "";
+      const q: Record<string, unknown> = {
+        select: () => q,
+        update: (p: Record<string, unknown>) => { patch = p; return q; },
+        eq: (_c: string, v: string) => { id = v; return q; },
+        not: () => q, gte: () => q, order: () => q, limit: () => q,
+        range: () => Promise.resolve({ data: [], error: null }),
+        maybeSingle: () => Promise.resolve({ data: { source_id: id, name: id === "S001" ? "Zara" : id, capabilities: state.caps[id] ?? {} }, error: null }),
+        then: (resolve: (v: unknown) => unknown) => {
+          if (table === "assortment_sources" && patch) {
+            state.patches.push({ id, patch });
+            if ("capabilities" in patch) state.caps[id] = patch.capabilities as Caps;
+          }
+          return Promise.resolve({ data: [], error: null }).then(resolve);
+        },
+      };
+      return q;
+    },
+  };
+  return { db: db as never, state };
+}
+
+async function withFetch<T>(handler: (url: string, init?: RequestInit) => Response | Promise<Response>, run: () => Promise<T>): Promise<T> {
+  const original = globalThis.fetch;
+  const token = process.env.BRIGHTDATA_API_TOKEN;
+  process.env.BRIGHTDATA_API_TOKEN = "test-token";
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => handler(String(input), init)) as typeof fetch;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = original;
+    if (token === undefined) delete process.env.BRIGHTDATA_API_TOKEN;
+    else process.env.BRIGHTDATA_API_TOKEN = token;
+  }
+}
+
+const pendingFor = (snapshotId: string, triggeredAt: string) => ({ snapshotId, datasetId: "gd_zara", direction: "jackets", method: "brightdata_zara", triggeredAt, kind: "dataset", recordsLimit: 600 });
+
+test("Оплаченная выборка набора не пропадает на временном сбое скачивания (таймаут, 429, 5xx) — остаётся в очереди; окончательный отказ (404) снимает её", async () => {
+  const fresh = new Date(Date.now() - 3600 * 1000).toISOString();
+  for (const [status, kept] of [[500, true], [429, true], [503, true], [404, false], [403, false]] as const) {
+    const { db, state } = sourcesDb({ S001: { brightdata_pending: [pendingFor("snap_abc", fresh)] } });
+    const results = await withFetch(() => new Response("boom", { status }), () => collectBrightData(db, Date.now() + 60_000));
+    const zara = results.find((r) => r.sourceId === "S001")!;
+    assert.equal(zara.ok, false, `HTTP ${status}: сбой назван`);
+    assert.match(zara.error ?? "", new RegExp(`HTTP ${status}`));
+    const left = (state.caps.S001.brightdata_pending as unknown[]) ?? [];
+    assert.equal(left.length, kept ? 1 : 0, `HTTP ${status}: ${kept ? "проба осталась" : "проба снята"}`);
+    const last = state.patches.filter((p) => p.id === "S001").pop()!;
+    assert.match(String(last.patch.last_error), /Bright Data:/, "причина видна в «Источниках»");
+  }
+  // Сбой связи (исключение fetch) — тоже временный.
+  const { db, state } = sourcesDb({ S001: { brightdata_pending: [pendingFor("snap_net", fresh)] } });
+  await withFetch(() => { throw new TypeError("fetch failed"); }, () => collectBrightData(db, Date.now() + 60_000));
+  assert.equal(((state.caps.S001.brightdata_pending as unknown[]) ?? []).length, 1, "обрыв связи — проба остаётся");
+  // Старше суток и не скачалась — снимается (иначе висела бы вечно).
+  const old = new Date(Date.now() - 30 * 3600 * 1000).toISOString();
+  const stale = sourcesDb({ S001: { brightdata_pending: [pendingFor("snap_old", old)] } });
+  await withFetch(() => new Response("boom", { status: 500 }), () => collectBrightData(stale.db, Date.now() + 60_000));
+  assert.equal(((stale.state.caps.S001.brightdata_pending as unknown[]) ?? []).length, 0);
+});
+
+test("Платный запуск идемпотентен: пока по цели ждёт проба, повторный вызов (повторная доставка крона) новую не заказывает; force=1 — заказывает", async () => {
+  let paid = 0;
+  const handler = (url: string) => {
+    if (url.includes("/datasets/v3/trigger")) {
+      paid += 1;
+      return new Response(JSON.stringify({ snapshot_id: `s_${paid}` }), { status: 200 });
+    }
+    return new Response("{}", { status: 200 });
+  };
+  const { db, state } = sourcesDb({});
+  const first = await withFetch(handler, () => triggerBrightData(db, { only: "S046" }));
+  assert.ok(first.every((r) => r.ok), JSON.stringify(first));
+  const orderedFirst = paid;
+  assert.equal(orderedFirst, 4, "ASOS: у каждого раздела по две цели с разными входами — все четыре заказаны (одинаковый набор и раздел цели не схлопывают)");
+  assert.equal(((state.caps.S046.brightdata_pending as unknown[]) ?? []).length, orderedFirst);
+  const second = await withFetch(handler, () => triggerBrightData(db, { only: "S046" }));
+  assert.equal(paid, orderedFirst, "повторный вызов ничего не заказал");
+  assert.ok(second.length === 0 || second.every((r) => (r.triggered ?? 0) === 0));
+  await withFetch(handler, () => triggerBrightData(db, { only: "S046", force: true }));
+  assert.equal(paid, orderedFirst * 2, "осознанный повтор force=1 — заказывает снова");
+});
+
+test("Мёртвые фото Zara снимаются у ВСЕХ строк окна, а не у первой тысячи по id (дальше неё модели оставались «с фото» и показывали заглушку)", async () => {
+  const rows = Array.from({ length: 1500 }, (_, i) => ({
+    source_item_id: `item${String(i).padStart(5, "0")}`,
+    // первая тысяча — живые фото, последние 500 — мёртвые снимки старого вида Zara
+    image_urls: i < 1000 ? ["https://static.zara.net/assets/ok.jpg"] : ["https://static.zara.net/photos/dead.jpg"],
+  }));
+  const upserted: Array<Record<string, unknown>> = [];
+  const db = {
+    from: () => {
+      const q: Record<string, unknown> = {
+        select: () => q, eq: () => q, not: () => q, gte: () => q, order: () => q,
+        range: (from: number, to: number) => Promise.resolve({ data: rows.slice(from, Math.min(to, from + 999) + 1), error: null }),
+        upsert: (batch: Array<Record<string, unknown>>) => { upserted.push(...batch); return Promise.resolve({ error: null }); },
+      };
+      return q;
+    },
+  } as never;
+  const cleared = await clearDeadZaraPhotos(db);
+  assert.equal(cleared, 500);
+  assert.equal(upserted.length, 500);
+  assert.ok(upserted.every((r) => r.image_urls === null && String(r.source_item_id) >= "item01000"), "сняты именно мёртвые, из хвоста за тысячу");
 });

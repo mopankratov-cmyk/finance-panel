@@ -69,6 +69,7 @@ test("Пульс автообхода: работающие и отказавш�
 
 type Row = Record<string, unknown>;
 /** Подставная база: цепочки select/eq/gte/lt/in/not/order/limit/range с ожиданием, как у PostgREST. */
+const inSizes: number[] = [];
 function fakeDb(tables: Record<string, Row[]>) {
   return {
     from: (table: string) => {
@@ -79,8 +80,13 @@ function fakeDb(tables: Record<string, Row[]>) {
         eq: (c: string, v: unknown) => { filters.push((r) => r[c] === v); return q; },
         gte: (c: string, v: unknown) => { filters.push((r) => String(r[c] ?? "") >= String(v)); return q; },
         lt: (c: string, v: unknown) => { filters.push((r) => String(r[c] ?? "") < String(v)); return q; },
-        in: (c: string, v: unknown[]) => { filters.push((r) => v.includes(r[c])); return q; },
+        in: (c: string, v: unknown[]) => { inSizes.push(v.length); filters.push((r) => v.includes(r[c])); return q; },
         not: (c: string, _op: string, v: unknown) => { filters.push((r) => (r[c] ?? null) !== v); return q; },
+        or: (expr: string) => {
+          const list = /not\.in\.\(([^)]*)\)/.exec(expr)?.[1].split(",") ?? [];
+          filters.push((r) => r.source_id == null || !list.includes(String(r.source_id)));
+          return q;
+        },
         range: (from: number, to: number) => Promise.resolve({ data: rows().slice(from, to + 1), error: null }),
         then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: rows(), error: null }).then(resolve),
       };
@@ -157,4 +163,17 @@ test("Сводка: нет журнала прогонов — блока ист
   const text = digestMessage(facts({ history: many }));
   assert.match(text, /Источник 8 и ещё 3\./);
   assert.doesNotMatch(text, /Источник 9/);
+});
+
+test("Сводка: «Рынок РФ» отсекается в запросе (а не после первой тысячи ответа), наблюдения и разделы решений читаются пачками по 100 id", async () => {
+  const refs: Row[] = [
+    ...Array.from({ length: 250 }, (_, i) => ({ id: `n${i}`, direction: "bags", title: `Bag ${i}`, brand: null, source_id: "S001", attributes: {}, first_seen_at: "2026-10-08T10:00:00Z" })),
+    ...Array.from({ length: 300 }, (_, i) => ({ id: `wb${i}`, direction: "bags", title: `WB ${i}`, brand: null, source_id: "S128", attributes: {}, first_seen_at: "2026-10-08T10:00:00Z" })),
+  ];
+  inSizes.length = 0;
+  const db = fakeDb({ assortment_references: refs, assortment_observations: [], assortment_decisions: [], assortment_collections: [], assortment_sources: [], assortment_run: [] });
+  const facts = await loadDigestFacts(db as never, new Date("2026-10-04T07:00:00Z"), new Date("2026-10-11T07:00:00Z"), "https://panel.example");
+  assert.equal(facts.directions.bags.newCount, 250);
+  assert.ok(inSizes.length >= 3 && Math.max(...inSizes) <= 100, `по наблюдениям — несколько запросов по ≤100 id (было ${inSizes.join(",")})`);
+  assert.equal(inSizes.reduce((a, b) => a + b, 0), 250, "в запросы наблюдений ушли только 250 настоящих находок: RU-позиции отсечены в запросе находок, а не после него");
 });

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Attributes } from "./attributes";
+import { rowsByIds } from "./byIds";
 import { COLLECTION_STATUS_LABEL } from "./collections";
 import { listCollections } from "./collectionsStore";
 import type { AssortmentDirection } from "./constants";
@@ -7,7 +8,7 @@ import { topFindings, type DigestDirection, type DigestFacts, type DigestFinding
 import { reasonKey, REASON_SHORT, type LessonReason } from "./learning";
 import { isMissingColumnError } from "./errors";
 import { loadHistoryState } from "./observationStateStore";
-import { isRuSource } from "./ruMarket";
+import { isRuSource, RU_SOURCE_IDS } from "./ruMarket";
 import { cardSignal, type ObservationLite } from "./signals";
 
 /** Пульс автообхода по источникам; null — колонок пульса нет или обход не запускался. */
@@ -38,21 +39,25 @@ const emptyDirection = (): DigestDirection => ({ newCount: 0, retailCount: 0, to
 export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, baseUrl: string): Promise<DigestFacts> {
   const fromIso = from.toISOString();
   const toIso = to.toISOString();
+  // «Рынок РФ» отсекаем в запросе, а не после него: каждую неделю он вписывает в «новые» сотни позиций и вытеснял бы настоящие находки
+  // из первой тысячи ответа (порядок без сортировки был произвольным).
   const { data: refs, error } = await db.from("assortment_references")
     .select("id,direction,title,brand,source_id,attributes,first_seen_at")
     .gte("first_seen_at", fromIso).lt("first_seen_at", toIso)
+    .or(`source_id.is.null,source_id.not.in.(${RU_SOURCE_IDS.join(",")})`)
+    .order("first_seen_at", { ascending: false })
     .limit(1000);
   if (error) throw new Error(error.message);
   const ids = (refs ?? []).map((r) => String(r.id));
   const observations = new Map<string, Array<ObservationLite & { method: string }>>();
   if (ids.length > 0) {
-    const { data, error: obsError } = await db.from("assortment_observations")
+    const data = await rowsByIds<ObservationLite & { method: string; reference_id: string }>(ids, "Наблюдения недели", (part, from, to) => db.from("assortment_observations")
       .select("reference_id,group_kind,metric,value_text,value_num,null_reason,status,method,observed_at")
-      .in("reference_id", ids);
-    if (obsError) throw new Error(obsError.message);
-    for (const o of (data ?? []) as Array<ObservationLite & { method: string; reference_id: string }>) {
-      observations.set(o.reference_id, [...(observations.get(o.reference_id) ?? []), o]);
-    }
+      .in("reference_id", part)
+      .order("reference_id", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to) as unknown as PromiseLike<{ data: Array<ObservationLite & { method: string; reference_id: string }> | null; error: { message: string } | null }>);
+    for (const o of data) observations.set(o.reference_id, [...(observations.get(o.reference_id) ?? []), o]);
   }
 
   const directions: Record<AssortmentDirection, DigestDirection> = { bags: emptyDirection(), jackets: emptyDirection() };
@@ -84,8 +89,12 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
   const decided = [...new Set((decisions ?? []).map((d) => String(d.reference_id)))];
   const directionOf = new Map<string, AssortmentDirection>();
   if (decided.length > 0) {
-    const { data } = await db.from("assortment_references").select("id,direction").in("id", decided);
-    for (const r of data ?? []) directionOf.set(String(r.id), r.direction as AssortmentDirection);
+    const data = await rowsByIds<{ id: string; direction: string }>(decided, "Разделы решений недели", (part, from, to) => db.from("assortment_references")
+      .select("id,direction")
+      .in("id", part)
+      .order("id", { ascending: true })
+      .range(from, to) as unknown as PromiseLike<{ data: Array<{ id: string; direction: string }> | null; error: { message: string } | null }>);
+    for (const r of data) directionOf.set(String(r.id), r.direction as AssortmentDirection);
   }
   const reasons: Record<AssortmentDirection, Map<LessonReason, number>> = { bags: new Map(), jackets: new Map() };
   for (const d of decisions ?? []) {

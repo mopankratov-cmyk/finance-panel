@@ -797,6 +797,18 @@ test("Polza: ошибки — 401, деньги, лимит, неверная м
   assert.equal(isTransientVisionError(bad), false, "фото не скачалось — сбой модели, а не сети");
 });
 
+test("Временный сбой — по HTTP-статусу: любой 5xx (в т.ч. 501, 505, 520–524, 530) и 408/409/529; 4xx — отказ по запросу, даже если в тексте «timed out» (картинка не скачалась у провайдера)", () => {
+  const withStatus = (status: number, message = "x") => Object.assign(new Error(message), { status });
+  for (const status of [408, 409, 500, 501, 502, 503, 504, 505, 507, 520, 521, 522, 523, 524, 529, 530]) assert.equal(isTransientVisionError(withStatus(status)), true, `${status}`);
+  for (const status of [400, 401, 402, 403, 404, 413, 422, 429]) assert.equal(isTransientVisionError(withStatus(status)), false, `${status} — не временный`);
+  assert.equal(isTransientVisionError(withStatus(400, "Polza 400: не удалось скачать картинку: request timed out")), false, "беда конкретной картинки: считается неудачей модели и исчерпает попытки, а не будет вечно гонять ту же модель");
+  assert.equal(isTransientVisionError(withStatus(403, "ECONNRESET")), false);
+  // Без HTTP-статуса (обрыв сети, таймаут клиента) решает текст.
+  assert.equal(isTransientVisionError(new Error("fetch failed")), true);
+  assert.equal(isTransientVisionError(Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" })), true);
+  assert.equal(isTransientVisionError(new Error("что-то не так")), false);
+});
+
 test("Polza: 200 без тела или без choices — обрыв чтения (временный сбой), а не «успешно разобрали пустое»", async () => {
   for (const body of [{}, { choices: [] }, { usage: { prompt_tokens: 1 } }]) {
     const { impl } = fakePolza(() => ({ body }));
