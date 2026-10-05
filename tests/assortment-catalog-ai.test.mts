@@ -1130,7 +1130,7 @@ test("Словарь: ничего лишнего не ловится — «не
 
 test("Отчёт: «другое» раскрыто сырыми формулировками (частые первыми), версия вопроса — отдельным счётчиком, мало данных видно по полю", () => {
   const models: TraitModel[] = [
-    ...Array.from({ length: 4 }, () => tm("S1", { silhouette: v("Сумка-мешок") })),
+    ...Array.from({ length: 4 }, () => tm("S1", { silhouette: v("Сумка-ушко") })),
     ...Array.from({ length: 2 }, () => tm("S1", { silhouette: v("пельмень") })),
     tm("S1", { silhouette: v("тоут") }),
   ];
@@ -1138,7 +1138,7 @@ test("Отчёт: «другое» раскрыто сырыми формули�
   assert.equal(report.legacy, 62);
   const silhouette = report.fields.find((f) => f.key === "silhouette")!;
   assert.equal(silhouette.visible, 7);
-  assert.deepEqual(silhouette.other?.examples, [{ text: "сумка-мешок", models: 4 }, { text: "пельмень", models: 2 }]);
+  assert.deepEqual(silhouette.other?.examples, [{ text: "сумка-ушко", models: 4 }, { text: "пельмень", models: 2 }]);
   assert.ok(silhouette.visible < MIN_VISIBLE_FOR_SHARES, "поле с 7 моделями — «мало данных»");
 });
 
@@ -1247,4 +1247,16 @@ test("Пересбор старой строки с неудачными поп�
 test("Отчёт по признакам: версия формы в ключе кэша — после выкладки не живёт старый отчёт", () => {
   const cached = readFileSync(join(import.meta.dirname, "..", "lib/assortment/photoTraitsCached.ts"), "utf8");
   assert.match(cached, /loadHourlyDashboard\(`assortment-photo-traits-v\$\{TRAITS_REPORT_VERSION\}`/);
+});
+
+// --- словарь по боевым значениям (замер прода 05.10: 91 модель сумок, 167 курток) ---
+
+test("Словарь по боевым ответам ИИ: «мешок», «трапеция», «мессенджер», «боулер», «саквояж», «на пояс»; у курток «дубленка», «кейп», «пончо», «олимпийка» — отдельные значения, а не «другое»", () => {
+  const bags: Array<[string, string]> = [["мешок", "мешок"], ["Трапеция", "трапеция"], ["мессенджер", "мессенджер"], ["боулер", "боулер"], ["саквояж", "саквояж"], ["на пояс", "поясная"], ["поясная сумка", "поясная"], ["сумка-мешок", "мешок"], ["кросс-боди", "кросс-боди"], ["багет", "багет"], ["полумесяц", "полумесяц"]];
+  for (const [raw, expected] of bags) assert.equal(canonicalValue("silhouette", raw), expected, `silhouette: «${raw}»`);
+  const jackets: Array<[string, string]> = [["дубленка", "дубленка"], ["короткая дубленка", "дубленка"], ["кейп", "кейп"], ["пончо", "пончо"], ["олимпийка", "олимпийка"], ["пальто-кейп", "пальто"], ["укороченный тренч", "тренч"], ["жакет", "жакет"], ["куртка", "куртка (форма не названа)"]];
+  for (const [raw, expected] of jackets) assert.equal(canonicalValue("subtype", raw), expected, `subtype: «${raw}»`);
+  // Разовые ответы остаются в «другом» и видны в раскрытых примерах: «сердце», «сфера», «клапан» — не силуэты.
+  for (const raw of ["сердце", "сфера", "клапан"]) assert.equal(canonicalValue("silhouette", raw), "другое", raw);
+  for (const raw of ["кардиган", "топ", "рубашка"]) assert.equal(canonicalValue("subtype", raw), "другое", raw);
 });
