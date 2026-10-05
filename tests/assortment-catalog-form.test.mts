@@ -328,6 +328,30 @@ test("Набор моделей «Форм» и каталога — один к
   assert.match(withView, /Показать модели/);
 });
 
+test("Окно «виден за 30 суток» одно для «Форм» и каталога — по виду голов и по таблице строк: 29 суток внутри, 31 вне", async () => {
+  const seen = (days: number) => new Date(NOW - days * 24 * 3600 * 1000).toISOString();
+  // Окно, расширенное до 45 или 60 суток, вернуло бы на «Формы» и в каталог модели, снятые с сайта больше месяца назад.
+  const edge = [head("S001", "Bomber edge29", { model_last_seen_at: seen(29) }), head("S001", "Bomber edge31", { model_last_seen_at: seen(31) })];
+  resetHeadsFlag();
+  const { db } = fakeDb(edge);
+  assert.deepEqual((await loadFormModels(db, "jackets", NOW)).map((m) => m.title), ["Bomber edge29"], "«Формы» по виду голов");
+  const byView = await loadCatalog(db, { ...base }, NOW);
+  assert.deepEqual(byView.cards.map((c) => c.title), ["Bomber edge29"], "каталог по виду голов");
+  const byForm = await loadCatalog(db, { ...base, form: "bomber" }, NOW);
+  assert.equal(byForm.total, 1, "каталог с фильтром «Форма»");
+  // Вида голов нет — обе читают таблицу строк со своим last_seen_at, окно то же.
+  const items = [
+    { source_id: "S001", source_item_id: "29", direction: "jackets", title: "Bomber edge29", last_seen_at: seen(29) },
+    { source_id: "S001", source_item_id: "31", direction: "jackets", title: "Bomber edge31", last_seen_at: seen(31) },
+  ];
+  resetHeadsFlag();
+  const fallback = fakeDb(edge, { noView: true, items });
+  assert.deepEqual((await loadFormModels(fallback.db, "jackets", NOW)).map((m) => m.title), ["Bomber edge29"], "«Формы» по таблице строк");
+  const byItems = await loadCatalog(fallback.db, { ...base }, NOW);
+  assert.deepEqual(byItems.cards.map((c) => c.title), ["Bomber edge29"], "каталог по таблице строк");
+  resetHeadsFlag();
+});
+
 test("«Показать модели»: внутри раздела — кнопка с обратным вызовом (повторный переход к той же форме работает), отдельно — ссылка с адресом", () => {
   const calls: string[] = [];
   const button = renderToStaticMarkup(createElement(ModelsLink, { direction: "jackets", form: "bomber", count: 8, onShow: (f: string) => calls.push(f) }));

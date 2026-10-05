@@ -210,14 +210,14 @@ export interface QueueLanes {
   unstable: CatalogHead[];
 }
 
+/** Модель, которую вообще можно разобрать: с фото и не «Рынок РФ» (топ WB и Lime — ориентир, не референс, ИИ на него не тратим). Одно правило на очередь сборщика и знаменатель «из M». */
+export const isEligibleHead = (head: Pick<CatalogHead, "imageUrls" | "sourceId">): boolean => head.imageUrls.length > 0 && !isRuSource(head.sourceId);
+
 /**
  * Раскладка моделей каталога по очереди сборщика — одно правило и для самого сборщика (pickCandidates), и для полоски «На чём
  * стоят цифры» (summarizeQueue): иначе «осталось разобрать» включало бы тех, кого сборщик не возьмёт никогда. nowMs — момент
  * для суточной паузы между попытками; Infinity — «паузу не учитывать» (сколько моделей сборщик возьмёт, когда она пройдёт).
  */
-/** Модель, которую вообще можно разобрать: с фото и не «Рынок РФ» (топ WB и Lime — ориентир, не референс, ИИ на него не тратим). Одно правило на очередь сборщика и знаменатель «из M». */
-export const isEligibleHead = (head: Pick<CatalogHead, "imageUrls" | "sourceId">): boolean => head.imageUrls.length > 0 && !isRuSource(head.sourceId);
-
 export function queueLanes(heads: CatalogHead[], existing: Map<string, ExistingResult>, nowMs: number): QueueLanes {
   const lanes: QueueLanes = { fresh: [], retry: [], stale: [], exhausted: [], unstable: [] };
   const seen = new Set<string>();

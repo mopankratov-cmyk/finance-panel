@@ -146,6 +146,7 @@ test("Отчёт: «не видно» в долях не участвует, с�
 // --- прогон: бюджет, суточный потолок, остановки ---
 
 type Row = Record<string, unknown>;
+const POSTGREST_MAX_ROWS = 1000;
 interface FakeOpts {
   heads?: Row[]; results?: Row[]; usage?: Row[]; missing?: string[]; upsertFail?: boolean; usageWriteFail?: boolean; failFailedRead?: boolean;
   /** Соперник: вызывается один раз перед первым обновлением строки учёта — как параллельный прогон. */
@@ -178,7 +179,8 @@ function fakeDb(init: FakeOpts = {}) {
         range: (from: number, to: number) => {
           // Сбой вспомогательного чтения неудавшихся строк (очередь отчёта): основной отчёт он ронять не должен.
           if (init.failFailedRead && table === "assortment_model_attributes" && eqs.some(([c, v]) => c === "status" && v === "failed")) return Promise.resolve({ data: null, error: { message: "таймаут запроса" } });
-          return Promise.resolve(isMissing ? { data: null, error: missingErr(table) } : { data: rows().slice(from, to + 1), error: null });
+          // PostgREST отдаёт не больше max-rows (1000) строк, сколько бы ни просили в range: код, листающий страницами больше тысячи, обязан это учитывать.
+          return Promise.resolve(isMissing ? { data: null, error: missingErr(table) } : { data: rows().slice(from, Math.min(to + 1, from + POSTGREST_MAX_ROWS)), error: null });
         },
         maybeSingle: () => Promise.resolve({ data: rows()[0] ?? null, error: null }),
         update: (values: Row) => { state.op = "update"; state.values = values; return q; },
@@ -1162,25 +1164,57 @@ test("Учёт расхода: вызовы «за сегодня» — толь
   assert.equal(await loadSpend(fakeDb({ missing: ["assortment_ai_usage"] }).db, new Date("2026-10-06T10:00:00Z")), null, "нет таблицы учёта — null, а не нули");
 });
 
+const DAY_MS = 24 * 3600 * 1000;
+const daysAgo = (days: number) => new Date(NOW - days * DAY_MS).toISOString();
+
 test("Каталог для разбора: скрытые, давно не виденные (>30 суток) и без https-фото — вне; общее правило «можно разбирать» (фото и не «Рынок РФ») одно на очередь и на «из M»", async () => {
   const heads = [
     headRow("S1", "ok"),
     headRow("S1", "hidden", { model_hidden_at: "2026-10-04T00:00:00Z" }),
     headRow("S1", "stale", { model_last_seen_at: "2026-08-01T00:00:00Z" }),
+    // Граница окна «виден за 30 суток»: 29 — внутри, 31 — вне (иначе окно расширили бы до 60 суток, и ИИ платил бы за снятые с сайта модели).
+    headRow("S1", "edge29", { model_last_seen_at: daysAgo(29) }),
+    headRow("S1", "edge31", { model_last_seen_at: daysAgo(31) }),
     headRow("S1", "http", { image_urls: ["http://img/insecure.jpg", "not-a-url"] }),
     headRow("S1", "nophoto", { image_urls: [] }),
     headRow("S128", "ru"),
     headRow("S1", "mixed", { image_urls: ["http://img/a.jpg", "https://img/b.jpg"] }),
   ];
   const loaded = (await loadCatalogHeads(fakeDb({ heads }).db, null, NOW))!;
-  assert.deepEqual(loaded.map((h) => h.sourceItemId).sort(), ["http", "mixed", "nophoto", "ok", "ru"], "скрытая и давно не виденная не читаются");
+  assert.deepEqual(loaded.map((h) => h.sourceItemId).sort(), ["edge29", "http", "mixed", "nophoto", "ok", "ru"], "скрытая и давно не виденная не читаются; 29 суток — читается, 31 — нет");
   assert.deepEqual(loaded.find((h) => h.sourceItemId === "mixed")!.imageUrls, ["https://img/b.jpg"], "только https-ссылки");
   assert.deepEqual(loaded.find((h) => h.sourceItemId === "http")!.imageUrls, [], "ни одной https-ссылки — фото нет");
   const eligible = loaded.filter(isEligibleHead).map((h) => h.sourceItemId).sort();
-  assert.deepEqual(eligible, ["mixed", "ok"], "без фото и «Рынок РФ» разбирать нельзя");
+  assert.deepEqual(eligible, ["edge29", "mixed", "ok"], "без фото и «Рынок РФ» разбирать нельзя");
   const report = await loadPhotoTraits(fakeDb({ heads, results: [resultRow("S1", "ok", { direction: "jackets" })] }).db, "jackets", NOW);
-  assert.equal(report?.catalog, 2, "знаменатель «из M» — то же правило");
-  assert.equal(queueLanes(loaded, new Map(), NOW).fresh.length, 2, "очередь — то же правило");
+  assert.equal(report?.catalog, 3, "знаменатель «из M» — то же правило");
+  assert.equal(queueLanes(loaded, new Map(), NOW).fresh.length, 3, "очередь — то же правило");
+});
+
+test("Описания в catalogAi.ts стоят над своими функциями: «Раскладка моделей…» — над queueLanes, правило «можно разбирать» — над isEligibleHead", () => {
+  const source = readFileSync(join(import.meta.dirname, "..", "lib/assortment/catalogAi.ts"), "utf8");
+  assert.match(source, /Раскладка моделей каталога по очереди сборщика[\s\S]*?\*\/\nexport function queueLanes\(/, "описание очереди — прямо над queueLanes");
+  assert.match(source, /\/\*\* Модель, которую вообще можно разобрать[^\n]*\*\/\nexport const isEligibleHead = /, "описание правила — прямо над isEligibleHead");
+  assert.doesNotMatch(source, /\*\/\n\/\*\* Модель, которую вообще можно разобрать/, "описание очереди не повисает над чужой функцией");
+});
+
+test("Каталог для разбора: больше тысячи моделей читаются целиком — PostgREST режет выборку на 1000 строк, очередь платного ИИ и «из M» не теряют хвост", async () => {
+  const total = 2_600;
+  // Каждая 13-я скрыта; остальные (2 400) видны и с фото — хвост за 1000-й и 2000-й строкой обязан дойти до очереди и знаменателя.
+  const heads = Array.from({ length: total }, (_, i) => headRow(`S${1 + (i % 3)}`, `m${String(i).padStart(4, "0")}`, i % 13 === 0 ? { model_hidden_at: "2026-10-04T00:00:00Z" } : {}));
+  const visibleCount = heads.filter((h) => !h.model_hidden_at).length;
+  assert.equal(visibleCount, 2_400);
+  // Сама подставная база режет выборку как боевая: одним запросом тысячу не обойти.
+  const probe = await (fakeDb({ heads }).db as unknown as { from: (t: string) => { range: (a: number, b: number) => Promise<{ data: unknown[] }> } }).from("assortment_catalog_heads").range(0, total);
+  assert.equal(probe.data.length, 1_000, "база отдаёт не больше 1000 строк за запрос");
+  const loaded = (await loadCatalogHeads(fakeDb({ heads }).db, null, NOW))!;
+  assert.equal(loaded.length, visibleCount, "прочитаны все видимые модели, а не первая тысяча");
+  assert.ok(loaded.some((h) => h.sourceItemId === "m2599"), "последняя строка выборки на месте");
+  assert.equal(queueLanes(loaded, new Map(), NOW).fresh.length, visibleCount, "очередь сборщика — все модели");
+  const probeRun = await runCatalogAi(fakeDb({ heads }).db, { ask: okAsk(), config: cfg, now: clock, dryRun: true });
+  assert.equal(probeRun.candidates, visibleCount, "сборщик видит всю очередь");
+  const report = await loadPhotoTraits(fakeDb({ heads, results: [resultRow("S2", "m0001")] }).db, "jackets", NOW);
+  assert.equal(report?.catalog, visibleCount, "знаменатель «из M» — все модели");
 });
 
 test("Средняя по источникам для признака: источник с 1–2 видимыми моделями весом не владеет; невидимые источники в среднюю не входят; источников для средней меньше двух — доли по всем моделям и пометка", () => {
