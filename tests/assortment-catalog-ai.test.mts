@@ -1189,3 +1189,60 @@ test("Прогон: ответ «не видно» по всем признак�
   assert.equal(redo.tables.assortment_model_attributes[0].status, "ok", "прежний результат не затёрт пустым ответом");
   assert.deepEqual(redo.tables.assortment_model_attributes[0].attributes, { length: { v: "до бедра" } });
 });
+
+// --- по ревью #1491: алиасы только на значение целиком, пересбор с потолком попыток, версия кэша ---
+
+test("Словарь: составные ответы решаются по смыслу, а не алиасом «нет/без» — как до PR (воспроизведено ревью)", () => {
+  const cases: Array<[string, string, string]> = [
+    ["closure", "без молнии, на пуговицах", "пуговицы"], ["closure", "нет молнии, есть кнопки", "кнопки"], ["closure", "нет молнии", "другое"],
+    ["decor", "без логотипа, со стёжкой", "стёжка"], ["decor", "нет логотипа, есть бахрома", "бахрома"], ["decor", "нет, но заклёпки", "заклёпки"],
+    ["pockets", "нет боковых, накладные на груди", "накладные"],
+    ["quilting", "нет, но есть ромбом", "ромбом"],
+    ["hardware", "нет, только золотистая молния", "золотистая"], ["hardware", "не видно на фото", "другое"],
+    // а целиком «нет/без» — по-прежнему «без …»
+    ["closure", "нет", "без застёжки"], ["decor", "Без декора.", "без декора"], ["pockets", "нет видимых карманов", "нет видимых"], ["hardware", "без", "без видимой фурнитуры"], ["quilting", "без стёжки", "без стёжки"],
+  ];
+  for (const [key, raw, expected] of cases) assert.equal(canonicalValue(key, raw), expected, `${key}: «${raw}»`);
+});
+
+test("Жёсткость: отрицание и составные ответы не превращаются в «жёсткая каркасная»; «жёсткая» целиком — превращается", () => {
+  const cases: Array<[string, string]> = [
+    ["не очень жёсткая", "другое"], ["слегка жёсткая", "другое"], ["не такая жёсткая", "другое"], ["не жёсткая", "другое"],
+    ["мягкая, жёсткие ручки", "мягкая"], ["мягкая и жёсткая", "мягкая"], ["мягкая, жёсткая рамка", "мягкая"], ["жёсткая, без каркаса", "другое"],
+    ["полу жёсткая", "полужёсткая"], ["полужёсткая", "полужёсткая"],
+    ["жёсткая", "жёсткая каркасная"], ["Жёсткий.", "жёсткая каркасная"], ["жёсткая каркасная", "жёсткая каркасная"],
+  ];
+  for (const [raw, expected] of cases) assert.equal(canonicalValue("rigidity", raw), expected, `«${raw}»`);
+});
+
+test("Подтип: «пуховый жилет» — жилет, «джинсовая/кожаная куртка» остаются «другим» (видны в примерах), голая «куртка» — «форма не названа»", () => {
+  assert.equal(canonicalValue("subtype", "пуховый жилет"), "жилет");
+  assert.equal(canonicalValue("subtype", "стеганый жилет"), "жилет");
+  assert.equal(canonicalValue("subtype", "джинсовая куртка"), "другое");
+  assert.equal(canonicalValue("subtype", "кожаная куртка"), "другое");
+  for (const raw of ["куртка", "курточка", "куртка женская", "Куртка."]) assert.equal(canonicalValue("subtype", raw), "куртка (форма не названа)", raw);
+  assert.equal(canonicalValue("subtype", "куртка-бомбер"), "бомбер");
+});
+
+test("Пересбор старой строки с неудачными попытками упирается в потолок: фото-заглушка не гоняет платный вызов каждые сутки", async () => {
+  const empty: AskVision = async () => ({ text: '{"attributes":{"subtype":"не видно","length":"не видно"}}', inputTokens: 4000, outputTokens: 100 });
+  let calls = 0;
+  const counting: AskVision = async (...args) => { calls += 1; return empty(...args); };
+  const good = { source_id: "S1", model_key: "S1|a", direction: "jackets", status: "ok", attributes: { length: { v: "до бедра" } }, prompt_version: "catalog-v1", attempts: 1, taken_at: "2026-09-01T00:00:00Z" };
+  const { db, tables } = fakeDb({ heads: [headRow("S1", "a")], results: [good] });
+  let nowMs = NOW;
+  for (let day = 0; day < 6; day += 1) {
+    nowMs += 25 * 3600 * 1000;
+    await runCatalogAi(db, { ask: counting, config: cfg, now: () => nowMs });
+  }
+  assert.equal(calls, 2, "две попытки (1 → 2 → 3), дальше потолок: не шесть");
+  assert.equal(tables.assortment_model_attributes[0].status, "ok", "прежний результат цел");
+  assert.equal(tables.assortment_model_attributes[0].prompt_version, "catalog-v1");
+  const fresh = pickCandidates([head("S1", "b")], new Map([[resultKey("S1", "S1|b"), { status: "ok" as const, attempts: 1, promptVersion: "catalog-v1", takenAt: "2026-09-01T00:00:00Z" }]]), NOW, 10);
+  assert.equal(fresh.length, 1, "обычный пересбор старой версии с одной попыткой по-прежнему в очереди");
+});
+
+test("Отчёт по признакам: версия формы в ключе кэша — после выкладки не живёт старый отчёт", () => {
+  const route = readFileSync(join(import.meta.dirname, "..", "app/api/assortment-development/photo-traits/route.ts"), "utf8");
+  assert.match(route, /loadHourlyDashboard\(`assortment-photo-traits-v\$\{TRAITS_REPORT_VERSION\}`/);
+});

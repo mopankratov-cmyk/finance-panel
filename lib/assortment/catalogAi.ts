@@ -190,6 +190,8 @@ export interface ExistingResult {
 }
 
 export const MAX_ATTEMPTS = 3;
+/** Версия формы отчёта по признакам (корзины значений, legacy, examples): входит в ключ кэша, чтобы после выкладки не жил старый отчёт. */
+export const TRAITS_REPORT_VERSION = 2;
 export const RETRY_AFTER_MS = 24 * 3600 * 1000;
 
 const keyOf = (sourceId: string, modelKey: string) => `${sourceId}\u0000${modelKey}`;
@@ -215,7 +217,11 @@ export function pickCandidates(heads: CatalogHead[], existing: Map<string, Exist
     if (!prev) fresh.push(head);
     else if (prev.status === "failed") {
       if (prev.attempts < MAX_ATTEMPTS && nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) retry.push(head);
-    } else if (prev.promptVersion !== PROMPT_VERSION && nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) stale.push(head);
+    } else if (prev.promptVersion !== PROMPT_VERSION && prev.attempts < MAX_ATTEMPTS && nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) {
+      // Пересбор старой строки, у которого уже были неудачные попытки (ответ из одних «не видно»), потолком попыток ограничен так же,
+      // как у новой: иначе платный вызов повторялся бы каждые сутки без конца.
+      stale.push(head);
+    }
   }
   const newestFirst = (a: CatalogHead, b: CatalogHead) => b.firstSeenAt.localeCompare(a.firstSeenAt) || a.sourceId.localeCompare(b.sourceId) || a.modelKey.localeCompare(b.modelKey);
   return [...byTurns(fresh.sort(newestFirst)), ...byTurns(retry.sort(newestFirst)), ...byTurns(stale.sort(newestFirst))].slice(0, Math.max(0, limit));
@@ -296,6 +302,9 @@ export function fieldVocabulary(key: string): string[] {
  * с ответом «без …». Порядок важен — первый совпавший. Пишутся в нормализованном виде (без «ё»/«й»: «съемн», «стежк»).
  * Вопрос к ИИ при этом не меняется: смена версии вопроса запускает переразбор всех моделей.
  */
+/** «Нет» / «без» / «отсутствует» целиком, с названием самого признака или без: ^(нет|без|отсутств…)( слово признака)*$. */
+const noneOf = (...words: string[]) => new RegExp(`^(?:нет|без|отсутств[а-я]*)(?:\\s+(?:${words.join("|")})[а-я]*)*[\\s.,;!]*$`);
+
 const ALIASES: Record<string, Array<[RegExp, string]>> = {
   hood: [
     [/(^|\s)(без капюшон|нет капюшон|капюшона нет|капюшон отсутствует)/, "нет"],
@@ -303,17 +312,21 @@ const ALIASES: Record<string, Array<[RegExp, string]>> = {
     [/съемн/, "съёмный"],
     [/капюшон/, "есть"],
   ],
-  // «Нет» там, где в словаре ответ «без …»: иначе самое частое значение уходит в «другое».
-  quilting: [[/^(нет|без|отсутств)/, "без стёжки"]],
-  decor: [[/^(нет|без|отсутств)/, "без декора"]],
-  collar: [[/^(нет|без|отсутств)/, "без воротника"]],
-  closure: [[/^(нет|без|отсутств)/, "без застёжки"]],
-  hardware: [[/^(нет|без|отсутств|не вид)/, "без видимой фурнитуры"]],
-  pockets: [[/^(нет|без|отсутств)(?!\s+видим)/, "нет видимых"]],
-  // «Жёсткая» без «каркасная» — то же значение; «полужёсткая» и «не жёсткая» сюда не попадают.
-  rigidity: [[/(^|\s)(?<!(не|без)\s)жестк(ая|ии|ое|ие)(?!\s+каркас)/, "жёсткая каркасная"]],
+  // «Нет» там, где в словаре ответ «без …»: иначе самое частое значение уходит в «другое». Только значение ЦЕЛИКОМ
+  // («нет», «без декора», «нет видимых карманов»): «без молнии, на пуговицах» — это пуговицы, а не «без застёжки».
+  quilting: [[noneOf("стежк", "стеган"), "без стёжки"]],
+  decor: [[noneOf("декор"), "без декора"]],
+  collar: [[noneOf("воротник"), "без воротника"]],
+  closure: [[noneOf("застежк"), "без застёжки"]],
+  hardware: [[noneOf("фурнитур", "видим"), "без видимой фурнитуры"]],
+  pockets: [[noneOf("видим", "карман"), "нет видимых"]],
+  // «Жёсткая» одним словом — то же, что «жёсткая каркасная». Только целиком: «не очень жёсткая», «мягкая, жёсткие ручки»,
+  // «жёсткая, без каркаса» словарь решает сам (первое названное, отрицание не считается).
+  rigidity: [[/^жестк(?:ая|ии|ое|ие)[\s.,;!]*$/, "жёсткая каркасная"]],
   // «Седло» — то же, что «седельная»; остальное ловит сопоставление по основе и склейка «кроссбоди»/«кросс-боди».
   silhouette: [[/(^|\s)седл/, "седельная"]],
+  // Жилет с материалом на первом месте («пуховый жилет») — всё равно жилет, а не пуховик.
+  subtype: [[/(^|\s)жилет/, "жилет"]],
 };
 
 /**
@@ -329,7 +342,8 @@ const EXTRA_TERMS: Record<string, string[]> = {
  * «форма не названа». Применяется, только если словарь ничего не нашёл («куртка-бомбер» остаётся бомбером).
  */
 const FALLBACKS: Record<string, Array<[RegExp, string]>> = {
-  subtype: [[/(^|\s)куртк/, "куртка (форма не названа)"]],
+  // Только голая «куртка»: «джинсовая куртка», «кожаная куртка» форму называют — они остаются в «другом» и видны в примерах.
+  subtype: [[/^(?:женск[а-я]*\s+)?(?:куртк|курточк)[а-я]*(?:\s+женск[а-я]*)?[\s.,;!]*$/, "куртка (форма не названа)"]],
 };
 
 const NEGATIONS = new Set(["не", "без", "нет", "ни"]);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { loadHourlyDashboard } from "@/lib/cache/hourlyDashboard";
 import { ASSORTMENT_ROLES, parseDirection } from "@/lib/assortment/constants";
+import { TRAITS_REPORT_VERSION } from "@/lib/assortment/catalogAi";
 import { loadPhotoSamples, loadPhotoTraits } from "@/lib/assortment/catalogAiStore";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
   try {
     // Разбор идёт сотнями в сутки, а отчёт тянет весь каталог и признаки (~7 запросов) — на час в кэше.
     // Пустой результат (нет таблицы, ничего не разобрано) в кэш не кладём.
-    const report = await loadHourlyDashboard("assortment-photo-traits", { direction }, async () => {
+    const report = await loadHourlyDashboard(`assortment-photo-traits-v${TRAITS_REPORT_VERSION}`, { direction }, async () => {
       const result = await loadPhotoTraits(db, direction);
       if (!result) throw new NoReport();
       if (result.analyzed < CACHE_FROM_ANALYZED) throw new Uncached(result);
