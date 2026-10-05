@@ -207,8 +207,28 @@ export function filterReportRowsByAllowedNmIds(
   if (allowedNmIds === null) return [...rows];
   return rows.filter((row) => {
     const nmId = Number(row.nm_id);
-    return Number.isSafeInteger(nmId) && allowedNmIds.has(nmId);
+    if (Number.isSafeInteger(nmId) && nmId > 0) return allowedNmIds.has(nmId);
+    return hasCabinetWideMoney(row);
   });
+}
+
+/**
+ * Строки без nm_id — общекабинетные (не чужие товары): перевод на баланс
+ * заёмщика по кредиту, счета «WB Продвижение», хранение, платная приёмка,
+ * штрафы. Фильтр по nm_id обязан их сохранять, иначе у кабинета с товарным
+ * контуром (Retail Family — Norvia/Heaton) пропадают кредитные списания и
+ * рекламные счета: после b7e6b2c6 они исчезли из базы с недели 14.09.
+ * Берём только те, где есть деньги, которые ОПиУ реально читает; остальное
+ * без nm_id (возмещение издержек по перевозке — ОПиУ его намеренно не
+ * считает, ПВЗ без денег) в базу не тащим — на агентском кабинете это
+ * тысячи строк в неделю.
+ */
+function hasCabinetWideMoney(row: WbReportRow): boolean {
+  return [row.deduction, row.storage_fee, row.acceptance, row.penalty, row.additional_payment]
+    .some((value) => {
+      const amount = Number(value ?? 0);
+      return Number.isFinite(amount) && amount !== 0;
+    });
 }
 
 async function loadAllowedNmIds(
