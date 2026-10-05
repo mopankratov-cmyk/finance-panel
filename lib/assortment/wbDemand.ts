@@ -10,6 +10,7 @@
 
 import type { AssortmentDirection } from "./constants";
 import { excludedReason } from "./wbExclusions";
+import { distinctQueries, growthBaseOf, type GrowthBase } from "./wbGrowth";
 
 export interface KeywordRow {
   word: string;
@@ -40,6 +41,10 @@ export interface DemandResult {
   total: number;
   growthPct: number | null;
   found: boolean;
+  /** Можно ли доверять росту: срезы совпали (identical) или прошлого нет (none) — рост не считается. Та же проверка, что на «Формах». */
+  growthBase: GrowthBase;
+  /** Запросы со словом модели, убранные как мужские/детские/не по теме: чтобы число не менялось молча. */
+  excluded: { queries: number; searches: number };
 }
 
 const norm = (value: string) => value.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
@@ -82,10 +87,11 @@ export function growth(now: number, before: number): number | null {
 }
 
 /** Запросы предмета, где встречается каждое слово термина. */
-export function matchDemand(subject: string, term: string, current: KeywordRow[], previous: KeywordRow[]): SubjectDemand {
+export function matchDemand(subject: string, term: string, current: KeywordRow[], previous: KeywordRow[], options: { skipExclusions?: boolean } = {}): SubjectDemand {
   const matches = termMatcher(term);
   // Каталоги и профили женские: «бомбер мужской» и детские запросы не показывают спрос на нашу форму — как и на «Формах».
-  const hits = (row: KeywordRow) => matches(row.word) && !excludedReason(row.word);
+  // Если слово модели само «школьный рюкзак», владелец спрашивает именно про него — исключения не применяем.
+  const hits = (row: KeywordRow) => matches(row.word) && (options.skipExclusions || !excludedReason(row.word));
   const before = new Map(previous.filter(hits).map((r) => [norm(r.word), r.wb_count]));
   const queries = current.filter(hits)
     .map((r) => ({ word: r.word, now: Number(r.wb_count) || 0, before: before.get(norm(r.word)) ?? null, items: r.items_count != null ? Number(r.items_count) : null }))
@@ -115,13 +121,19 @@ export interface SubjectKeywords {
  * одна, и складывать её по предметам нельзя. Построчно по предметам показываем как есть.
  */
 export function demandForTerm(term: string, subjects: SubjectKeywords[]): DemandResult {
-  const perSubject = subjects.map((s) => matchDemand(s.subject, term, s.current, s.previous)).filter((s) => s.queries.length > 0).sort((a, b) => b.total - a.total);
+  const skipExclusions = excludedReason(term) !== null;
+  const isExcluded = (word: string) => !skipExclusions && excludedReason(word) !== null;
+  const perSubject = subjects.map((s) => matchDemand(s.subject, term, s.current, s.previous, { skipExclusions })).filter((s) => s.queries.length > 0).sort((a, b) => b.total - a.total);
   const matches = termMatcher(term);
-  const hits = (row: KeywordRow) => matches(row.word) && !excludedReason(row.word);
+  const hits = (row: KeywordRow) => matches(row.word) && !isExcluded(row.word);
   const now = new Map<string, number>();
   const before = new Map<string, number>();
+  const dropped = new Map<string, number>();
   for (const s of subjects) {
-    for (const row of s.current) if (hits(row)) now.set(norm(row.word), Math.max(now.get(norm(row.word)) ?? 0, Number(row.wb_count) || 0));
+    for (const row of s.current) {
+      if (hits(row)) now.set(norm(row.word), Math.max(now.get(norm(row.word)) ?? 0, Number(row.wb_count) || 0));
+      else if (matches(row.word)) dropped.set(norm(row.word), Math.max(dropped.get(norm(row.word)) ?? 0, Number(row.wb_count) || 0));
+    }
     for (const row of s.previous) if (hits(row)) before.set(norm(row.word), Math.max(before.get(norm(row.word)) ?? 0, Number(row.wb_count) || 0));
   }
   let total = 0;
@@ -135,7 +147,15 @@ export function demandForTerm(term: string, subjects: SubjectKeywords[]): Demand
       beforeBoth += prev;
     }
   }
-  return { term, subjects: perSubject, total, growthPct: beforeBoth >= MIN_GROWTH_BASE ? growth(nowBoth, beforeBoth) : null, found: perSubject.length > 0 };
+  // Годятся ли срезы для роста — по ВСЕМ запросам предметов, а не только по словам модели: у малой выборки «совпали» не определить.
+  const growthBase = growthBaseOf([...distinctQueries(subjects.map((s) => ({ current: s.current, previous: s.previous.length > 0 ? s.previous : null }))).values()].filter((e) => !isExcluded(e.word)));
+  return {
+    term, subjects: perSubject, total,
+    growthPct: growthBase === "ok" && beforeBoth >= MIN_GROWTH_BASE ? growth(nowBoth, beforeBoth) : null,
+    found: perSubject.length > 0,
+    growthBase,
+    excluded: { queries: dropped.size, searches: [...dropped.values()].reduce((sum, n) => sum + n, 0) },
+  };
 }
 
 export const DIRECTION_WB_BRANDS: Record<AssortmentDirection, string[]> = {

@@ -48,7 +48,8 @@ export const JACKET_FORMS: readonly FormRule[] = [
   { key: "denim", label: "Джинсовая", re: /джинсов|\bdenim|jeansjacke|\bjean jacket/ },
   { key: "fleece", label: "Флис / тедди", re: /флис|\bfleece|\bteddy|\bsherpa|плюшев/ },
   // «Fur collar/trim/lined» — отделка пальто или пуховика, а не меховая вещь: «coat with faux fur collar» остаётся пальто.
-  { key: "fur", label: "Мех / дублёнка", re: /дубленк|шуб[аыу]|шубк|\bshearling|\b(?:faux )?fur\b(?![ -](?:collar|trim|lining|lined|hood|cuff|detail))|mouton|pelz|kunstfell|эко-?мех|мехов/ },
+  // По-русски то же: «с меховым воротником», «воротник из эко-меха» — отделка, а не меховая вещь.
+  { key: "fur", label: "Мех / дублёнка", re: /^(?!.*(?:мехов[а-я]*\s+(?:воротник|капюшон|отделк|манжет|подкладк|опушк)|(?:воротник|капюшон|отделк|манжет|подкладк|опушк)[а-я]*\s+из\s+(?:эко-?)?мех)).*?(?:дубленк|шуб[аыу]|шубк|\bshearling|\b(?:faux )?fur\b(?![ -](?:collar|trim|lining|lined|hood|cuff|detail))|mouton|pelz|kunstfell|эко-?мех|мехов)/ },
   { key: "blazer", label: "Жакет / пиджак", re: /блейзер|пиджак|жакет|\bblazer|\bsakko/ },
   { key: "coat", label: "Пальто", re: /пальто|полупальто|\bcoat\b|\bcoats\b|\bmantel|\bovercoat|\bduffle/ },
   { key: "overshirt", label: "Рубашка-куртка", re: /overshirt|shirt jacket|рубашк[аи]-куртк|куртк[аи]-рубашк|hemdjacke/ },
