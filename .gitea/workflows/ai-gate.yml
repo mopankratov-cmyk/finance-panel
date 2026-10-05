@@ -7,15 +7,18 @@ name: ai-gate
 #   • триггер pull_request_target → workflow и pr-gate.mjs берутся из БАЗОВОЙ ветки,
 #     код самого PR здесь НЕ исполняется (тащим pr-gate.mjs из base.sha как RAW-данные);
 #   • дифф и список файлов читаются из Gitea API как ДАННЫЕ;
-#   • approve (зона Финансы/доки + ассистент low-risk) → авто-мёрж после прохождения чеков;
-#   • escalate → чек КРАСНЫЙ (мёрж заблокирован branch protection) + пинг в Telegram (из pr-gate).
+#   • approve (зона Финансы/доки + ассистент low-risk) → PR ставится в очередь на авто-мёрж
+#     (merge_when_checks_succeed) и вливается, лишь когда обязательный чек `quality` зелёный;
+#   • escalate → авто-мёрж не ставится (а ранее поставленный снимается) + чек КРАСНЫЙ + пинг в Telegram.
 #
 # ТРЕБОВАНИЯ:
 #   • Gitea ≥ 1.21 / Forgejo (поддержка pull_request_target + Actions);
 #   • раннер с меткой `gate` в host-режиме, где есть node ≥18, git, curl, jq (см. deploy/gitea/runner.Dockerfile);
 #   • секреты репо (Settings → Actions → Secrets): TELEGRAM_BOT_TOKEN, TELEGRAM_ALERT_CHAT_ID,
 #     REVIEW_TOKEN, DIRECTOR_COCKPIT_URL (опц.). GITHUB_TOKEN выдаётся раннером автоматически.
-#   • branch protection на main: обязательный статус-чек `ai-gate / ai-gate`, владелец в bypass.
+#   • branch protection на main: обязательный статус-чек `quality / checks (pull_request)` —
+#     сборка/тесты/линт кода PR; без него красная сборка влилась бы (так 05.10 #1519/#1523
+#     сломали main на 5 ч). Чек обязателен и для PR владельца: merge-whitelist не отменяет статус-чек.
 
 on:
   pull_request_target:
@@ -92,16 +95,22 @@ jobs:
           MT="${MERGE_TOKEN:-$TOKEN}"
           curl -fsS -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" \
             "$API/issues/$PR/comments" \
-            -d '{"body":"🤖 AI-гейт: одобрено (зона Финансы/доки, низкий риск). Вливаю."}' || true
-          # Прямой squash-merge (защита main без обяз. чека → force не нужен). Код ответа Gitea
-          # на merge бывает квирковым (405 хотя мёрж прошёл) — поэтому НЕ полагаемся на curl-код,
-          # а проверяем факт: PR действительно merged.
+            -d '{"body":"🤖 AI-гейт: одобрено (зона Финансы/доки, низкий риск). Вольётся автоматически, как только проверка кода (quality — линт/тесты/сборка) станет зелёной."}' || true
+          # merge_when_checks_succeed=true: НЕ вливаем сразу, а ставим PR в очередь на
+          # авто-мёрж — Gitea вольёт его сама, лишь когда пройдёт обязательный чек
+          # `quality / checks`. Так PR, ломающий tsc/сборку, физически не попадёт в main
+          # (05.10 так #1519/#1523 ушли красными и прод не собирался 5 часов). Backstop —
+          # branch protection с обязательным `quality / checks (pull_request)`: без неё
+          # (пока чек не включён) флаг просто вливает сразу, как раньше — регрессии нет.
+          # Код ответа Gitea квирковый (405 хотя мёрж прошёл) — факт проверяем через GET.
           code=$(curl -s -o /tmp/merge.json -w "%{http_code}" -X POST -H "Authorization: token $MT" \
             -H "Content-Type: application/json" "$API/pulls/$PR/merge" \
-            -d '{"Do":"squash","delete_branch_after_merge":true}')
+            -d '{"Do":"squash","delete_branch_after_merge":true,"merge_when_checks_succeed":true}')
           merged=$(curl -s -H "Authorization: token $MT" "$API/pulls/$PR" | grep -o '"merged":true' || true)
           if [ -n "$merged" ]; then
-            echo "PR #$PR влит (код merge=$code)"
+            echo "PR #$PR влит сразу — quality уже был зелёным (код merge=$code)"
+          elif [ "$code" = "200" ] || [ "$code" = "201" ]; then
+            echo "PR #$PR в очереди на авто-мёрж — ждёт зелёной quality (код=$code)"
           else
             echo "МЁРЖ НЕ ПРОШЁЛ (код=$code): $(cat /tmp/merge.json)"; exit 1
           fi
