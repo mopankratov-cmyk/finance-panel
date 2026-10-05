@@ -176,6 +176,8 @@ export interface FormsReport {
   unrecognized: { count: number; samples: string[] };
   traits: TraitCount[];
   perSource: Array<{ sourceId: string; name: string; models: number; specific: number }>;
+  /** Модели прочитаны из вида голов: только тогда в каталоге работает фильтр «Форма» (без миграции 202610050002 ссылку прячем). */
+  viaHeads?: boolean;
 }
 
 /** Источник с меньшим каталогом в среднюю долю не входит: одна модель из пяти — не «20% формы». */

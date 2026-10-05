@@ -7,6 +7,8 @@ import { isMissingAssortmentSchema, MIGRATION_HINT } from "@/lib/assortment/erro
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+// Фильтр по форме читает все модели раздела (как «Формы», у них maxDuration 60): при медленной базе страница не должна обрываться на таймауте по умолчанию.
+export const maxDuration = 60;
 
 /**
  * «Каталоги брендов»: всё, что обходы собрали у брендов в разделе, порциями.

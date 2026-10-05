@@ -236,6 +236,11 @@ export interface CatalogFilters {
   photo: CatalogPhotoMode;
 }
 
+/** Фильтры каталога после перехода с «Форм»: форма и «и без фото», чтобы число совпало со строкой формы. */
+export function filtersForForm(form: string): CatalogFilters {
+  return { ...DEFAULT_CATALOG_FILTERS, form, photo: "all" };
+}
+
 export const DEFAULT_CATALOG_FILTERS: CatalogFilters = { source: null, q: "", fresh: false, badge: false, form: null, photo: "auto" };
 
 type PageParams = Record<string, string | string[] | undefined>;
@@ -245,7 +250,7 @@ const one = (params: PageParams, key: string) => {
 };
 
 /** Фильтры каталога из адреса — читает серверная страница: без лишнего запроса и мигания. */
-export function catalogFiltersFrom(params: PageParams): CatalogFilters {
+export function catalogFiltersFrom(params: PageParams, direction?: AssortmentDirection): CatalogFilters {
   const source = one(params, "source");
   const photo = one(params, "photo");
   return {
@@ -253,8 +258,9 @@ export function catalogFiltersFrom(params: PageParams): CatalogFilters {
     q: (one(params, "q") ?? "").slice(0, 80),
     fresh: one(params, "fresh") === "1",
     badge: one(params, "badge") === "1",
-    // Ключ формы проверяет сервер по правилам раздела; здесь — только безопасный вид, чтобы адрес не нёс чужого.
-    form: ((value) => (value && /^[a-z_]{2,24}$/.test(value) ? value : null))(one(params, "form")),
+    // Ключ формы — по правилам раздела (страница знает раздел): чужой («bomber» на сумках) и устаревший ключ отбрасываются,
+    // иначе экран говорил бы «фильтр включён», а список был бы целым. Без раздела — только безопасный вид (проверит сервер).
+    form: ((value) => (direction ? parseFormKey(value, direction) : value && /^[a-z_]{2,24}$/.test(value) ? value : null))(one(params, "form")),
     photo: photo === "all" || photo === "with" ? photo : "auto",
   };
 }

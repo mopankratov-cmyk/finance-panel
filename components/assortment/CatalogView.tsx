@@ -12,7 +12,7 @@ import { plural } from "@/lib/warehouse/plural";
 type State =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; cards: CatalogCard[]; total: number; brands: CatalogBrandStat[] | null; photo: "with" | "all"; photosPending: boolean; loadingMore: boolean };
+  | { kind: "ready"; cards: CatalogCard[]; total: number; brands: CatalogBrandStat[] | null; photo: "with" | "all"; photosPending: boolean; loadingMore: boolean; form: string | null };
 
 const PAGE = 48;
 const day = (iso: string) => new Date(iso).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" });
@@ -46,7 +46,7 @@ function query(direction: AssortmentDirection, filters: CatalogFilters, offset: 
  * новинки. Фото грузятся с сайта бренда в браузере; не открылось — панель
  * приносит его один раз сама.
  */
-export function CatalogView({ direction, initialFilters }: { direction: AssortmentDirection; initialFilters: CatalogFilters }) {
+export function CatalogView({ direction, initialFilters, onFiltersChange }: { direction: AssortmentDirection; initialFilters: CatalogFilters; onFiltersChange?: (filters: CatalogFilters) => void }) {
   const [filters, setFilters] = useState<CatalogFilters>(initialFilters);
   const [search, setSearch] = useState(initialFilters.q);
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -124,6 +124,11 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
     return () => window.clearTimeout(id);
   }, [search]);
 
+  // Раздел помнит текущие фильтры: уйти на другую вкладку и вернуться — на то же место, а не к начальным из адреса.
+  useEffect(() => {
+    onFiltersChange?.(filters);
+  }, [filters, onFiltersChange]);
+
   useEffect(() => {
     let cancelled = false;
     generation.current += 1;
@@ -145,6 +150,8 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
           photo: body.photo === "with" ? "with" : "all",
           photosPending: Boolean(body.photosPending),
           loadingMore: false,
+          // Форма, которую сервер действительно применил: чужой или устаревший ключ он не применяет, и плашка не должна врать.
+          form: typeof body.form === "string" ? body.form : null,
         });
       })
       .catch(() => {
@@ -196,11 +203,12 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
 
   const ready = state.kind === "ready" ? state : null;
   const photoOnly = ready?.photo === "with";
+  const byForm = Boolean(filters.form && ready?.form === filters.form);
   const shown = (b: CatalogBrandStat) => (photoOnly ? b.withPhoto : b.models);
   const brands = (ready?.brands ?? []).filter((b) => shown(b) > 0 || b.sourceId === filters.source);
   const allCount = ready?.brands ? ready.brands.reduce((s, b) => s + shown(b), 0) : null;
   const selectedBrand = ready?.brands?.find((b) => b.sourceId === filters.source) ?? null;
-  const hiddenWithoutPhoto = photoOnly && ready?.brands
+  const hiddenWithoutPhoto = !byForm && photoOnly && ready?.brands
     ? (selectedBrand ? selectedBrand.models - selectedBrand.withPhoto : ready.brands.reduce((s, b) => s + b.models - b.withPhoto, 0))
     : 0;
   const chip = (active: boolean) => `h-10 shrink-0 rounded-full px-4 text-sm ${active ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`;
@@ -226,11 +234,11 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
       {brands.length > 0 && (
         <div className="chip-row -mx-3 gap-2 px-3 sm:mx-0 sm:px-0" aria-label="Бренды">
           <button type="button" aria-pressed={!filters.source} onClick={() => setFilters((f) => ({ ...f, source: null }))} className={chip(!filters.source)}>
-            Все бренды{allCount !== null && ` · ${allCount.toLocaleString("ru-RU")}`}
+            Все бренды{allCount !== null && !byForm && ` · ${allCount.toLocaleString("ru-RU")}`}
           </button>
           {brands.map((b) => (
             <button key={b.sourceId} type="button" aria-pressed={filters.source === b.sourceId} onClick={() => setFilters((f) => ({ ...f, source: f.source === b.sourceId ? null : b.sourceId }))} className={chip(filters.source === b.sourceId)}>
-              {b.name} · {shown(b).toLocaleString("ru-RU")}
+              {b.name}{!byForm && ` · ${shown(b).toLocaleString("ru-RU")}`}
             </button>
           ))}
         </div>
@@ -246,7 +254,9 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
         )}
       </div>
 
-      {filters.form && <FormFilterNote form={filters.form} direction={direction} total={ready ? ready.total : null} onReset={() => setFilters((f) => ({ ...f, form: null }))} />}
+      {filters.form && (ready && ready.form !== filters.form
+        ? <FormFilterMissing onReset={() => setFilters((f) => ({ ...f, form: null }))} />
+        : <FormFilterNote form={filters.form} direction={direction} total={ready ? ready.total : null} narrowed={Boolean(filters.source || filters.q.trim().length >= 2 || filters.fresh || filters.badge || photoOnly)} onReset={() => setFilters((f) => ({ ...f, form: null }))} />)}
 
       {state.kind === "loading" && <div className="text-sm text-slate-500">Загружаем каталоги…</div>}
       {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
@@ -367,13 +377,23 @@ export function CatalogView({ direction, initialFilters }: { direction: Assortme
   );
 }
 
+/** Ключ формы в адресе сервер не принял (чужой раздел, устаревшая ссылка): показан весь каталог — говорим об этом, а не «фильтр включён». */
+export function FormFilterMissing({ onReset }: { onReset: () => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <span>Такой формы в этом разделе нет (ссылка устарела или из другого раздела) — показан весь каталог.</span>
+      <button type="button" onClick={onReset} className="inline-flex h-10 items-center rounded-lg border border-amber-300 bg-white px-3 text-xs font-medium text-amber-900 hover:bg-amber-100">Убрать форму</button>
+    </div>
+  );
+}
+
 /** Плашка активного фильтра «Форма» (пришли с экрана «Формы»): что отобрано и как сбросить. */
-export function FormFilterNote({ form, direction, total, onReset }: { form: string; direction: AssortmentDirection; total: number | null; onReset: () => void }) {
+export function FormFilterNote({ form, direction, total, narrowed = false, onReset }: { form: string; direction: AssortmentDirection; total: number | null; narrowed?: boolean; onReset: () => void }) {
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-xl bg-violet-50 px-3 py-2 text-sm text-violet-900">
       <span>
         Форма по названию: <b>{formFilterLabel(form, direction)}</b>
-        {total !== null ? ` — ${total.toLocaleString("ru-RU")} ${plural(total, "модель", "модели", "моделей")}` : ""}.
+        {total !== null ? ` — ${total.toLocaleString("ru-RU")} ${plural(total, "модель", "модели", "моделей")}${narrowed ? " с учётом выбранных фильтров" : ""}` : ""}.
         Форма определена по названию, а не по фото.
       </span>
       <button type="button" onClick={onReset} className="inline-flex h-10 items-center rounded-lg border border-violet-300 bg-white px-3 text-xs font-medium text-violet-900 hover:bg-violet-100">Сбросить форму</button>

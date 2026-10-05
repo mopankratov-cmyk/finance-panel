@@ -5,12 +5,12 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FormFilterNote } from "../components/assortment/CatalogView.tsx";
-import { FormsReportView } from "../components/assortment/FormsView.tsx";
-import { catalogFiltersFrom, FORM_UNRECOGNIZED, formFilterLabel, parseCatalogQuery, parseFormKey, toCatalogCard, type CatalogRow } from "../lib/assortment/catalog.ts";
+import { FormFilterMissing, FormFilterNote } from "../components/assortment/CatalogView.tsx";
+import { FormsReportView, ModelsLink } from "../components/assortment/FormsView.tsx";
+import { catalogFiltersFrom, filtersForForm, FORM_UNRECOGNIZED, formFilterLabel, parseCatalogQuery, parseFormKey, toCatalogCard, type CatalogRow } from "../lib/assortment/catalog.ts";
 import { loadCatalog, resetHeadsFlag } from "../lib/assortment/catalogStore.ts";
 import { buildFormsReport, formOf } from "../lib/assortment/forms.ts";
-import { loadFormModels } from "../lib/assortment/formsStore.ts";
+import { loadFormModels, loadFormsReport } from "../lib/assortment/formsStore.ts";
 
 /** Фильтр «Форма» в каталоге: от строки формы к моделям и фото (05.10). Форма — по названию, как на «Формах». */
 
@@ -46,19 +46,23 @@ test("Карточка: форма по названию — та же, что �
 });
 
 /** Подставная база: вид голов (лёгкая и полная выборка), источники, статусы находок. Фильтры читает так же, как PostgREST. */
-function fakeDb(heads: Array<Record<string, unknown>>) {
+function fakeDb(heads: Array<Record<string, unknown>>, opts: { noView?: boolean; items?: Array<Record<string, unknown>>; stats?: Array<Record<string, unknown>> } = {}) {
   const calls: Array<{ table: string; select: string; filters: string[] }> = [];
   const db = {
     from: (table: string) => {
       const call = { table, select: "", filters: [] as string[] };
       calls.push(call);
       const eqs: Array<[string, unknown]> = [];
+      const preds: Array<(r: Record<string, unknown>) => boolean> = [];
       const sorts: Array<[string, boolean]> = [];
       let ins: [string, unknown[]] | null = null;
       const rows = () => {
         if (table === "assortment_sources") return [{ source_id: "S001", name: "Zara", seed_urls: ["https://zara.example"] }, { source_id: "S002", name: "ASOS", seed_urls: [] }];
-        if (table !== "assortment_catalog_heads") return [];
-        const list = heads.filter((h) => eqs.every(([c, v]) => h[c] === v) && (!ins || ins[1].includes(h[ins[0]])));
+        if (table === "assortment_source_items" && opts.items) return opts.items.filter((h) => eqs.every(([c, v]) => h[c] === v) && preds.every((p) => p(h)));
+        if (table === "assortment_catalog_stats") return opts.stats ?? [];
+        if (table !== "assortment_catalog_heads" || opts.noView) return [];
+        // Фильтры применяются по-настоящему: скрытые, давно не виденные и без фото модели должны выпадать из обоих путей одинаково.
+        const list = heads.filter((h) => eqs.every(([c, v]) => h[c] === v) && preds.every((p) => p(h)) && (!ins || ins[1].includes(h[ins[0]])));
         return list.sort((a, b) => {
           for (const [col, asc] of sorts) {
             const x = String(a[col] ?? "");
@@ -68,17 +72,19 @@ function fakeDb(heads: Array<Record<string, unknown>>) {
           return 0;
         });
       };
+      // Вида голов нет (миграция 202610050002 не применена) — база отвечает так же, как PostgREST.
+      const failure = () => (table === "assortment_catalog_heads" && opts.noView ? { code: "PGRST205", message: "Could not find the table 'public.assortment_catalog_heads' in the schema cache" } : null);
       const q: Record<string, unknown> = {
         select: (columns: string) => { call.select = columns; return q; },
         eq: (c: string, v: unknown) => { call.filters.push(`eq:${c}=${v}`); eqs.push([c, v]); return q; },
-        gte: (c: string) => { call.filters.push(`gte:${c}`); return q; },
-        is: (c: string) => { call.filters.push(`is:${c}`); return q; },
-        not: (c: string) => { call.filters.push(`not:${c}`); return q; },
+        gte: (c: string, v: unknown) => { call.filters.push(`gte:${c}`); preds.push((r) => String(r[c] ?? "") >= String(v)); return q; },
+        is: (c: string, v: unknown) => { call.filters.push(`is:${c}`); preds.push((r) => (r[c] ?? null) === v); return q; },
+        not: (c: string, _op: string, v: unknown) => { call.filters.push(`not:${c}`); preds.push((r) => (r[c] ?? null) !== v); return q; },
         or: () => q,
         in: (c: string, v: unknown[]) => { call.filters.push(`in:${c}`); ins = [c, v]; return q; },
         order: (c: string, o?: { ascending?: boolean }) => { sorts.push([c, o?.ascending !== false]); return q; },
-        range: (from: number, to: number) => Promise.resolve({ data: rows().slice(from, to + 1), error: null, count: rows().length }),
-        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: rows(), error: null, count: rows().length }).then(resolve),
+        range: (from: number, to: number) => Promise.resolve(failure() ? { data: null, error: failure(), count: null } : { data: rows().slice(from, to + 1), error: null, count: rows().length }),
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve(failure() ? { data: null, error: failure(), count: null } : { data: rows(), error: null, count: rows().length }).then(resolve),
       };
       return q;
     },
@@ -92,6 +98,7 @@ const head = (source: string, title: string, over: Record<string, unknown> = {})
   // Свежее — позже в списке заданных; порядок страницы должен идти по дате, а не по источнику.
   model_first_seen_at: `2026-10-01T00:00:${String(10 + (tick += 1) % 50).padStart(2, "0")}Z`,
   first_seen_at: "2026-10-01T00:00:00Z", last_seen_at: "2026-10-05T00:00:00Z", baseline: true, reference_id: null,
+  model_last_seen_at: "2026-10-05T00:00:00Z", model_hidden_at: null,
   image_urls: ["https://img.example/a.jpg"], brand: null, badges: null, variants: 1, ...over,
 });
 const heads = [
@@ -100,7 +107,13 @@ const heads = [
   ...Array.from({ length: 4 }, (_, i) => head("S001", `Puffer jacket ${i}`)),
   head("S002", "Numero Un"),
   head("S002", "Куртка женская"),
+  // Не должны попасть ни в «Формы», ни в каталог: скрыта кнопкой «Не интересно», давно не видна на сайте.
+  head("S001", "Bomber hidden", { model_hidden_at: "2026-10-04T00:00:00Z" }),
+  head("S001", "Bomber gone", { model_last_seen_at: "2026-08-01T00:00:00Z" }),
+  head("S002", "Puffer hidden", { model_hidden_at: "2026-10-03T00:00:00Z" }),
 ];
+/** Модели, которые видит и каталог, и «Формы»: не скрыты и видны на сайте в последние 30 дней. */
+const visible = heads.filter((h) => !h.model_hidden_at && String(h.model_last_seen_at) >= "2026-09-05");
 const base = { direction: "jackets" as const, sourceId: null, search: null, fresh: false, badge: false, photo: "all" as const, offset: 0, limit: 48 };
 
 test("Каталог по форме: в выдаче только модели этой формы, итог — все такие модели, а не только страница; порядок и страница как у каталога", async () => {
@@ -114,7 +127,7 @@ test("Каталог по форме: в выдаче только модели 
   assert.equal(second.cards.length, 3, "вторая страница — остаток");
   const ids = [...first.cards, ...second.cards].map((c) => c.itemId);
   assert.equal(new Set(ids).size, 8, "страницы не пересекаются");
-  const dates = heads.filter((h) => String(h.title).toLowerCase().includes("bomber")).sort((a, b) => String(b.model_first_seen_at).localeCompare(String(a.model_first_seen_at))).map((h) => h.source_item_id);
+  const dates = visible.filter((h) => String(h.title).toLowerCase().includes("bomber")).sort((a, b) => String(b.model_first_seen_at).localeCompare(String(a.model_first_seen_at))).map((h) => h.source_item_id);
   assert.deepEqual(ids, dates, "порядок страниц — свежие первыми, источники перемешаны, а не сгруппированы");
   assert.ok(new Set(first.cards.map((c) => c.sourceId)).size > 1 || new Set(second.cards.map((c) => c.sourceId)).size > 1, "в выдаче оба источника");
   assert.ok(calls.some((c) => c.table === "assortment_catalog_heads" && c.select === "source_id,source_item_id,title"), "список форм — лёгкой выборкой");
@@ -147,7 +160,7 @@ test("Каталог по форме: остальные фильтры рабо
   assert.equal(none.total, 0);
   assert.deepEqual(none.cards, []);
   const plain = await loadCatalog(db, { ...base }, NOW);
-  assert.equal(plain.total, heads.length, "без формы — весь каталог раздела");
+  assert.equal(plain.total, visible.length, "без формы — весь видимый каталог раздела (скрытые и пропавшие не в счёт)");
 });
 
 test("Каталог по форме без вида голов (миграция не применена): понятная ошибка, а не пустая выдача", async () => {
@@ -200,4 +213,93 @@ test("«Формы»: в раскрытой строке и у «Названи�
   assert.match(html, /h-10/, "кнопка не меньше 40 px");
   const bags = renderToStaticMarkup(createElement(FormsReportView, { report: buildFormsReport("bags", Array.from({ length: 3 }, (_, i) => ({ sourceId: "S1", sourceName: "A", title: `Tote bag ${i}` }))), openForms: ["tote"] }));
   assert.match(bags, /href="\/assortment-development\/bags\?view=catalog&amp;form=tote&amp;photo=all"/, "у сумок — свой раздел");
+});
+
+// --- по ревью #1497 ---
+
+test("Адрес: чужой раздел и устаревший ключ формы отбрасываются на серверной странице — экран не скажет «фильтр включён», когда список целый", () => {
+  assert.equal(catalogFiltersFrom({ form: "bomber" }, "bags").form, null, "«bomber» на сумках");
+  assert.equal(catalogFiltersFrom({ form: "bomber" }, "jackets").form, "bomber");
+  assert.equal(catalogFiltersFrom({ form: "retired_rule" }, "jackets").form, null, "ключ, которого больше нет в правилах");
+  assert.equal(catalogFiltersFrom({ form: FORM_UNRECOGNIZED }, "bags").form, FORM_UNRECOGNIZED);
+  assert.deepEqual(filtersForForm("tote"), { source: null, q: "", fresh: false, badge: false, form: "tote", photo: "all" });
+  const pages = ["jackets", "bags"].map((d) => readFileSync(join(root, `app/assortment-development/${d}/page.tsx`), "utf8"));
+  assert.match(pages[0], /catalogFiltersFrom\(params, "jackets"\)/);
+  assert.match(pages[1], /catalogFiltersFrom\(params, "bags"\)/);
+});
+
+test("Сервер называет применённую форму; при ключе, которого раздел не знает, фильтр не применяется и это видно (плашка «такой формы нет»)", async () => {
+  resetHeadsFlag();
+  const { db } = fakeDb(heads);
+  assert.equal((await loadCatalog(db, { ...base, form: "puffer" }, NOW)).form, "puffer");
+  assert.equal((await loadCatalog(db, { ...base }, NOW)).form, null, "без фильтра формы нет");
+  const html = renderToStaticMarkup(createElement(FormFilterMissing, { onReset: () => undefined }));
+  assert.match(html.replace(/<[^>]+>/g, " "), /Такой формы в этом разделе нет .* показан весь каталог/);
+  assert.match(html, /h-10/);
+  const view = readFileSync(join(root, "components/assortment/CatalogView.tsx"), "utf8");
+  assert.match(view, /ready\.form !== filters\.form[\s\S]*FormFilterMissing/, "плашка «фильтр включён» — только когда сервер форму применил");
+});
+
+test("С фильтром формы режим фото «auto» не решается по общей доле фото: число совпадает со строкой формы, где считаются все модели", async () => {
+  resetHeadsFlag();
+  const withoutPhoto = head("S001", "Bomber no photo", { image_urls: null });
+  const { db } = fakeDb([...heads, withoutPhoto], { stats: [{ source_id: "S001", direction: "jackets", models: 100, with_photo: 90, new_7d: 0 }] });
+  const plain = await loadCatalog(db, { ...base, photo: "auto" }, NOW);
+  assert.equal(plain.photo, "with", "без формы «auto» по-прежнему решают счётчики (фото у 90%)");
+  const byForm = await loadCatalog(db, { ...base, photo: "auto", form: "bomber" }, NOW);
+  assert.equal(byForm.photo, "all");
+  assert.equal(byForm.total, visible.filter((h) => String(h.title).toLowerCase().includes("bomber")).length + 1, "и модель без фото в счёте, как на «Формах»");
+});
+
+test("Набор моделей «Форм» и каталога — один код (baseHeadsFilters); без вида голов «Формы» знают об этом и прячут ссылки", async () => {
+  const forms = readFileSync(join(root, "lib/assortment/formsStore.ts"), "utf8");
+  const store = readFileSync(join(root, "lib/assortment/catalogStore.ts"), "utf8");
+  assert.match(forms, /baseHeadsFilters\(db\.from\("assortment_catalog_heads"\)/);
+  assert.match(store, /baseHeadsFilters\(builder, query\.direction, nowMs\)/);
+  const { db } = fakeDb(heads);
+  const report = await loadFormsReport(db, "jackets", NOW);
+  assert.equal(report.viaHeads, true);
+  assert.equal(report.models, visible.length, "скрытые и пропавшие в «Формы» не попадают");
+  const fallback = fakeDb(heads, { noView: true, items: [
+    { source_id: "S001", source_item_id: "1", direction: "jackets", title: "Bomber jacket", last_seen_at: "2026-10-05T00:00:00Z" },
+    { source_id: "S002", source_item_id: "2", direction: "jackets", title: "Puffer jacket", last_seen_at: "2026-10-05T00:00:00Z" },
+  ] });
+  const noView = await loadFormsReport(fallback.db, "jackets", NOW);
+  assert.equal(noView.viaHeads, false);
+  assert.equal(noView.models, 2, "строки таблицы, как раньше");
+  const html = renderToStaticMarkup(createElement(FormsReportView, { report: noView, openForms: ["bomber"], unrecognizedOpen: true }));
+  assert.doesNotMatch(html, /Показать модели/, "фильтр без вида голов не работает — ссылку прячем, а не ведём в тупик");
+  const withView = renderToStaticMarkup(createElement(FormsReportView, { report: { ...report, viaHeads: true }, openForms: ["bomber"] }));
+  assert.match(withView, /Показать модели/);
+});
+
+test("«Показать модели»: внутри раздела — кнопка с обратным вызовом (повторный переход к той же форме работает), отдельно — ссылка с адресом", () => {
+  const calls: string[] = [];
+  const button = renderToStaticMarkup(createElement(ModelsLink, { direction: "jackets", form: "bomber", count: 8, onShow: (f: string) => calls.push(f) }));
+  assert.match(button, /^<button type="button"/);
+  assert.doesNotMatch(button, /href=/);
+  const link = renderToStaticMarkup(createElement(ModelsLink, { direction: "jackets", form: "bomber", count: 8 }));
+  assert.match(link, /^<a /);
+  assert.match(link, /view=catalog&amp;form=bomber&amp;photo=all/);
+  const section = readFileSync(join(root, "components/assortment/AssortmentSection.tsx"), "utf8");
+  assert.match(section, /const showModels = \(form: string\) => \{[\s\S]*setCatalogFilters\(filtersForForm\(form\)\);[\s\S]*setCatalogKey\(\(k\) => k \+ 1\);[\s\S]*setView\("catalog"\);/);
+  assert.match(section, /<CatalogView key=\{catalogKey\} direction=\{direction\} initialFilters=\{catalogFilters\} onFiltersChange=\{setCatalogFilters\}/);
+  assert.match(section, /<FormsView direction=\{direction\} onShowModels=\{showModels\}/);
+  const view = readFileSync(join(root, "components/assortment/CatalogView.tsx"), "utf8");
+  assert.match(view, /onFiltersChange\?\.\(filters\)/, "каталог сообщает разделу текущие фильтры — возврат на вкладку не воскрешает сброшенную форму");
+});
+
+test("Плашка: число — «с учётом выбранных фильтров», когда включены бренд/поиск/новое/метка/«только с фото»; чипы брендов в режиме формы без общих счётчиков", () => {
+  const plain = renderToStaticMarkup(createElement(FormFilterNote, { form: "bomber", direction: "jackets", total: 8, onReset: () => undefined }));
+  assert.doesNotMatch(plain, /с учётом выбранных фильтров/);
+  const narrowed = renderToStaticMarkup(createElement(FormFilterNote, { form: "bomber", direction: "jackets", total: 3, narrowed: true, onReset: () => undefined }));
+  assert.match(narrowed.replace(/<[^>]+>/g, " ").replace(/\s+/g, " "), /Бомбер — 3 модели с учётом выбранных фильтров/);
+  const view = readFileSync(join(root, "components/assortment/CatalogView.tsx"), "utf8");
+  assert.match(view, /\{!byForm && ` · \$\{shown\(b\)\.toLocaleString\("ru-RU"\)\}`\}/);
+  assert.match(view, /const hiddenWithoutPhoto = !byForm && photoOnly/);
+});
+
+test("Роут каталога: время до минуты — фильтр по форме читает все модели раздела, как «Формы»", () => {
+  const route = readFileSync(join(root, "app/api/assortment-development/catalog/route.ts"), "utf8");
+  assert.match(route, /export const maxDuration = 60/);
 });
