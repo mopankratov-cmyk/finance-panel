@@ -213,22 +213,21 @@ export function recognizeLoanDocumentSchedule(text: string): RecognizedScheduleR
  * Берём только явно напечатанные суммы, ничего не достраиваем.
  */
 export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] {
-  // В выгрузке JetLend нет номера строки: после даты идут 8 сумм — общий
+  // Стратегия A: таблица без номера строки. После даты идут 8 сумм — общий
   // платёж, тело, начисленные проценты, пени, штрафы, погашаемые проценты,
-  // НДФЛ и остаток тела. НДФЛ входит в фактический платёж, поэтому для
-  // денежного графика процентная часть равна всему платежу за вычетом тела,
-  // пеней и штрафов. Так сумма строки остаётся ровно как в исходном PDF.
-  const jetLendRows: RecognizedScheduleRow[] = [];
-  const jetLendPattern = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})([\s\S]*?)(?=\d{1,2}[./-]\d{1,2}[./-]\d{4}|$)/g;
+  // налог и остаток тела. Название кредитора намеренно не проверяем: формат
+  // документа важнее бренда, а новый кредитор может прислать такую же таблицу.
+  const unnumberedEightColumnRows: RecognizedScheduleRow[] = [];
+  const unnumberedEightColumnPattern = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})([\s\S]*?)(?=\d{1,2}[./-]\d{1,2}[./-]\d{4}|$)/g;
   const decimalAmountPattern = /\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{2}/g;
-  for (const match of text.matchAll(jetLendPattern)) {
+  for (const match of text.matchAll(unnumberedEightColumnPattern)) {
     const amounts = [...match[2].matchAll(decimalAmountPattern)].map((item) => normalizeAmount(item[0]));
     if (amounts.length < 8) continue;
     const [total, principal, , penalty, fine, , , balanceAfter] = amounts;
     const interest = total - principal - penalty - fine;
     const date = isoDate(match[1], new Date().getFullYear());
     if (!date || total <= 0 || principal < 0 || interest < 0 || penalty < 0 || fine < 0 || balanceAfter < 0) continue;
-    jetLendRows.push({
+    unnumberedEightColumnRows.push({
       date,
       principal,
       interest,
@@ -239,16 +238,23 @@ export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] 
       balanceAfter,
     });
   }
-  if (jetLendRows.length >= 3) return aggregateRecognizedSchedule(jetLendRows);
 
+  // Стратегия B: нумерованная строка и 5 денежных колонок.
   const rows: RecognizedScheduleRow[] = [];
   const rowPattern = /(\d{1,4})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{4})([\s\S]*?)(?=(?:\d{1,4}\s+\d{1,2}[./-]\d{1,2}[./-]\d{4})|$)/g;
   // Сначала дробные суммы: это не даёт комиссии «0» склеиться с остатком
   // без разделителя тысяч (`0 2170294.16`). Затем — отдельные целые нули.
   const amountPattern = /\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{1,2}|(?<![\d.,])\d+(?![\d.,])/g;
+  const fiveColumnPattern = /^\s*(\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{1,2})\s+(\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{1,2})\s+(\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{1,2})\s+(\d+(?:[.,]\d{1,2})?)\s+(\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{1,2}|0)(?:\s|$)/;
   const year = new Date().getFullYear();
   for (const match of text.matchAll(rowPattern)) {
-    const amounts = [...match[3].matchAll(amountPattern)].map((item) => normalizeAmount(item[0]));
+    // Нулевую комиссию и следующий остаток PDF часто печатает как
+    // `0 796 305.23`. Общий поиск сумм склеивал это в одно число. Сначала
+    // пробуем точную пятиколоночную форму, затем прежний общий разбор.
+    const columns = match[3].match(fiveColumnPattern);
+    const amounts = columns
+      ? columns.slice(1, 6).map(normalizeAmount)
+      : [...match[3].matchAll(amountPattern)].map((item) => normalizeAmount(item[0]));
     // Платёж, тело, проценты, комиссия, остаток после оплаты.
     if (amounts.length < 5) continue;
     const [total, principal, interest, commission, balanceAfter] = amounts;
@@ -265,7 +271,14 @@ export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] 
       balanceAfter,
     });
   }
-  return aggregateRecognizedSchedule(rows);
+  // Обе стратегии запускаются всегда. Ошибочное частичное совпадение одной
+  // формы не должно перекрывать полный результат другой: выбираем график с
+  // наибольшим количеством прошедших арифметическую проверку строк.
+  const candidates = [
+    aggregateRecognizedSchedule(unnumberedEightColumnRows),
+    aggregateRecognizedSchedule(rows),
+  ].filter((candidate) => candidate.length > 0);
+  return candidates.sort((left, right) => right.length - left.length)[0] ?? [];
 }
 
 /** Exact local parser for bank schedules with Date / operation type / amount columns. */
