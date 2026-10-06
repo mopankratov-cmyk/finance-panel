@@ -24,7 +24,7 @@ export interface LoanUpload {
 export interface LoanRecognitionDeps {
   /** ИИ-распознаватель; undefined — ИИ недоступен, работают только регулярки. */
   ai?: (body: AiRecognitionBody) => Promise<Partial<RecognizedLoan>>;
-  rate: (currency: LoanCurrency) => Promise<{ rate: number; date: string }>;
+  rate: (currency: LoanCurrency, date?: string) => Promise<{ rate: number; date: string }>;
   companies: Array<{ id: string; name: string }>;
   accounts: Array<{ id: string; name: string }>;
 }
@@ -57,13 +57,49 @@ function companyMatchesHint(companyName: string, hint: string) {
   return company.includes(recognized) || recognized.includes(company);
 }
 
-async function safeRate(deps: LoanRecognitionDeps, currency: LoanCurrency, fallback: number) {
+async function safeRate(deps: LoanRecognitionDeps, currency: LoanCurrency, fallback: number, date?: string) {
   if (currency === "RUB") return { rate: 1, date: "" };
   try {
-    return await deps.rate(currency);
+    return await deps.rate(currency, date);
   } catch {
     return { rate: fallback, date: "" };
   }
+}
+
+async function applyDatedRates(
+  rows: LoanScheduleDraft[],
+  currency: LoanCurrency,
+  baseRate: number,
+  deps: LoanRecognitionDeps,
+) {
+  if (currency === "RUB") return rows;
+  const today = new Date().toISOString().slice(0, 10);
+  const rateKey = (date: string) => date <= today ? date : "";
+  const rateByKey = new Map<string, number>();
+  await Promise.all([...new Set(rows.map((row) => rateKey(row.date)).filter(Boolean))].map(async (date) => {
+    rateByKey.set(date, (await safeRate(deps, currency, baseRate, date)).rate);
+  }));
+  const original = (rub: number | undefined, saved: number | undefined) => Number.isFinite(saved) ? Number(saved) : Number(rub ?? 0) / baseRate;
+  return rows.map((row) => {
+    const rate = rateByKey.get(rateKey(row.date)) ?? baseRate;
+    const principalOriginal = original(row.principal, row.principalOriginal);
+    const interestOriginal = original(row.interest, row.interestOriginal);
+    const penaltyOriginal = original(row.penalty, row.penaltyOriginal);
+    const fineOriginal = original(row.fine, row.fineOriginal);
+    return normalizeScheduleMoney({
+      ...row,
+      principal: principalOriginal * rate,
+      interest: interestOriginal * rate,
+      penalty: penaltyOriginal * rate,
+      fine: fineOriginal * rate,
+      principalOriginal,
+      interestOriginal,
+      penaltyOriginal,
+      fineOriginal,
+      balanceBefore: Number.isFinite(row.balanceBefore) ? Number(row.balanceBefore) / baseRate * rate : undefined,
+      balanceAfter: Number.isFinite(row.balanceAfter) ? Number(row.balanceAfter) / baseRate * rate : undefined,
+    });
+  });
 }
 
 export async function recognizeLoanDocument(
@@ -155,7 +191,8 @@ export async function recognizeLoanDocument(
   const { rate, date: rateDate } = await safeRate(deps, recognized.currency, 1);
   const exactSchedule = recognizedSchedule(recognized.schedule, rate);
   const baseSchedule = exactSchedule.length ? exactSchedule : monthlySchedule(recognized, rate);
-  const localCorrection = applyLoanScheduleCorrections(baseSchedule, input.description, scheduleRow);
+  const datedSchedule = await applyDatedRates(baseSchedule, recognized.currency, rate, deps);
+  const localCorrection = applyLoanScheduleCorrections(datedSchedule, input.description, scheduleRow);
   const recognitionActions = recognized.warnings.filter((warning) => warning.startsWith("Срок продлён по уточнению пользователя"));
   const correctedDueDate = localCorrection.schedule.at(-1)?.date ?? recognized.dueDate;
   const company = deps.companies.find((item) => recognized.companyHint && companyMatchesHint(item.name, recognized.companyHint));

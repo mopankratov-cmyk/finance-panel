@@ -75,9 +75,9 @@ export function aggregateRecognizedSchedule(rows: RecognizedScheduleRow[] | unde
 }
 
 const currencyByText: Array<[RegExp, LoanCurrency]> = [
-  [/(?:\b(?:usd|доллар(?:а|ов|ы)?)\b|\$)/i, "USD"],
-  [/(?:\b(?:eur|евро)\b|€)/i, "EUR"],
-  [/(?:\b(?:cny|юан(?:ь|я|ей|и)?)\b|¥)/i, "CNY"],
+  [/(?:usd|доллар(?:а|ов|ы)?|\$)/i, "USD"],
+  [/(?:eur|евро|€)/i, "EUR"],
+  [/(?:cny|юан(?:ь|я|ей|и)?|¥)/i, "CNY"],
 ];
 
 const MONTHS: Record<string, number> = {
@@ -213,6 +213,18 @@ export function recognizeLoanDocumentSchedule(text: string): RecognizedScheduleR
  * Берём только явно напечатанные суммы, ничего не достраиваем.
  */
 export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] {
+  // Некоторые PDF склеивают конец одной команды Tj с номером следующей строки:
+  // `...2170294.162 17.03.2026`. Единый шаблон умеет отступить от последней
+  // суммы до следующего `№ дата`, не теряя первую строку графика.
+  const directFiveColumnRows: RecognizedScheduleRow[] = [];
+  const money = String.raw`\d+(?:[\s\u00a0\u202f]\d{3})*(?:[.,]\d{1,2})?`;
+  const directPattern = new RegExp(`(\\d{1,4})\\s+(\\d{1,2}[./-]\\d{1,2}[./-]\\d{4})\\s+(${money})\\s+(${money})\\s+(${money})\\s+(\\d+(?:[.,]\\d{1,2})?)\\s+(${money})(?=\\d{1,4}\\s+\\d{1,2}[./-]\\d{1,2}[./-]\\d{4}|$)`, "g");
+  for (const match of text.matchAll(directPattern)) {
+    const [total, principal, interest, commission, balanceAfter] = match.slice(3, 8).map((value) => normalizeAmount(value));
+    const date = isoDate(match[2], new Date().getFullYear());
+    if (!date || Math.abs(total - principal - interest - commission) > Math.max(2, total * 0.02)) continue;
+    directFiveColumnRows.push({ date, principal, interest, penalty: 0, fine: 0, balanceBefore: balanceAfter + principal, balanceAfter });
+  }
   // Стратегия A: таблица без номера строки. После даты идут 8 сумм — общий
   // платёж, тело, начисленные проценты, пени, штрафы, погашаемые проценты,
   // налог и остаток тела. Название кредитора намеренно не проверяем: формат
@@ -280,10 +292,98 @@ export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] 
   // формы не должно перекрывать полный результат другой: выбираем график с
   // наибольшим количеством прошедших арифметическую проверку строк.
   const candidates = [
+    aggregateRecognizedSchedule(directFiveColumnRows),
     aggregateRecognizedSchedule(unnumberedEightColumnRows),
     aggregateRecognizedSchedule(rows),
   ].filter((candidate) => candidate.length > 0);
   return candidates.sort((left, right) => right.length - left.length)[0] ?? [];
+}
+
+/** DOCX нередко разрывает дату на отдельные runs: `2 5 .0 9 .202 5`. */
+function compactDocumentDates(text: string) {
+  return text.replace(
+    /(\d{1,2})\s*[.\-/]\s*(\d(?:\s*\d)?)\s*[.\-/]\s*(\d{4})/g,
+    (_, day: string, month: string, year: string) => `${day.replace(/\s/g, "")}.${month.replace(/\s/g, "")}.${year.replace(/\s/g, "")}`,
+  );
+}
+
+function contractPeriod(text: string) {
+  const range = text.match(/срок\s+займа\s+по\s+договору\s*:\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4})\s*[–—-]\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4})/i);
+  if (range) return { startDate: isoDate(range[1], 2000), dueDate: isoDate(range[2], 2000) };
+  const signed = text.match(/(?:договор[^.!?\n]{0,80}|г\.\s*[А-ЯЁA-Z][^\n]{0,50})\s+(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4})\s*г/i);
+  const due = text.match(/(?:возвращает[^.!?]{0,100}|срок[^.!?]{0,80}|не\s+позднее[^.!?]{0,40})\s*(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{4})/i);
+  const russianDue = text.match(/не\s+позднее[^.!?]{0,30}?["«]?\s*((?:\d\s*){1,2})\s*["»]?\s+(январ[ья]?|феврал[ья]?|март[ае]?|апрел[ья]?|ма[йя]|июн[ья]?|июл[ья]?|август[ае]?|сентябр[ья]?|октябр[ья]?|ноябр[ья]?|декабр[ья]?)\s+((?:\d\s*){4})/i);
+  const russianDueMonth = russianDue ? monthNumber(russianDue[2]) : 0;
+  const russianDueDate = russianDueMonth
+    ? `${russianDue![3].replace(/\s/g, "")}-${String(russianDueMonth).padStart(2, "0")}-${russianDue![1].replace(/\s/g, "").padStart(2, "0")}`
+    : "";
+  return {
+    startDate: isoDate(signed?.[1] ?? "", 2000),
+    dueDate: isoDate(due?.[1] ?? "", 2000) || russianDueDate,
+  };
+}
+
+function monthNumber(name: string) {
+  return Object.entries(MONTHS).find(([stem]) => name.toLowerCase().startsWith(stem))?.[1] ?? 0;
+}
+
+/** Помесячная таблица Word: год печатается отдельной строкой, а дата выводится из месяца. */
+function recognizeMonthlyWordSchedule(text: string, principal: number, dueDate: string): RecognizedScheduleRow[] {
+  if (!(principal > 0)) return [];
+  const tableStart = text.search(/(?:период\s+начисления\s+процентов|сумма\s+займа\s+на\s+дату\s+выдачи)/i);
+  if (tableStart < 0) return [];
+  const table = text.slice(tableStart);
+  const rowPattern = /(январ[ья]?|феврал[ья]?|март|апрел[ья]?|ма[йя]|июн[ья]?|июл[ья]?|август|сентябр[ья]?|октябр[ья]?|ноябр[ья]?|декабр[ья]?)\s+(\d{1,2})\s+(\d[\d\s\u00a0\u202f]*[.,]\d{2})\s+(\d[\d\s\u00a0\u202f]*[.,]\d{2})\s+по\s+курсу/gi;
+  const rows: RecognizedScheduleRow[] = [];
+  for (const match of table.matchAll(rowPattern)) {
+    const preceding = table.slice(0, match.index ?? 0);
+    const years = [...preceding.matchAll(/(20\d{2})\s*\(\s*\d+\s+дн/gi)];
+    const year = Number(years.at(-1)?.[1]);
+    const month = monthNumber(match[1]);
+    if (!year || !month) continue;
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    let date = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+    if (dueDate && date > dueDate && dueDate.slice(0, 7) === date.slice(0, 7)) date = dueDate;
+    const interest = spreadsheetAmount(match[4]);
+    if (!(interest > 0)) continue;
+    rows.push({
+      date,
+      principal: dueDate && date === dueDate ? principal : 0,
+      interest,
+      penalty: 0,
+      fine: 0,
+      balanceBefore: principal,
+      balanceAfter: dueDate && date === dueDate ? 0 : principal,
+    });
+  }
+  return aggregateRecognizedSchedule(rows);
+}
+
+function fixedMonthlyDocumentSchedule(text: string, principal: number, startDate: string, dueDate: string) {
+  const fixed = text.match(/размер\s+процентов[^.!?]{0,100}ежемесячн[^.!?]{0,100}составляет\s+(\d[\d\s\u00a0\u202f]*(?:[.,]\d+)?)/i);
+  if (!fixed || !startDate || !dueDate || !(principal > 0)) return [];
+  const interest = spreadsheetAmount(fixed[1]);
+  if (!(interest > 0)) return [];
+  const rows: RecognizedScheduleRow[] = [];
+  const due = new Date(`${dueDate}T12:00:00Z`);
+  let cursor = new Date(`${startDate}T12:00:00Z`);
+  while (cursor < due && rows.length < 240) {
+    const day = cursor.getUTCDate();
+    const next = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth() + 1, 1, 12));
+    next.setUTCDate(Math.min(day, new Date(Date.UTC(next.getUTCFullYear(), next.getUTCMonth() + 1, 0)).getUTCDate()));
+    if (next > due) next.setTime(due.getTime());
+    rows.push({
+      date: next.toISOString().slice(0, 10),
+      principal: next.getTime() === due.getTime() ? principal : 0,
+      interest,
+      penalty: 0,
+      fine: 0,
+      balanceBefore: principal,
+      balanceAfter: next.getTime() === due.getTime() ? 0 : principal,
+    });
+    cursor = next;
+  }
+  return aggregateRecognizedSchedule(rows);
 }
 
 /** Exact local parser for bank schedules with Date / operation type / amount columns. */
@@ -485,31 +585,39 @@ export function recognizeLoanSpreadsheet(grid: string[][]): Partial<RecognizedLo
 }
 
 export function recognizeLoanText(text: string): RecognizedLoan {
-  const clean = text.replace(/\s+/g, " ").trim();
+  const clean = compactDocumentDates(text).replace(/\s+/g, " ").trim();
   const capitalized = recognizeQuarterlyCapitalizedLoan(clean);
   if (capitalized) return capitalized;
   const now = new Date();
   const year = now.getFullYear();
   const currency = currencyByText.find(([pattern]) => pattern.test(clean))?.[1] ?? "RUB";
-  const amountMatch = clean.match(/(\d[\d\s]*(?:[.,]\d+)?)\s*(млн|миллион(?:а|ов)?|тыс(?:яч[аи]?)?)?\s*(?:₽|руб(?:лей|ля)?|р\.|usd|доллар(?:а|ов|ы)?|\$|eur|евро|€|cny|юан(?:ь|я|ей|и)?|¥)/i);
-  const rateMatch = clean.match(/(?:под|ставк[ае]?)?\s*(\d+(?:[.,]\d+)?)\s*%\s*(?:годовых|в\s*год)?/i);
+  const amountMatch = clean.match(/(?:в\s+размере\s+)?(\d[\d\s]*(?:[.,]\d+)?)\s*(?:\([^)]{0,100}\)\s*)?(млн|миллион(?:а|ов)?|тыс(?:яч[аи]?)?)?\s*(?:₽|rub|руб(?:лей|ля)?|р\.|usd|доллар(?:а|ов|ы)?|\$|eur|евро|€|cny|юан(?:ь|я|ей|и)?|¥)/i);
+  const rateMatch = clean.match(/(?:под|ставк[ае]?|составляет)?[^\d%]{0,30}(\d+(?:[.,]\d+)?)\s*(?:%|процент(?:а|ов)?)\s*(?:годовых|в\s*год)?/i);
   const monthlyRateMatch = clean.match(/(\d+(?:[.,]\d+)?)\s*%[^.!?]{0,50}(?:в\s+месяц|ежемесяч)/i);
   const paymentDaysMatch = clean.match(/(?:оплат[аы]|платеж[иа]?)[^.!?]{0,30}?(\d{1,2})\s*(?:-?го)?\s+и\s+(\d{1,2})\s*(?:числа|число)?/i);
-  const startMatch = clean.match(/(?:от|получен\w*|выдан\w*|займ[^,;]*[,;]?)\s*(\d{1,2}[.\-/]\d{1,2}(?:[.\-/]\d{2,4})?)/i);
+  const period = contractPeriod(clean);
+  const startMatch = clean.match(/(?:от|получен\w*|предостав[^.!?]{0,40}|займ[^,;]*[,;]?)\s*(\d{1,2}[.\-/]\d{1,2}(?:[.\-/]\d{2,4})?)/i);
   const dueMatch = clean.match(/(?:тела|возврат\w*|погашен\w*|до)\s*(\d{1,2}[.\-/]\d{1,2}(?:[.\-/]\d{2,4})?)/i);
   const nameMatch = clean.match(/(?:займ|кредит)\s+([^,;]+?)(?=\s+\d{1,2}[.\-/]|\s+\d[\d\s]*(?:[.,]\d+)?\s*(?:тыс|млн|руб|доллар|usd|eur)|[,;]|$)/i);
+  const lenderMatch = clean.match(/(?:заимодавец|гражданин\s+рф)[,:]?\s*([А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+)/i);
   const disbursements = recognizeDisbursements(clean);
-  const startDate = disbursements[0]?.date || isoDate(startMatch?.[1] ?? "", year);
-  const documentSchedule = recognizeLoanDocumentSchedule(clean);
-  let dueDate = isoDate(dueMatch?.[1] ?? "", startDate ? Number(startDate.slice(0, 4)) : year)
+  const startDate = period.startDate || disbursements[0]?.date || isoDate(startMatch?.[1] ?? "", year);
+  let dueDate = period.dueDate || isoDate(dueMatch?.[1] ?? "", startDate ? Number(startDate.slice(0, 4)) : year)
     || monthEndFromText(clean)
-    || documentSchedule.at(-1)?.date
     || "";
+  const principalAmount = disbursements.length > 1
+    ? disbursements.reduce((sum, item) => sum + item.amount, 0)
+    : amountMatch ? normalizeAmount(amountMatch[1], amountMatch[2]) : 0;
+  const documentSchedule = recognizeLoanDocumentSchedule(clean);
+  const monthlyWordSchedule = recognizeMonthlyWordSchedule(clean, principalAmount, dueDate);
+  const fixedDocumentSchedule = monthlyWordSchedule.length ? [] : fixedMonthlyDocumentSchedule(clean, principalAmount, startDate, dueDate);
+  const explicitSchedule = documentSchedule.length ? documentSchedule : monthlyWordSchedule.length ? monthlyWordSchedule : fixedDocumentSchedule;
+  if (!dueDate) dueDate = explicitSchedule.at(-1)?.date ?? "";
   if (startDate && dueDate && dueDate < startDate && !/\d{4}/.test(dueMatch?.[1] ?? "")) {
     dueDate = `${Number(dueDate.slice(0, 4)) + 1}${dueDate.slice(4)}`;
   }
   const warnings: string[] = [];
-  if (!nameMatch?.[1]) warnings.push("Не удалось уверенно определить кредитора");
+  if (!nameMatch?.[1] && !lenderMatch?.[1]) warnings.push("Не удалось уверенно определить кредитора");
   if (!amountMatch) warnings.push("Не удалось определить сумму займа");
   if (!rateMatch) warnings.push("Не удалось определить процентную ставку");
   if (!startDate) warnings.push("Не удалось определить дату получения");
@@ -525,12 +633,10 @@ export function recognizeLoanText(text: string): RecognizedLoan {
 
   return {
     contractNumber: "",
-    creditorName: nameMatch?.[1]?.trim() ?? "",
+    creditorName: lenderMatch?.[1]?.trim() ?? nameMatch?.[1]?.trim() ?? "",
     companyHint: "",
     accountHint: "",
-    principalAmount: disbursements.length > 1
-      ? disbursements.reduce((sum, item) => sum + item.amount, 0)
-      : amountMatch ? normalizeAmount(amountMatch[1], amountMatch[2]) : 0,
+    principalAmount,
     currency,
     annualRate: monthlyRate > 0 ? monthlyRate * 12 : rateMatch ? Number(rateMatch[1].replace(",", ".")) : 0,
     originationFee: 0,
@@ -539,7 +645,7 @@ export function recognizeLoanText(text: string): RecognizedLoan {
     dueDate,
     interestFrequency: splitSchedule.length
       ? "semi_monthly"
-      : documentSchedule.length || /процент[а-яёa-z]*[^.!?]{0,80}ежемесяч/i.test(clean)
+      : explicitSchedule.length || /процент[а-яёa-z]*[^.!?]{0,80}ежемесяч/i.test(clean)
       ? "monthly"
       : /процент[а-яёa-z]*[^.!?]{0,80}(?:в\s+конце|при\s+погашении)/i.test(clean)
         ? "at_maturity"
@@ -549,7 +655,7 @@ export function recognizeLoanText(text: string): RecognizedLoan {
     monthlyRate: monthlyRate || undefined,
     disbursements: disbursements.length ? disbursements : undefined,
     paymentDays,
-    schedule: documentSchedule.length ? documentSchedule : splitSchedule.length ? splitSchedule : undefined,
+    schedule: explicitSchedule.length ? explicitSchedule : splitSchedule.length ? splitSchedule : undefined,
   };
 }
 

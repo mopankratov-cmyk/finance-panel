@@ -32,8 +32,8 @@ async function buildDeps(): Promise<LoanRecognitionDeps> {
     : [{ data: [], error: null }, { data: [], error: null }];
   return {
     ai: aiConfigured() ? (body) => recognizeLoanWithAi(body) as Promise<Partial<RecognizedLoan>> : undefined,
-    rate: async (currency) => {
-      const result = await fetchCbrRate(currency);
+    rate: async (currency, date) => {
+      const result = await fetchCbrRate(currency, date);
       return { rate: result.rate, date: result.date };
     },
     companies: (companies.data ?? []).map((row) => ({ id: String(row.id), name: String(row.name) })),
