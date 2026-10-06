@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AVERAGE_MIN_COVERAGE, MIN_SOURCE_VISIBLE } from "../lib/assortment/catalogAi.ts";
 import { ACCURACY_EARLY_MIN, ACCURACY_LOWER_MIN, ACCURACY_MIN_JUDGED, ACCURACY_UNCLEAR_MAX } from "../lib/assortment/attributeVerdicts.ts";
 import { FAILED_MIN_ATTEMPTS, FAILED_SHARE_PROBLEM } from "../lib/assortment/dataReadiness.ts";
+import { catalogRunStatus } from "../lib/assortment/catalogAiStore.ts";
 
 /**
  * Раздел 14 docs/assortment-development-integration.md описывает поведение, которое меняется константами и условиями в коде.
@@ -37,9 +38,18 @@ test("Docs §14, пороги: переключающие и прячущие д
 
 test("Docs §14, «Сторож в Telegram»: статусы крона разбора по фото описаны так, как их ставит роут; порог 20% — только у полоски", () => {
   const route = read("app/api/sync/assortment-catalog-ai/route.ts");
-  // Что делает роут (иначе правка роута молча разведёт его с докой).
-  assert.match(route, /const hardStop = summary\.stoppedBy === "auth" \|\| summary\.stoppedBy === "billing" \|\| summary\.stoppedBy === "config" \|\| summary\.stoppedBy === "errors" \|\| \(rateLimited && summary\.done === 0\);/);
-  assert.match(route, /\(summary\.done === 0 && summary\.failed \+ summary\.transient > 0\) \? "error" : summary\.failed > 0 \|\| summary\.stoppedBy === "time" \|\| rateLimited \|\| summary\.deadSources\.length > 0 \? "partial" : "ok"/);
+  // Что делает роут (иначе правка роута молча разведёт его с докой): статус — catalogRunStatus, проверяем его поведение.
+  assert.match(route, /const status = catalogRunStatus\(summary\);/);
+  const run = (over: Partial<Parameters<typeof catalogRunStatus>[0]>) => catalogRunStatus({ stoppedBy: null, done: 0, failed: 0, transient: 0, repeatFailures: 0, deadSources: [], ...over });
+  for (const stop of ["auth", "billing", "config", "errors"] as const) assert.equal(run({ stoppedBy: stop, done: 3 }), "error", `${stop} — error`);
+  assert.equal(run({ stoppedBy: "rate_limit" }), "error");
+  assert.equal(run({ stoppedBy: "rate_limit", done: 3 }), "partial");
+  assert.equal(run({ failed: 2 }), "error", "done=0 и неудачи у моделей, которые до этого не падали");
+  assert.equal(run({ failed: 1, transient: 1, repeatFailures: 2 }), "partial", "done=0, но не вышло только у моделей, чья прошлая попытка тоже кончилась ошибкой");
+  assert.equal(run({ done: 3, failed: 1 }), "partial");
+  assert.equal(run({ done: 3, stoppedBy: "time" }), "partial");
+  assert.equal(run({ done: 3, deadSources: ["S1"] }), "partial");
+  assert.equal(run({ done: 3, stoppedBy: "budget" }), "ok");
   assert.match(route, /summary\.candidates === 0\) \{\n\s+return NextResponse\.json/, "пустая очередь и нулевой остаток — ответ без строки в sync_log");
   assert.doesNotMatch(route, /FAILED_SHARE_PROBLEM/, "доли 20% в роуте нет");
   const watch = read("lib/assortment/jobsWatch.ts");
@@ -50,6 +60,8 @@ test("Docs §14, «Сторож в Telegram»: статусы крона раз�
   assert.match(section, /3 последних прогона подряд со статусом `error`/);
   assert.match(section, /остановка по лимиту запросов \(`rate_limit`\) — только если за прогон не разобрано ни одной модели/);
   assert.match(section, /`partial` — что-то разобрано, но была неудача \(`failed>0`: хоть одна из 120\)/);
+  assert.match(section, /при `done=0` и неудачах или временных сбоях у моделей, которые до этого не падали/);
+  assert.match(section, /не вышло только у моделей, чья прошлая попытка тоже кончилась ошибкой \(`repeatFailures`/);
   assert.match(section, /`ok` — остальное, в том числе остановка по бюджету недели или потолку суток/);
   assert.match(section, /строки в `sync_log` не пишет вовсе/);
   assert.match(section, /Порог «неудач ≥20%» на статус крона не влияет: он относится только к красной строке полоски «На чём стоят цифры» \(`FAILED_SHARE_PROBLEM` в\s*`dataReadiness\.ts`\)/);

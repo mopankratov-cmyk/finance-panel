@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { catalogAiConfig, PROVIDER_KEY_NAME, PROVIDER_LABEL, stopTag } from "@/lib/assortment/catalogAi";
-import { aiKeyConfigured, askFor, runCatalogAi, runStopReason } from "@/lib/assortment/catalogAiStore";
+import { aiKeyConfigured, askFor, catalogRunStatus, runCatalogAi, runStopReason } from "@/lib/assortment/catalogAiStore";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -60,10 +60,6 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ ok: true, dryRun, keyConfigured, config: { provider: config.provider, model: config.model, weeklyBudgetUsd: config.weeklyBudgetUsd, dailyLimit: config.dailyLimit, enabled: config.enabled, priced: Boolean(config.price) }, ...summary });
     }
 
-    // Лимит запросов при уже разобранных моделях — это «медленнее», а не «сломалось» (низкий тариф Anthropic упирается в
-    // токены в минуту): прогон «partial» и три таких подряд тревогу не дают. Без единой разобранной — «error».
-    const rateLimited = summary.stoppedBy === "rate_limit";
-    const hardStop = summary.stoppedBy === "auth" || summary.stoppedBy === "billing" || summary.stoppedBy === "config" || summary.stoppedBy === "errors" || (rateLimited && summary.done === 0);
     // Провайдер выбран по ключу (Polza раньше Anthropic), а остановился по ключу/деньгам, и ключ другого провайдера
     // тоже есть: подсказываем явный выбор, чтобы владелец не искал причину.
     const otherProvider = config.provider === "polza" ? "anthropic" : "polza";
@@ -74,14 +70,15 @@ export async function GET(request: NextRequest) {
       summary.stopMessage,
       switchHint,
       summary.failed > 0 ? `не разобрано: ${summary.failed}` : null,
-      summary.transient > 0 ? `временных сбоев (перегрузка, сеть): ${summary.transient}` : null,
-      summary.penalized > 0 ? `из неразобранных — таймаут ИИ при живом провайдере (попытка засчитана, модель отложена на сутки): ${summary.penalized}` : null,
+      summary.transient > 0 ? `временных сбоев (перегрузка, сеть, таймаут; попытки не потрачены): ${summary.transient}` : null,
+      summary.deferred > 0 ? `из них отложено на сутки (таймаут ИИ или второй сбой провайдера подряд у той же модели): ${summary.deferred}` : null,
       summary.deadSources.length > 0 ? `фото не скачиваются, источники пропущены: ${summary.deadSources.join(", ")}` : null,
       summary.stoppedBy === "budget" ? (summary.limitReason === "daily_limit" ? "дошли до потолка суток" : "дошли до бюджета недели") : null,
     ].filter(Boolean).join(". ");
     const reason = runStopReason(summary);
-    // «error» — ИИ не принял ключ/нет денег/лимит или не вышло ничего; упёрлись во время или в бюджет — ожидаемо, «partial»/«ok».
-    const status = hardStop || (summary.done === 0 && summary.failed + summary.transient > 0) ? "error" : summary.failed > 0 || summary.stoppedBy === "time" || rateLimited || summary.deadSources.length > 0 ? "partial" : "ok";
+    // «error» — ИИ не принял ключ/нет денег/лимит без единой разобранной или не вышло ничего у моделей, которые до этого не падали; лимит при
+    // разобранных, время, бюджет и повторные неудачи уже «плохих» моделей — ожидаемо, «partial»/«ok» (правило — catalogRunStatus).
+    const status = catalogRunStatus(summary);
     await writeSyncLog(JOB, status, summary.done, [note, reason ? stopTag(reason) : null].filter(Boolean).join(" ") || null, startedAt);
     return NextResponse.json({ ok: status !== "error", ...summary }, { status: status === "error" ? 502 : 200 });
   } catch (error) {

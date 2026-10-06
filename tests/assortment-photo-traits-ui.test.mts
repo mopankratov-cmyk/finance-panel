@@ -57,8 +57,8 @@ test("Источники в долях: считаются по всем мод�
     { sourceId: "S001", name: "Zara", models: 3, eligible: 1, analyzed: 1, ru: false },
     { sourceId: "S128", name: "S128", models: 1, eligible: 0, analyzed: 0, ru: true },
   ], "повтор головы не удваивает модели; без имени — код источника");
-  const gaps = sourceGaps([share("A", "A", 100, 100, 60), share("B", "B", 100, 100, 40), share("C", "C", 15, 15, 9), share("D", "D", 15, 15, 15)]);
-  assert.deepEqual(gaps.few.map((s) => s.name), ["B", "C"], "B — меньше половины, C — меньше 10 разобранных");
+  const gaps = sourceGaps([share("A", "A", 100, 100, 60), share("B", "B", 100, 100, 40), share("C", "C", 15, 15, 9), share("D", "D", 15, 15, 15), share("E", "E", 40, 40, 20)]);
+  assert.deepEqual(gaps.few.map((s) => s.name), ["B", "C"], "B — меньше половины, C — меньше 10 разобранных; E — ровно половина — не «мало»");
   assert.deepEqual(gaps.absent, []);
 });
 
@@ -79,14 +79,15 @@ test("Точность — текущей модели ИИ; прежняя мо
 
 test("Сводка разметки: чья точность, отметки прежней модели отдельно, сколько моделей не выдаём из-за недоступного фото", () => {
   const t = flat(renderToStaticMarkup(createElement(AccuracySummary, {
-    direction: "bags", accuracy: { silhouette: fieldAccuracy(5, 0, 0) }, accuracyModel: "polza:new", judgedModels: 6, unjudgedModels: 30, photoUnavailable: 4,
+    direction: "bags", accuracy: { silhouette: fieldAccuracy(5, 0, 0) }, accuracyModel: "polza:new", judgedModels: 6, unjudgedModels: 30, otherModelUnjudged: 12, photoUnavailable: 4,
     otherAccuracy: [{ aiModel: "polza:old", marks: 21, byField: {} }],
   })));
   assert.match(t, /Размечено моделей: 6, ещё с неотмеченными признаками: 30\. Точность по признакам у модели ИИ «polza:new», которая сейчас пишет разбор/);
-  assert.match(t, /Ещё 4 модели с неотмеченными признаками на разметку не выдаём: фото недоступно \(ссылок на фото нет, ИИ не смог его скачать или у вас оно не открылось\) — отметить нечем\./);
+  assert.match(t, /Ещё 4 модели с неотмеченными признаками на разметку не выдаём: фото недоступно \(ссылок на фото у модели больше нет или у вас оно не открылось — такие модели этот браузер запоминает\) — отметить нечем\./);
+  assert.match(t, /Ещё 12 моделей разобрано прежней моделью ИИ по тому же вопросу: их выдаём после разборов текущей модели, а отметки по ним идут в точность той модели — отдельно\./);
   assert.match(t, /Отметки по прежней модели ИИ — отдельно и в эту точность не входят: «polza:old» — 21 отметка\./);
   const plain = flat(renderToStaticMarkup(createElement(AccuracySummary, { direction: "bags", accuracy: {}, judgedModels: 0 })));
-  assert.doesNotMatch(plain, /не выдаём|прежней модели/, "нечего сказать — строк нет");
+  assert.doesNotMatch(plain, /не выдаём|прежней модели|разобран/, "нечего сказать — строк нет");
 });
 
 test("Блок целиком: до ответа сервера ничего не рисует (не мигает нулями); вёрстка — одна колонка на телефоне, две с md", () => {

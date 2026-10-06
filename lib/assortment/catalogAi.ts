@@ -179,6 +179,14 @@ export function parseStopTag(text: string | null | undefined): { reason: Catalog
   return { reason, message: message || null };
 }
 
+/**
+ * Текст ошибки строки журнала для экрана «Синхронизация» (`/api/sync-log`): у крона разбора — без метки `[stop:…]`. Метка нужна полоске
+ * «На чём стоят цифры» (она читает журнал сама), человеку в журнале она лишняя — как и в Telegram (jobsWatch её тоже вырезает).
+ */
+export function syncLogErrorText(job: string, error: string | null): string | null {
+  return job === CATALOG_AI_JOB ? parseStopTag(error).message : error;
+}
+
 export function costUsd(usage: { inputTokens: number; outputTokens: number }, price: { in: number; out: number }): number {
   return Math.round(((usage.inputTokens * price.in + usage.outputTokens * price.out) / 1_000_000) * 100_000) / 100_000;
 }
@@ -236,7 +244,8 @@ export interface ExistingResult {
   takenAt: string;
   /**
    * Чем кончилась последняя попытка: текст ошибки или null — без ошибки (удачный разбор). У строки «ok» ошибка значит неудачный
-   * пересбор прежней версии вопроса: прежний результат цел, а попытка записана.
+   * пересбор прежней версии вопроса: прежний результат цел, а попытка записана. Пометка временного сбоя (transientMark) — попытка
+   * не потрачена, модель отложена.
    */
   lastError?: string | null;
 }
@@ -245,6 +254,33 @@ export const MAX_ATTEMPTS = 3;
 /** Версия формы отчёта по признакам (корзины значений, legacy, examples, источники в долях и «вне разбора» в очереди): входит в ключ кэша, чтобы после выкладки не жил старый отчёт. */
 export const TRAITS_REPORT_VERSION = 5;
 export const RETRY_AFTER_MS = 24 * 3600 * 1000;
+
+/**
+ * Временный сбой вызова по модели — наш таймаут, 408/5xx провайдера, обрыв сети — пишется в last_error модели одной из двух пометок,
+ * и попытку (MAX_ATTEMPTS) не тратит никогда: иначе медленный провайдер за три дня навсегда выбил бы из очереди здоровые модели.
+ *
+ * «Повтор в следующем прогоне» — первый сбой провайдера у модели: разовый сбой её не задерживает, следующий прогон берёт её снова.
+ * «Отложено на сутки» — наш таймаут (вызов шёл до предела и мог быть оплачен) или второй сбой подряд у той же модели: модель, на которой
+ * разбор раз за разом падает, берётся не чаще раза в сутки, а не каждым прогоном крона (12 раз в сутки) — и неважно, разобрал ли прогон
+ * что-то ещё.
+ */
+export const TRANSIENT_RETRY_PREFIX = "сбой провайдера, повтор в следующем прогоне";
+export const TRANSIENT_DEFERRED_PREFIX = "отложено на сутки";
+
+export type TransientMark = "retry" | "deferred";
+
+/** Пометка временного сбоя в last_error модели; null — последняя попытка кончилась не временным сбоем (удача или настоящая неудача). */
+export function transientMark(lastError: string | null | undefined): TransientMark | null {
+  if (!lastError) return null;
+  if (lastError.startsWith(TRANSIENT_DEFERRED_PREFIX)) return "deferred";
+  if (lastError.startsWith(TRANSIENT_RETRY_PREFIX)) return "retry";
+  return null;
+}
+
+/** Пауза до следующей попытки модели: после первого сбоя провайдера — без паузы (следующий прогон), иначе — сутки. */
+export function retryPauseMs(prev: Pick<ExistingResult, "lastError">): number {
+  return transientMark(prev.lastError) === "retry" ? 0 : RETRY_AFTER_MS;
+}
 
 const keyOf = (sourceId: string, modelKey: string) => `${sourceId}\u0000${modelKey}`;
 export { keyOf as resultKey };
@@ -301,14 +337,16 @@ export function queueLanes(heads: CatalogHead[], existing: Map<string, ExistingR
     const prev = existing.get(key);
     if (!prev) lanes.fresh.push(head);
     else if (prev.status === "failed") {
+      // Временные сбои попыток не тратят (у модели, которую пока только откладывали, attempts=0): потолок — только настоящие неудачи.
       if (prev.attempts >= MAX_ATTEMPTS) lanes.exhausted.push(head);
-      else if (nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) lanes.retry.push(head);
+      else if (nowMs - Date.parse(prev.takenAt) >= retryPauseMs(prev)) lanes.retry.push(head);
     } else if (prev.promptVersion !== PROMPT_VERSION) {
       // Пересбор старой строки, у которого уже были неудачные попытки (ответ из одних «не видно»), потолком попыток ограничен так же,
       // как у новой: иначе платный вызов повторялся бы каждые сутки без конца. Потолок — только когда последняя попытка кончилась
-      // ошибкой: у модели, разобранной с третьей попытки, attempts=3 и ошибки нет — без этого условия она не пересобралась бы никогда.
-      if (prev.attempts >= MAX_ATTEMPTS && prev.lastError) lanes.exhausted.push(head);
-      else if (nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) lanes.stale.push(head);
+      // настоящей ошибкой: у модели, разобранной с третьей попытки, attempts=3 и ошибки нет, а пометка временного сбоя попытку не тратила —
+      // без этого условия такие модели не пересобрались бы никогда.
+      if (prev.attempts >= MAX_ATTEMPTS && prev.lastError && !transientMark(prev.lastError)) lanes.exhausted.push(head);
+      else if (nowMs - Date.parse(prev.takenAt) >= retryPauseMs(prev)) lanes.stale.push(head);
     }
   }
   return lanes;
@@ -331,7 +369,8 @@ export function pickCandidates(heads: CatalogHead[], existing: Map<string, Exist
  * (403), обрезанный ответ, «все признаки не видно» сюда не входят — фото там открылось.
  */
 export function isPhotoUnavailableError(message: string | null | undefined): boolean {
-  if (!message) return false;
+  // Пометка временного сбоя — не про фото, даже если в тексте ответа провайдера (502 и т. п.) встретилось «download».
+  if (!message || transientMark(message)) return false;
   return /скача|скачив|download|fetch(?:ing)? (?:the )?image|image[^.;]{0,40}(?:fetch|download|retriev|unreachable|not accessible|could not be)|(?:invalid|unsupported) image|could not process image/i.test(message);
 }
 

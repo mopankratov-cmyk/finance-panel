@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { syncLogErrorText } from "@/lib/assortment/catalogAi";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
@@ -28,5 +29,7 @@ export async function GET() {
   if (error) {
     return NextResponse.json({ data: null, error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ data: data as SyncLogRow[], error: null });
+  // Служебная метка причины остановки разбора по фото (`[stop:…]`) нужна полоске модуля, а не человеку в журнале.
+  const rows = ((data ?? []) as SyncLogRow[]).map((row) => ({ ...row, error: syncLogErrorText(row.job, row.error) }));
+  return NextResponse.json({ data: rows, error: null });
 }

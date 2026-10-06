@@ -247,7 +247,43 @@ type SamplesState =
   | { kind: "closed" }
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; samples: PhotoSample[]; analyzed: number; judging: boolean; verdictsAvailable: boolean; judgedModels: number; unjudgedModels: number; photoUnavailable: number };
+  | { kind: "ready"; samples: PhotoSample[]; analyzed: number; judging: boolean; verdictsAvailable: boolean; judgedModels: number; unjudgedModels: number; otherModelUnjudged: number; photoUnavailable: number };
+
+/** Сколько моделей «фото у меня не открылось» помнить и отдавать серверу (адрес запроса: 8 знаков на модель; сервер берёт до 500). */
+export const PHOTO_SKIP_KEEP = 300;
+const photoSkipStorageKey = (direction: AssortmentDirection) => `assortment:photo-skip:${direction}`;
+
+/** Хранилище браузера, если оно доступно (в приватном окне и при заблокированных данных сайта доступ бросает исключение). */
+function browserStorage(): Pick<Storage, "getItem" | "setItem"> | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Модели раздела, чьё фото у этого зрителя не открылось (короткие ключи photoSkipKey), — из хранилища браузера: после перезагрузки
+ * страницы они не возвращаются в «Следующие 12 без отметок». Удобство одного зрителя; хранилища нет или в нём мусор — пустой набор.
+ */
+export function readPhotoSkips(storage: Pick<Storage, "getItem"> | null | undefined, direction: AssortmentDirection): Set<string> {
+  try {
+    const raw = storage?.getItem(photoSkipStorageKey(direction));
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    return new Set(Array.isArray(list) ? list.filter((k): k is string => typeof k === "string" && /^[0-9a-f]{8}$/.test(k)).slice(-PHOTO_SKIP_KEEP) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** Запомнить набор в хранилище браузера (последние PHOTO_SKIP_KEEP); не записалось — экран работает и без этого, до перезагрузки. */
+export function rememberPhotoSkips(storage: Pick<Storage, "setItem"> | null | undefined, direction: AssortmentDirection, keys: ReadonlySet<string>): void {
+  try {
+    storage?.setItem(photoSkipStorageKey(direction), JSON.stringify([...keys].slice(-PHOTO_SKIP_KEEP)));
+  } catch {
+    // Хранилище недоступно или переполнено — помним только в открытой вкладке.
+  }
+}
 
 /** Ключ отметки в карточке: модель + признак. По нему кнопки блокируются на время сохранения и под ним показывается сбой. */
 export const verdictKey = (sample: Pick<PhotoSample, "sourceId" | "modelKey">, field: string) => `${sample.sourceId}:${sample.modelKey}:${field}`;
@@ -267,7 +303,8 @@ function PhotoSamples({ direction, accuracy, accuracyModel, otherAccuracy, accur
 }) {
   const [state, setState] = useState<SamplesState>({ kind: "closed" });
   // Модели, чьё фото у этого человека не открылось (короткие ключи): следующая выборка «без отметок» их не предлагает — отметить нечем,
-  // а иначе они вставали бы в каждую следующую дюжину. Живут, пока открыт экран раздела.
+  // а иначе они вставали бы в каждую следующую дюжину. Помнятся в браузере (readPhotoSkips): сервер о них знать не может — у ИИ это фото
+  // скачалось, не открывается оно только у зрителя (сайты, закрытые из РФ), — и после перезагрузки они иначе вернулись бы в разметку.
   const failedPhotos = useRef<Set<string>>(new Set());
   // Сохраняется каждая отметка отдельно: пока уходит одна, остальные кнопки рабочие (молча проглоченный клик = потерянная отметка).
   const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(new Set());
@@ -275,11 +312,15 @@ function PhotoSamples({ direction, accuracy, accuracyModel, otherAccuracy, accur
 
   useEffect(() => {
     setState({ kind: "closed" });
-    failedPhotos.current = new Set();
+    failedPhotos.current = readPhotoSkips(browserStorage(), direction);
   }, [direction]);
   const onPhotoFailed = useCallback((sample: PhotoSample) => {
-    if (sample.modelKey) failedPhotos.current.add(photoSkipKey(sample.sourceId, sample.modelKey));
-  }, []);
+    if (!sample.modelKey) return;
+    const key = photoSkipKey(sample.sourceId, sample.modelKey);
+    if (failedPhotos.current.has(key)) return;
+    failedPhotos.current.add(key);
+    rememberPhotoSkips(browserStorage(), direction, failedPhotos.current);
+  }, [direction]);
 
   const load = (judging: boolean) => {
     // Следующие карточки берутся по отметкам из базы: пока хоть одна не дошла, выборка могла бы вернуть уже размеченную модель.
@@ -287,12 +328,12 @@ function PhotoSamples({ direction, accuracy, accuracyModel, otherAccuracy, accur
     setState({ kind: "loading" });
     setVerdictErrors({});
     const seed = Math.random().toString(36).slice(2, 10);
-    const skip = judging && failedPhotos.current.size > 0 ? `&skip=${[...failedPhotos.current].slice(-300).join(",")}` : "";
+    const skip = judging && failedPhotos.current.size > 0 ? `&skip=${[...failedPhotos.current].slice(-PHOTO_SKIP_KEEP).join(",")}` : "";
     fetch(`/api/assortment-development/photo-traits?direction=${direction}&samples=1&seed=${seed}&limit=12${judging ? "&unjudged=1" : ""}${skip}`)
       .then(async (r) => {
         const body = await r.json().catch(() => ({}));
         if (!r.ok || !body?.result) setState({ kind: "error", message: body?.error || `Примеры не загрузились (${r.status})` });
-        else setState({ kind: "ready", samples: body.result.samples as PhotoSample[], analyzed: Number(body.result.analyzed) || 0, judging, verdictsAvailable: Boolean(body.result.verdictsAvailable), judgedModels: Number(body.result.judgedModels) || 0, unjudgedModels: Number(body.result.unjudgedModels) || 0, photoUnavailable: Number(body.result.photoUnavailable) || 0 });
+        else setState({ kind: "ready", samples: body.result.samples as PhotoSample[], analyzed: Number(body.result.analyzed) || 0, judging, verdictsAvailable: Boolean(body.result.verdictsAvailable), judgedModels: Number(body.result.judgedModels) || 0, unjudgedModels: Number(body.result.unjudgedModels) || 0, otherModelUnjudged: Number(body.result.otherModelUnjudged) || 0, photoUnavailable: Number(body.result.photoUnavailable) || 0 });
       })
       .catch(() => setState({ kind: "error", message: "Нет связи с сервером" }));
   };
@@ -368,7 +409,7 @@ function PhotoSamples({ direction, accuracy, accuracyModel, otherAccuracy, accur
       )}
       {ready && ready.samples.length > 0 && (
         <>
-          {judging && <AccuracySummary direction={direction} accuracy={accuracy} accuracyModel={accuracyModel} otherAccuracy={otherAccuracy} accuracyFailed={accuracyFailed} judgedModels={ready.judgedModels} unjudgedModels={ready.unjudgedModels} photoUnavailable={ready.photoUnavailable} />}
+          {judging && <AccuracySummary direction={direction} accuracy={accuracy} accuracyModel={accuracyModel} otherAccuracy={otherAccuracy} accuracyFailed={accuracyFailed} judgedModels={ready.judgedModels} unjudgedModels={ready.unjudgedModels} otherModelUnjudged={ready.otherModelUnjudged} photoUnavailable={ready.photoUnavailable} />}
           <SampleCards samples={ready.samples} judging={judging ? { currentVersion: PROMPT_VERSION, busyKeys, errors: verdictErrors, onVerdict: judge } : undefined} onPhotoFailed={onPhotoFailed} />
           <p className="text-xs leading-5 text-slate-500">Из {num(ready.analyzed)} разобранных. Это оценка ИИ по фото: она ошибается, «не видно» — честный ответ, а не пропуск. Если неверно слишком часто, скажите — поправим вопрос или модель.</p>
         </>
@@ -378,14 +419,17 @@ function PhotoSamples({ direction, accuracy, accuracyModel, otherAccuracy, accur
 }
 
 /** Точность по признакам одной строкой каждая — что уже размечено и сколько ещё нужно. */
-export function AccuracySummary({ direction, accuracy, accuracyModel, otherAccuracy = [], accuracyFailed, judgedModels, unjudgedModels, photoUnavailable = 0 }: {
+export function AccuracySummary({ direction, accuracy, accuracyModel, otherAccuracy = [], accuracyFailed, judgedModels, unjudgedModels, otherModelUnjudged = 0, photoUnavailable = 0 }: {
   direction: AssortmentDirection;
   accuracy?: Record<string, FieldAccuracy> | null;
   accuracyModel?: string | null;
   otherAccuracy?: OtherAccuracy[];
   accuracyFailed?: boolean;
+  /** Размеченные и ещё не размеченные разборы текущей модели ИИ. */
   judgedModels: number;
   unjudgedModels?: number;
+  /** Разборы прежней моделью ИИ той же версии вопроса с неотмеченными признаками: выдаются после разборов текущей. */
+  otherModelUnjudged?: number;
   /** Модели с неотмеченными признаками, но недоступным фото: на разметку не выдаются. */
   photoUnavailable?: number;
 }) {
@@ -395,7 +439,8 @@ export function AccuracySummary({ direction, accuracy, accuracyModel, otherAccur
       <div className="font-medium text-slate-800">
         Размечено моделей: {num(judgedModels)}{unjudgedModels !== undefined && `, ещё с неотмеченными признаками: ${num(unjudgedModels)}`}. Точность по признакам{accuracyModel ? ` у модели ИИ ${modelName(accuracyModel)}, которая сейчас пишет разбор` : ""} (нужно {ACCURACY_MIN_JUDGED} отметок «верно / неверно» на признак):
       </div>
-      {photoUnavailable > 0 && <p className="mt-1 text-slate-600">Ещё {num(photoUnavailable)} {plural(photoUnavailable, "модель", "модели", "моделей")} с неотмеченными признаками на разметку не выдаём: фото недоступно (ссылок на фото нет, ИИ не смог его скачать или у вас оно не открылось) — отметить нечем.</p>}
+      {otherModelUnjudged > 0 && <p className="mt-1 text-slate-600">Ещё {num(otherModelUnjudged)} {plural(otherModelUnjudged, "модель разобрана", "модели разобраны", "моделей разобрано")} прежней моделью ИИ по тому же вопросу: их выдаём после разборов текущей модели, а отметки по ним идут в точность той модели — отдельно.</p>}
+      {photoUnavailable > 0 && <p className="mt-1 text-slate-600">Ещё {num(photoUnavailable)} {plural(photoUnavailable, "модель", "модели", "моделей")} с неотмеченными признаками на разметку не выдаём: фото недоступно (ссылок на фото у модели больше нет или у вас оно не открылось — такие модели этот браузер запоминает) — отметить нечем.</p>}
       {otherAccuracy.length > 0 && <p className="mt-1 text-slate-600">Отметки по прежней модели ИИ — отдельно и в эту точность не входят: {otherAccuracy.map((o) => `${modelName(o.aiModel)} — ${num(o.marks)} ${plural(o.marks, "отметка", "отметки", "отметок")}`).join("; ")}.</p>}
       {accuracyFailed ? (
         <p className="mt-1 text-amber-800">Точность не загрузилась — размечайте дальше, отметки сохраняются; сводка появится после обновления страницы.</p>
