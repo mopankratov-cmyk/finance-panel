@@ -135,6 +135,19 @@ test("Сводка: история наблюдений — у каких ист
   assert.doesNotMatch(text, /растёт|падает|усилилось|ослабло|тенденци/i);
 });
 
+test("Сводка: у источника с частями разделов «появилось/пропало» оговорено — модели частей (Zara CHAQUETA) в полный прогон не входят", async () => {
+  const run = (day: string, coverage: string, over: Row = {}): Row => ({ source_id: "S001", direction: "jackets", observed_on: day, coverage, seen: 100, added: 0, error: null, started_at: `${day}T06:30:00Z`, ...over });
+  const db = fakeDb({
+    assortment_references: [], assortment_observations: [], assortment_decisions: [], assortment_collections: [],
+    assortment_sources: [{ source_id: "S001", name: "Zara" }],
+    assortment_run: [run("2026-10-01", "full"), run("2026-10-09", "full"), run("2026-10-09", "window", { part: "zara_chaqueta", started_at: "2026-10-09T06:40:00Z" })],
+  });
+  const loaded = await loadDigestFacts(db as never, new Date("2026-10-04T07:00:00Z"), new Date("2026-10-11T07:00:00Z"), "https://panel.example");
+  assert.deepEqual(loaded.history, [{ name: "Zara", status: "appearance", parts: ["Zara CHAQUETA без трикотажа"] }], "прогон части не сбивает статус и назван по-человечески");
+  assert.match(digestMessage(loaded), /«Появилось» и «пропало» — наблюдение: Zara\.\nЧасти разделов в полный прогон не входят — по их моделям «появилось» и «пропало» не наблюдение: Zara \(Zara CHAQUETA без трикотажа\)\./);
+  assert.doesNotMatch(digestMessage(facts({ history: [{ name: "Rains", status: "appearance" }] })), /Части разделов/, "частей нет — оговорки нет");
+});
+
 test("Сводка: автообход каталогов — без «Рынка РФ»: Lime на WB каждую неделю пишет «нет продаж» и не должен давать вечную ⚠️, а «Wildberries — рынок» не «автообход»", async () => {
   const db = fakeDb({
     assortment_references: [], assortment_observations: [], assortment_decisions: [], assortment_collections: [], assortment_run: [],

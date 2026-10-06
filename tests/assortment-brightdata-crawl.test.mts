@@ -4,9 +4,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { stripMoney } from "../lib/assortment/brightdata.ts";
-import { clearDeadZaraPhotos, collectBrightData, requestZaraPhotos, triggerBrightData } from "../lib/assortment/brightdataCrawl.ts";
-import { asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, readCoverage, readPending, uniqueRecords, writeCoverage, writePending } from "../lib/assortment/brightdataCatalog.ts";
+import { clearDeadZaraPhotos, collectBrightData, requestZaraPhotos, triggerBrightData, triggerZaraPhotos } from "../lib/assortment/brightdataCrawl.ts";
+import {
+  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, keepPartRecord, looksLikeChurn, mapRecord, novelCandidates, partRecords, purchaseKey, readBought, readCoverage,
+  readPending, readTriggerFailure, targetSignature, triggerFailureNote, uniqueRecords, writeCoverage, writePending,
+} from "../lib/assortment/brightdataCatalog.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
+import { modelKey } from "../lib/assortment/modelKey.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
 
 /** Сбор ASOS и H&M через Bright Data: ср и сб, без цен, первый сбор — база. */
@@ -61,8 +65,11 @@ test("Цели сбора: Zara и Uniqlo (наборы), ASOS и H&M паспо
   const collect = BRIGHTDATA_TARGETS.filter((t) => t.kind !== "dataset").reduce((s, t) => s + t.limitPerInput * t.inputs.length, 0);
   const dataset = BRIGHTDATA_TARGETS.filter((t) => t.kind === "dataset").reduce((s, t) => s + (t.recordsLimit ?? 0), 0);
   assert.ok(collect <= 200, `сборщики: ${collect} записей за прогон`);
-  // Потолок, а не расход: платим за пришедшие записи; 2 000 — это не больше $5 в неделю.
-  assert.ok(dataset <= 2000, `наборы: потолок ${dataset} записей в неделю`);
+  // Потолок, а не расход: платим за пришедшие записи. Основные разделы — 2 000 (не больше $5 в неделю); части разделов (CHAQUETA Zara,
+  // коллаборации Uniqlo, решение владельца 06.10) — ещё до 900, всего не больше $7,5 в неделю, ожидаемо намного меньше.
+  const main = BRIGHTDATA_TARGETS.filter((t) => t.kind === "dataset" && !t.part).reduce((s, t) => s + (t.recordsLimit ?? 0), 0);
+  assert.ok(main <= 2000, `основные разделы наборов: потолок ${main} записей в неделю`);
+  assert.ok(dataset <= 3000, `наборы: потолок ${dataset} записей в неделю`);
   assert.ok(BRIGHTDATA_TARGETS.every((t) => t.kind !== "dataset" || ((t.recordsLimit ?? 0) > 0 && (t.recordsLimit ?? 0) <= 1000)), "выборка набора — до 1 000 записей");
   assert.doesNotMatch(JSON.stringify(BRIGHTDATA_TARGETS), /ozon/i);
 });
@@ -74,9 +81,9 @@ test("Zara — готовый набор раз в неделю: женское,
   assert.match(text, /"WOMAN"/);
   assert.match(text, /CAZADORA/);
   assert.match(text, /BOLSO/);
-  assert.doesNotMatch(text, /CHAQUETA/, "в CHAQUETA у Zara кардиганы");
-  assert.match(text, /"\/us\/en\/"/, "товар повторяется по странам — одна витрина, чтобы раздел влез целиком");
-  const jackets = JSON.stringify(zara.find((t) => t.direction === "jackets")!.filter);
+  assert.doesNotMatch(JSON.stringify(zara.filter((t) => !t.part).map((t) => t.filter)), /CHAQUETA/, "основная выборка курток — без CHAQUETA: там кардиганы, она — отдельной частью");
+  assert.ok(zara.every((t) => JSON.stringify(t.filter).includes('"/us/en/"')), "товар повторяется по странам — одна витрина, чтобы раздел влез целиком");
+  const jackets = JSON.stringify(zara.find((t) => t.direction === "jackets" && !t.part)!.filter);
   assert.match(jackets, /"availability","operator":"=","value":true/, "куртки одной витрины с распроданным не влезли в 600 записей");
 });
 
@@ -129,14 +136,14 @@ test("Повтор товара в выборке (Zara по странам) —
 
 test("Uniqlo — готовый набор по средам: женская верхняя одежда без блейзеров, размер S; сумки", () => {
   const uniqlo = BRIGHTDATA_TARGETS.filter((t) => t.sourceId === "S003");
-  assert.deepEqual(uniqlo.map((t) => t.direction).sort(), ["bags", "jackets"]);
+  assert.deepEqual(uniqlo.filter((t) => !t.part).map((t) => t.direction).sort(), ["bags", "jackets"]);
   assert.ok(uniqlo.every((t) => t.kind === "dataset" && t.weekdayUtc === 3 && t.datasetId === "gd_mosh3s7wdb7jafn85"));
-  const jackets = JSON.stringify(uniqlo.find((t) => t.direction === "jackets")!.filter);
+  const jackets = JSON.stringify(uniqlo.find((t) => t.direction === "jackets" && !t.part)!.filter);
   assert.match(jackets, /WOMEN > Outerwear/);
   assert.match(jackets, /"not_includes","value":"Blazers"/);
   assert.match(jackets, /"-003"/);
   assert.match(jackets, /"ES"/);
-  assert.match(JSON.stringify(uniqlo.find((t) => t.direction === "bags")!.filter), /WOMEN > Accessories > Bags/);
+  assert.match(JSON.stringify(uniqlo.find((t) => t.direction === "bags" && !t.part)!.filter), /WOMEN > Accessories > Bags/);
 });
 
 test("Запись набора Uniqlo: модель по group_id, раздел, отзывы, фото 1200 px", () => {
@@ -473,4 +480,505 @@ test("Мёртвые фото Zara снимаются у ВСЕХ строк о�
   assert.equal(cleared, 500);
   assert.equal(upserted.length, 500);
   assert.ok(upserted.every((r) => r.image_urls === null && String(r.source_item_id) >= "item01000"), "сняты именно мёртвые, из хвоста за тысячу");
+});
+
+// --- части разделов: CHAQUETA Zara и коллаборации Uniqlo (решение владельца 06.10, только женское) ---
+
+const ZARA_DS = "gd_lct4vafw1tgx27d4o0";
+const UNIQLO_DS = "gd_mosh3s7wdb7jafn85";
+const zaraChaqueta = (name: string, extra: Record<string, unknown> = {}) => ({
+  product_id: 5854722, product_name: name, url: "https://www.zara.com/us/en/high-neck-pocket-jacket-p05854722.html", product_family: "CHAQUETA", section: "WOMAN", ...extra,
+});
+const uniqloCollab = (title: string, category = `WOMEN > Special Collaborations > Uniqlo U > ${title}`, id = "E487882-000") => ({
+  title, item_id: `${id.slice(1, 7)}-32-003`, group_id: id, product_category: category, url: `https://www.uniqlo.com/es/en/products/${id}/00`,
+});
+
+test("Основные выборки Zara и Uniqlo не тронуты: охват и ключ покупки прежние — сбор не ляжет базой, купленное не купится второй раз", () => {
+  const main = BRIGHTDATA_TARGETS.filter((t) => t.kind === "dataset" && !t.part);
+  assert.deepEqual(
+    main.map((t) => `${t.sourceId}|${t.direction}|${filterSignature(t.filter)}|${t.recordsLimit}`),
+    ["S001|jackets|15pwzo7|1000", "S001|bags|1yjhz2m|300", "S003|jackets|nz2k28|400", "S003|bags|b9ii13|300"],
+    "фильтр основной выборки сменился — первый сбор по нему ляжет базой, «появилось» по разделу сдвинется на неделю",
+  );
+  assert.deepEqual(main.map((t) => purchaseKey({ ...t, targetKey: targetSignature(t) })), [`${ZARA_DS}|jackets`, `${ZARA_DS}|bags`, `${UNIQLO_DS}|jackets`, `${UNIQLO_DS}|bags`]);
+  const parts = BRIGHTDATA_TARGETS.filter((t) => t.part);
+  const keys = BRIGHTDATA_TARGETS.filter((t) => t.kind === "dataset").map(coverageKey);
+  assert.equal(new Set(keys).size, keys.length, "у каждой выборки набора свой охват: часть не делит его с основной (иначе охват прыгал бы каждую неделю и новинок не было бы никогда)");
+  assert.deepEqual(parts.map(coverageKey), [`${ZARA_DS}|jackets|zara_chaqueta`, `${UNIQLO_DS}|jackets|uniqlo_collab`, `${UNIQLO_DS}|bags|uniqlo_collab`]);
+  for (const part of parts) {
+    const index = BRIGHTDATA_TARGETS.indexOf(part);
+    assert.ok(BRIGHTDATA_TARGETS.findIndex((t) => t.sourceId === part.sourceId && !t.part) < index && BRIGHTDATA_TARGETS.findLastIndex((t) => t.sourceId === part.sourceId && !t.part) < index, `${part.part}: после основных целей источника — сбой новой цели не мешает купить основные`);
+    assert.ok(part.kind === "dataset" && part.weekdayUtc === 3 && (part.recordsLimit ?? 0) > 0 && (part.recordsLimit ?? 0) <= 1000, `${part.part}: раз в неделю, свой потолок`);
+  }
+});
+
+test("Zara CHAQUETA — отдельной частью: женское, витрина США, в продаже, трикотаж и блейзеры отсечены уже в фильтре (не платим за кардиганы)", () => {
+  const part = BRIGHTDATA_TARGETS.find((t) => t.part === "zara_chaqueta")!;
+  assert.equal(part.sourceId, "S001");
+  assert.equal(part.direction, "jackets");
+  assert.equal(part.recordsLimit, 600);
+  const filter = part.filter as { operator: string; filters: Array<{ name: string; operator: string; value: unknown }> };
+  assert.equal(filter.operator, "and");
+  const by = (name: string, operator: string) => filter.filters.find((f) => f.name === name && f.operator === operator)?.value;
+  assert.equal(by("section", "="), "WOMAN", "только женское");
+  assert.deepEqual(by("product_family", "in"), ["CHAQUETA"]);
+  assert.equal(by("url", "includes"), "/us/en/");
+  assert.equal(by("availability", "="), true);
+  const notInName = by("product_name", "not_includes") as string[];
+  for (const word of ["KNIT", "CARDIGAN", "PUNTO", "TRICOT", "JERSEY", "BLAZER"]) assert.ok(notInName.includes(word), `в фильтре нет «${word}»`);
+  const full = datasetVerdict(600, { recordsLimit: 600, coverage: "x", direction: "jackets", part: "zara_chaqueta" }, "x");
+  assert.equal(full.quiet, true);
+  assert.match(full.warning ?? "", /раздел «куртки» \(часть: Zara CHAQUETA без трикотажа\) больше потолка выборки \(600\)/, "в «Источниках» видно, какая выборка упёрлась в потолок");
+});
+
+test("Правило части Zara CHAQUETA: куртка взята, кардиган и вязаный жакет — нет (по названию, описанию, по-испански), мужское — нет", () => {
+  const keep = (raw: Record<string, unknown>) => keepPartRecord("zara_chaqueta", "jackets", raw);
+  const jacket = zaraChaqueta("HIGH-NECK POCKET JACKET", { description: "Jacket with a high neck and long sleeves. Front pockets. Front zip closure." });
+  assert.equal(keep(jacket), true, "5854/722 из рилса — куртка CHAQUETA");
+  assert.equal(classifyItem(asCatalogItem(mapRecord(jacket)!), ["jackets"]), "jackets", "и в раздел курток её пускает разбор названия");
+  assert.equal(keep(zaraChaqueta("BOMBER JACKET", { description: "Bomber jacket with a round neck. Rib knit trims. Front zip closure." })), true, "«rib knit trims» у бомбера — не трикотаж");
+  assert.equal(keep(zaraChaqueta("CROPPED KNIT JACKET")), false, "вязаный жакет: главное слово «jacket», но это трикотаж");
+  assert.equal(keep(zaraChaqueta("KNIT CARDIGAN WITH BUTTONS")), false);
+  assert.equal(keep(zaraChaqueta("SOFT CÁRDIGAN")), false);
+  assert.equal(keep(zaraChaqueta("TEXTURED JACKET", { description: "Knit jacket with a lapel collar and long sleeves." })), false, "трикотаж виден только в описании");
+  assert.equal(keep(zaraChaqueta("CHAQUETA PUNTO CUELLO SUBIDO")), false, "испанское название");
+  assert.equal(keep(zaraChaqueta("CHAQUETA CUELLO SUBIDO BOLSILLOS")), true, "испанское название куртки");
+  assert.equal(keep(zaraChaqueta("SHORT JACKET", { product_subfamily: "CHAQUETA PUNTO" })), false, "подсемейство «punto», если набор его отдаёт");
+  assert.equal(keep(zaraChaqueta("TWEED BLAZER")), false, "блейзер — не верхняя одежда");
+  assert.equal(keep(zaraChaqueta("HIGH-NECK POCKET JACKET", { section: "MAN" })), false, "мужское не берём");
+  assert.equal(keep(zaraChaqueta("HIGH-NECK POCKET JACKET", { section: "KID" })), false);
+  assert.equal(keep(zaraChaqueta("HIGH-NECK POCKET JACKET", { section: undefined })), true, "раздела в записи нет — решает фильтр набора");
+});
+
+test("Uniqlo: коллаборации — отдельной частью: «WOMEN > Special Collaborations», куртки по названию, размер S, без блейзеров и трикотажа; сумки — по названию", () => {
+  const jackets = BRIGHTDATA_TARGETS.find((t) => t.part === "uniqlo_collab" && t.direction === "jackets")!;
+  const bags = BRIGHTDATA_TARGETS.find((t) => t.part === "uniqlo_collab" && t.direction === "bags")!;
+  assert.equal(jackets.sourceId, "S003");
+  assert.equal(bags.sourceId, "S003");
+  const filters = (t: typeof jackets) => (t.filter as { operator: string; filters: Array<{ name: string; operator: string; value: unknown }> });
+  const by = (t: typeof jackets, name: string, operator: string) => filters(t).filters.filter((f) => f.name === name && f.operator === operator).map((f) => f.value);
+  for (const t of [jackets, bags]) {
+    assert.equal(filters(t).operator, "and");
+    assert.deepEqual(by(t, "store_country", "="), ["ES"]);
+    assert.deepEqual(by(t, "product_category", "includes"), ["WOMEN > Special Collaborations"], "только женское: «MEN > …» строку «WOMEN > » не содержит");
+  }
+  assert.deepEqual(by(jackets, "item_id", "includes"), ["-003"], "размер S, как в основной выборке");
+  assert.deepEqual(by(jackets, "product_category", "not_includes"), ["Blazers"]);
+  const outer = by(jackets, "title", "includes")[0] as string[];
+  for (const word of ["Jacket", "jacket", "Coat", "Parka", "Blouson", "Down", "Puffer", "Gilet", "Vest", "Harrington", "Trench"]) assert.ok(outer.includes(word), `куртки: нет «${word}»`);
+  for (const word of ["Pants", "Trousers", "Shirt", "T-Shirt", "Skirt", "Dress"]) assert.ok(!outer.includes(word), `куртки: «${word}» не верхняя одежда`);
+  assert.ok((by(jackets, "title", "not_includes")[0] as string[]).includes("Knit"));
+  assert.ok((by(bags, "title", "includes")[0] as string[]).includes("Bag"));
+  assert.deepEqual(by(bags, "item_id", "includes"), [], "у сумок размер один — фильтра размера нет");
+  assert.ok((jackets.recordsLimit ?? 0) <= 200 && (bags.recordsLimit ?? 0) <= 100);
+});
+
+test("Правило части коллабораций Uniqlo: Uniqlo U Hybrid Down Short Jacket взята, брюки, трикотаж, блейзер и мужское — нет", () => {
+  const keep = (raw: Record<string, unknown>, direction: "jackets" | "bags" = "jackets") => keepPartRecord("uniqlo_collab", direction, raw);
+  const down = uniqloCollab("Hybrid Down Short Jacket");
+  assert.equal(keep(down), true, "487882 из рилса");
+  assert.equal(classifyItem(asCatalogItem(mapRecord(down)!), ["jackets"]), "jackets");
+  assert.equal(keep(uniqloCollab("Blouson", "WOMEN > Special Collaborations > JW Anderson > Blouson")), true);
+  assert.equal(classifyItem(asCatalogItem(mapRecord(uniqloCollab("Blouson", "WOMEN > Special Collaborations > JW Anderson > Blouson"))!), ["jackets"]), "jackets", "блузон — куртка, а не «не понять»");
+  assert.equal(classifyItem(asCatalogItem(mapRecord(uniqloCollab("Harrington"))!), ["jackets"]), "jackets");
+  assert.equal(classifyItem(asCatalogItem(mapRecord(uniqloCollab("Blouson Sleeve Top"))!), ["jackets"]), null, "«блузон-рукав» у топа — топ");
+  assert.equal(keep(uniqloCollab("Tailored Coat", "WOMEN > Special Collaborations > UNIQLO : C > Tailored Coat")), true, "пальто — верхняя одежда");
+  assert.equal(keep(uniqloCollab("Light Down Vest")), true);
+  assert.equal(keep(uniqloCollab("Wide Straight Pants")), false, "брюки коллаборации");
+  assert.equal(keep(uniqloCollab("Down Pants")), false, "«down» в названии брюк — всё равно брюки");
+  assert.equal(keep(uniqloCollab("Oxford Button-Down Shirt")), false);
+  assert.equal(keep(uniqloCollab("Crew Neck T-Shirt")), false);
+  assert.equal(keep(uniqloCollab("Long-Sleeve Polo")), false, "нет слова верхней одежды — не берём, даже если главное слово не распознано");
+  assert.equal(keep(uniqloCollab("3D Knit Vest")), false, "вязаный жилет — трикотаж");
+  assert.equal(keep(uniqloCollab("Sweater Vest")), false);
+  assert.equal(keep(uniqloCollab("Tailored Jacket")), false, "блейзер — не верхняя одежда");
+  assert.equal(keep(uniqloCollab("Hybrid Down Short Jacket", "MEN > Special Collaborations > Uniqlo U > Hybrid Down Short Jacket")), false, "мужское не берём");
+  assert.equal(keep(uniqloCollab("Round Mini Shoulder Bag", "WOMEN > Special Collaborations > Uniqlo U > Round Mini Shoulder Bag"), "bags"), true);
+  assert.equal(keep(uniqloCollab("Round Mini Shoulder Bag", "MEN > Special Collaborations > Uniqlo U > Round Mini Shoulder Bag"), "bags"), false, "мужское не берём и в сумках");
+  assert.deepEqual(partRecords({ direction: "jackets" }, [uniqloCollab("Wide Straight Pants")]).length, 1, "основная выборка правилом части не режется");
+  assert.deepEqual(partRecords({ direction: "jackets", part: "toString" as never }, [uniqloCollab("Wide Straight Pants")]).length, 1, "незнакомая часть (откат версии) — записи как есть");
+});
+
+type Row = Record<string, unknown>;
+/**
+ * Таблицы в памяти для сбора готовой выборки: фильтры eq / not is null / gte / in, порядок и окно range применяются как в PostgREST,
+ * upsert — по (source_id, source_item_id). Так видно, что именно легло в каталог.
+ */
+function catalogMemoryDb(sources: Record<string, Caps>) {
+  const tables: Record<string, Row[]> = {
+    assortment_sources: Object.entries(sources).map(([source_id, capabilities]) => ({ source_id, name: source_id === "S001" ? "Zara" : source_id === "S003" ? "Uniqlo" : source_id, capabilities })),
+  };
+  const builder = (name: string) => {
+    const state: { op: "select" | "update" | "insert" | "upsert"; payload?: unknown; filters: Array<(row: Row) => boolean>; order?: string; from?: number; to?: number } = { op: "select", filters: [] };
+    const rows = () => (tables[name] ??= []);
+    const run = () => {
+      if (state.op === "insert" || state.op === "upsert") {
+        for (const item of (Array.isArray(state.payload) ? state.payload : [state.payload]) as Row[]) {
+          const same = name === "assortment_source_items" ? rows().find((r) => r.source_id === item.source_id && r.source_item_id === item.source_item_id) : undefined;
+          if (same) Object.assign(same, item);
+          else rows().push({ ...item });
+        }
+        return { data: [], error: null };
+      }
+      const matched = rows().filter((row) => state.filters.every((f) => f(row)));
+      if (state.op === "update") {
+        for (const row of matched) Object.assign(row, JSON.parse(JSON.stringify(state.payload)));
+        return { data: [], error: null };
+      }
+      const sorted = state.order ? matched.slice().sort((a, b) => String(a[state.order!]).localeCompare(String(b[state.order!]))) : matched;
+      return { data: sorted.slice(state.from ?? 0, state.to === undefined ? undefined : state.to + 1).map((r) => ({ ...r })), error: null };
+    };
+    const api: Record<string, unknown> = {
+      select: () => api,
+      insert: (payload: unknown) => { state.op = "insert"; state.payload = payload; return Promise.resolve(run()); },
+      upsert: (payload: unknown) => { state.op = "upsert"; state.payload = payload; return Promise.resolve(run()); },
+      update: (payload: unknown) => { state.op = "update"; state.payload = payload; return api; },
+      eq: (column: string, value: unknown) => { state.filters.push((r) => r[column] === value); return api; },
+      in: (column: string, values: unknown[]) => { state.filters.push((r) => values.includes(r[column])); return api; },
+      not: (column: string, op: string, value: unknown) => { assert.equal(`${op} ${value}`, "is null"); state.filters.push((r) => r[column] !== null && r[column] !== undefined); return api; },
+      gte: (column: string, value: string) => { state.filters.push((r) => typeof r[column] === "string" && (r[column] as string) >= value); return api; },
+      order: (column: string) => { state.order = column; return api; },
+      range: (from: number, to: number) => { state.from = from; state.to = to; return Promise.resolve(run()); },
+      maybeSingle: () => { const { data, error } = run(); return Promise.resolve({ data: data[0] ?? null, error }); },
+      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => Promise.resolve(run()).then(resolve, reject),
+    };
+    return api;
+  };
+  const caps = (id: string) => tables.assortment_sources.find((r) => r.source_id === id)!.capabilities as Caps;
+  return { db: { from: builder } as never, tables, caps };
+}
+
+test("Сбор части раздела: в каталог идут только записи, прошедшие правило части; охват — свой, основной раздел не трогается; прогон — окно", async () => {
+  const fresh = new Date(Date.now() - 3600 * 1000).toISOString();
+  const chaqueta = BRIGHTDATA_TARGETS.find((t) => t.part === "zara_chaqueta")!;
+  const mainCoverage = filterSignature(BRIGHTDATA_TARGETS.find((t) => t.sourceId === "S001" && t.direction === "jackets" && !t.part)!.filter);
+  const snapshot = {
+    snapshotId: "snap_chaq", datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", triggeredAt: fresh, kind: "dataset", part: "zara_chaqueta",
+    recordsLimit: chaqueta.recordsLimit, coverage: filterSignature(chaqueta.filter), targetKey: targetSignature(chaqueta),
+  };
+  const { db, tables, caps } = catalogMemoryDb({ S001: { brightdata_pending: [snapshot], brightdata_coverage: { [`${ZARA_DS}|jackets`]: mainCoverage } } });
+  const records = [
+    zaraChaqueta("HIGH-NECK POCKET JACKET"),
+    zaraChaqueta("CROPPED KNIT JACKET", { product_id: 1111111, url: "https://www.zara.com/us/en/cropped-knit-jacket-p01111111.html" }),
+    zaraChaqueta("TEXTURED JACKET", { product_id: 2222222, url: "https://www.zara.com/us/en/textured-jacket-p02222222.html", description: "Knit jacket with a lapel collar." }),
+    zaraChaqueta("QUILTED JACKET", { product_id: 3333333, url: "https://www.zara.com/us/en/quilted-jacket-p03333333.html", section: "MAN" }),
+  ];
+  const results = await withFetch((url) => {
+    if (url.includes("/datasets/snapshots/snap_chaq/download")) return new Response(JSON.stringify(records), { status: 200 });
+    if (url.includes("/datasets/filter")) return new Response(JSON.stringify({ snapshot_id: "snap_photos" }), { status: 200 });
+    return new Response("{}", { status: 200 });
+  }, () => collectBrightData(db, Date.now() + 60_000));
+  const zara = results.find((r) => r.sourceId === "S001")!;
+  assert.equal(zara.ok, true, zara.error);
+  const items = tables.assortment_source_items ?? [];
+  assert.deepEqual(items.map((r) => r.source_item_id), ["5854722"], "в каталог легла только куртка: вязаные жакеты и мужская куртка отсечены");
+  assert.equal(items[0].direction, "jackets");
+  assert.equal(items[0].baseline, true, "первый сбор части — база: старые модели не выдаются за новинки");
+  assert.deepEqual(readCoverage(caps("S001")), { [`${ZARA_DS}|jackets`]: mainCoverage, [`${ZARA_DS}|jackets|zara_chaqueta`]: filterSignature(chaqueta.filter) }, "охват части запомнен отдельно, основной раздел не тронут");
+  const runs = tables.assortment_run ?? [];
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].coverage, "window", "часть раздела — окно: её отсутствие не значит, что вещь пропала из раздела");
+  assert.equal(runs[0].seen, 1);
+});
+
+test("Сбор части коллабораций Uniqlo: пуховик Uniqlo U в каталоге, брюки и мужское — нет; и на второй неделе часть — окно, а не полный раздел", async () => {
+  const fresh = new Date(Date.now() - 3600 * 1000).toISOString();
+  const collab = BRIGHTDATA_TARGETS.find((t) => t.part === "uniqlo_collab" && t.direction === "jackets")!;
+  const snapshot = { snapshotId: "snap_collab", datasetId: UNIQLO_DS, direction: "jackets", method: "brightdata_uniqlo", triggeredAt: fresh, kind: "dataset", part: "uniqlo_collab", recordsLimit: 200, coverage: filterSignature(collab.filter) };
+  // Охват части уже запомнен (вторая неделя): сбору верим, но прогон части всё равно не «полный» — это не весь раздел курток.
+  const { db, tables } = catalogMemoryDb({ S003: { brightdata_pending: [snapshot], brightdata_coverage: { [`${UNIQLO_DS}|jackets|uniqlo_collab`]: filterSignature(collab.filter) } } });
+  const records = [
+    uniqloCollab("Hybrid Down Short Jacket"),
+    uniqloCollab("3D Knit Vest", undefined, "E470000-000"),
+    uniqloCollab("Down Pants", undefined, "E470001-000"),
+    uniqloCollab("Hybrid Down Short Jacket", "MEN > Special Collaborations > Uniqlo U > Hybrid Down Short Jacket", "E470002-000"),
+  ];
+  await withFetch((url) => url.includes("snap_collab") ? new Response(JSON.stringify(records), { status: 200 }) : new Response("{}", { status: 200 }), () => collectBrightData(db, Date.now() + 60_000));
+  assert.deepEqual((tables.assortment_source_items ?? []).map((r) => r.source_item_id), ["E487882-000"]);
+  assert.deepEqual((tables.assortment_run ?? []).map((r) => r.coverage), ["window"]);
+});
+
+test("Платный запуск: купленный сегодня раздел второй раз не покупается — ни после сбора выборки, ни при смене фильтра; новая часть покупается; force=1 — всё", async () => {
+  const wednesday = new Date("2026-10-07T10:00:00Z");
+  const hoursAgo = (h: number) => new Date(wednesday.getTime() - h * 3600 * 1000).toISOString();
+  const filters: Array<{ filter: unknown }> = [];
+  const handler = (url: string, init?: RequestInit) => {
+    if (!url.includes("/datasets/filter")) return new Response("{}", { status: 200 });
+    filters.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ snapshot_id: `snap_${filters.length}` }), { status: 200 });
+  };
+  // Утренний крон уже купил и сбор уже забрал куртки (очереди нет, есть отметка покупки 3 ч назад); сумки покупали неделю назад.
+  const { db, state } = sourcesDb({ S001: { brightdata_bought: { [`${ZARA_DS}|jackets`]: hoursAgo(3), [`${ZARA_DS}|bags`]: hoursAgo(7 * 24), "gd_gone|bags": hoursAgo(8 * 24) } } });
+  const first = await withFetch(handler, () => triggerBrightData(db, { only: "S001", now: wednesday }));
+  assert.ok(first.every((r) => r.ok), JSON.stringify(first));
+  assert.equal(filters.length, 2, "куплены сумки и новая часть CHAQUETA, а куртки, купленные утром, — нет");
+  assert.match(JSON.stringify(filters.map((f) => f.filter)), /CHAQUETA/);
+  const pending = readPending(state.caps.S001);
+  assert.deepEqual(pending.map((p) => p.part ?? "-").sort(), ["-", "zara_chaqueta"]);
+  const bought = readBought(state.caps.S001);
+  assert.equal(bought[`${ZARA_DS}|jackets|zara_chaqueta`], wednesday.toISOString(), "покупка части отмечена");
+  assert.equal(bought[`${ZARA_DS}|jackets`], hoursAgo(3), "утренняя отметка не стёрта");
+  assert.equal(bought[`${ZARA_DS}|bags`], wednesday.toISOString());
+  assert.equal(bought["gd_gone|bags"], undefined, "отметки старше суток не копятся");
+  // Повтор в тот же день, когда выборки уже забраны (очередь пуста), — ничего не покупает.
+  state.caps.S001 = writePending(state.caps.S001, []);
+  await withFetch(handler, () => triggerBrightData(db, { only: "S001", now: new Date(wednesday.getTime() + 2 * 3600 * 1000) }));
+  assert.equal(filters.length, 2, "повторный запуск после сбора — ничего не куплено");
+  // Через неделю — снова по плану.
+  await withFetch(handler, () => triggerBrightData(db, { only: "S001", now: new Date(wednesday.getTime() + 7 * 24 * 3600 * 1000) }));
+  assert.equal(filters.length, 5, "следующая среда — все три цели");
+  // force=1 — осознанный повтор.
+  await withFetch(handler, () => triggerBrightData(db, { only: "S001", force: true, now: new Date(wednesday.getTime() + 7 * 24 * 3600 * 1000 + 60_000) }));
+  assert.equal(filters.length, 8);
+});
+
+test("Смена фильтра раздела: пока ждёт выборка по старому фильтру, раздел в тот же день не покупается заново", async () => {
+  const wednesday = new Date("2026-10-07T10:00:00Z");
+  let bought = 0;
+  const handler = (url: string) => {
+    if (!url.includes("/datasets/filter")) return new Response("{}", { status: 200 });
+    bought += 1;
+    return new Response(JSON.stringify({ snapshot_id: `snap_${bought}` }), { status: 200 });
+  };
+  // Ждёт выборка курток, купленная по прежнему фильтру (другой отпечаток цели), отметки покупки нет (купил старый код).
+  const oldFilter = { snapshotId: "snap_old", datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", triggeredAt: new Date(wednesday.getTime() - 3600 * 1000).toISOString(), kind: "dataset", recordsLimit: 1000, coverage: "old", targetKey: "old-signature" };
+  const { db, state } = sourcesDb({ S001: { brightdata_pending: [oldFilter] } });
+  await withFetch(handler, () => triggerBrightData(db, { only: "S001", now: wednesday }));
+  assert.equal(bought, 2, "сумки и часть CHAQUETA куплены, куртки по новому фильтру — нет: раздел уже куплен сегодня");
+  assert.deepEqual(readPending(state.caps.S001).map((p) => p.snapshotId), ["snap_old", "snap_1", "snap_2"]);
+});
+
+test("Покупка не состоялась (окончательный отказ Bright Data) — отметка снимается, повторный запуск может заказать снова; временный сбой — отметка остаётся", async () => {
+  const fresh = new Date(Date.now() - 3600 * 1000).toISOString();
+  for (const [status, released] of [[404, true], [500, false]] as const) {
+    const snapshot = { ...pendingFor("snap_x", fresh), datasetId: ZARA_DS };
+    const { db, state } = sourcesDb({ S001: { brightdata_pending: [snapshot], brightdata_bought: { [`${ZARA_DS}|jackets`]: fresh, [`${ZARA_DS}|bags`]: fresh } } });
+    await withFetch(() => new Response("boom", { status }), () => collectBrightData(db, Date.now() + 60_000));
+    const bought = readBought(state.caps.S001);
+    assert.equal(bought[`${ZARA_DS}|jackets`] === undefined, released, `HTTP ${status}: ${released ? "отметка снята" : "отметка на месте"}`);
+    assert.equal(bought[`${ZARA_DS}|bags`], fresh, "отметки других разделов не трогаем");
+  }
+  // Сборщик (ASOS): проба не удалась у самого Bright Data — отметку этой цели снимаем, соседней цели того же раздела — нет.
+  const asos = { snapshotId: "s_failed", datasetId: "gd_ldbg7we91cp53nr2z4", direction: "bags", method: "brightdata_asos", triggeredAt: fresh, targetKey: "hobo" };
+  const { db, state } = sourcesDb({ S046: { brightdata_pending: [asos], brightdata_bought: { "gd_ldbg7we91cp53nr2z4|bags|hobo": fresh, "gd_ldbg7we91cp53nr2z4|bags|mango": fresh } } });
+  await withFetch((url) => url.includes("/progress/s_failed") ? new Response(JSON.stringify({ status: "failed" }), { status: 200 }) : new Response("{}", { status: 200 }), () => collectBrightData(db, Date.now() + 60_000));
+  assert.deepEqual(Object.keys(readBought(state.caps.S046)), ["gd_ldbg7we91cp53nr2z4|bags|mango"]);
+});
+
+// --- правки по ревью ветки частей разделов (06.10) ---
+
+/** last_error последней записи источника в паспорт. */
+const lastError = (state: { patches: Array<{ id: string; patch: Record<string, unknown> }> }, id: string) =>
+  state.patches.filter((p) => p.id === id && "last_error" in p.patch).pop()?.patch.last_error;
+
+test("Сбой запуска части (фильтр не принят) не пропадает из «Источников» после сбора; следующая цель покупается; запуск без сбоя снимает его", async () => {
+  let rejectCollabJackets = true;
+  const purchased: string[] = [];
+  const handler = (url: string, init?: RequestInit) => {
+    if (url.includes("/datasets/filter")) {
+      const filter = JSON.stringify(JSON.parse(String(init?.body)).filter);
+      if (rejectCollabJackets && filter.includes("Special Collaborations") && filter.includes('"-003"')) return new Response('{"error":"filter: value must be a string"}', { status: 400 });
+      purchased.push(filter);
+      return new Response(JSON.stringify({ snapshot_id: `snap_${purchased.length}` }), { status: 200 });
+    }
+    // выборки ещё собираются — у самого сбора ошибок нет
+    if (url.includes("/download")) return new Response("", { status: 202 });
+    return new Response("{}", { status: 200 });
+  };
+  const { db, state } = sourcesDb({});
+  const first = await withFetch(handler, () => triggerBrightData(db, { only: "S003", force: true }));
+  assert.equal(first[0].ok, false);
+  assert.equal(first[0].triggered, 3, "основные куртки и сумки и сумки коллабораций куплены");
+  assert.ok(purchased.some((f) => f.includes("Special Collaborations") && f.includes('"Bag"')), "отказ по куртками коллабораций не оставил без покупки их сумки");
+  assert.match(String(lastError(state, "S003")), /не куплено: раздел «куртки» \(часть: коллаборации Uniqlo\) — .*400/);
+  assert.ok(readTriggerFailure(state.caps.S003), "сбой запуска хранится отдельно от last_error");
+  // Сбор в 06:30: пишет last_error заново, но сбой запуска присоединяет — иначе непокупка части пропала бы через полтора часа.
+  await withFetch(handler, () => collectBrightData(db, Date.now() + 60_000));
+  assert.match(String(lastError(state, "S003")), /^Bright Data: запуск \d\d\.\d\d не удался: не куплено: раздел «куртки» \(часть: коллаборации Uniqlo\)/);
+  assert.equal(readPending(state.caps.S003).length, 3, "ждущие выборки — в очереди");
+  assert.ok(readTriggerFailure(state.caps.S003), "и после сбора сбой хранится");
+  // Запуск без сбоя (фильтр приняли) снимает сбой; следующий сбор — чисто.
+  rejectCollabJackets = false;
+  const second = await withFetch(handler, () => triggerBrightData(db, { only: "S003", force: true }));
+  assert.ok(second.every((r) => r.ok), JSON.stringify(second));
+  assert.equal(readTriggerFailure(state.caps.S003), null);
+  await withFetch(handler, () => collectBrightData(db, Date.now() + 60_000));
+  assert.equal(lastError(state, "S003"), null);
+});
+
+test("Сбой запуска: дата в строке — московская; старше 8 суток — не показывается (плановый запуск за это время уже был)", () => {
+  const at = "2026-10-07T05:00:00.000Z";
+  assert.equal(triggerFailureNote({ at, message: "x" }, Date.parse(at) + 3600 * 1000), "запуск 07.10 не удался: x");
+  assert.equal(triggerFailureNote({ at: "2026-10-06T22:30:00.000Z", message: "x" }, Date.parse(at)), "запуск 07.10 не удался: x", "01:30 МСК — уже 07.10");
+  assert.equal(triggerFailureNote({ at, message: "x" }, Date.parse(at) + 8 * 24 * 3600 * 1000), null);
+  assert.equal(triggerFailureNote(null, Date.parse(at)), null);
+  assert.equal(readTriggerFailure({ brightdata_trigger_failure: { at: "вчера", message: "x" } }), null);
+});
+
+test("Сбой запуска старше 8 суток сбор снимает и из capabilities, а не только с экрана", async () => {
+  const old = new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString();
+  const recent = new Date(Date.now() - 3600 * 1000).toISOString();
+  const { db, state } = sourcesDb({ S046: { brightdata_trigger_failure: { at: old, message: "старый" } }, S007: { brightdata_trigger_failure: { at: recent, message: "свежий" } } });
+  await withFetch(() => new Response("{}", { status: 200 }), () => collectBrightData(db, Date.now() + 60_000));
+  assert.equal(readTriggerFailure(state.caps.S046), null);
+  assert.equal(lastError(state, "S046"), null);
+  assert.equal(readTriggerFailure(state.caps.S007)?.message, "свежий", "свежий сбой хранится до удачного запуска");
+});
+
+test("Сбой записи очереди в цикле запуска: обработчик сбоя сохраняет и отметки покупок, а не только очередь (иначе после сбора раздел купился бы второй раз)", async () => {
+  let issued = 0;
+  const handler = (url: string) => {
+    if (!url.includes("/datasets/v3/trigger")) return new Response("{}", { status: 200 });
+    issued += 1;
+    return new Response(JSON.stringify({ snapshot_id: `s_${issued}` }), { status: 200 });
+  };
+  let failed = false;
+  const { db, state } = sourcesDb({}, (patch) => {
+    const pending = (patch.capabilities as { brightdata_pending?: unknown[] } | undefined)?.brightdata_pending;
+    if (!failed && pending?.length === 2) { failed = true; return true; }
+    return false;
+  });
+  await withFetch(handler, () => triggerBrightData(db, { only: "S046" }));
+  assert.equal(Object.keys(readBought(state.caps.S046)).length, 2, "обе оплаченные пробы отмечены купленными");
+  assert.match(readTriggerFailure(state.caps.S046)?.message ?? "", /db write failed/);
+});
+
+test("Окончательный отказ снимает только свою отметку: более новая покупка того же раздела (force=1) остаётся", async () => {
+  const older = new Date(Date.now() - 5 * 3600 * 1000).toISOString();
+  const newer = new Date(Date.now() - 3600 * 1000).toISOString();
+  const { db, state } = sourcesDb({ S001: { brightdata_pending: [{ ...pendingFor("snap_old", older), datasetId: ZARA_DS }], brightdata_bought: { [`${ZARA_DS}|jackets`]: newer } } });
+  await withFetch(() => new Response("gone", { status: 404 }), () => collectBrightData(db, Date.now() + 60_000));
+  assert.equal(readBought(state.caps.S001)[`${ZARA_DS}|jackets`], newer);
+});
+
+const chaquetaTarget = BRIGHTDATA_TARGETS.find((t) => t.part === "zara_chaqueta")!;
+const zaraMainJackets = BRIGHTDATA_TARGETS.find((t) => t.sourceId === "S001" && t.direction === "jackets" && !t.part)!;
+const chaquetaSnapshot = (snapshotId: string) => ({
+  snapshotId, datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", triggeredAt: new Date(Date.now() - 3600 * 1000).toISOString(), kind: "dataset", part: "zara_chaqueta",
+  recordsLimit: chaquetaTarget.recordsLimit, coverage: filterSignature(chaquetaTarget.filter), targetKey: targetSignature(chaquetaTarget),
+});
+const catalogRow = (id: string, title: string) => ({
+  source_id: "S001", source_item_id: id, direction: "jackets", baseline: true, reference_id: null, title, model_key: modelKey({ sourceId: "S001", sourceItemId: id, title }),
+  handle: `https://www.zara.com/us/en/x-p${id.padStart(8, "0")}.html`, image_urls: ["https://static.zara.net/assets/public/ok.jpg"], last_seen_at: new Date().toISOString(),
+});
+/** 50 известных курток основной выборки Zara: раздел курток уже не пуст. */
+const knownZaraJackets = () => Array.from({ length: 50 }, (_, i) => catalogRow(String(9000000 + i), `KNOWN JACKET ${i}`));
+const chaquetaJacket = (i: number) => zaraChaqueta(`POCKET JACKET ${i}`, { product_id: 5850000 + i, url: `https://www.zara.com/us/en/pocket-jacket-p0${5850000 + i}.html` });
+const collectZara = (db: never, records: unknown[], snapshotId: string) => withFetch((url) => {
+  if (url.includes(`/datasets/snapshots/${snapshotId}/download`)) return new Response(JSON.stringify(records), { status: 200 });
+  if (url.includes("/datasets/filter")) return new Response(JSON.stringify({ snapshot_id: "snap_photos" }), { status: 200 });
+  return new Response("{}", { status: 200 });
+}, () => collectBrightData(db, Date.now() + 60_000));
+const partRows = (tables: Record<string, Row[]>) => (tables.assortment_source_items ?? []).filter((r) => String(r.source_item_id).startsWith("585"));
+
+test("Первый сбор части при НЕпустом разделе курток Zara — база для части: старые модели CHAQUETA новинками не становятся", async () => {
+  const { db, tables, caps } = catalogMemoryDb({ S001: { brightdata_pending: [chaquetaSnapshot("snap_c1")], brightdata_coverage: { [`${ZARA_DS}|jackets`]: filterSignature(zaraMainJackets.filter) } } });
+  tables.assortment_source_items = knownZaraJackets();
+  await collectZara(db, Array.from({ length: 8 }, (_, i) => chaquetaJacket(i)), "snap_c1");
+  const rows = partRows(tables);
+  assert.equal(rows.length, 8);
+  assert.ok(rows.every((r) => r.baseline === true), "охват части ещё не запомнен — сбор лёг базой, хотя раздел курток известен");
+  assert.equal(readCoverage(caps("S001"))[`${ZARA_DS}|jackets|zara_chaqueta`], filterSignature(chaquetaTarget.filter), "охват части запомнен");
+  assert.deepEqual((tables.assortment_run ?? []).map((r) => [r.coverage, r.part]), [["window", "zara_chaqueta"]], "прогон части помечен в журнале: «История наблюдений» не примет его за последний прогон источника");
+});
+
+test("Вторая неделя части: новые модели CHAQUETA — новинки (охват части запомнен, сбору верим), известные — нет", async () => {
+  const { db, tables } = catalogMemoryDb({ S001: {
+    brightdata_pending: [chaquetaSnapshot("snap_c2")],
+    brightdata_coverage: { [`${ZARA_DS}|jackets`]: filterSignature(zaraMainJackets.filter), [`${ZARA_DS}|jackets|zara_chaqueta`]: filterSignature(chaquetaTarget.filter) },
+  } });
+  tables.assortment_source_items = [...knownZaraJackets(), ...Array.from({ length: 8 }, (_, i) => catalogRow(String(5850000 + i), `POCKET JACKET ${i}`))];
+  await collectZara(db, Array.from({ length: 11 }, (_, i) => chaquetaJacket(i)), "snap_c2");
+  const rows = partRows(tables);
+  assert.deepEqual(rows.filter((r) => r.baseline === false).map((r) => r.source_item_id).sort(), ["5850008", "5850009", "5850010"], "три новые модели — кандидаты в новинки");
+  assert.ok(rows.filter((r) => Number(r.source_item_id) < 5850008).every((r) => r.baseline === true));
+});
+
+test("Потолок части — по всем оплаченным записям: 600 из 600 пришло, правило оставило 10 — выборка обрезана, новинок нет, предупреждение видно", async () => {
+  // Охват части запомнен (вторая неделя): не будь выборка обрезана, новые модели стали бы новинками.
+  const { db, tables } = catalogMemoryDb({ S001: {
+    brightdata_pending: [chaquetaSnapshot("snap_c3")],
+    brightdata_coverage: { [`${ZARA_DS}|jackets`]: filterSignature(zaraMainJackets.filter), [`${ZARA_DS}|jackets|zara_chaqueta`]: filterSignature(chaquetaTarget.filter) },
+  } });
+  tables.assortment_source_items = knownZaraJackets();
+  const knit = Array.from({ length: 590 }, (_, i) => zaraChaqueta(`CROPPED KNIT JACKET ${i}`, { product_id: 7000000 + i, url: `https://www.zara.com/us/en/knit-p0${7000000 + i}.html` }));
+  await collectZara(db, [...Array.from({ length: 10 }, (_, i) => chaquetaJacket(i)), ...knit], "snap_c3");
+  const rows = partRows(tables);
+  assert.equal(rows.length, 10, "в раздел — только прошедшие правило");
+  assert.ok(rows.every((r) => r.baseline === true), "обрезанная выборка новинок не даёт: невиданное там — не обязательно новое");
+  const source = tables.assortment_sources.find((r) => r.source_id === "S001")!;
+  assert.match(String(source.last_error), /часть: Zara CHAQUETA без трикотажа\) больше потолка выборки \(600\)/);
+});
+
+test("Правило части Zara CHAQUETA: трикотаж в обычных для Zara формулировках отсекается, трикотажная отделка куртки — нет", () => {
+  const keep = (name: string, extra: Record<string, unknown> = {}) => keepPartRecord("zara_chaqueta", "jackets", zaraChaqueta(name, extra));
+  assert.equal(keep("SOFT JACKET", { description: "Jacket made of a soft knit fabric. Lapel collar and long sleeves." }), false, "«knit fabric» в описании — трикотаж");
+  assert.equal(keep("CROPPED JACKET WITH BUTTONS", { description: "Cropped jacket made of spun yarn. Round neck." }), false, "пряжа");
+  assert.equal(keep("SHORT JACKET", { description: "Pointelle jacket with a round neck." }), false);
+  assert.equal(keep("SHORT JACKET", { description: "Jacket in purl stitch." }), false);
+  for (const name of ["RIBBED JACKET", "POINTELLE JACKET", "MOHAIR BLEND JACKET", "ALPACA BLEND JACKET", "CHAQUETA CANALÉ", "AMERICANA CRUZADA"]) assert.equal(keep(name), false, name);
+  assert.equal(keep("BOMBER JACKET WITH RIBBED TRIMS"), true, "рубчик отделки — не трикотаж");
+  assert.equal(keep("BOMBER JACKET", { description: "Bomber jacket. Ribbed knit collar, cuffs and hem. Front zip closure." }), true);
+  assert.equal(keep("PADDED JACKET", { description: "Padded jacket with a knit collar and rib-knit trim." }), true);
+  assert.equal(keep("PUFFER JACKET", { description: "Puffer jacket with a high neck. Knit lining." }), true, "трикотажная подкладка — не трикотаж");
+  assert.equal(keep("HIGH-NECK POCKET JACKET", { description: "Jacket with a high neck. Front zip closure." }), true);
+  // Буклé — фактура пряжи: у Zara чаще тканый жакет; вязаный буклé выдаёт «knit» в названии или описании.
+  assert.equal(keep("BOUCLÉ JACKET", { description: "Jacket made of bouclé fabric. Lapel collar. Patch pockets." }), true);
+  assert.equal(keep("BOUCLÉ JACKET", { description: "Bouclé knit jacket with a round neck." }), false);
+  const notInName = (chaquetaTarget.filter as { filters: Array<{ name: string; operator: string; value: unknown }> }).filters.find((f) => f.name === "product_name")!.value as string[];
+  for (const word of ["POINTELLE", "MOHAIR", "ALPACA"]) assert.ok(notInName.includes(word), `не платим за «${word}»`);
+  assert.ok(!notInName.includes("RIBBED"), "«RIBBED» — подстрока и «… WITH RIBBED TRIMS»: в фильтр набора не идёт");
+});
+
+test("Правило коллабораций Uniqlo: жилет — только верхний, «UNIQLO : C Puffer Skirt» — юбка; главное слово — куртка", () => {
+  const keep = (title: string, category?: string) => keepPartRecord("uniqlo_collab", "jackets", uniqloCollab(title, category));
+  for (const title of ["Tailored Vest", "Linen Blend Vest", "Ribbed Vest", "Mesh Vest", "UNIQLO : C Puffer Skirt", "Hybrid Down"]) assert.equal(keep(title), false, title);
+  for (const title of ["Light Down Vest", "Fleece Vest", "Padded Gilet", "Hybrid Down Short Jacket", "UNIQLO : C Puffer Jacket", "Light Down Vest Jacket"]) assert.equal(keep(title), true, title);
+  for (const title of ["Padded Vest", "Puffer Vest", "PUFFTECH Vest", "Quilted Vest", "Insulated Vest"]) assert.equal(keep(title), true, `верхний жилет: ${title}`);
+  assert.equal(keep("Utility Vest", "WOMEN > Special Collaborations > Uniqlo U > Outerwear > Utility Vest"), true, "по разделу «Outerwear» жилет — верхний");
+  assert.equal(keep("Alpaca Blend Coat"), true, "у Uniqlo альпака — тканое пальто, не трикотаж");
+});
+
+test("Сумки коллабораций Uniqlo: «Baggy» в фильтре набора отсечён — брюки не съедают потолок и не оплачиваются", () => {
+  const bags = BRIGHTDATA_TARGETS.find((t) => t.part === "uniqlo_collab" && t.direction === "bags")!;
+  const filters = (bags.filter as { filters: Array<{ name: string; operator: string; value: unknown }> }).filters;
+  const not = filters.filter((f) => f.name === "title" && f.operator === "not_includes").flatMap((f) => f.value as string[]);
+  assert.ok(not.includes("Baggy") && not.includes("baggy"));
+  assert.ok(!not.includes("Charm"), "«… Bag with Charm» — сумка");
+});
+
+test("Фото Zara: первыми — модели с находкой в ленте; базовые строки без фото (CHAQUETA) их не вытесняют за потолок 400 моделей", async () => {
+  const seen = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const { db, tables } = catalogMemoryDb({ S001: {} });
+  tables.assortment_source_items = Array.from({ length: 450 }, (_, i) => ({
+    source_id: "S001", source_item_id: `id${String(i).padStart(4, "0")}`, direction: "jackets", handle: `https://www.zara.com/us/en/x-p${10000000 + i}.html`,
+    reference_id: i >= 445 ? `ref-${i}` : null, image_urls: null, last_seen_at: seen,
+  }));
+  let body: { filter: { filters: Array<{ name: string; value: unknown }> } } | null = null;
+  await withFetch((url, init) => {
+    if (!url.includes("/datasets/filter")) return new Response("{}", { status: 200 });
+    body = JSON.parse(String(init?.body));
+    return new Response(JSON.stringify({ snapshot_id: "snap_ph" }), { status: 200 });
+  }, () => triggerZaraPhotos(db));
+  const codes = (body as unknown as { filter: { filters: Array<{ name: string; value: unknown }> } }).filter.filters.find((f) => f.name === "group_id")!.value as string[];
+  assert.equal(codes.length, 400);
+  assert.deepEqual(codes.slice(0, 5), ["10000445", "10000446", "10000447", "10000448", "10000449"], "находки в ленте — первыми");
+  assert.deepEqual(codes.slice(5, 7), ["10000000", "10000001"], "дальше — по номеру, как раньше");
+});
+
+test("force=1 накануне планового дня заменяет плановую покупку — так и записано в документации", async () => {
+  const tuesday = new Date("2026-10-06T10:00:00Z");
+  let purchases = 0;
+  const handler = (url: string) => {
+    if (!url.includes("/datasets/filter")) return new Response("{}", { status: 200 });
+    purchases += 1;
+    return new Response(JSON.stringify({ snapshot_id: `snap_${purchases}` }), { status: 200 });
+  };
+  const { db } = sourcesDb({});
+  await withFetch(handler, () => triggerBrightData(db, { only: "S001", force: true, now: tuesday }));
+  const forced = purchases;
+  await withFetch(handler, () => triggerBrightData(db, { only: "S001", now: new Date("2026-10-07T05:00:00Z") }));
+  assert.equal(purchases, forced, "плановый запуск среды ничего не купил: выборки вторника ждут сбора");
+  const docs = readFileSync(join(root, "docs/assortment-development-integration.md"), "utf8");
+  assert.match(docs, /`force=1` накануне планового дня заменяет плановую покупку/);
 });

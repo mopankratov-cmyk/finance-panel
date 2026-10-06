@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { moscowToday } from "@/lib/sync/moscowDay";
+import { partLabel } from "./brightdataCatalog";
 import { catalogAiConfig, estimatedCallUsd, type PhotoTraitsReport } from "./catalogAi";
 import { aiKeyConfigured, loadPhotoTraits, loadQueueDirect, loadSpend, type QueueFacts } from "./catalogAiStore";
 import type { AssortmentDirection } from "./constants";
@@ -172,7 +173,10 @@ async function loadHistory(db: SupabaseClient, direction: AssortmentDirection, n
   const inSection = new Map(rows.map((r) => [String(r.source_id), !Array.isArray(r.categories) || r.categories.length === 0 || r.categories.includes(direction)]));
   const mine = sources.filter((s) => inSection.get(s.sourceId) !== false);
   if (mine.length === 0) return null;
-  return { sources: mine.map((s) => ({ name: nameOf.get(s.sourceId) || s.sourceId, status: s.status, firstDay: s.firstDay, firstFullDay: s.firstFullDay })) };
+  return { sources: mine.map((s) => ({
+    name: nameOf.get(s.sourceId) || s.sourceId, status: s.status, firstDay: s.firstDay, firstFullDay: s.firstFullDay,
+    ...(s.partNames.length ? { parts: s.partNames.map(partLabel) } : {}),
+  })) };
 }
 
 /**
