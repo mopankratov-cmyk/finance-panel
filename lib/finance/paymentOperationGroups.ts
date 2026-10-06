@@ -8,6 +8,8 @@ export interface PaymentOperationGroup {
   chainId?: string;
   parts: Payment[];
   linkedLoans?: Payment[];
+  loanDestinations?: Array<{ loan: Payment; expenses: Payment[] }>;
+  scopedCompanyId?: string;
   remainder?: number;
   bankTransferId?: string;
   linkedTransfers?: Payment[];
@@ -62,19 +64,36 @@ export function groupPaymentOperations(visible: Payment[], all: Payment[], summa
     const entries = (activeByChain.get(chainId) ?? []).filter(entry => !meta || chainMetadata(entry.comment)?.revision === meta.revision);
     const throughCash = entries.some(entry => chainMetadata(entry.comment)?.role === "cash-in");
     const funding = entries.find(entry => chainMetadata(entry.comment)?.role === "source") ?? p;
-    const parts = entries.filter(entry => {
+    const allParts = entries.filter(entry => {
       const role = chainMetadata(entry.comment)?.role;
       if (role) return role === "spending" || (!throughCash && role === "source" && entry.amount < 0);
       return entry.amount < 0 && sectionForCategory(entry.category) !== TECHNICAL_SECTION && entry.category !== INTERCOMPANY_LOAN_CATEGORIES.issued;
     }).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-    const linkedLoans = entries.filter((entry) => {
+    const allLinkedLoans = entries.filter((entry) => {
       const role = chainMetadata(entry.comment)?.role;
       return role === "loan-out" || role === "loan-in";
     }).sort((a, b) => a.date.localeCompare(b.date) || a.amount - b.amount || a.id.localeCompare(b.id));
-    const allocated = parts.reduce((sum, entry) => sum + Math.round(Math.abs(entry.amount) * 100), 0);
-    result.push({ key: chainId, chainId, parts, linkedLoans, remainder: (Math.round(amount * 100) - allocated) / 100, source: {
+    // The same chain belongs to two ledgers: the source company sees the loan
+    // issued, while the recipient sees the loan received and its final expense.
+    // When the current filters expose only one company, use that company's real
+    // entry as the row instead of replacing it with the bank source company.
+    const visibleEntries = visible.filter(entry => chainIdForPayment(entry) === chainId && (!meta || chainMetadata(entry.comment)?.revision === meta.revision));
+    const visibleCompanyIds = [...new Set(visibleEntries.map(entry => entry.companyId).filter((id): id is string => Boolean(id)))];
+    const entryCompanyIds = new Set(entries.map(entry => entry.companyId).filter(Boolean));
+    const scopedCompanyId = visibleCompanyIds.length === 1 && entryCompanyIds.size > 1 ? visibleCompanyIds[0] : undefined;
+    const parts = scopedCompanyId ? allParts.filter(entry => entry.companyId === scopedCompanyId) : allParts;
+    const linkedLoans = scopedCompanyId ? allLinkedLoans.filter(entry => entry.companyId === scopedCompanyId) : allLinkedLoans;
+    const representative = scopedCompanyId
+      ? parts[0] ?? linkedLoans.find(entry => chainMetadata(entry.comment)?.role === "loan-out") ?? linkedLoans[0] ?? visibleEntries[0] ?? funding
+      : funding;
+    const allocated = allParts.reduce((sum, entry) => sum + Math.round(Math.abs(entry.amount) * 100), 0);
+    const loanDestinations = linkedLoans.map(loan => {
+      const allocationId = chainMetadata(loan.comment)?.allocationId;
+      return { loan, expenses: allocationId ? allParts.filter(expense => chainMetadata(expense.comment)?.allocationId === allocationId) : [] };
+    });
+    result.push({ key: chainId, chainId, parts, linkedLoans, loanDestinations, scopedCompanyId, remainder: scopedCompanyId ? undefined : (Math.round(amount * 100) - allocated) / 100, source: scopedCompanyId ? representative : {
       ...funding, id: p.id, amount: -amount, date: meta?.date ?? summary!.date,
-      name: meta?.label ?? summary!.label, category: `Разбито на ${parts.length} частей`, counterparty: "",
+      name: meta?.label ?? summary!.label, category: `Разбито на ${allParts.length} частей`, counterparty: "",
       accountId: summary?.sourceAccountId ?? funding.accountId, companyId: summary?.sourceCompanyId ?? funding.companyId,
     } });
   }

@@ -12,17 +12,22 @@ const draft: PaymentChainDraft = { id: "chain", revision: 0, label: "55 тыся
 let counter = 0;
 const entries = buildChainEntries(draft, companies, () => "payment-" + counter++).map(e => e.payment);
 
-test("date or company filter selects one source and expansion includes all expense dates without summing loans as parts", () => {
-  const visible = entries.filter(p => p.date === "2026-09-15");
+test("company contour shows its real expense and only its side of the linked loan", () => {
+  const visible = entries.filter(p => p.companyId === "kor");
   const rows = groupPaymentOperations(visible, entries);
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].source.amount, -55000);
-  assert.equal(rows[0].source.date, "2026-09-10");
-  assert.equal(rows[0].source.companyId, "main");
-  assert.deepEqual(rows[0].parts.map(p => p.date), ["2026-09-11", "2026-09-15"]);
-  assert.equal(rows[0].remainder, 10000);
-  assert.equal(rows[0].linkedLoans?.length, 2);
-  assert.deepEqual(rows[0].linkedLoans?.map((payment) => payment.category).sort(), ["Выдача кредитов и займов", "Получение кредитов и займов"].sort());
+  assert.equal(rows[0].source.amount, -30000);
+  assert.equal(rows[0].source.date, "2026-09-15");
+  assert.equal(rows[0].source.companyId, "kor");
+  assert.deepEqual(rows[0].parts.map(p => p.date), ["2026-09-15"]);
+  assert.equal(rows[0].remainder, undefined);
+  assert.equal(rows[0].linkedLoans?.length, 1);
+  assert.equal(rows[0].linkedLoans?.[0].category, "Получение кредитов и займов");
+  assert.deepEqual(rows[0].loanDestinations?.[0].expenses.map(payment => payment.category), ["Дивиденды"]);
+  const allContours = groupPaymentOperations(entries, entries);
+  assert.equal(allContours[0].source.amount, -55000);
+  assert.equal(allContours[0].source.companyId, "main");
+  assert.equal(allContours[0].linkedLoans?.length, 2);
   assert.equal(groupPaymentOperations(entries, entries).length, 1);
 });
 test("cancelled old versions stay out of expanded parts; ordinary payments remain independent", () => {
