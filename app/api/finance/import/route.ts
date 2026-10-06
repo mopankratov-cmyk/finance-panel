@@ -140,9 +140,9 @@ export async function GET() {
   try {
     const [accounts, payments] = await Promise.all([
       db.from("accounts").select("id,name").order("name"),
-      loadAllSupabasePages<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null; counterparty: string | null }>((from, to) => db
+      loadAllSupabasePages<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null; counterparty: string | null; import_source: string | null }>((from, to) => db
         .from("payments")
-        .select("id,name,amount,category,account_id,date,company_id,counterparty")
+        .select("id,name,amount,category,account_id,date,company_id,counterparty,import_source")
         .order("id", { ascending: true })
         .range(from, to), { label: "Платежи для проверки импорта" }),
     ]);

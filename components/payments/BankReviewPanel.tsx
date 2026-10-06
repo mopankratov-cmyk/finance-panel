@@ -13,6 +13,8 @@ import {
   markReviewItems,
   clearBankImport,
   askManagerAboutBankReviewItem,
+  matchBankReviewTransfers,
+  rememberBankReviewCounterparty,
   updateBankReviewItem,
   type BankReviewItem,
 } from "./bankReviewStore";
@@ -86,6 +88,11 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const [error, setError] = useState<string | null>(null);
   const [managerText, setManagerText] = useState("");
   const [instructionResult, setInstructionResult] = useState("");
+  const [operationResult, setOperationResult] = useState("");
+  const [duplicateDecision, setDuplicateDecision] = useState<{
+    plan: Awaited<ReturnType<typeof planImport>>;
+    resolve: (accepted: Set<string>) => void;
+  } | null>(null);
   const [queueFilter, setQueueFilter] = useState<"review" | "waiting" | "answered">("review");
   const [reviewIssueFilter, setReviewIssueFilter] = useState<"all" | "missing_category" | "unmatched_transfer">("all");
   const [askItem, setAskItem] = useState<BankReviewItem | null>(null);
@@ -168,6 +175,36 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
     } finally {
       setSaving(false);
     }
+  };
+
+  const rememberCounterparty = async (item: BankReviewItem, counterparty: string, patch: Partial<BankReviewItem>) => {
+    const original = item.counterparty;
+    setSaving(true);
+    setError(null);
+    setItems((current) => current.map((row) => row.counterparty === original ? { ...row, counterparty } : row));
+    try {
+      const updatedIds = await rememberBankReviewCounterparty(item.id, counterparty);
+      const ids = new Set(updatedIds);
+      setItems((current) => current.map((row) => ids.has(row.id) ? { ...row, counterparty } : row));
+      await updateBankReviewItem(item.id, patch);
+      setOperationResult(updatedIds.length > 1
+        ? `Контрагент сохранён сразу для ${updatedIds.length} одинаковых операций.`
+        : "Контрагент сохранён для операции.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось запомнить контрагента");
+      await refresh();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const chooseSuspectedDuplicates = (plan: Awaited<ReturnType<typeof planImport>>) =>
+    new Promise<Set<string>>((resolve) => setDuplicateDecision({ plan, resolve }));
+
+  const finishDuplicateDecision = (accepted: Set<string>) => {
+    const pending = duplicateDecision;
+    setDuplicateDecision(null);
+    pending?.resolve(accepted);
   };
 
   const toggle = (id: string) => setSelected((current) => {
@@ -260,13 +297,10 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
         warnings: [],
       };
       const plan = await planImport(result, { companies });
-      const acceptSuspected =
-        plan.suspectedRows.length > 0 &&
-        confirm(
-          `${plan.suspectedRows.length} платеж(а) совпали по дате, сумме и кошельку с уже сохранёнными. Всё равно добавить их как новые?`,
-        );
-      const acceptedSuspectedIds = acceptSuspected ? new Set(plan.suspectedRows.map((row) => row.row.id)) : new Set<string>();
-      await commitImport(
+      const acceptedSuspectedIds = plan.suspectedRows.length
+        ? await chooseSuspectedDuplicates(plan)
+        : new Set<string>();
+      const committed = await commitImport(
         plan,
         acceptedSuspectedIds,
       );
@@ -284,6 +318,12 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
         }
       }
       await markReviewItems(targetItems.map((item) => item.id), "approved");
+      setOperationResult([
+        `Добавлено в ДДС: ${committed.paymentsCreated}.`,
+        committed.duplicatesSkipped ? `Точных повторов пропущено: ${committed.duplicatesSkipped}.` : "",
+        committed.suspectedSkipped ? `Похожих операций пропущено: ${committed.suspectedSkipped}.` : "",
+        committed.linkedTransfers ? `Связано переводов между счетами: ${committed.linkedTransfers}.` : "",
+      ].filter(Boolean).join(" "));
       dispatch({ type: "LOAD", payload: await loadFinanceState() });
       setSelected((current) => {
         const next = new Set(current);
@@ -299,6 +339,23 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   };
 
   const approve = async () => approveItems(readySelected);
+
+  const rematchTransfers = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const result = await matchBankReviewTransfers();
+      const count = result.bankReviewTransfers + result.ddsTransfers;
+      await refresh();
+      setOperationResult(count
+        ? `Найдено и связано пар переводов: ${count} (в очереди: ${result.bankReviewTransfers}, в ДДС: ${result.ddsTransfers}). Откройте строку в ДДС — обе стороны показаны вместе.`
+        : "Новых однозначных пар переводов не найдено. Для связи должны совпасть сумма и реквизиты встречных счетов, даты могут отличаться не более чем на 3 дня.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Не удалось повторно найти переводы");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const reject = async () => {
     if (selected.size === 0 || !confirm(`Исключить выбранные операции (${selected.size})?`)) return;
@@ -425,6 +482,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
         <button onClick={() => {setQueueFilter("waiting");setReviewIssueFilter("all");}} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "waiting" ? "bg-amber-500 text-white" : "border border-amber-300 text-amber-800"}`}>Ждут ответа ({items.filter((item) => item.status === "waiting_manager" && !hasManagerAnswer(item)).length})</button>
         <button onClick={() => {setQueueFilter("answered");setReviewIssueFilter("all");}} className={`min-h-11 rounded-lg px-3 text-sm ${queueFilter === "answered" ? "bg-emerald-600 text-white" : "border border-emerald-300 text-emerald-800"}`}>Ответ получен ({items.filter(hasManagerAnswer).length})</button>
         <button onClick={() => void refresh()} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm"><RefreshCw className="h-4 w-4" /> Обновить</button>
+        <button onClick={() => void rematchTransfers()} disabled={saving} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-emerald-300 px-3 text-sm text-emerald-800 disabled:opacity-50">Повторно найти переводы</button>
         <button onClick={approve} disabled={saving || selected.size === 0 || invalidSelected.length > 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" /> Подтвердить ({selected.size})</button>
         <button onClick={reject} disabled={saving || selected.size === 0} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-200 px-3 text-sm text-red-600 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Исключить</button>
         <button onClick={() => void clearImportedData()} disabled={saving} className="ml-auto inline-flex min-h-11 items-center gap-2 rounded-lg border border-red-300 bg-red-50 px-3 text-sm font-medium text-red-700 disabled:opacity-50"><Trash2 className="h-4 w-4" /> Очистить банковский импорт</button>
@@ -439,6 +497,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
       </div>}
 
       {error && <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      {operationResult && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{operationResult}</div>}
       {loading ? (
         <div className="flex items-center gap-2 py-10 text-slate-500"><Loader2 className="h-5 w-5 animate-spin" /> Загружаю очередь…</div>
       ) : items.length === 0 && !error ? (
@@ -498,7 +557,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     const managerAnswer = recipient&&requiresFilippovLoan(source,recipient)&&current.length<=1
                       ? encodeBankSplits(expenseOwnerSplits({...item,counterparty},recipient.id))
                       : resetWrongLoan ? null : item.managerAnswer;
-                    void updateLocal(item.id, {counterparty, managerAnswer, status: valid ? "ready" : "needs_info"});
+                    void rememberCounterparty(item, counterparty, {managerAnswer, status: valid ? "ready" : "needs_info"});
                   }}/>
                 </div>
                 {item.amount < 0 && <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"><label className="text-xs text-slate-600">Чей это расход<select aria-label={`Чей расход от ${item.date} на ${formatMoney(item.amount)}`} value={expenseOwnerId} disabled={saving||spendingSplits.length>1} onChange={event=>{const companyId=event.target.value;const managerAnswer=companyId===item.companyId?null:encodeBankSplits(expenseOwnerSplits(item,companyId));const prepared={...item,managerAnswer};const decoded=decodeBankSplits(managerAnswer);const status=hasBankAccount(item.accountId)&&(decoded?splitsAreReady(prepared,decoded):Boolean(item.category&&item.companyId&&categoryMatchesDirection(item.category,item.amount)))?"ready":"needs_info";void updateLocal(item.id,{managerAnswer,status}).then(()=>{const selectedOwner=companies.find(company=>company.id===companyId);if(requiresFilippovLoan(sourceCompany,selectedOwner))openChain(item.id,true);});}} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"><option value={item.companyId??""}>{sourceCompany?.name??"Компания счёта"}</option>{selectableCompanies.filter(company=>company.id!==item.companyId).map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select>{spendingSplits.length>1&&<span className="mt-1 block text-amber-700">Расход уже разбит на несколько частей; компания выбирается в каждой части.</span>}</label>{needsGuidedLoan&&<button type="button" disabled={saving} onClick={()=>openChain(item.id,true)} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-semibold text-amber-950 disabled:opacity-50">Проверить и провести</button>}</div>}
@@ -611,6 +670,28 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
         </div>
       )}
       {chainReviewId&&<PaymentChainModal seed={{reviewId:chainReviewId}} accounts={accounts} companies={companies} confirmationOnly={chainConfirmationOnly} onClose={closeChain} onSaved={async()=>{dispatch({type:"LOAD",payload:await loadFinanceState()});setSelected(current=>{const next=new Set(current);next.delete(chainReviewId);return next;});await refresh();}}/>}
+      <Modal
+        open={Boolean(duplicateDecision)}
+        onClose={() => finishDuplicateDecision(new Set())}
+        title="Похожие операции уже есть в ДДС"
+        size="lg"
+        footer={<div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button type="button" onClick={() => finishDuplicateDecision(new Set())} className="min-h-11 rounded-lg border border-slate-300 px-4 text-sm font-medium text-slate-700">Пропустить похожие</button>
+          <button type="button" onClick={() => finishDuplicateDecision(new Set(duplicateDecision?.plan.suspectedRows.map((row) => row.row.id) ?? []))} className="min-h-11 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white">Добавить как отдельные платежи</button>
+        </div>}
+      >
+        <div className="space-y-3 text-sm text-slate-700">
+          <p>Совпали только дата, сумма и кошелёк. Это может быть уже проведённый платёж или отдельная операция на ту же сумму.</p>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900"><b>Безопасный вариант:</b> пропустить похожие. Вторую кнопку выбирайте, только если это действительно другие платежи.</p>
+          <div className="max-h-64 space-y-2 overflow-y-auto">
+            {duplicateDecision?.plan.suspectedRows.map((row) => <div key={row.row.id} className="rounded-lg border border-slate-200 p-3">
+              <p className="font-medium">{formatDate(row.row.date)} · {formatMoney(row.row.amount)} · {row.wallet}</p>
+              <p className="mt-1 text-xs text-slate-500">Новая строка: {row.row.name || "без назначения"}</p>
+              <p className="text-xs text-slate-500">Уже сохранено: {row.match.name || "без назначения"} · {row.match.category}</p>
+            </div>)}
+          </div>
+        </div>
+      </Modal>
       {/* Общее окно вместо самодельного: Escape, ловушка фокуса, неподвижный
           фон и кнопки, которые не уезжают под экранную клавиатуру. */}
       <Modal

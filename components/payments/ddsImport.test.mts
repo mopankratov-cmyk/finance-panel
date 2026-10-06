@@ -56,3 +56,27 @@ test("старый id Коровкина из банковской очеред�
 
   assert.equal(plan.newPaymentRows[0]?.company_id, "fil");
 });
+
+test("повтор одной банковской операции пропускается даже после изменения её полей", () => {
+  const account = { id: "acc", name: "Сбербанк физлица", type: "bank", currency: "RUB", balance: 0 } as const;
+  const plan = buildImportPlan({
+    drafts: [{
+      date: "2026-10-01", amount: -10_000, name: "Новое назначение", category: "Вывод денег",
+      wallet: account.name, counterparty: "Исправленный контрагент", activity: "Операционная",
+      company: "ИП Филиппов", importSource: "bank-review:operation-1",
+    }],
+    wallets: [account.name], walletDirectory: [], categories: ["Вывод денег"],
+    totalIncome: 0, totalExpense: 10_000, skipped: 0, warnings: [],
+  }, {
+    accounts: [account],
+    payments: [{
+      id: "payment-1", date: "2026-10-01", name: "Старое назначение", amount: -10_000,
+      category: "Прочее", accountId: account.id, companyId: null,
+      importSource: "bank-review:operation-1", status: "done", counterparty: "Старое имя",
+    }],
+  }, { companies: [], overrideCompanyId: null });
+
+  assert.equal(plan.duplicatePayments, 1);
+  assert.equal(plan.newPaymentRows.length, 0);
+  assert.equal(plan.suspectedRows.length, 0);
+});

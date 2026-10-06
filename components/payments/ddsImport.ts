@@ -44,7 +44,7 @@ export interface ImportPlan {
 
 export interface ExistingData {
   accounts: Account[];
-  payments: Array<Payment & { companyId?: string | null }>;
+  payments: Array<Payment & { companyId?: string | null; importSource?: string | null }>;
 }
 
 export interface CompanyAssignment {
@@ -122,7 +122,9 @@ export function buildImportPlan(
   const exactRemaining = new Map<string, number>();
   const unassignedExact = new Map<string, string[]>();
   const looseMatch = new Map<string, { date: string; amount: number; wallet: string; category: string; name: string }>();
+  const existingImportSources = new Set<string>();
   for (const p of existing.payments) {
+    if (p.importSource) existingImportSources.add(p.importSource);
     const wallet = accNameById.get(p.accountId) ?? "";
     const ek = exactKey(p.date, p.amount, p.category, wallet, p.name, p.counterparty, p.companyId ?? null);
     exactRemaining.set(ek, (exactRemaining.get(ek) ?? 0) + 1);
@@ -143,6 +145,13 @@ export function buildImportPlan(
   let duplicatePayments = 0;
 
   for (const d of result.drafts) {
+    // Идентификатор источника устойчив к исправлению статьи, контрагента и
+    // компании. Поэтому повтор той же строки выписки не должен превращаться
+    // в «похожий платёж» и предлагаться к повторному добавлению.
+    if (d.importSource && existingImportSources.has(d.importSource)) {
+      duplicatePayments++;
+      continue;
+    }
     const companyId = companyIdForDraft(d, assignment);
     const ek = exactKey(d.date, d.amount, d.category, d.wallet, d.name, d.counterparty, companyId);
     const rem = exactRemaining.get(ek) ?? 0;
@@ -174,6 +183,7 @@ export function buildImportPlan(
       company_id: companyId,
       import_source: d.importSource ?? null,
     };
+    if (d.importSource) existingImportSources.add(d.importSource);
     const match = looseMatch.get(looseKey(d.date, d.amount, d.wallet));
     if (match) suspectedRows.push({ row, match, wallet: d.wallet });
     else newPaymentRows.push(row);
@@ -195,7 +205,7 @@ async function fetchExisting(): Promise<ExistingData> {
   const response = await fetch("/api/finance/import", { cache: "no-store" });
   const body = await response.json().catch(() => ({})) as {
     accounts?: Array<{ id: string; name: string }>;
-    payments?: Array<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null; counterparty: string | null }>;
+    payments?: Array<{ id: string; name: string; amount: number; category: string; account_id: string; date: string; company_id: string | null; counterparty: string | null; import_source: string | null }>;
     error?: string;
   };
   if (!response.ok) throw new Error(body.error || `Не удалось прочитать данные: ${response.status}`);
@@ -215,6 +225,7 @@ async function fetchExisting(): Promise<ExistingData> {
           status: "done",
           counterparty: p.counterparty ?? "",
           companyId: p.company_id,
+          importSource: p.import_source,
         }) as Payment & { companyId?: string | null },
     );
   return { accounts, payments };
