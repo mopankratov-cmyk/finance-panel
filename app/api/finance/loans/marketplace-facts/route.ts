@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { contractNumberFromComment, wbLoanFactFromRow } from "@/lib/loans/marketplaceFacts";
-import { scheduleRowFromDb, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
+import { scheduleRowFromDb, type ScheduleRowKind, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 

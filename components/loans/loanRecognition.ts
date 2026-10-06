@@ -253,7 +253,7 @@ export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] 
     // пробуем точную пятиколоночную форму, затем прежний общий разбор.
     const columns = match[3].match(fiveColumnPattern);
     const amounts = columns
-      ? columns.slice(1, 6).map(normalizeAmount)
+      ? columns.slice(1, 6).map((value) => normalizeAmount(value))
       : [...match[3].matchAll(amountPattern)].map((item) => normalizeAmount(item[0]));
     // Платёж, тело, проценты, комиссия, остаток после оплаты.
     if (amounts.length < 5) continue;
