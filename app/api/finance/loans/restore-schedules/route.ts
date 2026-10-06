@@ -106,10 +106,12 @@ export async function POST() {
         try {
           const bytes = Buffer.from(await downloaded.data.arrayBuffer());
           const parsed = sourceSchedule(candidate, bytes);
-          if (parsed.length) {
+          // Не останавливаемся на первом частичном совпадении. В карточке
+          // часто лежат договор, дополнение и обновлённый график; короткий
+          // старый документ раньше перекрывал более полный новый.
+          if (parsed.length > source.length) {
             document = candidate;
             source = parsed;
-            break;
           }
         } catch {
           // Один повреждённый или неподходящий файл не должен останавливать

@@ -6,6 +6,10 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
+// Старые договоры могут содержать десятки удержаний. На коротком лимите
+// serverless-функция обрывалась посередине, и после обновления те же строки
+// снова оставались в очереди.
+export const maxDuration = 120;
 
 const isoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
 const daysBetween = (left: string, right: string) => Math.abs(new Date(`${left}T12:00:00`).getTime() - new Date(`${right}T12:00:00`).getTime()) / 86_400_000;

@@ -73,3 +73,25 @@ test("numbered five-column rows win when they form the more complete valid sched
     balanceAfter: 796_305.23,
   });
 });
+
+test("numbered schedule keeps money columns printed without kopecks", () => {
+  const text = [
+    "25 03.08.2026 17 057.11 10 902.29 6 154.82 0 753 215.97",
+    "26 10.08.2026 17 057.11 10 990.11 6 067 0 742 225.86",
+    "58 22.03.2027 17 057.11 14 883 2 174.11 0 318 933.89",
+    "74 12.07.2027 17 057.11 16 512.01 545.10 0 67 184",
+  ].join(" ");
+
+  const rows = recognizeLoanPdfSchedule(text);
+  assert.deepEqual(rows.map((row) => ({
+    date: row.date,
+    principal: row.principal,
+    interest: row.interest,
+    balanceAfter: row.balanceAfter,
+  })), [
+    { date: "2026-08-03", principal: 10902.29, interest: 6154.82, balanceAfter: 753215.97 },
+    { date: "2026-08-10", principal: 10990.11, interest: 6067, balanceAfter: 742225.86 },
+    { date: "2027-03-22", principal: 14883, interest: 2174.11, balanceAfter: 318933.89 },
+    { date: "2027-07-12", principal: 16512.01, interest: 545.1, balanceAfter: 67184 },
+  ]);
+});
