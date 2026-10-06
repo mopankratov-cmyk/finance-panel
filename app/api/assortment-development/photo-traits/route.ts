@@ -13,7 +13,9 @@ export const maxDuration = 60;
  * Признаки каталога по фото (оценка ИИ): доли значений по признакам среди моделей,
  * где признак виден. report: null — таблицы ещё нет или ничего не разобрано.
  * `?samples=1&seed=…&limit=12` — вместо долей примеры разбора (фото, название и то, что
- * написал ИИ): сверить описание с картинкой; без кэша, зерно меняет выборку.
+ * написал ИИ): сверить описание с картинкой; без кэша, зерно меняет выборку. `&unjudged=1&skip=…` — разметка: только модели с
+ * неотмеченными признаками и доступным фото; skip — короткие ключи моделей (photoSkipKey), чьё фото у этого человека не открылось.
+ * `?accuracy=1` — точность разбора текущей моделью ИИ; отметки прежних моделей — отдельно (otherModels), в неё не входят.
  */
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession(ASSORTMENT_ROLES);
@@ -26,7 +28,11 @@ export async function GET(request: NextRequest) {
   // отметок нет (миграция не применена); сбой чтения — ошибка 500, а не тот же null: «нет отметок» и «не прочитали» экран показывает по-разному.
   if (request.nextUrl.searchParams.get("accuracy") === "1") {
     try {
-      return NextResponse.json({ accuracy: await loadAccuracy(db, direction) }, { headers: { "Cache-Control": "private, no-store" } });
+      const report = await loadAccuracy(db, direction);
+      return NextResponse.json(
+        { accuracy: report?.byField ?? null, accuracyModel: report?.model ?? null, otherModels: report?.others ?? [] },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "Точность не посчиталась" }, { status: 500 });
     }
@@ -36,6 +42,8 @@ export async function GET(request: NextRequest) {
       const seed = (request.nextUrl.searchParams.get("seed") ?? "").slice(0, 40);
       const limit = Number(request.nextUrl.searchParams.get("limit")) || 12;
       const onlyUnjudged = request.nextUrl.searchParams.get("unjudged") === "1";
+      // Не больше 500 ключей по 8 знаков: чужое и битое молча отбрасываем — это подсказка экрана, а не данные.
+      const skipPhotos = new Set((request.nextUrl.searchParams.get("skip") ?? "").split(",").filter((k) => /^[0-9a-f]{8}$/.test(k)).slice(0, 500));
       // Простые примеры сбой чтения отметок не роняет — они и без отметок целы. А разметка без отметок невозможна: не знаем, что уже
       // размечено, и «таблицы нет» (null) от «не прочитали» (ошибка) надо различать — экран про миграцию говорит только в первом случае.
       let verdicts: Awaited<ReturnType<typeof loadVerdicts>> | undefined;
@@ -44,7 +52,7 @@ export async function GET(request: NextRequest) {
       } catch (error) {
         if (onlyUnjudged) return NextResponse.json({ error: `Отметки не загрузились (${error instanceof Error ? error.message : "сбой чтения"}) — попробуйте ещё раз` }, { status: 500 });
       }
-      return NextResponse.json({ result: await loadPhotoSamples(db, direction, { seed, limit, verdicts, onlyUnjudged }) }, { headers: { "Cache-Control": "private, no-store" } });
+      return NextResponse.json({ result: await loadPhotoSamples(db, direction, { seed, limit, verdicts, onlyUnjudged, skipPhotos }) }, { headers: { "Cache-Control": "private, no-store" } });
     } catch (error) {
       return NextResponse.json({ error: error instanceof Error ? error.message : "Примеры не загрузились" }, { status: 500 });
     }

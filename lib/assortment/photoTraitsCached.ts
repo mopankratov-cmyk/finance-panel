@@ -39,7 +39,8 @@ export async function loadQueueCached(db: SupabaseClient, direction: AssortmentD
       super("catalog_missing");
     }
   }
-  return loadHourlyDashboard("assortment-queue-direct-v1", { direction }, async () => {
+  // v2: в очереди появилось «вне разбора» по источникам — после выкладки старая форма из кэша не живёт.
+  return loadHourlyDashboard("assortment-queue-direct-v2", { direction }, async () => {
     const facts = await loadQueueDirect(db, direction);
     if (facts.catalogMissing) throw new Missing(facts);
     return facts;

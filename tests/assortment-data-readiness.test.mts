@@ -7,7 +7,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { PhotoTraitsError } from "../components/assortment/PhotoTraits.tsx";
 import { ReadinessStrip } from "../components/assortment/DataReadiness.tsx";
-import { pickCandidates, PROMPT_VERSION, summarizeQueue, TRAITS_REPORT_VERSION, type CatalogHead, type ExistingResult, type PhotoTraitsReport } from "../lib/assortment/catalogAi.ts";
+import { CATALOG_AI_JOB, pickCandidates, PROMPT_VERSION, stopTag, summarizeQueue, TRAITS_REPORT_VERSION, type CatalogHead, type ExistingResult, type PhotoTraitsReport } from "../lib/assortment/catalogAi.ts";
 import { modelKey } from "../lib/assortment/modelKey.ts";
 import { buildReadiness, type DemandFacts, type HistorySource, type ReadinessInput, type TraitsFacts } from "../lib/assortment/dataReadiness.ts";
 import { loadReadiness } from "../lib/assortment/dataReadinessStore.ts";
@@ -50,12 +50,12 @@ test("Очередь общая для двух разделов: остаток
 
 test("Остановки по настройке названы и раскрывают полоску: выключен, нет ключа, нет цены у модели, потолок 0, бюджет недели 0 и исчерпан; потолок суток — не проблема", () => {
   const cases: Array<[Partial<TraitsFacts>, RegExp]> = [
-    [{ enabled: false }, /Разбор выключен/],
-    [{ keyConfigured: false }, /нет ключа ИИ/],
-    [{ priced: false, model: "claude-unknown-9" }, /Для модели «claude-unknown-9» нет цены в таблице: сборщик не запускается/],
+    [{ enabled: false }, /Сборщик стоит — выключен настройкой ASSORTMENT_CATALOG_AI=off/],
+    [{ keyConfigured: false }, /Сборщик стоит — нет ключа ИИ/],
+    [{ priced: false, model: "claude-unknown-9" }, /Сборщик стоит — нет цены модели: для модели «claude-unknown-9» нет цены в таблице/],
     [{ dailyLimit: 0 }, /Потолок суток 0: разбор остановлен/],
     [{ weeklyBudgetUsd: 0, budgetCallsLeft: null }, /Бюджет недели 0: разбор остановлен/],
-    [{ weekUsd: 20.5 }, /Бюджет недели исчерпан/],
+    [{ weekUsd: 20.5 }, /Сборщик стоит — упёрся в бюджет недели/],
   ];
   for (const [over, re] of cases) {
     const r = buildReadiness(input({ traits: traits(over) }));
@@ -118,7 +118,7 @@ test("Очередь другого раздела не узнали (null): «�
 
 test("Сторож без единой удачи: следов попыток нет — «ещё не отработал» без тревоги; были вызовы или неудачи, а удач нет — проблема", () => {
   const quiet = buildReadiness(input({ traits: traits({ analyzed: 0, queued: 4000, recentOk: 0, lastOkAt: null, lastAttemptAt: null, callsToday: 0, weekUsd: 0 }) }));
-  assert.match(lines(quiet, "traits"), /Ни одна модель ещё не разобрана и следов попыток нет: сборщик ещё не отработал или у него не принят ключ/);
+  assert.match(lines(quiet, "traits"), /Ни одна модель ещё не разобрана и следов попыток нет: сборщик ещё не запускался или журнал крона не прочитался/);
   assert.equal(quiet.problem, false, "первые часы после выкладки — не красная тревога");
   for (const over of [{ callsToday: 5 }, { weekUsd: 0.4 }, { failed: 12, recentFailed: 12 }]) {
     const tried = buildReadiness(input({ traits: traits({ analyzed: 0, queued: 4000, recentOk: 0, lastOkAt: null, lastAttemptAt: null, callsToday: 0, weekUsd: 0, ...over }) }));
@@ -137,10 +137,11 @@ test("«Не движется» — по последней ПОПЫТКЕ: в �
   assert.match(lines(silent, "traits"), /Сборщик ничего не пробовал разобрать больше 24 часов \(последняя попытка 05\.10 в 07:00 МСК\)/);
 });
 
-test("Вызовы сегодня есть, а записанных попыток больше суток нет: не «ничего не пробовал» (это ложь), а «вызовы идут, но ни одна модель не записана — временные сбои провайдера»", () => {
+test("Вызовы сегодня есть, а записанных попыток больше суток нет: не «ничего не пробовал» (это ложь), а «вызовы идут, но ни одна модель не записана» — временные сбои пишутся пометкой, значит, остановка без записи или сбой записи", () => {
   const r = buildReadiness(input({ traits: traits({ queued: 50, callsToday: 36, lastOkAt: "2026-10-04T08:00:00Z", lastAttemptAt: "2026-10-04T08:00:00Z" }) }));
   const t = lines(r, "traits");
-  assert.match(t, /Вызовы идут \(сегодня 36\), но ни одна модель не записана больше 24 часов \(последняя запись 04\.10 в 11:00 МСК\) при непустой очереди — похоже, все ответы провайдера временные сбои/);
+  assert.match(t, /Вызовы идут \(сегодня 36\), но ни одна модель не записана больше 24 часов \(последняя запись 04\.10 в 11:00 МСК\) при непустой очереди — ответы провайдера не доходят до записи \(остановка по ключу, деньгам или лимиту либо сбой записи в базу\)/);
+  assert.doesNotMatch(t, /временные сбои/, "временные сбои теперь записываются пометкой в строку модели — на них не киваем");
   assert.doesNotMatch(t, /ничего не пробовал/);
   assert.equal(r.problem, true);
 });
@@ -170,11 +171,11 @@ test("«Ни одна модель не разобрана» — только к
 test("Бюджет кончается раньше нуля: остатка не хватает на один вызов — это остановка, а не «разбор не движется (проверьте ключ)»", () => {
   const r = buildReadiness(input({ traits: traits({ weekUsd: 19.996, weeklyBudgetUsd: 20, budgetCallsLeft: 0, lastOkAt: "2026-10-05T08:00:00Z", lastAttemptAt: "2026-10-05T08:00:00Z" }) }));
   const text = lines(r, "traits");
-  assert.match(text, /Бюджет недели исчерпан \(потрачено \$20,00 из \$20,00; остатка не хватает даже на один вызов\)/);
+  assert.match(text, /Сборщик стоит — упёрся в бюджет недели: потрачено \$20,00 из \$20,00, остатка не хватает даже на один вызов/);
   assert.doesNotMatch(text, /не движется|на всё уйдёт|хватит примерно на 0 вызовов/);
   assert.equal(r.problem, true);
   const ok = buildReadiness(input({ traits: traits({ weekUsd: 19, budgetCallsLeft: 12 }) }));
-  assert.doesNotMatch(lines(ok, "traits"), /Бюджет недели исчерпан/, "на двенадцать вызовов хватает — работаем");
+  assert.doesNotMatch(lines(ok, "traits"), /упёрся в бюджет недели/, "на двенадцать вызовов хватает — работаем");
 });
 
 test("Неудачный пересбор прежней версии при пустом «не разобралось»: доля неудач за 7 суток всё равно видна и поднимает тревогу", () => {
@@ -200,10 +201,13 @@ test("Очередь сборщика: новые + повторы + перес�
     ["S001\u0000S001|retry", prev({ attempts: 2 })],
     ["S001\u0000S001|stale", prev({ status: "ok", promptVersion: "catalog-v1", attempts: 1 })],
     ["S001\u0000S001|deadFailed", prev({ attempts: 3 })],
-    ["S001\u0000S001|deadStale", prev({ status: "ok", promptVersion: "catalog-v1", attempts: 3 })],
+    ["S001\u0000S001|deadStale", prev({ status: "ok", promptVersion: "catalog-v1", attempts: 3, lastError: "ответ ИИ: все признаки «не видно»" })],
     ["S001\u0000S001|done", prev({ status: "ok" })],
   ]);
-  assert.deepEqual(summarizeQueue(heads, existing), { queued: 3, exhausted: 2, unstable: 1 });
+  assert.deepEqual(summarizeQueue(heads, existing), {
+    queued: 3, exhausted: 2, unstable: 1,
+    outside: [{ sourceId: "S001", noPhoto: 1, ru: 0, photoUnavailable: 0, exhausted: 2 }, { sourceId: "S128", noPhoto: 0, ru: 1, photoUnavailable: 0, exhausted: 0 }],
+  });
   const taken = pickCandidates(heads, existing, Date.parse("2026-10-06T00:00:00Z"), 100).map((h) => h.sourceItemId).sort();
   assert.deepEqual(taken, ["fresh", "retry", "stale"], "сборщик берёт ровно очередь");
   const justTried = new Map(existing);
@@ -293,7 +297,7 @@ test("Полоска: свёрнута, когда всё в порядке; р�
   const bad = renderToStaticMarkup(createElement(ReadinessStrip, { report: buildReadiness(input({ traits: traits({ keyConfigured: false }) })) }));
   assert.match(bad, /aria-expanded="true"/);
   assert.match(text(bad), /нужно внимание/);
-  assert.match(text(bad), /факт У разбора нет ключа ИИ/);
+  assert.match(text(bad), /факт Сборщик стоит — нет ключа ИИ/);
   assert.match(text(bad), /расчёт|Даты — расчёт по текущим порогам, а не обещание/);
   const failed = renderToStaticMarkup(createElement(ReadinessStrip, { report: buildReadiness(input({ traits: null, errors: ["спрос на WB (таймаут)"] })) }));
   assert.match(text(failed), /Не загрузилось: спрос на WB \(таймаут\)\./, "когда не осталось ни одного блока, сбой всё равно виден");
@@ -572,4 +576,97 @@ test("История каталогов: у источника с частями
   });
   const loaded = lines(await loadReadiness(db, "jackets", new Date("2026-10-06T10:00:00Z"), { traits: (async () => null) as never }), "history");
   assert.match(loaded, /не наблюдение: Zara \(Zara CHAQUETA без трикотажа\)\./);
+});
+
+// --- Ф1 (06.10): причина остановки сборщика словами и «вне разбора» по источникам ---
+
+const outsideOf = (sourceId: string, name: string, over: Partial<{ noPhoto: number; ru: number; photoUnavailable: number; exhausted: number }> = {}) => ({ sourceId, name, noPhoto: 0, ru: 0, photoUnavailable: 0, exhausted: 0, ...over });
+
+test("Ф1: строка «вне разбора» по источникам — без ссылок на фото, сайты РФ, фото недоступно, исчерпаны 3 попытки; что входит в «из M», а что нет, сказано; пусто — строки нет", () => {
+  const outside = [
+    outsideOf("S001", "Zara", { noPhoto: 125, photoUnavailable: 10, exhausted: 2 }),
+    outsideOf("S007", "H&M", { noPhoto: 7 }),
+    outsideOf("S128", "Lime", { ru: 300 }),
+    outsideOf("S040", "Rains", { photoUnavailable: 2 }),
+  ];
+  const r = buildReadiness(input({ traits: traits({ outside }) }));
+  const line = r.groups[0].lines.find((l) => l.text.startsWith("Вне разбора"))!;
+  assert.equal(line.kind, "факт");
+  assert.equal(line.problem, undefined, "это не поломка — это граница данных");
+  assert.match(line.text, /без ссылок на фото — 132 \(Zara 125, H&M 7\)/);
+  assert.match(line.text, /сайты РФ — 300 \(Lime 300\): ориентир, а не референс — ИИ их не разбирает/);
+  assert.match(line.text, /фото недоступно — 12 \(Zara 10, Rains 2\): ИИ три раза не смог его скачать/);
+  assert.match(line.text, /исчерпаны 3 попытки по другим причинам — 2 \(Zara 2\)/);
+  assert.match(line.text, /Модели без фото и сайты РФ в «из 1\s172» не входят; «фото недоступно» и исчерпавшие попытки в «из 1\s172» входят, но не разберутся\./);
+  assert.equal(r.problem, false);
+  const many = buildReadiness(input({ traits: traits({ outside: ["A", "B", "C", "D", "E", "F"].map((n, i) => outsideOf(`S00${i}`, n, { noPhoto: 10 - i })) }) }));
+  assert.match(lines(many, "traits"), /без ссылок на фото — 45 \(A 10, B 9, C 8, D 7 и ещё 2 источника\)\. Модели без фото в «из 1\s172» не входят\./);
+  assert.doesNotMatch(lines(buildReadiness(input({ traits: traits({ outside: [] }) })), "traits"), /Вне разбора/);
+  assert.doesNotMatch(lines(buildReadiness(input()), "traits"), /Вне разбора/, "отчёт прежней формы — строки нет, а не нули");
+});
+
+test("Ф1: причина остановки из журнала крона — словами и с ответом провайдера: нет денег (402), ключ не принят, лимит, модель, сбой; «не движется, проверьте журнал» тогда не пишем", () => {
+  const stalled = { lastOkAt: "2026-10-04T08:00:00Z", lastAttemptAt: "2026-10-04T08:00:00Z", callsToday: 0 };
+  const billing = buildReadiness(input({ traits: traits({ ...stalled, lastRun: { at: "2026-10-06T08:40:00Z", status: "error", reason: "billing", message: "Polza: на счёте нет средств или исчерпан лимит расходов ключа: Insufficient balance" } }) }));
+  const t = lines(billing, "traits");
+  assert.match(t, /Последний прогон 06\.10 в 11:40 МСК остановился — нет денег \(402\): на счёте провайдера нет средств или исчерпан лимит расходов ключа\. Ответ: Polza: на счёте нет средств/);
+  assert.doesNotMatch(t, /не движется|проверьте журнал/, "причина известна — гадать незачем");
+  assert.equal(billing.problem, true);
+  const cases: Array<[string, RegExp]> = [["auth", /ключ не принят провайдером \(401\/403\)/], ["rate_limit", /лимит запросов провайдера \(429\)/], ["config", /модель недоступна у провайдера/], ["errors", /системный сбой/]];
+  for (const [reason, re] of cases) {
+    const r = buildReadiness(input({ traits: traits({ lastRun: { at: "2026-10-06T08:40:00Z", status: "error", reason: reason as never, message: null } }) }));
+    assert.match(lines(r, "traits"), re, reason);
+    assert.equal(r.problem, true, reason);
+  }
+  const partial = buildReadiness(input({ traits: traits({ lastRun: { at: "2026-10-06T08:40:00Z", status: "partial", reason: "rate_limit", message: null } }) }));
+  assert.doesNotMatch(lines(partial, "traits"), /остановился/, "лимит при разобранных моделях — «медленнее», а не остановка");
+  const stale = buildReadiness(input({ traits: traits({ lastRun: { at: "2026-10-06T08:40:00Z", status: "error", reason: "no_key", message: null } }) }));
+  assert.doesNotMatch(lines(stale, "traits"), /остановился/, "ключ уже задан (по окружению) — старая метка «нет ключа» не повторяется");
+  const off = buildReadiness(input({ traits: traits({ enabled: false, lastRun: { at: "2026-10-06T08:40:00Z", status: "error", reason: "billing", message: null } }) }));
+  assert.doesNotMatch(lines(off, "traits"), /Последний прогон/, "выключен настройкой — это и есть причина, журнал не дублирует");
+});
+
+test("Ф1: «ещё не запускался» — когда в журнале крона нет ни одного прогона и следов попыток нет; потолок суток назван словами и не тревога", () => {
+  const quiet = { analyzed: 0, queued: 4000, recentOk: 0, lastOkAt: null, lastAttemptAt: null, callsToday: 0, weekUsd: 0 };
+  const never = buildReadiness(input({ traits: traits({ ...quiet, lastRun: null }) }));
+  assert.match(lines(never, "traits"), /сборщик ещё не запускался — в журнале крона нет ни одного прогона с работой/);
+  assert.equal(never.problem, false);
+  const ran = buildReadiness(input({ traits: traits({ ...quiet, lastRun: { at: "2026-10-06T08:40:00Z", status: "ok", reason: null, message: "очередь пуста" } }) }));
+  assert.match(lines(ran, "traits"), /последний прогон крона — 06\.10 в 11:40 МСК \(очередь пуста\)/);
+  const capped = buildReadiness(input({ traits: traits({ callsToday: 1500, dailyLimit: 1500 }) }));
+  assert.match(lines(capped, "traits"), /Сборщик упёрся в потолок суток: сегодня больше не разбирает, продолжит после 00:00 МСК\./);
+  assert.equal(capped.problem, false);
+  assert.doesNotMatch(lines(buildReadiness(input()), "traits"), /потолок суток/);
+  // сборщик и так стоит (выключен, нет ключа) — «упёрся в потолок суток» рядом с этим было бы второй, ложной причиной
+  for (const stopped of [{ enabled: false }, { keyConfigured: false }]) {
+    const t = lines(buildReadiness(input({ traits: traits({ ...stopped, callsToday: 1500, dailyLimit: 1500 }) })), "traits");
+    assert.match(t, /Сборщик стоит/);
+    assert.doesNotMatch(t, /упёрся в потолок суток/, JSON.stringify(stopped));
+  }
+});
+
+test("Ф1: чтение базы — последняя строка журнала крона разбора даёт причину; журнал не прочитался — сбой назван, а не «ещё не запускался»; «вне разбора» с именами источников", async () => {
+  const fixture = () => ({
+    assortment_catalog_heads: [
+      headRow("bags", "a"), headRow("bags", "nophoto", { image_urls: [] }), headRow("bags", "ru", { source_id: "S128", model_key: "S128|ru" }),
+      headRow("bags", "dead"),
+    ],
+    assortment_model_attributes: [result("bags", "dead", { status: "failed", attempts: 3, last_error: "Polza 400: не удалось скачать картинку: request timed out", taken_at: "2026-10-04T08:00:00Z" })],
+    assortment_sources: [{ source_id: "S001", name: "Zara" }, { source_id: "S128", name: "Lime" }],
+    sync_log: [
+      { job: CATALOG_AI_JOB, status: "ok", error: null, started_at: "2026-10-05T08:40:00Z" },
+      { job: CATALOG_AI_JOB, status: "error", error: `Polza: на счёте нет средств ${stopTag("billing")}`, started_at: "2026-10-06T06:40:00Z" },
+      { job: "assortment-wb-queries", status: "error", error: "чужая задача", started_at: "2026-10-06T09:00:00Z" },
+    ],
+  });
+  const noReport = async () => null;
+  const r = await loadReadiness(fakeDb(fixture()).db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: noReport as never });
+  const t = lines(r, "traits");
+  assert.match(t, /Последний прогон 06\.10 в 09:40 МСК остановился — нет денег \(402\).*Ответ: Polza: на счёте нет средств\./);
+  assert.match(t, /Вне разбора по источникам: без ссылок на фото — 1 \(Zara 1\); сайты РФ — 1 \(Lime 1\).*; фото недоступно — 1 \(Zara 1\)/);
+  const broken = await loadReadiness(fakeDb(fixture(), { failing: ["sync_log"] }).db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: noReport as never });
+  assert.ok(broken.errors.some((e) => /^журнал прогонов разбора/.test(e)), "сбой чтения журнала назван");
+  assert.doesNotMatch(lines(broken, "traits"), /ещё не запускался — в журнале/, "не прочитали — не значит «не запускался»");
+  const empty = await loadReadiness(fakeDb({ ...fixture(), sync_log: [] }).db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: noReport as never });
+  assert.doesNotMatch(lines(empty, "traits"), /остановился/);
 });

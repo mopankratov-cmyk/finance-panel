@@ -1,7 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { moscowToday } from "@/lib/sync/moscowDay";
 import { partLabel } from "./brightdataCatalog";
-import { catalogAiConfig, estimatedCallUsd, type PhotoTraitsReport } from "./catalogAi";
+import { catalogAiConfig, CATALOG_AI_JOB, estimatedCallUsd, parseStopTag, type PhotoTraitsReport } from "./catalogAi";
 import { aiKeyConfigured, loadPhotoTraits, loadQueueDirect, loadSpend, type QueueFacts } from "./catalogAiStore";
 import type { AssortmentDirection } from "./constants";
 import { buildReadiness, type DemandFacts, type HistoryFacts, type ReadinessInput, type ReadinessReport, type TraitsFacts } from "./dataReadiness";
@@ -104,6 +104,25 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
     note(`очередь другого раздела${error instanceof Error && error.message ? ` (${error.message.slice(0, 120)})` : ""}`);
   }
 
+  // Имена источников для строки «вне разбора»: не прочитались — называем источники кодами, а не прячем строку.
+  let nameOf = new Map<string, string>();
+  if ((own.queue.outside ?? []).length > 0) {
+    const { data: names, error: namesError } = await db.from("assortment_sources").select("source_id,name");
+    if (!namesError) nameOf = new Map(((names ?? []) as Array<{ source_id: string; name: string | null }>).map((n) => [String(n.source_id), String(n.name ?? "")]));
+  }
+  const outside = own.queue.outside?.map((o) => ({ ...o, name: nameOf.get(o.sourceId) || o.sourceId }));
+
+  // Последний прогон крона разбора по журналу: причина остановки (ключ не принят, нет денег, лимит…) видна только там. Сбой чтения —
+  // строка в errors и «не знаем» (undefined), а не «ещё не запускался».
+  let lastRun: TraitsFacts["lastRun"];
+  const log = await db.from("sync_log").select("status,error,started_at").eq("job", CATALOG_AI_JOB).order("started_at", { ascending: false }).limit(1);
+  if (log.error) {
+    if (!missing(log.error)) note(`журнал прогонов разбора (${log.error.message.slice(0, 120)})`);
+  } else {
+    const row = ((log.data ?? []) as Array<{ status: "ok" | "partial" | "error"; error: string | null; started_at: string }>)[0];
+    lastRun = row ? { at: row.started_at, status: row.status, ...parseStopTag(row.error) } : null;
+  }
+
   const config = catalogAiConfig();
   const spend = await loadSpend(db, now);
   const weekUsd = spend?.weekUsd ?? 0;
@@ -135,6 +154,8 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
     weeklyBudgetUsd: config.weeklyBudgetUsd,
     budgetCallsLeft,
     lastErrors: [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([message, n]) => ({ message, count: n })),
+    ...(outside ? { outside } : {}),
+    ...(lastRun !== undefined ? { lastRun } : {}),
   };
 }
 

@@ -18,6 +18,8 @@ import { isRuSource } from "./ruMarket";
  */
 
 export const CATALOG_AI_KIND = "catalog_attributes";
+/** Имя задачи крона разбора в журнале прогонов (sync_log): по нему полоска читает причину остановки, сторож — серию ошибок. */
+export const CATALOG_AI_JOB = "assortment-catalog-ai";
 /** Версия вопроса и словаря признаков: поменяли — модели можно разобрать заново. */
 export const PROMPT_VERSION = "catalog-v2";
 /** Дешёвая модель с картинками: каталог — тысячи вызовов, а не десятки (основная модель панели — Opus). */
@@ -132,6 +134,59 @@ export function catalogAiConfig(env: Record<string, string | undefined> = proces
   };
 }
 
+/**
+ * Имя модели ИИ так, как оно пишется в строку разбора (assortment_model_attributes.model) и в отметку точности (ai_model):
+ * у Polza — «polza:автор/модель», у Anthropic — имя модели. Одна функция и для записи разбора, и для выбора «точности текущей
+ * модели»: разойдись они — точность текущей модели всегда была бы пустой.
+ */
+export function catalogModelId(config: Pick<CatalogAiConfig, "provider" | "model">): string {
+  return config.provider === "polza" ? `polza:${config.model}` : config.model;
+}
+
+// ---------------------------------------------------------------------------
+// Причина остановки сборщика — в журнале прогонов (sync_log) и на полоске «На чём стоят цифры»
+
+/**
+ * Почему прогон разбора остановился или не начался. Крон дописывает метку `[stop:<причина>]` в конец строки журнала (sync_log.error —
+ * единственное текстовое поле строки; новой колонки не заводим), полоска читает последнюю строку и называет причину словами.
+ */
+export type CatalogStopReason = "no_key" | "no_price" | "disabled" | "auth" | "billing" | "rate_limit" | "config" | "errors" | "budget" | "daily_limit";
+
+export const STOP_REASON_WORDS: Record<CatalogStopReason, string> = {
+  no_key: "нет ключа",
+  no_price: "нет цены модели",
+  disabled: "выключен настройкой ASSORTMENT_CATALOG_AI=off",
+  auth: "ключ не принят провайдером (401/403)",
+  billing: "нет денег (402): на счёте провайдера нет средств или исчерпан лимит расходов ключа",
+  rate_limit: "упёрся в лимит запросов провайдера (429), не разобрав ни одной модели",
+  config: "модель недоступна у провайдера (проверьте ASSORTMENT_CATALOG_AI_MODEL)",
+  errors: "системный сбой (не записался учёт расхода или четыре пачки подряд без единого разобранного фото)",
+  budget: "упёрся в бюджет недели",
+  daily_limit: "упёрся в потолок суток",
+};
+
+const STOP_TAG = /\s*\[stop:([a-z_]+)\]\s*$/;
+
+/** Метка причины для строки журнала. */
+export const stopTag = (reason: CatalogStopReason): string => `[stop:${reason}]`;
+
+/** Причина из строки журнала и текст без метки; метки нет или она чужая — reason null. */
+export function parseStopTag(text: string | null | undefined): { reason: CatalogStopReason | null; message: string | null } {
+  const raw = (text ?? "").trim();
+  const match = raw.match(STOP_TAG);
+  const reason = match && Object.prototype.hasOwnProperty.call(STOP_REASON_WORDS, match[1]) ? (match[1] as CatalogStopReason) : null;
+  const message = (match ? raw.slice(0, match.index) : raw).trim();
+  return { reason, message: message || null };
+}
+
+/**
+ * Текст ошибки строки журнала для экрана «Синхронизация» (`/api/sync-log`): у крона разбора — без метки `[stop:…]`. Метка нужна полоске
+ * «На чём стоят цифры» (она читает журнал сама), человеку в журнале она лишняя — как и в Telegram (jobsWatch её тоже вырезает).
+ */
+export function syncLogErrorText(job: string, error: string | null): string | null {
+  return job === CATALOG_AI_JOB ? parseStopTag(error).message : error;
+}
+
 export function costUsd(usage: { inputTokens: number; outputTokens: number }, price: { in: number; out: number }): number {
   return Math.round(((usage.inputTokens * price.in + usage.outputTokens * price.out) / 1_000_000) * 100_000) / 100_000;
 }
@@ -187,15 +242,64 @@ export interface ExistingResult {
   attempts: number;
   promptVersion: string;
   takenAt: string;
+  /**
+   * Чем кончилась последняя попытка: текст ошибки или null — без ошибки (удачный разбор). У строки «ok» ошибка значит неудачный
+   * пересбор прежней версии вопроса: прежний результат цел, а попытка записана. Пометка временного сбоя (transientMark) — попытка
+   * не потрачена, модель отложена.
+   */
+  lastError?: string | null;
 }
 
 export const MAX_ATTEMPTS = 3;
-/** Версия формы отчёта по признакам (корзины значений, legacy, examples): входит в ключ кэша, чтобы после выкладки не жил старый отчёт. */
-export const TRAITS_REPORT_VERSION = 4;
+/** Версия формы отчёта по признакам (корзины значений, legacy, examples, источники в долях и «вне разбора» в очереди): входит в ключ кэша, чтобы после выкладки не жил старый отчёт. */
+export const TRAITS_REPORT_VERSION = 5;
 export const RETRY_AFTER_MS = 24 * 3600 * 1000;
+
+/**
+ * Временный сбой вызова по модели — наш таймаут, 408/5xx провайдера, обрыв сети — пишется в last_error модели одной из двух пометок,
+ * и попытку (MAX_ATTEMPTS) не тратит никогда: иначе медленный провайдер за три дня навсегда выбил бы из очереди здоровые модели.
+ *
+ * «Повтор в следующем прогоне» — первый сбой провайдера у модели: разовый сбой её не задерживает, следующий прогон берёт её снова.
+ * «Отложено на сутки» — наш таймаут (вызов шёл до предела и мог быть оплачен) или второй сбой подряд у той же модели: модель, на которой
+ * разбор раз за разом падает, берётся не чаще раза в сутки, а не каждым прогоном крона (12 раз в сутки) — и неважно, разобрал ли прогон
+ * что-то ещё.
+ */
+export const TRANSIENT_RETRY_PREFIX = "сбой провайдера, повтор в следующем прогоне";
+export const TRANSIENT_DEFERRED_PREFIX = "отложено на сутки";
+
+export type TransientMark = "retry" | "deferred";
+
+/** Пометка временного сбоя в last_error модели; null — последняя попытка кончилась не временным сбоем (удача или настоящая неудача). */
+export function transientMark(lastError: string | null | undefined): TransientMark | null {
+  if (!lastError) return null;
+  if (lastError.startsWith(TRANSIENT_DEFERRED_PREFIX)) return "deferred";
+  if (lastError.startsWith(TRANSIENT_RETRY_PREFIX)) return "retry";
+  return null;
+}
+
+/** Пауза до следующей попытки модели: после первого сбоя провайдера — без паузы (следующий прогон), иначе — сутки. */
+export function retryPauseMs(prev: Pick<ExistingResult, "lastError">): number {
+  return transientMark(prev.lastError) === "retry" ? 0 : RETRY_AFTER_MS;
+}
 
 const keyOf = (sourceId: string, modelKey: string) => `${sourceId}\u0000${modelKey}`;
 export { keyOf as resultKey };
+
+/** Простой устойчивый хэш (FNV-1a, 32 бита): порядок «случайной» выборки и короткие ключи моделей не зависят от порядка строк в базе. */
+export function fnv1a(text: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/**
+ * Короткий ключ модели для «фото у меня не открылось»: экран разметки отдаёт их серверу, чтобы следующая выборка не предлагала те же
+ * модели (отметить их нечем). Восемь шестнадцатеричных знаков вместо длинного ключа модели — адрес запроса остаётся коротким.
+ */
+export const photoSkipKey = (sourceId: string, modelKey: string): string => fnv1a(keyOf(sourceId, modelKey)).toString(16).padStart(8, "0");
 
 export interface QueueLanes {
   /** Новые: результата нет. */
@@ -233,13 +337,16 @@ export function queueLanes(heads: CatalogHead[], existing: Map<string, ExistingR
     const prev = existing.get(key);
     if (!prev) lanes.fresh.push(head);
     else if (prev.status === "failed") {
+      // Временные сбои попыток не тратят (у модели, которую пока только откладывали, attempts=0): потолок — только настоящие неудачи.
       if (prev.attempts >= MAX_ATTEMPTS) lanes.exhausted.push(head);
-      else if (nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) lanes.retry.push(head);
+      else if (nowMs - Date.parse(prev.takenAt) >= retryPauseMs(prev)) lanes.retry.push(head);
     } else if (prev.promptVersion !== PROMPT_VERSION) {
       // Пересбор старой строки, у которого уже были неудачные попытки (ответ из одних «не видно»), потолком попыток ограничен так же,
-      // как у новой: иначе платный вызов повторялся бы каждые сутки без конца.
-      if (prev.attempts >= MAX_ATTEMPTS) lanes.exhausted.push(head);
-      else if (nowMs - Date.parse(prev.takenAt) >= RETRY_AFTER_MS) lanes.stale.push(head);
+      // как у новой: иначе платный вызов повторялся бы каждые сутки без конца. Потолок — только когда последняя попытка кончилась
+      // настоящей ошибкой: у модели, разобранной с третьей попытки, attempts=3 и ошибки нет, а пометка временного сбоя попытку не тратила —
+      // без этого условия такие модели не пересобрались бы никогда.
+      if (prev.attempts >= MAX_ATTEMPTS && prev.lastError && !transientMark(prev.lastError)) lanes.exhausted.push(head);
+      else if (nowMs - Date.parse(prev.takenAt) >= retryPauseMs(prev)) lanes.stale.push(head);
     }
   }
   return lanes;
@@ -257,6 +364,29 @@ export function pickCandidates(heads: CatalogHead[], existing: Map<string, Exist
   return [...byTurns(fresh.sort(newestFirst)), ...byTurns(retry.sort(newestFirst)), ...byTurns(stale.sort(newestFirst))].slice(0, Math.max(0, limit));
 }
 
+/**
+ * Ошибка, после которой фото модели считаем недоступным: провайдер не смог его скачать или прочитать как картинку. Отказ модерации
+ * (403), обрезанный ответ, «все признаки не видно» сюда не входят — фото там открылось.
+ */
+export function isPhotoUnavailableError(message: string | null | undefined): boolean {
+  // Пометка временного сбоя — не про фото, даже если в тексте ответа провайдера (502 и т. п.) встретилось «download».
+  if (!message || transientMark(message)) return false;
+  return /скача|скачив|download|fetch(?:ing)? (?:the )?image|image[^.;]{0,40}(?:fetch|download|retriev|unreachable|not accessible|could not be)|(?:invalid|unsupported) image|could not process image/i.test(message);
+}
+
+/** Что вне разбора у одного источника раздела — по тем же правилам, что очередь сборщика. */
+export interface OutsideBySource {
+  sourceId: string;
+  /** Без ссылок на фото: в «из M» не входят (isEligibleHead). */
+  noPhoto: number;
+  /** Сайты РФ («Рынок РФ» — ориентир, не референс): в «из M» не входят. */
+  ru: number;
+  /** Исчерпали три попытки, последняя — фото не скачалось: в «из M» входят, но не разберутся. */
+  photoUnavailable: number;
+  /** Исчерпали три попытки по другим причинам: в «из M» входят, но не разберутся. */
+  exhausted: number;
+}
+
 /** Очередь сборщика в числах: сколько моделей он ещё возьмёт и сколько не возьмёт никогда. */
 export interface QueueSummary {
   /** Новые + повторы + пересбор прежней версии (суточная пауза между попытками не учитывается — сборщик возьмёт их в течение суток). */
@@ -265,11 +395,38 @@ export interface QueueSummary {
   exhausted: number;
   /** Ключ модели в базе не совпал с расчётным. */
   unstable: number;
+  /** Вне разбора по источникам (только источники, где что-то вне разбора); нет — отчёт прежней формы. */
+  outside?: OutsideBySource[];
 }
 
 export function summarizeQueue(heads: CatalogHead[], existing: Map<string, ExistingResult>): QueueSummary {
   const lanes = queueLanes(heads, existing, Number.POSITIVE_INFINITY);
-  return { queued: lanes.fresh.length + lanes.retry.length + lanes.stale.length, exhausted: lanes.exhausted.length, unstable: lanes.unstable.length };
+  const bySource = new Map<string, OutsideBySource>();
+  const of = (sourceId: string) => {
+    const entry = bySource.get(sourceId) ?? { sourceId, noPhoto: 0, ru: 0, photoUnavailable: 0, exhausted: 0 };
+    bySource.set(sourceId, entry);
+    return entry;
+  };
+  const seen = new Set<string>();
+  for (const head of heads) {
+    if (isEligibleHead(head)) continue;
+    const key = keyOf(head.sourceId, head.modelKey);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (isRuSource(head.sourceId)) of(head.sourceId).ru += 1;
+    else of(head.sourceId).noPhoto += 1;
+  }
+  for (const head of lanes.exhausted) {
+    const prev = existing.get(keyOf(head.sourceId, head.modelKey));
+    if (isPhotoUnavailableError(prev?.lastError)) of(head.sourceId).photoUnavailable += 1;
+    else of(head.sourceId).exhausted += 1;
+  }
+  return {
+    queued: lanes.fresh.length + lanes.retry.length + lanes.stale.length,
+    exhausted: lanes.exhausted.length,
+    unstable: lanes.unstable.length,
+    outside: [...bySource.values()].sort((a, b) => a.sourceId.localeCompare(b.sourceId)),
+  };
 }
 
 /**
@@ -530,6 +687,51 @@ export interface PhotoTraitsReport {
   fields: TraitField[];
   /** Очередь сборщика по этому разделу (то же правило, что у самого сборщика); нет — отчёт из кэша старой формы. */
   queue?: QueueSummary;
+  /** Источники раздела: сколько у каждого моделей в каталоге и сколько из них в долях — для подписи «каких источников нет или мало». */
+  sources?: SourceShare[];
+}
+
+/** Источник раздела рядом с тем, сколько его моделей попало в доли признаков. */
+export interface SourceShare {
+  sourceId: string;
+  name: string;
+  /** Моделей источника в текущем каталоге раздела — все, в том числе без фото и сайты РФ. */
+  models: number;
+  /** Из них можно разобрать (с фото, не «Рынок РФ»). */
+  eligible: number;
+  /** Разобрано по текущей версии вопроса — в долях. */
+  analyzed: number;
+  /** Сайт РФ: ориентир, ИИ его не разбирает. */
+  ru: boolean;
+}
+
+/** Источник «мало представлен» в долях, если в них меньше этой доли его моделей (порог наш) или меньше MIN_SOURCE_MODELS моделей. */
+export const SOURCE_FEW_SHARE = 0.5;
+
+export function sourceShares(heads: CatalogHead[], analyzed: Array<{ sourceId: string; modelKey?: string }>, nameOf: (sourceId: string) => string): SourceShare[] {
+  const out = new Map<string, SourceShare>();
+  const seen = new Set<string>();
+  for (const head of heads) {
+    const key = keyOf(head.sourceId, head.modelKey);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const entry = out.get(head.sourceId) ?? { sourceId: head.sourceId, name: nameOf(head.sourceId) || head.sourceId, models: 0, eligible: 0, analyzed: 0, ru: isRuSource(head.sourceId) };
+    entry.models += 1;
+    if (isEligibleHead(head)) entry.eligible += 1;
+    out.set(head.sourceId, entry);
+  }
+  for (const m of analyzed) {
+    const entry = out.get(m.sourceId);
+    if (entry) entry.analyzed += 1;
+  }
+  return [...out.values()].sort((a, b) => b.models - a.models || a.sourceId.localeCompare(b.sourceId));
+}
+
+/** Каких источников в долях нет (ни одной модели) и каких мало — по SourceShare отчёта. */
+export function sourceGaps(sources: SourceShare[]): { absent: SourceShare[]; few: SourceShare[] } {
+  const absent = sources.filter((s) => s.models > 0 && s.analyzed === 0);
+  const few = sources.filter((s) => s.analyzed > 0 && (s.analyzed < MIN_SOURCE_MODELS || s.analyzed / s.models < SOURCE_FEW_SHARE));
+  return { absent, few };
 }
 
 const pct = (n: number, of: number) => (of > 0 ? Math.round((n / of) * 1000) / 10 : 0);

@@ -1,10 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { isJudgeableField, PROMPT_VERSION } from "./catalogAi";
+import { catalogAiConfig, catalogModelId, isJudgeableField, PROMPT_VERSION } from "./catalogAi";
 import { ATTRIBUTE_FIELDS } from "./attributes";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
-import { summarizeVerdicts, type FieldAccuracy, type Verdict } from "./attributeVerdicts";
+import { accuracyFor, summarizeVerdicts, type FieldAccuracy, type Verdict } from "./attributeVerdicts";
 
 const TABLE = "assortment_attribute_verdict";
 const RESULTS = "assortment_model_attributes";
@@ -19,13 +19,15 @@ export interface StoredVerdict {
   model_key: string;
   field_key: string;
   verdict: Verdict;
+  /** Какой моделью ИИ получен отмеченный разбор (из строки разбора). Нет поля — отметка прочитана без него (старый вызов). */
+  ai_model?: string | null;
 }
 
-/** Отметки по разделу для текущей версии вопроса; null — таблицы ещё нет (миграция 202610050007). */
+/** Отметки по разделу для текущей версии вопроса (всех моделей ИИ — точность их разводит); null — таблицы ещё нет (миграция 202610050007). */
 export async function loadVerdicts(db: SupabaseClient, direction: AssortmentDirection, promptVersion = PROMPT_VERSION): Promise<StoredVerdict[] | null> {
   try {
     return await loadAllSupabasePages<StoredVerdict>((from, to) => db.from(TABLE)
-      .select("source_id,model_key,field_key,verdict")
+      .select("source_id,model_key,field_key,verdict,ai_model")
       .eq("direction", direction)
       .eq("prompt_version", promptVersion)
       .order("source_id", { ascending: true })
@@ -38,10 +40,29 @@ export async function loadVerdicts(db: SupabaseClient, direction: AssortmentDire
   }
 }
 
-/** Точность по признакам раздела (текущая версия вопроса); null — таблицы нет. */
-export async function loadAccuracy(db: SupabaseClient, direction: AssortmentDirection): Promise<Record<string, FieldAccuracy> | null> {
+/** Точность раздела: текущей модели ИИ — отдельно, прежних моделей той же версии вопроса — отдельно, не смешивая. */
+export interface AccuracyReport {
+  /** Модель ИИ, которая сейчас пишет разбор (как в строке разбора: «polza:…» или имя модели Anthropic). */
+  model: string;
+  /** Точность по признакам у пары (текущая версия вопроса, текущая модель). */
+  byField: Record<string, FieldAccuracy>;
+  /** Отметки разборов прежними моделями той же версии вопроса: их разборы ещё в долях, но в точность текущей модели они не входят. */
+  others: Array<{ aiModel: string | null; marks: number; byField: Record<string, FieldAccuracy> }>;
+}
+
+/**
+ * Точность по признакам раздела (текущая версия вопроса) — по паре с текущей моделью ИИ; отметки других моделей — отдельными
+ * строками. null — таблицы нет. currentModel по умолчанию — из настроек сборщика (то же имя, что он пишет в строку разбора).
+ */
+export async function loadAccuracy(db: SupabaseClient, direction: AssortmentDirection, currentModel: string = catalogModelId(catalogAiConfig())): Promise<AccuracyReport | null> {
   const rows = await loadVerdicts(db, direction);
-  return rows ? summarizeVerdicts(rows) : null;
+  if (!rows) return null;
+  const summaries = summarizeVerdicts(rows.map((r) => ({ ...r, prompt_version: PROMPT_VERSION, ai_model: r.ai_model ?? null })));
+  return {
+    model: currentModel,
+    byField: accuracyFor(summaries, PROMPT_VERSION, currentModel),
+    others: summaries.filter((s) => s.aiModel !== currentModel).map((s) => ({ aiModel: s.aiModel, marks: s.marks, byField: s.byField })),
+  };
 }
 
 export class VerdictInputError extends Error {}

@@ -6,7 +6,8 @@ import {
   allowance, AVERAGE_MIN_COVERAGE, buildPhotoTraits, canonicalValue, catalogAiConfig, costUsd, DEFAULT_CATALOG_MODEL, DEFAULT_POLZA_MODEL, estimatedCallUsd, fieldVocabulary, isEligibleHead, MIN_VISIBLE_FOR_SHARES, pickProvider, polzaKey,
   packAttributes, parseCatalogAnswer, pickCandidates, PROMPT_VERSION, queueLanes, resultKey, type CatalogHead, type ExistingResult, type TraitModel,
 } from "../lib/assortment/catalogAi.ts";
-import { aiKeyConfigured, askFor, isTransientVisionError, loadCatalogHeads, loadPhotoSamples, loadSpend, loadPhotoTraits, makePolzaVision, runCatalogAi, VisionStopError, type AskVision, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
+import { aiKeyConfigured, askFor, catalogRunStatus, isTransientVisionError, loadCatalogHeads, loadExisting, loadPhotoSamples, loadSpend, loadPhotoTraits, makePolzaVision, runCatalogAi, runStopReason, transientFailureMessage, VisionStopError, type AskVision, type PhotoSample, type RunSummary } from "../lib/assortment/catalogAiStore.ts";
+import { CATALOG_AI_JOB, catalogModelId, isPhotoUnavailableError, parseStopTag, RETRY_AFTER_MS, STOP_REASON_WORDS, stopTag, summarizeQueue, syncLogErrorText, transientMark } from "../lib/assortment/catalogAi.ts";
 import { catalogPrompt, catalogUserText } from "../lib/assortment/aiAttributes.ts";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -148,7 +149,7 @@ test("Отчёт: «не видно» в долях не участвует, с�
 type Row = Record<string, unknown>;
 const POSTGREST_MAX_ROWS = 1000;
 interface FakeOpts {
-  heads?: Row[]; results?: Row[]; usage?: Row[]; missing?: string[]; upsertFail?: boolean; usageWriteFail?: boolean; failFailedRead?: boolean;
+  heads?: Row[]; results?: Row[]; usage?: Row[]; missing?: string[]; upsertFail?: boolean; usageWriteFail?: boolean; failExistingRead?: boolean;
   /** Соперник: вызывается один раз перед первым обновлением строки учёта — как параллельный прогон. */
   rival?: (usage: Row[]) => void;
 }
@@ -169,20 +170,27 @@ function fakeDb(init: FakeOpts = {}) {
       const eqs: Array<[string, unknown]> = [];
       const state = { op: "select", values: {} as Row, returning: false };
       const rows = () => (tables[table] ?? []).filter((r) => filters.every((f) => f(r)));
+      // Как PostgREST: чтение отдаёт только выбранные колонки — код, забывший колонку в select, увидит её пустой.
+      let cols: string[] | null = null;
+      const picked = () => rows().map((r) => (cols ? Object.fromEntries(cols.filter((c) => c in r).map((c) => [c, r[c]])) : r));
       const isMissing = init.missing?.includes(table);
       const q: Record<string, unknown> = {
-        select: () => { if (state.op === "update") state.returning = true; return q; },
+        select: (c?: string) => {
+          if (state.op === "update") state.returning = true;
+          else if (typeof c === "string" && c.trim() !== "*") cols = c.split(",").map((x) => x.trim());
+          return q;
+        },
         eq: (c: string, val: unknown) => { eqs.push([c, val]); filters.push((r) => r[c] === val); return q; },
         gte: (c: string, val: unknown) => { filters.push((r) => String(r[c] ?? "") >= String(val)); return q; },
         is: (c: string, val: unknown) => { filters.push((r) => (r[c] ?? null) === val); return q; },
         order: () => q,
         range: (from: number, to: number) => {
-          // Сбой вспомогательного чтения неудавшихся строк (очередь отчёта): основной отчёт он ронять не должен.
-          if (init.failFailedRead && table === "assortment_model_attributes" && eqs.some(([c, v]) => c === "status" && v === "failed")) return Promise.resolve({ data: null, error: { message: "таймаут запроса" } });
+          // Сбой вспомогательного чтения всей таблицы результатов (очередь отчёта — то же чтение, что у сборщика): основной отчёт он ронять не должен.
+          if (init.failExistingRead && table === "assortment_model_attributes" && eqs.length === 0) return Promise.resolve({ data: null, error: { message: "таймаут запроса" } });
           // PostgREST отдаёт не больше max-rows (1000) строк, сколько бы ни просили в range: код, листающий страницами больше тысячи, обязан это учитывать.
-          return Promise.resolve(isMissing ? { data: null, error: missingErr(table) } : { data: rows().slice(from, Math.min(to + 1, from + POSTGREST_MAX_ROWS)), error: null });
+          return Promise.resolve(isMissing ? { data: null, error: missingErr(table) } : { data: picked().slice(from, Math.min(to + 1, from + POSTGREST_MAX_ROWS)), error: null });
         },
-        maybeSingle: () => Promise.resolve({ data: rows()[0] ?? null, error: null }),
+        maybeSingle: () => Promise.resolve({ data: picked()[0] ?? null, error: null }),
         update: (values: Row) => { state.op = "update"; state.values = values; return q; },
         insert: (row: Row) => {
           if (init.usageWriteFail && table === "assortment_ai_usage" && row.kind === "catalog_attributes") return Promise.resolve({ error: { message: "db down" } });
@@ -212,7 +220,7 @@ function fakeDb(init: FakeOpts = {}) {
             writes.push({ table, row: state.values });
             return Promise.resolve({ data: state.returning ? hit.map((r) => ({ day: r.day })) : null, error: null }).then(resolve);
           }
-          return Promise.resolve({ data: rows(), error: null }).then(resolve);
+          return Promise.resolve({ data: picked(), error: null }).then(resolve);
         },
       };
       return q;
@@ -348,7 +356,7 @@ test("Прогон: ответ без признаков — неудача с �
   assert.match(String(row.last_error), /не разобрался/);
 });
 
-test("Временные сбои (перегрузка, 5xx, сеть) не тратят попытку модели: записи нет, модель остаётся в очереди", async () => {
+test("Временные сбои (перегрузка, 5xx, сеть) не тратят попытку модели: пометка «повтор в следующем прогоне», модель в очереди без суточной паузы", async () => {
   assert.equal(isTransientVisionError(Object.assign(new Error("Overloaded"), { status: 529 })), true);
   assert.equal(isTransientVisionError(Object.assign(new Error("x"), { status: 503 })), true);
   assert.equal(isTransientVisionError(new Error("Request timed out.")), true);
@@ -361,12 +369,14 @@ test("Временные сбои (перегрузка, 5xx, сеть) не т�
     return { text: GOOD, inputTokens: 1000, outputTokens: 100 };
   };
   const out = await runCatalogAi(db, { ask, config: cfg, now: clock, parallel: 1 });
-  assert.deepEqual([out.done, out.failed, out.transient], [1, 0, 1]);
-  assert.deepEqual(tables.assortment_model_attributes.map((r) => r.model_key), ["S1|b"], "для «a» записи нет — следующий прогон возьмёт её снова");
+  assert.deepEqual([out.done, out.failed, out.transient, out.deferred], [1, 0, 1, 0]);
+  const a = () => tables.assortment_model_attributes.find((r) => r.model_key === "S1|a")!;
+  assert.deepEqual([a().status, a().attempts, transientMark(String(a().last_error))], ["failed", 0, "retry"], "попытка не потрачена; первый сбой провайдера — повтор в следующем прогоне");
+  assert.match(String(a().last_error), /529 Overloaded/, "что ответил провайдер — в пометке");
   assert.equal(tables.assortment_ai_usage.find((r) => r.kind === "catalog_attributes")?.failed_calls, 1, "вызов в учёте есть");
   const next = await runCatalogAi(db, { ask: okAsk(), config: cfg, now: clock });
-  assert.equal(next.done, 1, "«a» разобрана со второй попытки без потери счётчика попыток");
-  assert.equal(tables.assortment_model_attributes.find((r) => r.model_key === "S1|a")?.attempts, 1);
+  assert.equal(next.done, 1, "«a» разобрана в следующем же прогоне — разовый сбой провайдера её не задержал");
+  assert.deepEqual([a().status, a().attempts, a().last_error], ["ok", 1, null], "счётчик попыток с удачи начинается заново, пометка снята");
 });
 
 test("Системный сбой: 12 моделей подряд без успеха из разных источников (4 пачки) — стоп; мёртвые фото и успех между ними — не стоп", async () => {
@@ -486,8 +496,11 @@ test("Крон: ровно один, GET, за секретом, запас по
   assert.match(route, /writeSyncLog\(JOB, "error", null, `нет ключа \$\{keyName\}/);
   assert.match(route, /askFor\(config\)/, "вызов ИИ — по провайдеру из настроек");
   assert.match(route, /keyConfigured/, "dryRun показывает, есть ли ключ");
-  // лимит запросов при уже разобранных моделях — не «сломалось»
-  assert.match(route, /rateLimited && summary\.done === 0/);
+  // лимит запросов при уже разобранных моделях — не «сломалось» (правило статуса — catalogRunStatus, роут им и пишет)
+  assert.match(route, /const status = catalogRunStatus\(summary\);/);
+  const base = { done: 0, failed: 0, transient: 0, repeatFailures: 0, deadSources: [] };
+  assert.equal(catalogRunStatus({ ...base, stoppedBy: "rate_limit", done: 4 }), "partial");
+  assert.equal(catalogRunStatus({ ...base, stoppedBy: "rate_limit" }), "error");
 });
 
 test("Миграция-исправление 202610050006: модель — база, только если все расцветки базовые (bool_and); фото головы из соседних расцветок; ключи H&M", () => {
@@ -869,7 +882,7 @@ test("Таймаут и 5xx: запасного вызова с одним фо�
   assert.equal(calls, 1, "без запасного вызова");
   assert.equal(outA.transient, 1);
   assert.equal(outA.costUsd, estimatedCallUsd(polzaCfg.price!, 1500), "оплаченный обрыв — оценкой, а не нулём");
-  assert.equal(a.tables.assortment_model_attributes.length, 0, "попытка модели не потрачена");
+  assert.deepEqual(a.tables.assortment_model_attributes.map((r) => [r.attempts, transientMark(String(r.last_error))]), [[0, "deferred"]], "попытка модели не потрачена, модель отложена на сутки");
   assert.equal(usageOf(a.tables)?.cost_usd, outA.costUsd);
   calls = 0;
   const overloaded: AskVision = async () => { calls += 1; throw Object.assign(new Error("Service Unavailable"), { status: 503 }); };
@@ -1050,7 +1063,7 @@ test("Карточка признака: пять строк, а то, что н
 test("Маршрут примеров: ветка samples=1 без кэша; отчёт не кэшируется, пока разобрано мало моделей", () => {
   const route = readFileSync(join(import.meta.dirname, "..", "app/api/assortment-development/photo-traits/route.ts"), "utf8");
   assert.match(route, /searchParams\.get\("samples"\) === "1"/);
-  assert.match(route, /loadPhotoSamples\(db, direction, \{ seed, limit, verdicts, onlyUnjudged \}\)/);
+  assert.match(route, /loadPhotoSamples\(db, direction, \{ seed, limit, verdicts, onlyUnjudged, skipPhotos \}\)/);
   assert.match(route, /requireApiSession\(ASSORTMENT_ROLES\)/, "общий круг модуля");
   assert.match(route, /loadPhotoTraitsCached\(db, direction\)/, "кэш — в общем модуле (его же читает полоска «На чём стоят цифры»)");
   const cached = readFileSync(join(import.meta.dirname, "..", "lib/assortment/photoTraitsCached.ts"), "utf8");
@@ -1313,11 +1326,11 @@ test("Отчёт по базе: в долях только текущая вер
   assert.equal(report.legacy, 3);
   assert.equal(report.fields.find((f) => f.key === "length")?.visible, 2);
   // Очередь сборщика по разделу: m5 — новая, m2–m4 — пересбор прежней версии; та же раскладка, что у самого сборщика.
-  assert.deepEqual(report.queue, { queued: 4, exhausted: 0, unstable: 0 });
+  assert.deepEqual(report.queue, { queued: 4, exhausted: 0, unstable: 0, outside: [] });
   const dead = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1"), row(3, "catalog-v1"), row(4, "catalog-v1"), resultRow("S1", "m5", { direction: "jackets", status: "failed", attempts: 3, attributes: null })] });
-  assert.deepEqual((await loadPhotoTraits(dead.db, "jackets", NOW))!.queue, { queued: 3, exhausted: 1, unstable: 0 }, "три неудачные попытки — модель не в очереди, а в «не возьмёт»");
-  // Сбой чтения неудавшихся строк (для очереди) не роняет отчёт: доли и счётчики на месте, очереди в нём нет — полоска прочтёт её сама.
-  const flaky = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1")], failFailedRead: true });
+  assert.deepEqual((await loadPhotoTraits(dead.db, "jackets", NOW))!.queue, { queued: 3, exhausted: 1, unstable: 0, outside: [{ sourceId: "S1", noPhoto: 0, ru: 0, photoUnavailable: 0, exhausted: 1 }] }, "три неудачные попытки — модель не в очереди, а в «не возьмёт»");
+  // Сбой чтения таблицы результатов для очереди не роняет отчёт: доли и счётчики на месте, очереди в нём нет — полоска прочтёт её сама.
+  const flaky = fakeDb({ heads, results: [row(0, PROMPT_VERSION), row(1, PROMPT_VERSION), row(2, "catalog-v1")], failExistingRead: true });
   const survived = (await loadPhotoTraits(flaky.db, "jackets", NOW))!;
   assert.equal(survived.analyzed, 2);
   assert.equal(survived.queue, undefined, "очередь не посчиталась — её нет в отчёте, а не нули");
@@ -1413,4 +1426,314 @@ test("Словарь по боевым ответам ИИ: «мешок», «т
   // Разовые ответы остаются в «другом» и видны в раскрытых примерах: «сердце», «сфера», «клапан» — не силуэты.
   for (const raw of ["сердце", "сфера", "клапан"]) assert.equal(canonicalValue("silhouette", raw), "другое", raw);
   for (const raw of ["кардиган", "топ", "рубашка"]) assert.equal(canonicalValue("subtype", raw), "другое", raw);
+});
+
+// --- Ф1 (06.10): очередь без повторов, штраф за таймаут, одна очередь у сборщика и отчёта, причина остановки в журнале ---
+
+test("Ф1: модель, разобранная с третьей попытки и устаревшая по версии вопроса, пересобирается; потолок — только когда последняя попытка пересбора кончилась ошибкой", () => {
+  const ex = (attempts: number, lastError: string | null): ExistingResult => ({ status: "ok", attempts, promptVersion: "catalog-v1", takenAt: "2026-09-01T00:00:00Z", lastError });
+  const heads = [head("S1", "third"), head("S1", "failedRebuild"), head("S1", "young")];
+  const existing = new Map<string, ExistingResult>([
+    [resultKey("S1", "S1|third"), ex(3, null)],
+    [resultKey("S1", "S1|failedRebuild"), ex(3, "ответ ИИ: все признаки «не видно»")],
+    [resultKey("S1", "S1|young"), ex(2, "ответ ИИ: все признаки «не видно»")],
+  ]);
+  assert.deepEqual(pickCandidates(heads, existing, NOW, 10).map((h) => h.sourceItemId).sort(), ["third", "young"], "attempts=3 без ошибки — удачный разбор с третьей попытки, а не исчерпанный пересбор");
+  assert.deepEqual([summarizeQueue(heads, existing).queued, summarizeQueue(heads, existing).exhausted], [2, 1], "полоска считает тем же правилом");
+});
+
+test("Ф1: по базе — удачный разбор с третьей попытки после смены версии вопроса уходит в пересбор (раньше застревал навсегда)", async () => {
+  const third = { source_id: "S1", model_key: "S1|a", direction: "jackets", status: "ok", attributes: { length: { v: "до бедра" } }, prompt_version: "catalog-v1", attempts: 3, last_error: null, taken_at: "2026-09-01T00:00:00Z" };
+  const { db, tables } = fakeDb({ heads: [headRow("S1", "a")], results: [third] });
+  const out = await runCatalogAi(db, { ask: okAsk(), config: cfg, now: clock });
+  assert.equal(out.done, 1);
+  assert.equal(tables.assortment_model_attributes[0].prompt_version, PROMPT_VERSION);
+  assert.equal(tables.assortment_model_attributes[0].attempts, 1, "удачный пересбор начинает счёт попыток заново");
+});
+
+// Ф1 по ревью: временный сбой у модели откладывает её без траты попытки — модель-«яд» не крутится в очереди, медленный провайдер не
+// выбивает здоровые модели навсегда, журнал не даёт ложной тревоги.
+
+const timeoutErr = () => Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+/** Как крон пишет журнал: строки нет, если прогон пропущен или очередь пуста; иначе — статус по catalogRunStatus. */
+const loggedStatus = (out: RunSummary) => (out.skipped || out.candidates === 0 ? null : catalogRunStatus(out));
+const threeErrorsInRow = (statuses: Array<string | null>) => statuses.filter(Boolean).some((st, i, all) => st === "error" && all[i + 1] === "error" && all[i + 2] === "error");
+
+test("Ф1 по ревью: модель-«яд» (каждый вызов — наш таймаут) одна в хвосте очереди — в разбор не чаще раза в сутки, попыток не тратит, журнал не даёт трёх error подряд", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  let poisonCalls = 0;
+  const ask: AskVision = async (_d, urls) => {
+    if (urls[0].includes("/poison-")) { poisonCalls += 1; throw timeoutErr(); }
+    return { text: GOOD, inputTokens: 100, outputTokens: 10 };
+  };
+  const done = { source_id: "S2", model_key: "S2|b0", direction: "jackets", status: "ok", attributes: { length: { v: "до бедра" } }, prompt_version: PROMPT_VERSION, attempts: 1, last_error: null, taken_at: "2026-10-05T00:00:00Z" };
+  const { db, tables } = fakeDb({ heads: [headRow("S1", "poison"), headRow("S2", "b0")], results: [done] });
+  const statuses: Array<string | null> = [];
+  // крон — каждые 2 часа: 12 прогонов в сутки, и в прогоне, кроме «яда», разбирать нечего (done=0)
+  for (let h = 0; h < 24; h += 2) statuses.push(loggedStatus(await runCatalogAi(db, { ask, config: polzaCfg, now: () => NOW + h * 3600 * 1000, parallel: 3 })));
+  assert.equal(poisonCalls, 1, "больше одного раза в сутки модель-«яд» в разбор не уходит, даже когда больше в прогоне ничего нет");
+  assert.deepEqual(statuses.filter(Boolean), ["error"], "в журнале за сутки — одна строка: прогоны с пустой очередью строку не пишут");
+  const row = () => tables.assortment_model_attributes.find((r) => r.model_key === "S1|poison")!;
+  assert.deepEqual([row().status, row().attempts, transientMark(String(row().last_error))], ["failed", 0, "deferred"]);
+  assert.match(String(row().last_error), /^отложено на сутки \(таймаут: ИИ не ответил за 55 с\), попытка не потрачена$/);
+  assert.equal(isPhotoUnavailableError(String(row().last_error)), false, "таймаут — не «фото недоступно»");
+  // следующие пять суток: раз в сутки, и это уже повтор «плохой» модели — partial, а не error
+  for (let day = 1; day <= 5; day += 1) {
+    for (let h = 0; h < 24; h += 2) statuses.push(loggedStatus(await runCatalogAi(db, { ask, config: polzaCfg, now: () => NOW + (day * 24 + 1 + h) * 3600 * 1000, parallel: 3 })));
+  }
+  assert.equal(poisonCalls, 6, "раз в сутки — шесть вызовов за шесть суток");
+  assert.deepEqual(statuses.filter(Boolean), ["error", "partial", "partial", "partial", "partial", "partial"]);
+  assert.equal(threeErrorsInRow(statuses), false, "три error подряд (тревога в Telegram) «яд» не даёт");
+  assert.equal(row().attempts, 0, "попытки таймауты не тратят — модель не исчезает из очереди навсегда");
+  assert.equal(summarizeQueue([{ sourceId: "S1", sourceItemId: "poison", modelKey: "S1|poison", direction: "jackets", title: "", imageUrls: ["https://img/x.jpg"], firstSeenAt: "" }], (await loadExisting(db))!).queued, 1, "в очереди полоски — тем же правилом");
+});
+
+test("Ф1 по ревью: «яд» при живом провайдере (в каждом прогоне свежие модели разбираются) — тоже не чаще раза в сутки", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  let poisonCalls = 0;
+  const ask: AskVision = async (_d, urls) => {
+    if (urls[0].includes("/poison-")) { poisonCalls += 1; throw timeoutErr(); }
+    return { text: GOOD, inputTokens: 100, outputTokens: 10 };
+  };
+  const { db, tables } = fakeDb({ heads: [headRow("S1", "poison")] });
+  const statuses: Array<string | null> = [];
+  for (let h = 0; h < 48; h += 2) {
+    tables.assortment_catalog_heads.push(headRow("S2", `n${h}`));
+    statuses.push(loggedStatus(await runCatalogAi(db, { ask, config: polzaCfg, now: () => NOW + h * 3600 * 1000, parallel: 3 })));
+  }
+  assert.equal(poisonCalls, 2, "двое суток — два вызова");
+  assert.ok(statuses.every((st) => st !== "error"), "свежие модели разбираются — ни одной строки error");
+});
+
+test("Ф1 по ревью: 5xx у одной модели — первый раз повтор в следующем прогоне, второй подряд — отложено на сутки; одна в очереди или при живом провайдере — не больше двух вызовов в сутки", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  for (const alive of [false, true]) {
+    let calls = 0;
+    const ask: AskVision = async (_d, urls) => {
+      if (urls[0].includes("/bad-")) { calls += 1; throw Object.assign(new Error("Polza вернула 500"), { status: 500 }); }
+      return { text: GOOD, inputTokens: 100, outputTokens: 10 };
+    };
+    const { db, tables } = fakeDb({ heads: [headRow("S1", "bad")] });
+    const statuses: Array<string | null> = [];
+    for (let h = 0; h < 24; h += 2) {
+      if (alive) tables.assortment_catalog_heads.push(headRow("S2", `n${h}`));
+      statuses.push(loggedStatus(await runCatalogAi(db, { ask, config: polzaCfg, now: () => NOW + h * 3600 * 1000, parallel: 3 })));
+    }
+    assert.equal(calls, 2, `${alive ? "живой провайдер" : "одна в очереди"}: первый сбой и повтор, дальше — сутки`);
+    const row = tables.assortment_model_attributes.find((r) => r.model_key === "S1|bad")!;
+    assert.deepEqual([row.attempts, transientMark(String(row.last_error))], [0, "deferred"]);
+    assert.match(String(row.last_error), /^отложено на сутки \(сбой провайдера второй раз подряд — 500 Polza вернула 500\), попытка не потрачена$/);
+    assert.equal(threeErrorsInRow(statuses), false);
+  }
+});
+
+test("Ф1 по ревью: медленный провайдер три дня (в каждой пачке успевает один вызов из трёх) — ни одна модель не исчерпывает попытки таймаутами; после выздоровления все разбираются", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  const heads = Array.from({ length: 30 }, (_, i) => headRow(`S${i % 5}`, `m${i}`));
+  const { db, tables } = fakeDb({ heads });
+  let n = 0;
+  const degraded: AskVision = async () => { n += 1; if (n % 3 === 0) return { text: GOOD, inputTokens: 100, outputTokens: 10 }; throw timeoutErr(); };
+  for (let day = 0; day < 3; day += 1) await runCatalogAi(db, { ask: degraded, config: polzaCfg, now: () => NOW + (day * 25 + 1) * 3600 * 1000, parallel: 3, runCap: 120 });
+  const catalog = heads.map((h) => ({ sourceId: String(h.source_id), sourceItemId: String(h.source_item_id), modelKey: String(h.model_key), direction: "jackets" as const, title: "", imageUrls: ["https://img/x.jpg"], firstSeenAt: "" }));
+  const afterSlow = summarizeQueue(catalog, (await loadExisting(db))!);
+  assert.equal(afterSlow.exhausted, 0, "таймауты провайдера попыток не тратят — «вне очереди навсегда» никого");
+  assert.ok(tables.assortment_model_attributes.every((r) => r.status === "ok" || r.attempts === 0), "у неразобранных счётчик попыток не тронут");
+  const left = afterSlow.queued;
+  assert.ok(left > 0);
+  const healthy = await runCatalogAi(db, { ask: okAsk(), config: polzaCfg, now: () => NOW + 4 * 24 * 3600 * 1000, parallel: 3 });
+  assert.equal(healthy.done, left, "провайдер выздоровел — разобраны все, кого откладывали");
+  assert.equal(tables.assortment_model_attributes.filter((r) => r.status === "ok").length, 30);
+});
+
+test("Ф1 по ревью: прогон из нескольких пачек — каждая отложенная модель посчитана один раз; неудач и временных сбоев не больше, чем вызовов", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  const heads = Array.from({ length: 9 }, (_, i) => headRow(`S${i % 3}`, `m${i}`, { model_first_seen_at: `2026-10-03T00:0${9 - i}:00Z` }));
+  const slow = new Set(["m0", "m7", "m8"]);
+  const ask: AskVision = async (_d, urls) => {
+    const id = urls[0].match(/img\/(m\d)-/)![1];
+    if (slow.has(id)) throw timeoutErr();
+    return { text: GOOD, inputTokens: 100, outputTokens: 10 };
+  };
+  const { db, tables } = fakeDb({ heads });
+  const out = await runCatalogAi(db, { ask, config: polzaCfg, now: clock, parallel: 3 });
+  assert.deepEqual([out.done, out.failed, out.transient, out.deferred, out.repeatFailures], [6, 0, 3, 3, 0], "три пачки, три таймаута — по разу");
+  assert.deepEqual(tables.assortment_model_attributes.filter((r) => r.status === "failed").map((r) => [r.model_key, r.attempts]).sort(), [["S0|m0", 0], ["S1|m7", 0], ["S2|m8", 0]]);
+  assert.equal(catalogRunStatus(out), "ok", "временные сбои при разобранных — не неудача прогона");
+});
+
+test("Ф1 по ревью: AbortError (так обрыв по таймауту называют старые версии fetch) — тоже наш таймаут: временный сбой, модель отложена на сутки, расход — оценкой", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  const abort = () => Object.assign(new Error("This operation was aborted"), { name: "AbortError" });
+  assert.equal(isTransientVisionError(abort()), true, "обрыв — не неудача модели");
+  const { db, tables } = fakeDb({ heads: [headRow("S1", "a")] });
+  const out = await runCatalogAi(db, { ask: async () => { throw abort(); }, config: polzaCfg, now: clock, parallel: 1 });
+  assert.deepEqual([out.transient, out.failed, out.deferred], [1, 0, 1]);
+  assert.equal(out.costUsd, estimatedCallUsd(polzaCfg.price!, 1500));
+  assert.deepEqual(tables.assortment_model_attributes.map((r) => [r.attempts, transientMark(String(r.last_error))]), [[0, "deferred"]]);
+  // обрыв со статусом ответа — это ответ провайдера, а не наш таймаут: первый раз — повтор в следующем прогоне
+  const withStatus = transientFailureMessage(polzaCfg, Object.assign(new Error("Request Timeout"), { status: 408 }), null);
+  assert.deepEqual([withStatus.deferred, transientMark(withStatus.message)], [false, "retry"]);
+  assert.equal(transientFailureMessage(polzaCfg, Object.assign(new Error("Request Timeout"), { status: 408 }), withStatus.message).deferred, true, "второй подряд — сутки");
+});
+
+test("Ф1 по ревью: очередь по пометкам временного сбоя — «повтор» без паузы, «отложено» — сутки; пометка не тратит потолок пересбора и не считается «фото недоступно»", () => {
+  const retry = "сбой провайдера, повтор в следующем прогоне (503 Service Unavailable), попытка не потрачена";
+  const deferred = "отложено на сутки (сбой провайдера второй раз подряд — 502 failed to download image upstream), попытка не потрачена";
+  const justNow = new Date(NOW - 60_000).toISOString();
+  const heads = [head("S1", "r"), head("S1", "d"), head("S1", "third"), head("S1", "dOld")];
+  const existing = new Map<string, ExistingResult>([
+    [resultKey("S1", "S1|r"), { status: "failed", attempts: 0, promptVersion: PROMPT_VERSION, takenAt: justNow, lastError: retry }],
+    [resultKey("S1", "S1|d"), { status: "failed", attempts: 2, promptVersion: PROMPT_VERSION, takenAt: justNow, lastError: deferred }],
+    [resultKey("S1", "S1|third"), { status: "ok", attempts: 3, promptVersion: "catalog-v1", takenAt: "2026-09-01T00:00:00Z", lastError: deferred }],
+    [resultKey("S1", "S1|dOld"), { status: "failed", attempts: 1, promptVersion: PROMPT_VERSION, takenAt: new Date(NOW - RETRY_AFTER_MS).toISOString(), lastError: deferred }],
+  ]);
+  assert.deepEqual(pickCandidates(heads, existing, NOW, 10).map((h) => h.sourceItemId).sort(), ["dOld", "r", "third"], "«отложено» минуту назад — ждёт сутки; «повтор» — сразу; пересбор с пометкой сбоя не исчерпан");
+  assert.deepEqual([summarizeQueue(heads, existing).queued, summarizeQueue(heads, existing).exhausted], [4, 0], "полоска: все четыре в очереди, исчерпавших нет");
+  assert.equal(isPhotoUnavailableError(deferred), false, "в ответе 502 есть «download», но это сбой провайдера, а не фото");
+  assert.equal(isPhotoUnavailableError(retry), false);
+});
+
+test("Ф1 по ревью: статус строки журнала — error только при остановке или когда не вышло у модели, которая до этого не падала; повторные неудачи «плохих» моделей — partial", () => {
+  const s = (over: Partial<RunSummary>) => catalogRunStatus({ stoppedBy: null, done: 0, failed: 0, transient: 0, repeatFailures: 0, deadSources: [], ...over });
+  assert.equal(s({ transient: 1 }), "error", "первый сбой новой модели при пустом прогоне — тревожный сигнал");
+  assert.equal(s({ transient: 1, repeatFailures: 1 }), "partial", "та же модель снова — беда модели, а не сборщика");
+  assert.equal(s({ failed: 2, transient: 1, repeatFailures: 2 }), "error", "хоть одна новая неудача при пустом прогоне — error");
+  assert.equal(s({ failed: 1, repeatFailures: 1 }), "partial", "фото не скачалось у модели, которая уже падала");
+  for (const stop of ["auth", "billing", "config", "errors"] as const) assert.equal(s({ stoppedBy: stop, done: 5, repeatFailures: 0 }), "error", stop);
+  assert.equal(s({ stoppedBy: "rate_limit", done: 0 }), "error");
+  assert.equal(s({ stoppedBy: "rate_limit", done: 3 }), "partial");
+  assert.equal(s({ done: 3, failed: 1 }), "partial");
+  assert.equal(s({ done: 3, transient: 2 }), "ok");
+  assert.equal(s({ done: 3, stoppedBy: "time" }), "partial");
+  assert.equal(s({ done: 3, deadSources: ["S1"] }), "partial");
+  assert.equal(s({ done: 3, stoppedBy: "budget" }), "ok");
+  assert.equal(s({}), "ok");
+});
+
+test("Ф1 по ревью: пересбор прежней версии вопроса, прошлая попытка которого уже кончилась ошибкой (строка «ok» с last_error), снова не вышел — это повтор «плохой» модели: partial, а не error", async () => {
+  const polzaCfg = catalogAiConfig({ POLZA_API_KEY: "p" });
+  const stale = (lastError: string) => ({ source_id: "S1", model_key: "S1|a", direction: "jackets", status: "ok", attributes: { length: { v: "до бедра" } }, prompt_version: "catalog-v1", attempts: 1, last_error: lastError, taken_at: "2026-09-01T00:00:00Z" });
+  for (const lastError of ["ответ ИИ: все признаки «не видно»", "отложено на сутки (таймаут: ИИ не ответил за 55 с), попытка не потрачена"]) {
+    const { db } = fakeDb({ heads: [headRow("S1", "a")], results: [stale(lastError)] });
+    const out = await runCatalogAi(db, { ask: async () => { throw timeoutErr(); }, config: polzaCfg, now: clock, parallel: 1 });
+    assert.deepEqual([out.done, out.transient, out.repeatFailures], [0, 1, 1], lastError);
+    assert.equal(catalogRunStatus(out), "partial", lastError);
+  }
+  const { db } = fakeDb({ heads: [headRow("S1", "a")], results: [{ ...stale("x"), last_error: null }] });
+  const first = await runCatalogAi(db, { ask: async () => { throw timeoutErr(); }, config: polzaCfg, now: clock, parallel: 1 });
+  assert.deepEqual([first.repeatFailures, catalogRunStatus(first)], [0, "error"], "прошлая попытка удалась — неудача пересбора новая");
+});
+
+test("Ф1 по ревью: «вне разбора» — повтор головы модели (без фото, сайт РФ) не удваивает счёт", () => {
+  const heads = [head("S1", "nophoto", { imageUrls: [] }), head("S1", "nophoto", { imageUrls: [] }), head("S128", "ru1"), head("S128", "ru1")];
+  assert.deepEqual(summarizeQueue(heads, new Map()).outside, [
+    { sourceId: "S1", noPhoto: 1, ru: 0, photoUnavailable: 0, exhausted: 0 },
+    { sourceId: "S128", noPhoto: 0, ru: 1, photoUnavailable: 0, exhausted: 0 },
+  ]);
+});
+
+test("Ф1 по ревью: журнал синхронизаций показывает строку разбора без метки [stop:…]; у других задач текст не трогается", () => {
+  assert.equal(syncLogErrorText(CATALOG_AI_JOB, `не разобрано: 2. дошли до бюджета недели ${stopTag("budget")}`), "не разобрано: 2. дошли до бюджета недели");
+  assert.equal(syncLogErrorText(CATALOG_AI_JOB, stopTag("daily_limit")), null, "одна метка — пустой текст, а не «[stop:daily_limit]»");
+  assert.equal(syncLogErrorText(CATALOG_AI_JOB, null), null);
+  assert.equal(syncLogErrorText("assortment-wb-queries", "квота [stop:budget]"), "квота [stop:budget]", "чужая задача — как есть");
+  const route = readFileSync(join(import.meta.dirname, "..", "app/api/sync-log/route.ts"), "utf8");
+  assert.match(route, /\.map\(\(row\) => \(\{ \.\.\.row, error: syncLogErrorText\(row\.job, row\.error\) \}\)\)/, "экран «Синхронизация» читает /api/sync-log — метка вырезается там");
+  assert.match(route, /return NextResponse\.json\(\{ data: rows, error: null \}\)/);
+});
+
+test("Ф1: очередь в отчёте считается тем же чтением и правилом, что берёт сборщик: модель, чья строка разбора лежит под другим разделом, — не «осталось разобрать»", async () => {
+  const heads = [headRow("S1", "moved"), headRow("S1", "fresh"), headRow("S1", "done")];
+  const results = [
+    resultRow("S1", "moved", { direction: "bags", prompt_version: PROMPT_VERSION, status: "ok", attempts: 1 }),
+    resultRow("S1", "done", { direction: "jackets", prompt_version: PROMPT_VERSION, status: "ok", attempts: 1 }),
+    resultRow("S1", "third", { direction: "jackets", prompt_version: "catalog-v1", status: "ok", attempts: 3, last_error: null, taken_at: "2026-09-01T00:00:00Z" }),
+  ];
+  const { db } = fakeDb({ heads: [...heads, headRow("S1", "third")], results });
+  const dry = await runCatalogAi(db, { ask: okAsk(), config: cfg, now: clock, dryRun: true });
+  const report = (await loadPhotoTraits(db, "jackets", NOW))!;
+  assert.equal(report.queue?.queued, dry.candidates, "отчёт и сборщик называют одну очередь");
+  assert.equal(report.queue?.queued, 2, "fresh и пересбор third; moved сборщик не возьмёт");
+  const existing = (await loadExisting(db))!;
+  assert.equal(existing.get(resultKey("S1", "S1|third"))?.lastError, null, "чтение очереди знает, чем кончилась последняя попытка");
+  const store = readFileSync(join(import.meta.dirname, "..", "lib/assortment/catalogAiStore.ts"), "utf8");
+  const traits = store.slice(store.indexOf("export async function loadPhotoTraits"), store.indexOf("export interface QueueFacts"));
+  assert.match(traits, /const existing = await loadExisting\(db\);/, "отчёт берёт очередь тем же чтением, что сборщик");
+});
+
+test("Ф1: отчёт по базе называет источники раздела и сколько их моделей в долях — в том числе сайты РФ и модели без фото, которых в «из M» нет", async () => {
+  const heads = [
+    headRow("S1", "a"), headRow("S1", "b"), headRow("S1", "nophoto", { image_urls: [] }),
+    headRow("S128", "ru", { title: "Lime jacket" }),
+  ];
+  const results = [resultRow("S1", "a", { prompt_version: PROMPT_VERSION }), resultRow("S1", "b", { prompt_version: "catalog-v1" })];
+  const { db, tables } = fakeDb({ heads, results });
+  tables.assortment_sources.push({ source_id: "S1", name: "Zara" });
+  const report = (await loadPhotoTraits(db, "jackets", NOW))!;
+  assert.deepEqual(report.sources, [
+    { sourceId: "S1", name: "Zara", models: 3, eligible: 2, analyzed: 1, ru: false },
+    { sourceId: "S128", name: "S128", models: 1, eligible: 0, analyzed: 0, ru: true },
+  ], "в долях — только текущая версия вопроса; модели без фото и сайты РФ посчитаны у своих источников");
+  assert.equal(report.catalog, 2, "знаменатель «из M» не изменился: с фото и не сайты РФ");
+});
+
+test("Ф1: «вне разбора» по источникам — тем же правилом, что очередь: без фото и сайты РФ (вне «из M»), фото недоступно и исчерпанные попытки (в «из M»)", () => {
+  const heads = [
+    head("S1", "nophoto", { imageUrls: [] }), head("S1", "dead"), head("S1", "tired"), head("S1", "fresh"),
+    head("S128", "ru1"), head("S128", "ru2"), head("S2", "dead2"),
+  ];
+  const failed = (lastError: string): ExistingResult => ({ status: "failed", attempts: 3, promptVersion: PROMPT_VERSION, takenAt: "2026-10-01T00:00:00Z", lastError });
+  const existing = new Map<string, ExistingResult>([
+    [resultKey("S1", "S1|dead"), failed("Polza 400: не удалось скачать картинку: request timed out")],
+    [resultKey("S1", "S1|tired"), failed("ответ ИИ: все признаки «не видно»")],
+    [resultKey("S2", "S2|dead2"), failed("400 Unable to download the file. Please verify the URL and try again.")],
+  ]);
+  const q = summarizeQueue(heads, existing);
+  assert.deepEqual(q.outside, [
+    { sourceId: "S1", noPhoto: 1, ru: 0, photoUnavailable: 1, exhausted: 1 },
+    { sourceId: "S128", noPhoto: 0, ru: 2, photoUnavailable: 0, exhausted: 0 },
+    { sourceId: "S2", noPhoto: 0, ru: 0, photoUnavailable: 1, exhausted: 0 },
+  ]);
+  assert.equal(q.exhausted, 3, "«не возьмёт» по-прежнему все исчерпавшие");
+  for (const yes of ["Polza 400: не удалось скачать картинку: request timed out", "Unable to download the file", "Failed to fetch image: 404", "Could not process image"]) assert.equal(isPhotoUnavailableError(yes), true, yes);
+  for (const no of ["Polza 403: Запрос отклонён модерацией", "ответ ИИ: все признаки «не видно»", "ответ обрезан по лимиту токенов (finish_reason=length)", null]) assert.equal(isPhotoUnavailableError(no), false, String(no));
+});
+
+test("Ф1: причина остановки — метка в конце строки журнала: читается обратно, чужая метка и её отсутствие — без причины", () => {
+  assert.deepEqual(parseStopTag(`Polza: на счёте нет средств ${stopTag("billing")}`), { reason: "billing", message: "Polza: на счёте нет средств" });
+  assert.deepEqual(parseStopTag("не разобрано: 3"), { reason: null, message: "не разобрано: 3" });
+  assert.deepEqual(parseStopTag("x [stop:hack]"), { reason: null, message: "x" }, "неизвестная причина не выдумывается");
+  assert.deepEqual(parseStopTag(null), { reason: null, message: null });
+  assert.deepEqual(parseStopTag(stopTag("no_key")), { reason: "no_key", message: null });
+  assert.equal(STOP_REASON_WORDS.billing.startsWith("нет денег (402)"), true);
+  assert.equal(STOP_REASON_WORDS.no_key, "нет ключа");
+  assert.equal(STOP_REASON_WORDS.disabled, "выключен настройкой ASSORTMENT_CATALOG_AI=off");
+  assert.deepEqual([STOP_REASON_WORDS.budget, STOP_REASON_WORDS.daily_limit], ["упёрся в бюджет недели", "упёрся в потолок суток"]);
+  assert.equal(runStopReason({ stoppedBy: "billing" }), "billing");
+  assert.equal(runStopReason({ stoppedBy: "budget", limitReason: "daily_limit" }), "daily_limit");
+  assert.equal(runStopReason({ stoppedBy: "budget" }), "budget");
+  assert.equal(runStopReason({ stoppedBy: "time" }), null, "упёрся во время — следующий прогон продолжит, это не остановка");
+  assert.equal(runStopReason({ stoppedBy: null }), null);
+});
+
+test("Ф1: прогон различает бюджет недели и потолок суток — на старте и внутри прогона", async () => {
+  const heads = [headRow("S1", "a"), headRow("S1", "b"), headRow("S1", "c")];
+  const atStart = await runCatalogAi(fakeDb({ heads, usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 1500, cost_usd: 1 }] }).db, { ask: okAsk(), config: cfg, now: clock });
+  assert.deepEqual([atStart.stoppedBy, atStart.limitReason], ["budget", "daily_limit"]);
+  const spent = await runCatalogAi(fakeDb({ heads, usage: [{ day: "2026-10-04", kind: "catalog_attributes", calls: 1, cost_usd: 20 }] }).db, { ask: okAsk(), config: cfg, now: clock });
+  assert.deepEqual([spent.stoppedBy, spent.limitReason], ["budget", "budget"]);
+  const inRun = await runCatalogAi(fakeDb({ heads }).db, { ask: okAsk(), config: catalogAiConfig({ ASSORTMENT_CATALOG_AI_DAILY_LIMIT: "2" }), now: clock, parallel: 1 });
+  assert.deepEqual([inRun.done, inRun.stoppedBy, inRun.limitReason], [2, "budget", "daily_limit"]);
+});
+
+test("Ф1: крон пишет причину остановки меткой в журнал — и при остановке прогона, и без ключа, и без цены; имя задачи — то же, по которому читает полоска; разбор пишет модель тем же именем, что точность", () => {
+  const route = readFileSync(join(import.meta.dirname, "..", "app/api/sync/assortment-catalog-ai/route.ts"), "utf8");
+  assert.equal(/const JOB = "([^"]+)"/.exec(route)?.[1], CATALOG_AI_JOB);
+  assert.match(route, /const reason = runStopReason\(summary\);/);
+  assert.match(route, /const status = catalogRunStatus\(summary\);/, "статус строки журнала — то же правило, что проверяют тесты (catalogRunStatus)");
+  assert.match(route, /writeSyncLog\(JOB, status, summary\.done, \[note, reason \? stopTag\(reason\) : null\]\.filter\(Boolean\)\.join\(" "\) \|\| null, startedAt\)/);
+  assert.match(route, /моделей ждут разбора \$\{stopTag\("no_key"\)\}/);
+  assert.match(route, /`\$\{summary\.skipped\} \$\{stopTag\("no_price"\)\}`/);
+  assert.equal(catalogModelId(catalogAiConfig({ POLZA_API_KEY: "p" })), "polza:google/gemini-2.5-flash");
+  assert.equal(catalogModelId(catalogAiConfig({})), DEFAULT_CATALOG_MODEL);
 });
