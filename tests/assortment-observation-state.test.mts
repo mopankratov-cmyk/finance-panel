@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { onlyKnownSources, summarizeHistory, type RunRow } from "../lib/assortment/observationState.ts";
+import { onlyKnownSources, runCountsText, summarizeHistory, type RunRow } from "../lib/assortment/observationState.ts";
 
 const TODAY = "2026-10-20";
 const run = (source_id: string, observed_on: string, coverage: RunRow["coverage"], over: Partial<RunRow> = {}): RunRow => ({
@@ -84,4 +84,58 @@ test("История на экране «Источники»: чужие ист
   const rows = [{ sourceId: "S1" }, { sourceId: "S212" }, { sourceId: "S3" }];
   assert.deepEqual(onlyKnownSources(rows, new Set(["S1", "S3"])).map((r) => r.sourceId), ["S1", "S3"]);
   assert.equal(onlyKnownSources(rows, new Set()).length, 3, "известных источников нет — показываем как есть, а не пустоту");
+});
+
+// --- части разделов (Zara CHAQUETA, коллаборации Uniqlo): прогон идёт после основного ---
+
+test("Прогон части после оборванного основного не прячет «последний оборван» и не считается «по верху выдачи»", () => {
+  const rows: RunRow[] = [
+    run("S001", "2026-10-07", "partial", { seen: 950, error: "снимок записан не полностью", started_at: "2026-10-07T06:31:00Z" }),
+    run("S001", "2026-10-07", "window", { seen: 180, started_at: "2026-10-07T06:32:00Z", part: "zara_chaqueta" }),
+  ];
+  const [h] = summarizeHistory(rows, "2026-10-07");
+  assert.equal(h.lastError, "снимок записан не полностью", "последний ОСНОВНОЙ прогон оборван — так и видно");
+  assert.equal(h.lastSeen, 950);
+  assert.deepEqual([h.runs, h.full, h.window, h.partial, h.parts], [2, 0, 0, 1, 1], "часть — не верх выдачи и не оборванный прогон");
+  assert.deepEqual(h.partNames, ["zara_chaqueta"]);
+  assert.equal(runCountsText(h), "прогонов 2 (полных 0, по верху выдачи 0, оборванных 1, частей раздела 1)");
+  assert.equal(runCountsText({ runs: 3, full: 2, window: 1, partial: 0, parts: 0 }), "прогонов 3 (полных 2, по верху выдачи 1, оборванных 0)", "без частей — как раньше");
+});
+
+test("Части не меняют статус: полные основные прогоны с разрывом неделя — «появилось/пропало»; источник с окнами и частью — «только верх выдачи»", () => {
+  const zara = [
+    run("S1", "2026-10-07", "full"), run("S1", "2026-10-07", "window", { part: "zara_chaqueta", started_at: "2026-10-07T06:40:00Z" }),
+    run("S1", "2026-10-14", "full"), run("S1", "2026-10-14", "window", { part: "zara_chaqueta", started_at: "2026-10-14T06:40:00Z" }),
+  ];
+  const [h] = summarizeHistory(zara, TODAY);
+  assert.equal(h.status, "appearance");
+  assert.equal(h.lastFullOn, "2026-10-14");
+  assert.equal(h.lastError, null);
+  assert.equal(status([run("S1", "2026-10-01", "window"), run("S1", "2026-10-01", "partial", { part: "uniqlo_collab", started_at: "2026-10-01T06:40:00Z" })]), "window_only", "оборванная часть не делает источник «копится»");
+});
+
+test("Чтение журнала: пометка части читается; миграции 202610060010 ещё нет — журнал читается без неё, а не падает", async () => {
+  const selects: string[] = [];
+  const db = (withPart: boolean) => ({
+    from: () => {
+      let columns = "";
+      const q: Record<string, unknown> = {
+        select: (c: string) => { columns = c; selects.push(c); return q; },
+        gte: () => q, order: () => q,
+        range: () => Promise.resolve(columns.includes("part") && !withPart
+          ? { data: null, error: { code: "42703", message: "column assortment_run.part does not exist" } }
+          : { data: [run("S1", "2026-10-19", "partial", { error: "x" }), run("S1", "2026-10-19", "window", { started_at: "2026-10-19T06:00:00Z", ...(withPart ? { part: "zara_chaqueta" } : {}) })], error: null }),
+      };
+      return q;
+    },
+  }) as never;
+  const fresh = await loadHistoryState(db(true), new Date("2026-10-20T10:00:00Z"));
+  assert.match(selects[0], /,part$/);
+  assert.deepEqual([fresh.sources[0].parts, fresh.sources[0].lastError], [1, "x"]);
+  selects.length = 0;
+  const legacy = await loadHistoryState(db(false), new Date("2026-10-20T10:00:00Z"));
+  assert.equal(selects.length, 2, "повтор без колонки");
+  assert.doesNotMatch(selects[1], /part/);
+  assert.equal(legacy.available, true);
+  assert.deepEqual([legacy.sources[0].parts, legacy.sources[0].lastError], [0, null], "без миграции части не отличить — как до неё");
 });

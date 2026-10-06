@@ -128,3 +128,31 @@ test("recordObservation: снимок лёг не весь — прогон по
   assert.equal(runUpdates[0].coverage, "partial");
   assert.match(String(runUpdates[0].error), /снимок записан не полностью: statement timeout/);
 });
+
+test("Журнал прогона части раздела: пометка `part` пишется; основной прогон колонку не трогает (пишется и без миграции 202610060010)", () => {
+  assert.equal(runRow("run-9", "2026-10-07", { sourceId: "S001", direction: "jackets", coverage: "window", seen: 8, added: 0, part: "zara_chaqueta" }).part, "zara_chaqueta");
+  assert.equal("part" in runRow("run-10", "2026-10-07", { sourceId: "S001", direction: "jackets", coverage: "full", seen: 900, added: 0 }), false);
+  assert.equal("part" in runRow("run-11", "2026-10-07", { sourceId: "S001", direction: "jackets", coverage: "full", seen: 900, added: 0, part: null }), false);
+});
+
+test("recordObservation: миграции 202610060010 нет — прогон части пишется без пометки, а не теряется вместе со снимком", async () => {
+  const runs: Array<Record<string, unknown>> = [];
+  const snaps: Array<Record<string, unknown>> = [];
+  const db = {
+    from: (table: string) => ({
+      insert: async (row: Record<string, unknown>) => {
+        if (table === "assortment_run" && "part" in row) return { error: { code: "PGRST204", message: "Could not find the 'part' column of 'assortment_run' in the schema cache" } };
+        if (table === "assortment_run") runs.push(row);
+        return { error: null };
+      },
+      upsert: async (rows: Array<Record<string, unknown>>) => { snaps.push(...rows); return { error: null }; },
+    }),
+  } as never;
+  const runId = await recordObservation(db, { sourceId: "S001", direction: "jackets", coverage: "window", seen: 1, added: 0, part: "zara_chaqueta" }, [{ sourceItemId: "a", direction: "jackets" }]);
+  assert.ok(runId);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].coverage, "window");
+  assert.equal(snaps.length, 1, "снимок присутствия записан");
+  const other = { from: () => ({ insert: async () => ({ error: { message: "permission denied" } }), update: () => ({ eq: () => Promise.resolve({ error: null }) }) }) } as never;
+  assert.equal(await recordObservation(other, { sourceId: "S001", direction: "jackets", coverage: "window", seen: 1, added: 0, part: "zara_chaqueta" }, []), null, "другая ошибка — как раньше: обход не роняем");
+});

@@ -553,3 +553,23 @@ test("Роут и экран: под сессией модуля, числа —
   const mount = forms.indexOf("<DataReadiness");
   assert.ok(mount > 0 && mount < forms.indexOf('state.kind === "loading"'), "полоска стоит выше веток загрузки «Форм»: у неё свой запрос, она не ждёт отчёт и не сдвигает его");
 });
+
+test("История каталогов: у источника с частями разделов «появилось/пропало» оговорено — модели частей в полный прогон не входят", async () => {
+  const r = buildReadiness(input({ traits: null, history: { sources: [{ ...src("Zara", "appearance", "2026-09-20"), parts: ["Zara CHAQUETA без трикотажа"] }, src("Rains", "appearance", "2026-09-20")] } }));
+  const h = lines(r, "history");
+  assert.match(h, /«Появилось» и «пропало» — наблюдение: Zara, Rains\./);
+  assert.match(h, /Части разделов в полный прогон не входят — по их моделям «появилось» и «пропало» не наблюдение: Zara \(Zara CHAQUETA без трикотажа\)\./);
+  assert.doesNotMatch(h, /Rains \(/);
+  assert.match(lines(buildReadiness(input({ traits: null, history: { sources: [{ ...src("Zara", "dynamics", "2026-08-20"), parts: ["Zara CHAQUETA без трикотажа"] }] } })), "history"), /не наблюдение: Zara \(Zara CHAQUETA без трикотажа\)\./, "и при динамике по источнику — оговорка");
+  assert.doesNotMatch(lines(buildReadiness(input({ traits: null, history: { sources: [{ ...src("Zara", "building", "2026-10-01"), parts: ["Zara CHAQUETA без трикотажа"] }] } })), "history"), /Части разделов/, "история ещё копится — оговаривать нечего");
+  assert.doesNotMatch(lines(buildReadiness(input({ traits: null, history: { sources: [src("Zara", "appearance", "2026-09-20")] } })), "history"), /Части разделов/, "частей нет — оговорки нет");
+  // Из базы: прогоны части помечены в журнале — название части берётся из списка частей.
+  const run = (day: string, over: Row = {}) => ({ source_id: "S001", direction: "jackets", observed_on: day, coverage: "full", seen: 10, added: 0, error: null, started_at: `${day}T06:30:00Z`, ...over });
+  const { db } = fakeDb({
+    assortment_model_attributes: [],
+    assortment_run: [run("2026-09-27"), run("2026-10-04"), run("2026-10-04", { coverage: "window", part: "zara_chaqueta", started_at: "2026-10-04T06:40:00Z" })],
+    assortment_sources: [{ source_id: "S001", name: "Zara", categories: ["jackets", "bags"] }],
+  });
+  const loaded = lines(await loadReadiness(db, "jackets", new Date("2026-10-06T10:00:00Z"), { traits: (async () => null) as never }), "history");
+  assert.match(loaded, /не наблюдение: Zara \(Zara CHAQUETA без трикотажа\)\./);
+});

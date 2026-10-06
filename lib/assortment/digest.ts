@@ -9,7 +9,7 @@
 
 import type { AssortmentDirection } from "./constants";
 import { DIRECTION_LABEL } from "./constants";
-import type { HistoryStatus } from "./observationState";
+import { partsCaveat, type HistoryStatus } from "./observationState";
 import { BRAND_LABEL, compactRu, VERDICT_LABEL, type SocialDigest } from "./socialFeed";
 
 export interface DigestFinding {
@@ -38,7 +38,7 @@ export interface DigestFacts {
   /** Пульс автообхода; null — обход ещё не запускался или миграции нет. */
   crawl: { ok: string[]; failing: Array<{ name: string; error: string }> } | null;
   /** Глубина истории наблюдений по источникам каталогов; null — журнала прогонов нет. Без слов «растёт/падает»: динамика — не раньше четырёх недель. */
-  history?: Array<{ name: string; status: HistoryStatus }> | null;
+  history?: Array<{ name: string; status: HistoryStatus; parts?: string[] }> | null;
   /** «Залетает в соцсетях»: новые «залёты» недели (до пяти); null или нет — раздела нет (таблиц нет или ничего не залетело). */
   social?: SocialDigest | null;
   baseUrl: string;
@@ -83,6 +83,9 @@ function historyLines(history: DigestFacts["history"]): string[] {
     const shown = names.slice(0, MAX_NAMES).map(telegramEscape).join(", ");
     lines.push(`${group.text}: ${shown}${names.length > MAX_NAMES ? ` и ещё ${names.length - MAX_NAMES}` : ""}.`);
   }
+  // Части разделов (Zara CHAQUETA, коллаборации Uniqlo) — окна: «наблюдение» по источнику на их модели не распространяется.
+  const caveat = partsCaveat(history);
+  if (caveat) lines.push(telegramEscape(caveat));
   return lines.length > 0 ? ["", "<b>История каталогов</b>", ...lines] : [];
 }
 

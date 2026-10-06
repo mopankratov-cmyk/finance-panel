@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AssortmentDirection } from "./constants";
-import { isMissingAssortmentSchema } from "./errors";
+import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { moscowToday } from "@/lib/sync/moscowDay";
 
 /**
@@ -30,6 +30,11 @@ export interface RunInput {
   startedAt?: string;
   snapshotId?: string | null;
   error?: string | null;
+  /**
+   * Часть раздела (Zara CHAQUETA, коллаборации Uniqlo; миграция 202610060010): отдельная выборка того же раздела. Её прогон — не
+   * верх выдачи и не весь раздел; «История наблюдений» не берёт его последним прогоном и считает отдельно.
+   */
+  part?: string | null;
 }
 
 export interface SnapshotItem {
@@ -87,6 +92,8 @@ export function runRow(runId: string, observedOn: string, input: RunInput): Reco
     added: Math.max(0, Math.trunc(input.added)),
     snapshot_id: input.snapshotId ?? null,
     error: input.error?.slice(0, 400) ?? null,
+    // Колонка из поздней миграции: пишем её, только когда прогон — часть раздела, — основные прогоны пишутся и без миграции.
+    ...(input.part ? { part: input.part } : {}),
   };
 }
 
@@ -103,7 +110,14 @@ export async function recordObservation(
   const runId = globalThis.crypto.randomUUID();
   const observedOn = moscowToday(now);
   try {
-    const { error: runError } = await db.from("assortment_run").insert(runRow(runId, observedOn, input));
+    const row = runRow(runId, observedOn, input);
+    let { error: runError } = await db.from("assortment_run").insert(row);
+    // Миграции 202610060010 ещё нет — прогон части пишется без пометки (как до неё): история не теряется.
+    if (runError && "part" in row && isMissingColumnError(runError)) {
+      const bare = { ...row };
+      delete bare.part;
+      ({ error: runError } = await db.from("assortment_run").insert(bare));
+    }
     if (runError) {
       // Таблиц ещё нет — ожидаемо до применения миграции, молчим.
       if (isMissingAssortmentSchema(new Error(runError.message))) return null;

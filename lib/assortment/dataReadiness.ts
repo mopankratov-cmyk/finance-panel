@@ -1,5 +1,5 @@
 import { plural } from "@/lib/warehouse/plural";
-import { APPEARANCE_MIN_SPAN_DAYS, DYNAMICS_MIN_DAYS, DYNAMICS_MIN_SPAN_DAYS, type HistoryStatus } from "./observationState";
+import { APPEARANCE_MIN_SPAN_DAYS, DYNAMICS_MIN_DAYS, DYNAMICS_MIN_SPAN_DAYS, partsCaveat, type HistoryStatus } from "./observationState";
 
 /**
  * «На чём стоят цифры» (движок тенденций): что копится, с какого дня и когда функция станет честной. Чистые функции.
@@ -95,6 +95,8 @@ export interface HistorySource {
   /** Первый день с прогоном любого покрытия и первый с ПОЛНЫМ прогоном (от него считается «появилось/пропало»). */
   firstDay: string | null;
   firstFullDay: string | null;
+  /** Части разделов источника (Zara CHAQUETA, коллаборации Uniqlo): их модели в полный прогон не входят. */
+  parts?: string[];
 }
 
 export interface HistoryFacts {
@@ -285,6 +287,10 @@ function historyGroup(h: HistoryFacts, today: string): ReadinessGroup | null {
   const listed = (parts: string[]) => `${parts.slice(0, MAX_LISTED).join("; ")}${parts.length > MAX_LISTED ? ` и ещё ${parts.length - MAX_LISTED}` : ""}`;
   if (dynamics.length > 0) lines.push({ kind: "факт", text: `Можно смотреть динамику: ${dynamics.join(", ")}.` });
   if (appearance.length > 0) lines.push({ kind: "факт", text: `«Появилось» и «пропало» — наблюдение: ${appearance.join(", ")}.` });
+  // Часть раздела — отдельная выборка, её прогон окно, а не полный раздел: по её моделям «появилось» и «пропало» не наблюдение, даже
+  // когда по источнику оно уже есть.
+  const caveat = partsCaveat(sources);
+  if (caveat) lines.push({ kind: "факт", text: caveat });
   // Источник с первым полным прогоном давно, а второго всё нет, — застрял: обходы не доходят до конца. Дата для него «не раньше
   // сегодня» печаталась бы каждый день и ничем не отличалась от источника, который будет готов завтра.
   const withFull = building.filter((s) => s.firstFullDay);
