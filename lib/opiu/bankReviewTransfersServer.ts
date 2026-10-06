@@ -6,8 +6,8 @@ import { transferCategories } from "./bankTransferClassification";
 export async function matchBankReviewTransfers() {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Серверная база не настроена");
-  const rows = await loadAllSupabasePages<{ id: string; date: string; amount: number; bank_account_number: string; owner_inn: string; counterparty_inn: string; reasons: string[]; company_id: string | null }>((from,to) => db.from("bank_review_items")
-    .select("id,date,amount,bank_account_number,owner_inn,counterparty_inn,reasons,company_id")
+  const rows = await loadAllSupabasePages<{ id: string; date: string; amount: number; bank_account_number: string; owner_inn: string; counterparty_inn: string; reasons: string[]; company_id: string | null; account_id: string | null; status: string; manager_answer: string | null }>((from,to) => db.from("bank_review_items")
+    .select("id,date,amount,bank_account_number,owner_inn,counterparty_inn,reasons,company_id,account_id,status,manager_answer")
     .in("status", ["ready","needs_info","waiting_manager","approved"]).is("matched_transfer_id",null)
     .order("date").order("id").range(from,to), { label: "Встречные операции всех выписок" });
   const companyIds = [...new Set(rows.flatMap(row => row.company_id ? [row.company_id] : []))];
@@ -32,6 +32,16 @@ export async function matchBankReviewTransfers() {
     const categories = transferCategories(outgoingCompany, incomingCompany);
     const result = await db.rpc("link_bank_review_transfer", { p_outgoing: pair.outgoingId, p_incoming: pair.incomingId, p_outgoing_category: categories.outgoing, p_incoming_category: categories.incoming });
     if (result.error) throw new Error(/PGRST202|42883/.test(result.error.code) ? "Для связывания выписок примените миграцию 202609140003_bank_review_confirm_and_link.sql" : result.error.message);
+    const pairRows = [byId.get(pair.outgoingId), byId.get(pair.incomingId)];
+    const canConfirm = categories.outgoing === "Выбытие — Перевод между счетами"
+      && pairRows.every(row => row && ["ready", "needs_info", "approved"].includes(row.status) && row.company_id && row.account_id && !row.manager_answer);
+    if (canConfirm) {
+      const confirmed = await db.rpc("confirm_bank_review_items", { p_ids: [pair.outgoingId, pair.incomingId] });
+      // Разбитая операция уже представлена цепочкой ДДС. Связь между
+      // банковскими строками всё равно полезна, но второй плоский факт для неё
+      // создавать нельзя — это задвоит оборот.
+      if (confirmed.error && !/уже разбита/i.test(confirmed.error.message)) throw new Error(confirmed.error.message);
+    }
     linkedCount += 1;
   }
   return linkedCount;

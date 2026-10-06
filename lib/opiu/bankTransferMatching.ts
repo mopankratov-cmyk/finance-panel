@@ -31,6 +31,7 @@ function evidence(left: TransferMatchRow, right: TransferMatchRow) {
   if (rightCounterpartyAccount && rightCounterpartyAccount !== leftAccount) return false;
   return (leftCounterpartyAccount && leftCounterpartyAccount === rightAccount)
     || (rightCounterpartyAccount && rightCounterpartyAccount === leftAccount)
+    || (leftInn && rightInn && leftInn === rightInn)
     || (leftCounterpartyInn && rightInn && leftCounterpartyInn === rightInn)
     || (rightCounterpartyInn && leftInn && rightCounterpartyInn === leftInn);
 }

@@ -105,6 +105,36 @@ test("перевод владельцу по имени распознаётся
   assert.match(suggestion.reasons.join(" "), /получатель перевода совпадает/i);
 });
 
+test("переводы с карты владельцу не становятся дивидендами", () => {
+  const rows = [
+    { id: "incoming", amount: 360_000, purpose: "Перевод на карту. Перевод от П. Максим Олегович. Операция по счету****5250" },
+    { id: "outgoing", amount: -360_000, purpose: "Перевод с карты. Перевод для П. Максим Олегович. Операция по счету****5142" },
+  ].map((row) => ({ ...row, date: "2026-09-23", counterparty: "П. Максим Олегович", counterpartyInn: "", counterpartyAccount: "", documentNumber: row.id }));
+  const suggestions = classifyBankStatement({
+    documentHash: "hash", bank: "Сбер", owner: "Панкратов Максим Олегович", ownerInn: "280888215133",
+    accountNumber: "40817810000000005250", dateFrom: "2026-09-23", dateTo: "2026-09-23",
+    openingBalance: null, closingBalance: null, declaredDebit: 360_000, declaredCredit: 360_000, rows, warnings: [],
+  }, [], [], [], []);
+  assert.deepEqual(suggestions.map(row => row.category), ["Поступление — Перевод между счетами", "Выбытие — Перевод между счетами"]);
+});
+
+test("личные категории идут в дивиденды, а перевод с включённой комиссией не становится РКО", () => {
+  const purposes = [
+    "Прочие расходы. YANDEX*5411*EDA.RU MOSCOW RUS.",
+    "Отдых и развлечения. CP* DDX FITNESS24 MOSKVA RUS.",
+    "Супермаркеты. Novruzov Ilgar Musa MOSKVA RUS.",
+    "Рестораны и кафе. IP LI EBO MOSKVA RUS.",
+    "Перевод с карты. SBOL. Операция по счету ****5250 В сумму операции включена комиссия 100,00 руб.",
+  ];
+  const rows = purposes.map((purpose, index) => ({ id: String(index), date: "2026-09-23", amount: index === 4 ? -5_100 : -500, counterparty: index === 4 ? "SBOL" : "Магазин", counterpartyInn: "", counterpartyAccount: "", purpose, documentNumber: String(index) }));
+  const suggestions = classifyBankStatement({
+    documentHash: "hash", bank: "Сбер", owner: "Панкратов Максим Олегович", ownerInn: "280888215133",
+    accountNumber: "40817810000000005250", dateFrom: "2026-09-23", dateTo: "2026-09-23",
+    openingBalance: null, closingBalance: null, declaredDebit: 7_100, declaredCredit: 0, rows, warnings: [],
+  }, [], [], [], []);
+  assert.deepEqual(suggestions.map(row => row.category), ["Дивиденды", "Дивиденды", "Дивиденды", "Дивиденды", null]);
+});
+
 test("процентный займ означает выдачу тела, а оплата процентов остаётся процентами", () => {
   const base = {
     documentHash: "hash",
