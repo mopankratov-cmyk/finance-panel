@@ -225,16 +225,18 @@ export async function POST(request: Request) {
     let allocatedRows = 0;
     let allocatedAmountRub = 0;
     let unresolvedFacts = 0;
-    const addPaidPenalty = async (fact: { date: string; source: string }, amountRub: number) => {
+    const addPaidUnplannedFact = async (fact: { date: string; source: string }, kind: ScheduleRowKind, amountRub: number) => {
       const amount = roundMoney(amountRub);
       const now = new Date().toISOString();
-      // В выгрузке WB пени могут существовать без плановой строки: это
-      // фактическое начисление, а не повод менять тело или будущий график.
+      // Старое удержание может не иметь плановой строки: прежний импорт мог
+      // потерять часть графика, а пени вообще не планируются заранее. Это уже
+      // состоявшийся факт WB, поэтому сохраняем его в графике на дату отчёта,
+      // а не оставляем пользователю ручную очередь из десятков строк.
       const created = await db.from("loan_schedule_rows").insert({
         loan_id: loanId,
         due_date: fact.date,
         original_due_date: fact.date,
-        kind: "penalty",
+        kind,
         amount_rub: amount,
         amount_original: amount,
         currency: "RUB",
@@ -259,9 +261,15 @@ export async function POST(request: Request) {
       .filter((fact) => normalizedContractNumber(fact.contractNumber) === contractNumber && fact.kind !== "unknown")
       .sort((a, b) => a.date.localeCompare(b.date) || a.rrdId.localeCompare(b.rrdId));
     for (const fact of facts) {
+      if (fact.kind === "unknown") continue;
       let remaining = roundMoney(Math.max(0, fact.amountRub - (allocatedBySource.get(fact.source) ?? 0)));
       if (remaining <= 0.01) continue;
-      const candidates = rows.filter((row) => row.status === "planned" && row.kind === fact.kind && row.dueDate <= fact.date);
+      const plannedOfKind = rows.filter((row) => row.status === "planned" && row.kind === fact.kind);
+      const dueCandidates = plannedOfKind.filter((row) => row.dueDate <= fact.date);
+      // Если старый график имел пропуск, дата удержания окажется раньше первой
+      // сохранившейся строки. Тогда закрываем самые ранние доступные строки,
+      // сохраняя порядок долга, вместо требования ручного выбора каждой суммы.
+      const candidates = dueCandidates.length ? dueCandidates : plannedOfKind;
       for (const row of candidates) {
         const alreadyAllocated = allocatedByRow.get(row.id) ?? 0;
         const rowRemainder = roundMoney(Math.max(0, row.amountRub - alreadyAllocated));
@@ -290,8 +298,8 @@ export async function POST(request: Request) {
         }
         if (remaining <= 0.01) break;
       }
-      if (fact.kind === "penalty" && remaining > 0.01) {
-        await addPaidPenalty(fact, remaining);
+      if (remaining > 0.01) {
+        await addPaidUnplannedFact(fact, fact.kind, remaining);
         remaining = 0;
       }
       if (remaining > 0.01) unresolvedFacts++;

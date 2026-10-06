@@ -146,6 +146,25 @@ function streamsFromPdf(bytes: Buffer) {
       // Повреждённый поток не должен мешать прочитать остальные страницы.
     }
   }
+  // Минимальные/повреждённые PDF иногда не содержат indirect object вокруг
+  // stream. Это не должно ломать прежний резервный разбор текстового слоя;
+  // безопасный общий regex используем только если строгий путь не нашёл ни
+  // одного потока, поэтому он не смешивает словари нормального PDF.
+  if (!streams.length) {
+    const fallbackPattern = /<<([\s\S]{0,4000}?)>>\s*stream\r?\n/g;
+    for (const match of source.matchAll(fallbackPattern)) {
+      const start = (match.index ?? 0) + match[0].length;
+      const end = source.indexOf("endstream", start);
+      if (end < start) continue;
+      let stream = bytes.subarray(start, end);
+      while (stream.length && /[\r\n]/.test(String.fromCharCode(stream.at(-1) ?? 0))) stream = stream.subarray(0, -1);
+      try {
+        streams.push({ objectId: null, data: /\/FlateDecode/.test(match[1]) ? inflateSync(stream) : stream });
+      } catch {
+        // Пропускаем только повреждённый поток.
+      }
+    }
+  }
   return streams;
 }
 
@@ -176,7 +195,10 @@ export function extractPdfText(bytes: Buffer) {
   const streams = streamsFromPdf(bytes);
   const source = bytes.toString("latin1");
   const fontMaps = fontMapsFromPdf(source, streams);
-  const maps = [...new Set(fontMaps.values())];
+  const standaloneMaps = streams
+    .filter((stream) => /beginbf(?:char|range)/.test(stream.data.toString("latin1")))
+    .map((stream) => cmapFrom([stream.data]));
+  const maps = [...new Set([...fontMaps.values(), ...standaloneMaps])];
   const chunks: string[] = [];
   for (const stream of streams) {
     const content = stream.data.toString("latin1");

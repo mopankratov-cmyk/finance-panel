@@ -26,7 +26,7 @@ test("PDF text uses the active font CMap instead of merging colliding glyph code
   assert.equal(extractPdfText(pdf), "162");
 });
 
-test("JetLend PDF rows without row numbers preserve payment totals and ending balance", () => {
+test("unnumbered eight-column PDF rows preserve payment totals and ending balance", () => {
   const text = [
     "08.12.2024 429 859,51 191 895,61 207 211,90 0,00 0,00 399 107,51 30 751,00 9 807 004,39",
     "08.01.2025 430 266,36 188 888,37 210 219,14 0,00 0,00 399 107,51 31 158,85 9 618 116,02",
@@ -44,5 +44,32 @@ test("JetLend PDF rows without row numbers preserve payment totals and ending ba
     status: "planned",
     balanceBefore: 9_998_900,
     balanceAfter: 9_807_004.39,
+  });
+});
+
+test("numbered five-column rows win when they form the more complete valid schedule", () => {
+  const text = [
+    // Частичное совпадение альтернативной восьмиколоночной формы не должно
+    // останавливать остальные стратегии распознавания.
+    "01.01.2026 100,00 10,00 20,00 0,00 0,00 20,00 1,00 990,00",
+    "02.01.2026 100,00 10,00 20,00 0,00 0,00 20,00 1,00 980,00",
+    "03.01.2026 100,00 10,00 20,00 0,00 0,00 20,00 1,00 970,00",
+    "21 06.07.2026 17 057.11 10 557.99 6 499.12 0 796 305.23",
+    "22 13.07.2026 17 057.11 10 643.03 6 414.08 0 785 662.20",
+    "23 20.07.2026 17 057.11 10 728.76 6 328.35 0 774 933.44",
+    "24 27.07.2026 17 057.11 10 815.18 6 241.93 0 764 118.26",
+  ].join(" ");
+
+  const rows = recognizeLoanPdfSchedule(text);
+  assert.equal(rows.length, 4);
+  assert.deepEqual(rows[0], {
+    date: "2026-07-06",
+    principal: 10_557.99,
+    interest: 6_499.12,
+    penalty: 0,
+    fine: 0,
+    status: "planned",
+    balanceBefore: 806_863.22,
+    balanceAfter: 796_305.23,
   });
 });
