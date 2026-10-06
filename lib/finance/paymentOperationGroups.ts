@@ -7,6 +7,7 @@ export interface PaymentOperationGroup {
   source: Payment;
   chainId?: string;
   parts: Payment[];
+  linkedLoans?: Payment[];
   remainder?: number;
   bankTransferId?: string;
   linkedTransfers?: Payment[];
@@ -66,8 +67,12 @@ export function groupPaymentOperations(visible: Payment[], all: Payment[], summa
       if (role) return role === "spending" || (!throughCash && role === "source" && entry.amount < 0);
       return entry.amount < 0 && sectionForCategory(entry.category) !== TECHNICAL_SECTION && entry.category !== INTERCOMPANY_LOAN_CATEGORIES.issued;
     }).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    const linkedLoans = entries.filter((entry) => {
+      const role = chainMetadata(entry.comment)?.role;
+      return role === "loan-out" || role === "loan-in";
+    }).sort((a, b) => a.date.localeCompare(b.date) || a.amount - b.amount || a.id.localeCompare(b.id));
     const allocated = parts.reduce((sum, entry) => sum + Math.round(Math.abs(entry.amount) * 100), 0);
-    result.push({ key: chainId, chainId, parts, remainder: (Math.round(amount * 100) - allocated) / 100, source: {
+    result.push({ key: chainId, chainId, parts, linkedLoans, remainder: (Math.round(amount * 100) - allocated) / 100, source: {
       ...funding, id: p.id, amount: -amount, date: meta?.date ?? summary!.date,
       name: meta?.label ?? summary!.label, category: `Разбито на ${parts.length} частей`, counterparty: "",
       accountId: summary?.sourceAccountId ?? funding.accountId, companyId: summary?.sourceCompanyId ?? funding.companyId,

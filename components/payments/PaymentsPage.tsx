@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, Plus, RefreshCw, Save, WalletCards } from "lucide-react";
+import { BarChart3, Building2, Download, FileSpreadsheet, Landmark, LayoutDashboard, ListChecks, Loader2, RefreshCw, Save, WalletCards } from "lucide-react";
 import { BankStatementModal } from "./BankStatementModal";
 import { ImportDdsModal } from "./ImportDdsModal";
 import { OpiuPeriodAllocationModal } from "./OpiuPeriodAllocationModal";
@@ -29,7 +29,7 @@ import {
 } from "./ddsCompanies";
 import { ddsReviewTemplateRows, ddsTemplateRows, downloadDdsCsv, downloadGroupedDdsXlsx } from "./ddsExport";
 import { syncDdsToGoogleSheets } from "./ddsGoogleSync";
-import { ddsSheetNameForCompany } from "./ddsSheetGroups";
+import { ddsContourForCompany, ddsSheetNameForCompany, type DdsContour } from "./ddsSheetGroups";
 import { PaymentForm, type PaymentLoanLink } from "./PaymentForm";
 import { TabPanel, useKeepAliveTabs } from "@/components/ui/KeepAliveTabs";
 import { useFinance, useDdsCategories } from "@/components/providers/FinanceProvider";
@@ -47,13 +47,12 @@ import {
   type CompanyVatMode,
 } from "@/lib/finance/companyTax";
 import { COMPANY_TAX_RATE_UNAVAILABLE, COMPANY_TAX_UNAVAILABLE } from "@/lib/finance/companySchema";
-import { ddsEditableAccounts, isDdsActualPayment, manualDdsCashAccounts } from "@/lib/finance/bankDdsPayment";
-import { isCashoutPayment } from "@/lib/finance/cashout";
+import { ddsEditableAccounts, isDdsActualPayment } from "@/lib/finance/bankDdsPayment";
+import { sharedPersonalWalletIds } from "@/lib/finance/sharedPersonalWallets";
 import { formatMoney, generateId } from "@/lib/format";
 import type { Payment } from "@/lib/types";
 import { paymentIdFromSearch, paymentLedgerFiltersFromSearch, shouldOpenBankImport, shouldOpenCompanySettings } from "./paymentDeepLink";
-import { closeLoanScheduleRows, loadLoanScheduleRows } from "@/components/loans/scheduleStore";
-import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
+import { closeLoanScheduleRows } from "@/components/loans/scheduleStore";
 
 const WITHOUT_CATEGORY_FILTER = "__without_category__";
 
@@ -80,14 +79,11 @@ export function PaymentsPage() {
   const [filterCategory, setFilterCategory] = useState("");
   const [filterAccount, setFilterAccount] = useState("");
   const [filterCompany, setFilterCompany] = useState("");
-  const [cashoutOnly, setCashoutOnly] = useState(false);
+  const [ddsContour, setDdsContour] = useState<DdsContour>("general");
   const [companies, setCompanies] = useState<DdsCompany[]>([]);
   const [companyByPayment, setCompanyByPayment] = useState<Map<string, string | null>>(new Map());
   const [companyError, setCompanyError] = useState<string | null>(null);
   const [highlightedPaymentId, setHighlightedPaymentId] = useState<string | null>(null);
-  const [loanScheduleRows, setLoanScheduleRows] = useState<ScheduleRowRecord[]>([]);
-  const [loanScheduleLoading, setLoanScheduleLoading] = useState(false);
-  const [loanScheduleError, setLoanScheduleError] = useState("");
 
   useEffect(() => {
     if (shouldOpenCompanySettings(window.location.search)) setCompaniesOpen(true);
@@ -101,7 +97,6 @@ export function PaymentsPage() {
       setDateFrom(filters.from);
       setDateTo(filters.to);
       setFilterCompany(filters.company);
-      setCashoutOnly(true);
     }
   }, []);
 
@@ -151,15 +146,26 @@ export function PaymentsPage() {
   // Календарь и графики займов используют ту же таблицу payments, поэтому
   // фильтра по status=done недостаточно: завершённые строки плана попадали в
   // реестр и приносили сюда технические кошельки вроде PANKSTER GROUP.
-  const ddsPayments = useMemo(
-    () => paymentsWithCompany.filter(isDdsActualPayment),
-    [paymentsWithCompany],
+  const sharedWalletIds = useMemo(() => sharedPersonalWalletIds(state.accounts), [state.accounts]);
+  const allDdsPayments = useMemo(
+    () => paymentsWithCompany.filter(isDdsActualPayment).map((payment) => {
+      const unresolvedSharedExpense = payment.amount < 0
+        && sharedWalletIds.has(payment.accountId)
+        && payment.importSource?.startsWith("bank-review:")
+        && !chainMetadata(payment.comment);
+      return unresolvedSharedExpense ? { ...payment, companyId: null } : payment;
+    }),
+    [paymentsWithCompany, sharedWalletIds],
   );
+  const ddsPayments = useMemo(() => allDdsPayments.filter((payment) => {
+    if (ddsContour === "all") return true;
+    return ddsContourForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === ddsContour;
+  }), [allDdsPayments, companyById, ddsContour]);
 
   useEffect(() => {
     const paymentId = paymentIdFromSearch(window.location.search);
     if (!paymentId) return;
-    const payment = ddsPayments.find((item) => item.id === paymentId);
+    const payment = allDdsPayments.find((item) => item.id === paymentId);
     if (!payment) return;
     setMode("ledger");
     setDateFrom(payment.date);
@@ -168,15 +174,14 @@ export function PaymentsPage() {
     setFilterAccount("");
     setFilterCompany("");
     setHighlightedPaymentId(paymentId);
+    setDdsContour(ddsContourForCompany(payment.companyId ? companyById.get(payment.companyId) : null) === "other"
+      ? "all"
+      : ddsContourForCompany(payment.companyId ? companyById.get(payment.companyId) : null) as DdsContour);
     const timer = window.setTimeout(() => document.getElementById(`payment-${paymentId}`)?.scrollIntoView({ block: "center", behavior: "smooth" }), 0);
     return () => window.clearTimeout(timer);
-  }, [ddsPayments]);
-  const ddsAccountIds = useMemo(() => new Set(ddsPayments.map((payment) => payment.accountId)), [ddsPayments]);
+  }, [allDdsPayments, companyById]);
+  const ddsAccountIds = useMemo(() => new Set(allDdsPayments.map((payment) => payment.accountId)), [allDdsPayments]);
   const ddsAccounts = useMemo(() => state.accounts.filter((account) => ddsAccountIds.has(account.id)), [state.accounts, ddsAccountIds]);
-  const manualCashAccounts = useMemo(
-    () => manualDdsCashAccounts(state.accounts, state.payments),
-    [state.accounts, state.payments],
-  );
   const editableDdsAccounts = useMemo(
     () => ddsEditableAccounts(state.accounts, state.payments),
     [state.accounts, state.payments],
@@ -193,20 +198,18 @@ export function PaymentsPage() {
         if (filterCompany === "unassigned" && p.companyId !== null && !companyScope.unassignedCompanyIds.includes(p.companyId)) return false;
         if (filterCompany.startsWith("group:") && (!p.companyId || companyById.get(p.companyId)?.groupName !== filterCompany.slice(6))) return false;
         if (filterCompany && filterCompany !== "unassigned" && !filterCompany.startsWith("group:") && p.companyId !== filterCompany) return false;
-        if (cashoutOnly && !isCashoutPayment(p)) return false;
         return true;
       })
       .sort((a, b) => b.date.localeCompare(a.date));
-  }, [ddsPayments, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, cashoutOnly, companyById, companyScope]);
+  }, [ddsPayments, dateFrom, dateTo, filterCategory, filterAccount, filterCompany, companyById, companyScope]);
 
-  const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany, cashoutOnly].filter(Boolean).length;
+  const activeFilters = [dateFrom, dateTo, filterCategory, filterAccount, filterCompany].filter(Boolean).length;
   const resetFilters = () => {
     setDateFrom("");
     setDateTo("");
     setFilterCategory("");
     setFilterAccount("");
     setFilterCompany("");
-    setCashoutOnly(false);
   };
 
   // В фильтре должны быть и статьи вне справочника (старые выгрузки) — иначе их не отобрать.
@@ -225,22 +228,6 @@ export function PaymentsPage() {
     setFilterCompany(scope === "all" ? "" : scope);
     setMode("ledger");
   }, []);
-
-  const openAdd = () => {
-    if (!manualCashAccounts.length) {
-      alert("Нет доступного наличного кошелька. Создайте наличный счёт в разделе «Счета».");
-      return;
-    }
-    setEditing(null);
-    setLoanScheduleRows([]);
-    setLoanScheduleError("");
-    setLoanScheduleLoading(true);
-    void loadLoanScheduleRows()
-      .then((result) => setLoanScheduleRows(result.rows))
-      .catch((error) => setLoanScheduleError(error instanceof Error ? error.message : "Не удалось загрузить графики"))
-      .finally(() => setLoanScheduleLoading(false));
-    setModalOpen(true);
-  };
 
   const openEdit = (payment: Payment) => {
     if(chainMetadata(payment.comment)){setChainSeed({paymentId:payment.id});return;}
@@ -431,6 +418,18 @@ export function PaymentsPage() {
         </div>
       </div>
 
+      <div className="flex flex-col gap-2 rounded-xl border border-violet-200 bg-white p-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="chip-row flex gap-1" role="group" aria-label="Контур ДДС">
+          {([
+            ["general", "Общий ДДС"],
+            ["filippov", "ДДС ИП Филиппова"],
+            ["unassigned", "Нужно распределить"],
+            ["all", "Все контуры"],
+          ] as const).map(([value, label]) => <button key={value} type="button" aria-pressed={ddsContour === value} onClick={() => { setDdsContour(value); setFilterCompany(""); }} className={`min-h-11 shrink-0 rounded-lg px-3 text-sm font-semibold ${ddsContour === value ? "bg-violet-600 text-white" : "text-slate-600 hover:bg-violet-50"}`}>{label}{value === "unassigned" ? ` (${allDdsPayments.filter((payment) => !payment.companyId).length})` : ""}</button>)}
+        </div>
+        <p className="px-2 text-xs text-slate-500">Общие личные карты попадают в контур только после определения владельца расхода.</p>
+      </div>
+
       <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             onClick={() => downloadDdsCsv({ payments: ddsPayments, accountNameById, companyNameById, customExpenseNames: customCategoryNames })}
@@ -464,15 +463,6 @@ export function PaymentsPage() {
             {syncingGoogle ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Google Таблица
           </button>
-          {mode === "ledger" && (
-            <button
-              onClick={openAdd}
-              className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700"
-            >
-              <Plus className="h-4 w-4" />
-              Операция наличными
-            </button>
-          )}
       </div>
 
       {companyError && (
@@ -510,7 +500,7 @@ export function PaymentsPage() {
         <>
       <Card>
         <CardContent className="pt-5">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <div>
               <label className="block text-xs text-slate-500 mb-1">С даты</label>
               <input
@@ -577,10 +567,6 @@ export function PaymentsPage() {
                 ))}
               </select>
             </div>
-            <label className="flex min-h-11 items-center gap-2 self-end rounded-lg border border-slate-300 px-3 text-sm font-medium text-slate-700">
-              <input type="checkbox" checked={cashoutOnly} onChange={(event) => setCashoutOnly(event.target.checked)} className="h-4 w-4 accent-violet-600" />
-              Только «Движение наличных»
-            </label>
           </div>
           {/* На телефоне поля фильтров занимают экран целиком, и список платежей
               уезжает за нижний край: без этой строки человек видит пустой
@@ -607,7 +593,7 @@ export function PaymentsPage() {
       <TransferBalancePanel payments={ddsPayments} accounts={ddsAccounts} onEdit={openEdit}/>
       <BankTransfersPanel/>
       <Card>
-        <PaymentOperationsTable visible={filtered} all={ddsPayments} accounts={ddsAccounts} companies={companies} highlightedPaymentId={highlightedPaymentId} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed} onAllocateOpiu={setOpiuAllocationPayment}/>
+        <PaymentOperationsTable visible={filtered} all={allDdsPayments} accounts={ddsAccounts} companies={companies} highlightedPaymentId={highlightedPaymentId} onEdit={openEdit} onDelete={handleDelete} onOpen={setChainSeed} onAllocateOpiu={setOpiuAllocationPayment}/>
       </Card>
         </>
       )}
@@ -620,20 +606,20 @@ export function PaymentsPage() {
           setModalOpen(false);
           setEditing(null);
         }}
-        title={editing ? "Редактировать платёж" : "Операция наличными"}
+        title="Редактировать платёж"
       >
         <PaymentForm
           payment={editing ?? undefined}
-          accounts={editing ? editableDdsAccounts : manualCashAccounts}
+          accounts={editableDdsAccounts}
           counterparties={counterparties}
           companies={companies}
           companyId={editing ? companyByPayment.get(editing.id) : null}
           loans={state.loans}
           payments={state.payments}
           paymentCompanies={companyByPayment}
-          scheduleRows={loanScheduleRows}
-          scheduleLoading={loanScheduleLoading}
-          scheduleError={loanScheduleError}
+          scheduleRows={[]}
+          scheduleLoading={false}
+          scheduleError=""
           onSubmit={handleSubmit}
           onCancel={() => {
             setModalOpen(false);

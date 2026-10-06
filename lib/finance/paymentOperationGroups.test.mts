@@ -21,6 +21,8 @@ test("date or company filter selects one source and expansion includes all expen
   assert.equal(rows[0].source.companyId, "main");
   assert.deepEqual(rows[0].parts.map(p => p.date), ["2026-09-11", "2026-09-15"]);
   assert.equal(rows[0].remainder, 10000);
+  assert.equal(rows[0].linkedLoans?.length, 2);
+  assert.deepEqual(rows[0].linkedLoans?.map((payment) => payment.category).sort(), ["Выдача кредитов и займов", "Получение кредитов и займов"].sort());
   assert.equal(groupPaymentOperations(entries, entries).length, 1);
 });
 test("cancelled old versions stay out of expanded parts; ordinary payments remain independent", () => {

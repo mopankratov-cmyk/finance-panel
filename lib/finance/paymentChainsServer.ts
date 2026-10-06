@@ -8,6 +8,8 @@ import { categoryOptions, TECHNICAL_SECTION, sectionForCategory, INTERCOMPANY_LO
 import { allocateWalletFunding, autofillPaymentChainCash, bankReviewSpendingSplits, buildChainEntries, chainCashAccounts, chainIdForPayment, isLegacyPaymentSplit, requiresFilippovLoan, validateChain, type PaymentChainBankTarget, type PaymentChainDraft, type PaymentChainDetail, type PaymentChainSummary, type PaymentChainFundingLink, type ChainEntry, type ChainCompany } from "./paymentChains";
 import type { Account, Payment } from "@/lib/types";
 import { paymentTransferBalances } from "./paymentTransferBalance";
+import { isSharedPersonalWalletName } from "./sharedPersonalWallets";
+import { payrollEmployeeSuggestion } from "@/lib/payroll/employeeSuggestion";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const fail = (message: string, status=400) => Object.assign(new Error(message), {status});
 function dbRequired() { const db=getSupabaseAdmin(); if(!db) throw fail("Supabase не настроен",503); return db; }
@@ -73,6 +75,21 @@ async function validateWalletFunding(d:PaymentChainDraft){
  for(const link of links){const key=`${link.chainId}:${link.allocationId}`;requested.set(key,(requested.get(key)??0)+link.amount);const source=byId.get(link.chainId);const allocation=source?.allocations.find(item=>item.id===link.allocationId);if(!source||!allocation||allocation.excluded||allocation.targetAccountId!==d.sourceAccountId||source.sourceCompanyId!==link.companyId)throw fail("Связанное пополнение личного кошелька изменилось. Откройте операцию заново.",409);}
  for(const link of links){const key=`${link.chainId}:${link.allocationId}`;const allocation=byId.get(link.chainId)!.allocations.find(item=>item.id===link.allocationId)!;if(Math.round(((used.get(key)??0)+(requested.get(key)??0))*100)>Math.round(allocation.amount*100))throw fail("Деньги из связанного пополнения уже использованы другой операцией.",409);}
 }
+async function payrollExpenseCompanyId(allocations: PaymentChainDraft["allocations"]): Promise<Map<string,string>> {
+ const salary=allocations.filter(allocation=>/зарплат/i.test(allocation.category));
+ if(!salary.length)return new Map();
+ const rows=await loadAllSupabasePages<{id:string;full_name:string;company_ids:string[]|null;company_id:string|null}>((from,to)=>dbRequired().from("payroll_employees").select("id,full_name,company_ids,company_id").range(from,to),{label:"Компании сотрудников для общих карт"}).catch(()=>[]);
+ const employees=rows.map(row=>({id:row.id,fullName:row.full_name}));
+ const byId=new Map(rows.map(row=>[row.id,row]));
+ const result=new Map<string,string>();
+ for(const allocation of salary){
+  const employeeId=payrollEmployeeSuggestion({counterparty:allocation.counterparty,name:allocation.name},employees);
+  const employee=employeeId?byId.get(employeeId):null;
+  const ids=[...new Set([...(employee?.company_ids??[]),employee?.company_id].filter((value):value is string=>Boolean(value)))];
+  if(ids.length===1)result.set(allocation.id,ids[0]);
+ }
+ return result;
+}
 export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string;chainId?:string}): Promise<PaymentChainDetail> {
  const db=dbRequired();
  for(const value of Object.values(seed)) if(value && !UUID.test(value)) throw fail("Некорректный идентификатор операции");
@@ -109,6 +126,7 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  const sourceAmount=Math.abs(Number(review?.amount??selected!.amount));
  const sourceDate=String(review?.date??selected!.date).slice(0,10);
  let sourceCompanyId=String(review?.company_id??selected?.companyId??"");
+ const accountOwnerCompanyId=sourceCompanyId;
  const sourceAccountId=String(review?.account_id??selected?.accountId??"");
  const reviewCounterparty=String(review?.counterparty??selected?.counterparty??"");
  let raw: Array<{id?:string;amount:number;description:string;category:string|null;companyId:string|null;accountId?:string|null;excluded?:boolean;countsTowardBank?:boolean;isRemainder?:boolean}> = [];
@@ -120,8 +138,16 @@ export async function loadPaymentChain(seed: {paymentId?:string;reviewId?:string
  const rawHasAutomaticLoan = raw.some(a=>a.category===INTERCOMPANY_LOAN_CATEGORIES.issued || a.category===LOAN_CATEGORIES.receipt);
  if(!allocations.length && (!raw.length || rawHasAutomaticLoan) && (origins.length || review?.category) && sectionForCategory(selected?.category??String(review?.category??""))!==TECHNICAL_SECTION) allocations.push({id:crypto.randomUUID(),amount:sourceAmount,date:sourceDate,name:selected?.name??String(review?.purpose??""),category:selected?.category??String(review?.category??""),companyId:selected?.companyId??sourceCompanyId,accountId:sourceAccountId,counterparty:selected?.counterparty??String(review?.counterparty??""),excluded:false});
  const funding=await inferWalletFunding(sourceAccountId,sourceDate,sourceAmount,id);
- if(funding?.links.length)sourceCompanyId=funding.companyId;
+ const sharedWallet=isSharedPersonalWalletName(reg.accounts.find(account=>account.id===sourceAccountId)?.name??"");
+ const explicitSpendingOwner=bankReviewSpendingSplits(raw).some(split=>Boolean(split.companyId));
+ if(funding?.links.length){
+  sourceCompanyId=funding.companyId;
+  if(sharedWallet&&!explicitSpendingOwner)for(const allocation of allocations)if(allocation.companyId===accountOwnerCompanyId)allocation.companyId=sourceCompanyId;
+ }
+ const payrollCompanies=sharedWallet?await payrollExpenseCompanyId(allocations):new Map<string,string>();
  for(const a of allocations) {
+  const payrollCompanyId=payrollCompanies.get(a.id);
+  if(payrollCompanyId)a.companyId=payrollCompanyId;
   const recipient=preferredAliasCompany(`${a.name} ${a.counterparty} ${review?.purpose??""} ${reviewCounterparty}`,reg.companies);
   if(recipient && requiresFilippovLoan(reg.companies.find(c=>c.id===sourceCompanyId),recipient)) a.companyId=recipient.id;
  }

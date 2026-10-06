@@ -14,6 +14,11 @@ concurrency:
 jobs:
   checks:
     runs-on: gate
+    # Next запускает финальную проверку TypeScript дочерним Node-процессом
+    # после webpack-компиляции. Стандартных 2 ГБ уже недостаточно для дерева
+    # приложения; переменная наследуется и сборщиком, и его typecheck worker.
+    env:
+      NODE_OPTIONS: "--max-old-space-size=4096"
     # Зависшая проверка держит слот раннера (capacity 3) и блокирует
     # ai-gate и deploy всех остальных PR — ограничиваем по времени.
     timeout-minutes: 45
