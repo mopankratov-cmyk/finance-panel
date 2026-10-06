@@ -6,6 +6,7 @@ export default async function AssortmentJacketsPage({ searchParams }: { searchPa
   const view = sectionViewFrom(params);
   const filters = catalogFiltersFrom(params, "jackets");
   const rejectedForm = rejectedFormFrom(params, "jackets");
-  // Ключ по адресу: переход по меню на чистый адрес раздела сбрасывает вид и фильтры.
+  // Ключ по адресу: вход по ссылке с другим видом или фильтрами пересоздаёт раздел. Нажатие пункта меню на уже открытом разделе
+  // (адрес тот же, ключ тот же) сбрасывает вид и фильтры сигналом меню — lib/assortment/menuSignal.ts.
   return <AssortmentSection key={`${view}|${JSON.stringify(filters)}|${rejectedForm ?? ""}`} direction="jackets" initialView={view} initialCatalogFilters={filters} rejectedForm={rejectedForm} />;
 }

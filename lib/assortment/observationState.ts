@@ -60,6 +60,8 @@ export interface SourceHistory {
   /** Дней между первым наблюдением и сегодня. */
   spanDays: number;
   lastFullOn: string | null;
+  /** Дней с полными прогонами основного раздела: «пропало» требует нескольких полных прогонов подряд (appearance.ts). */
+  fullDays: number;
   /** Первый день с ПОЛНЫМ прогоном: от него считается «появилось/пропало» (firstDay — первый прогон любого покрытия). */
   firstFullDay: string | null;
   /** Сколько товаров увидел последний основной прогон (не часть раздела). */
@@ -114,6 +116,7 @@ export function summarizeHistory(rows: RunRow[], today: string): SourceHistory[]
       lastDay: dayList[dayList.length - 1] ?? null,
       spanDays,
       lastFullOn: fullDays[fullDays.length - 1] ?? null,
+      fullDays: fullDays.length,
       firstFullDay: fullDays[0] ?? null,
       lastSeen: latest ? latest.seen : null,
       lastError: latest?.coverage === "partial" ? latest.error : null,

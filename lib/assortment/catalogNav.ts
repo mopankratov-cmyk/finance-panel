@@ -1,4 +1,5 @@
 import { DEFAULT_CATALOG_FILTERS, filtersForForm, type CatalogFilters, type SectionView } from "./catalog";
+import { isSectionMenuTarget } from "./menuSignal";
 
 /**
  * Переходы раздела между вкладками и фильтрами каталога — чистые функции, чтобы их можно было проверить без экрана.
@@ -48,3 +49,12 @@ export function urlForView(href: string, view: SectionView): string {
   if (view !== "catalog") for (const key of CATALOG_URL_KEYS) url.searchParams.delete(key);
   return url.toString();
 }
+
+// ---------------------------------------------------------------------------
+// Меню модуля → раздел: «начать заново» (сигнал меню — в menuSignal.ts, чтобы оболочка модуля не тянула каталог)
+
+/** Раздел с начала: «Новинки», фильтры каталога по умолчанию, каталог пересоздан, плашки отброшенной формы нет. */
+export const navReset = (nav: CatalogNav): CatalogNav => ({ view: "new", filters: DEFAULT_CATALOG_FILTERS, key: nav.key + 1, rejected: null });
+
+/** Нажат пункт меню: свой раздел начинается заново, чужой — ничего не меняет (это обычный переход). */
+export const navAfterMenu = (nav: CatalogNav, href: string, sectionHref: string): CatalogNav => (isSectionMenuTarget(href, sectionHref) ? navReset(nav) : nav);

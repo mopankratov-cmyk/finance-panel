@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { DISAPPEAR_FULL_RUNS } from "./appearance";
+import { loadDigestChanges } from "./appearanceStore";
 import type { Attributes } from "./attributes";
 import { partLabel } from "./brightdataCatalog";
 import { rowsByIds } from "./byIds";
@@ -119,7 +121,19 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
     .filter((c) => c.status !== "archived")
     .map((c) => ({ id: c.id, title: c.title, progress: c.progress.label, status: COLLECTION_STATUS_LABEL[c.status].toLowerCase(), version: c.version }));
 
-  return { from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), history: await loadHistoryLine(db, to), social: await loadSocialDigestSafe(db, from, to), baseUrl };
+  return {
+    from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), history: await loadHistoryLine(db, to),
+    changes: await loadDigestChangesSafe(db, to), social: await loadSocialDigestSafe(db, from, to), baseUrl,
+  };
+}
+
+/** «Появилось / пропало» — второстепенный раздел: его сбой не роняет сводку, а называется строкой в ней. */
+async function loadDigestChangesSafe(db: SupabaseClient, to: Date): Promise<DigestFacts["changes"]> {
+  try {
+    return await loadDigestChanges(db, to);
+  } catch (error) {
+    return { week: null, month: null, season: null, disappearRuns: DISAPPEAR_FULL_RUNS, error: (error instanceof Error ? error.message : String(error)).slice(0, 160) };
+  }
 }
 
 /** Раздел соцсетей второстепенный: его сбой не роняет всю сводку, а называется строкой в ней. */
