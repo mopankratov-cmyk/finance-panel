@@ -8,6 +8,7 @@ import { FORM_UNRECOGNIZED } from "./catalog";
 import { formOf } from "./forms";
 import { baseHeadsFilters } from "./headsBase";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { attachSocialFlags } from "./socialFeedStore";
 
 export interface CatalogPage {
   cards: CatalogCard[];
@@ -58,7 +59,6 @@ async function sourcesMap(db: SupabaseClient, nowMs: number) {
 
 /** Общие фильтры вида голов: раздел, «виден за 30 дней», не скрыта, фото, метка, бренд, поиск, новинка. */
 function headsFilters<T extends { eq: Function; gte: Function; is: Function; not: Function; or: Function }>(builder: T, query: CatalogQuery, nowMs: number, photo: "with" | "all"): T {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q: any = baseHeadsFilters(builder, query.direction, nowMs);
   if (photo === "with") q = q.not("image_urls", "is", null);
   if (query.badge) q = q.not("badges", "is", null);
@@ -194,7 +194,7 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
     if (!byForm) throw new Error(`Фильтр по форме заработает после применения миграции 202610050002 (вид assortment_catalog_heads): без него в базе нет моделей одной карточкой.`);
     timing?.("items");
     const cards = byForm.rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs, query.direction));
-    await attachStatuses(db, cards);
+    await Promise.all([attachStatuses(db, cards), attachSocialFlags(db, cards, nowMs)]);
     timing?.("statuses");
     return { cards, total: byForm.total, brands: query.offset === 0 ? await statsPromise : null, photo, photosPending: false, form: query.form };
   }
@@ -218,7 +218,10 @@ export async function loadCatalog(db: SupabaseClient, query: CatalogQuery, nowMs
   timing?.("items");
   const rows = (result.data ?? []) as unknown as CatalogRow[];
   const cards = rows.map((row) => toCatalogCard(row, sources.get(row.source_id), nowMs, query.direction));
-  if (await attachStatuses(db, cards)) timing?.("statuses");
+  // Метка «залетает» — параллельно со статусами находок; второстепенная: без таблиц рилсов или при сбое каталог идёт без неё.
+  const [statuses, social] = await Promise.all([attachStatuses(db, cards), attachSocialFlags(db, cards, nowMs)]);
+  if (statuses) timing?.("statuses");
+  if (social) timing?.("social");
   return { cards, total: result.count ?? cards.length, brands: query.offset === 0 ? brands : null, photo: photosPending ? "all" : photo, photosPending, form: null };
 }
 

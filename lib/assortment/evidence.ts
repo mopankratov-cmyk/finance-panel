@@ -6,7 +6,9 @@
  * получения; недоступный факт — «нет данных» с причиной, а не ноль и не пустота.
  */
 
+import { plural } from "@/lib/warehouse/plural";
 import { cleanBadge, type ObservationLite } from "./signals";
+import { compactRu } from "./socialFeed";
 
 export type EvidenceGroup = "novelty" | "spread" | "retail";
 
@@ -99,13 +101,54 @@ function rowFrom(o: EvidenceObservation): EvidenceRow {
 const missing = (label: string, value: string, detail: string): EvidenceRow => ({ label, value, detail, sourceUrl: null, missing: true });
 
 /**
+ * «Залетает в соцсетях» по этой модели (рилсы Instagram, привязанные к ней по номеру товара): сколько рилсов и у скольких авторов,
+ * самый сильный вердикт, самый заметный рилс. null — соцсети не подключены (таблиц нет) или не передавались — прежняя заглушка.
+ */
+export interface SocialEvidence {
+  reels: number;
+  authors: number;
+  /** Хоть один рилс — «сильный залёт». */
+  strong: boolean;
+  /** Все вердикты — по запасному правилу (мало постов у автора): гипотеза, а не расчёт. */
+  preliminaryOnly: boolean;
+  topUrl: string | null;
+  topViews: number | null;
+  topLikes: number | null;
+  lastCheckedAt: string | null;
+  ruleVersion: string | null;
+  /** Чтение не удалось — называем, а не прячем. */
+  failed?: string | null;
+  /** Модель не Zara и не Uniqlo: рилсы про неё не собираются — «не найдено» было бы неправдой. */
+  outOfScope?: boolean;
+}
+
+const SOCIAL_LABEL = "Независимые публикации";
+
+/** Строка «Независимые публикации» по рилсам модели. */
+export function socialEvidenceRow(social: SocialEvidence): EvidenceRow {
+  if (social.failed) return missing(SOCIAL_LABEL, "не загрузилось", `рилсы Instagram: ${social.failed}`);
+  if (social.outOfScope) return missing(SOCIAL_LABEL, "нет данных", "рилсы Instagram пока собираются только про Zara и Uniqlo");
+  if (social.reels <= 0) return missing(SOCIAL_LABEL, "не найдено", "рилсов Instagram с номером этой модели не нашлось (Zara и Uniqlo, только женское)");
+  const value = `${social.reels} ${plural(social.reels, "рилс", "рилса", "рилсов")} у ${social.authors} ${plural(social.authors, "автора", "авторов", "авторов")} · ${social.strong ? "сильный залёт" : "залетает"}${social.preliminaryOnly ? " (предварительно)" : ""}`;
+  const detail = [
+    "Instagram Reels",
+    "наблюдение системы",
+    `правило ${social.ruleVersion ?? "reels-v1"} — ${social.preliminaryOnly ? "гипотеза" : "расчёт"}`,
+    social.topViews != null ? `больше всего ${compactRu(social.topViews)} просмотров` : social.topLikes != null ? `больше всего ${compactRu(social.topLikes)} лайков` : null,
+    social.lastCheckedAt ? `замер ${ruDate(social.lastCheckedAt)}` : null,
+    "лайки и просмотры — не продажи",
+  ].filter(Boolean).join(" · ");
+  return { label: SOCIAL_LABEL, value, detail, sourceUrl: social.topUrl, missing: false };
+}
+
+/**
  * similarOtherBrands — сколько моделей других брендов похожи по фото; null —
  * отпечатки ещё не посчитаны (тогда честное «не проверялось»).
  */
 /** Метрики, которые замеряются повторно (еженедельно): показываем последний замер. */
 const REPEATED = new Set(["wb_sales_30d", "reviews_count", "rating"]);
 
-export function buildEvidence(observations: EvidenceObservation[], similarOtherBrands: number | null = null): Record<EvidenceGroup, EvidenceRow[]> {
+export function buildEvidence(observations: EvidenceObservation[], similarOtherBrands: number | null = null, social: SocialEvidence | null = null): Record<EvidenceGroup, EvidenceRow[]> {
   const by = (group: EvidenceGroup) => {
     const list = observations.filter((o) => o.group_kind === group).sort((a, b) => a.observed_at.localeCompare(b.observed_at));
     const rows: EvidenceRow[] = [];
@@ -130,7 +173,8 @@ export function buildEvidence(observations: EvidenceObservation[], similarOtherB
   // Строки-заглушки — каждая сама по себе: замер рынка РФ в группе не должен
   // прятать «нет данных» по соцсетям и сходству.
   {
-    spread.push(missing("Независимые публикации", "нет данных", "соцсети пока не подключены"));
+    // Рилсы привязаны к модели — строка по ним; не передавали (снимок подборки) или таблиц нет — прежняя заглушка.
+    spread.push(social ? socialEvidenceRow(social) : missing(SOCIAL_LABEL, "нет данных", "соцсети пока не подключены"));
     if (similarOtherBrands === null) {
       spread.push(missing("Похожие модели у других брендов", "не проверялось", "отпечаток фото ещё не посчитан"));
     } else if (similarOtherBrands === 0) {

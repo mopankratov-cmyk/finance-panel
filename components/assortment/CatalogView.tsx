@@ -307,11 +307,12 @@ export function CatalogView({ direction, initialFilters, onFiltersChange, reject
                   ) : (
                     <NoPhoto text="фото будет позже" />
                   )}
-                  {(card.isNew || card.badges.length > 0) && (
+                  {(card.isNew || card.badges.length > 0 || card.social) && (
                     <span className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
                       {card.isNew && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-800">Новое</span>}
                       {card.badges.includes("new") && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">Новинка бренда</span>}
                       {card.badges.includes("bestseller") && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-900">Бестселлер</span>}
+                      {card.social && <SocialBadge social={card.social} />}
                     </span>
                   )}
                 </div>
@@ -405,6 +406,15 @@ export function FormFilterNote({ form, direction, total, narrowed = false, onRes
       </span>
       <button type="button" onClick={onReset} className="inline-flex h-10 items-center rounded-lg border border-violet-300 bg-white px-3 text-xs font-medium text-violet-900 hover:bg-violet-100">Сбросить форму</button>
     </div>
+  );
+}
+
+/** Метка «залетает»: к модели привязаны «залетевшие» рилсы Instagram за 30 дней (подробности — на вкладке «Залетает»). */
+export function SocialBadge({ social }: { social: NonNullable<CatalogCard["social"]> }) {
+  return (
+    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800">
+      {social.verdict === "strong" ? "Сильно залетает" : "Залетает"}{social.reels > 1 ? ` · ${social.reels} ${plural(social.reels, "рилс", "рилса", "рилсов")}` : ""}
+    </span>
   );
 }
 

@@ -14,11 +14,12 @@ import { summarizeCoverage } from "@/lib/assortment/coverage";
 import { plural } from "@/lib/warehouse/plural";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
 import { AddFindingModal } from "./AddFindingModal";
-import { DEFAULT_CATALOG_FILTERS, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
+import { DEFAULT_CATALOG_FILTERS, isFeedView, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
 import { initialNav, navDismissRejected, navOpenWholeCatalog, navSetFilters, navSetView, navShowModels, urlForView, type CatalogNav } from "@/lib/assortment/catalogNav";
 import { CatalogView } from "./CatalogView";
 import { FormsView } from "./FormsView";
 import { FeedGrid } from "./FeedGrid";
+import { SocialView } from "./SocialView";
 import { useAssortmentSources } from "./useAssortmentSources";
 
 type FeedState =
@@ -97,6 +98,30 @@ export function AssortmentSection({
       cancelled = true;
     };
   }, [direction]);
+  // «Залетает в соцсетях»: вкладка — только когда таблицы есть и сбор хоть что-то записал (иначе её нет); число — «залетевших» за 14 дней.
+  const [social, setSocial] = useState<{ total: number; collected: number } | null>(null);
+  const [socialCountFailed, setSocialCountFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/assortment-development/social?direction=${direction}&count=1`)
+      .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => null) }))
+      .then(({ ok, body }) => {
+        if (cancelled) return;
+        if (ok && body?.available === false) {
+          setSocial(null);
+          setSocialCountFailed(false);
+        } else if (ok && typeof body?.collected === "number") {
+          setSocial({ total: Number(body.total) || 0, collected: body.collected });
+          setSocialCountFailed(false);
+        } else setSocialCountFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setSocialCountFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [direction]);
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -145,7 +170,7 @@ export function AssortmentSection({
   }, [direction]);
 
   useEffect(() => {
-    if (view === "catalog" || view === "forms") return;
+    if (!isFeedView(view)) return;
     let cancelled = false;
     setFeed((prev) => (prev.kind === "ready" && prev.view === view && prev.direction === direction ? prev : { kind: "loading" }));
     fetch(`/api/assortment-development/references?direction=${direction}&view=${view}`)
@@ -176,6 +201,8 @@ export function AssortmentSection({
     ...(catalogTotal || catalogCountFailed || view === "catalog" ? [{ id: "catalog" as const, label: catalogTotal ? `Каталоги брендов · ${catalogTotal.toLocaleString("ru-RU")}` : "Каталоги брендов" }] : []),
     // «Формы» разбирают каталог — нет моделей, нет и вкладки (прячем, а не серим).
     ...(catalogTotal || catalogCountFailed || view === "forms" ? [{ id: "forms" as const, label: "Формы" }] : []),
+    // «Залетает» — когда сбор рилсов уже что-то записал; число не посчиталось — вкладка без числа (сбой назовёт сама вкладка).
+    ...(social?.collected || socialCountFailed || view === "social" ? [{ id: "social" as const, label: social?.total ? `Залетает · ${social.total.toLocaleString("ru-RU")}` : "Залетает" }] : []),
   ];
 
   return (
@@ -225,8 +252,9 @@ export function AssortmentSection({
 
         {view === "catalog" && <CatalogView key={nav.key} direction={direction} initialFilters={nav.filters} onFiltersChange={onCatalogFilters} rejectedForm={nav.rejected} onDismissRejected={onDismissRejected} />}
         {view === "forms" && <FormsView direction={direction} onShowModels={showModels} />}
-        {view !== "catalog" && view !== "forms" && shownFeed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
-        {view !== "catalog" && view !== "forms" && shownFeed.kind === "error" && (
+        {view === "social" && <SocialView key={direction} direction={direction} />}
+        {isFeedView(view) && shownFeed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
+        {isFeedView(view) && shownFeed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{shownFeed.message}</div>
         )}
         {actionError && (
@@ -240,7 +268,7 @@ export function AssortmentSection({
             </button>
           </p>
         ) : null}
-        {view !== "catalog" && view !== "forms" && shownFeed.kind === "ready" && shownFeed.cards.length > 0 && (
+        {isFeedView(view) && shownFeed.kind === "ready" && shownFeed.cards.length > 0 && (
           <FeedGrid
             cards={shownFeed.cards}
             direction={direction}
@@ -251,7 +279,7 @@ export function AssortmentSection({
             onQuickAction={quickAction}
           />
         )}
-        {view !== "catalog" && view !== "forms" && shownFeed.kind === "ready" && shownFeed.cards.length === 0 && (
+        {isFeedView(view) && shownFeed.kind === "ready" && shownFeed.cards.length === 0 && (
           <section className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
             <div className="text-base font-semibold text-slate-900">Находок пока нет</div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">{current.empty}</p>

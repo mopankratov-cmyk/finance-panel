@@ -10,6 +10,7 @@
 import type { AssortmentDirection } from "./constants";
 import { DIRECTION_LABEL } from "./constants";
 import type { HistoryStatus } from "./observationState";
+import { BRAND_LABEL, compactRu, VERDICT_LABEL, type SocialDigest } from "./socialFeed";
 
 export interface DigestFinding {
   id: string;
@@ -38,6 +39,8 @@ export interface DigestFacts {
   crawl: { ok: string[]; failing: Array<{ name: string; error: string }> } | null;
   /** Глубина истории наблюдений по источникам каталогов; null — журнала прогонов нет. Без слов «растёт/падает»: динамика — не раньше четырёх недель. */
   history?: Array<{ name: string; status: HistoryStatus }> | null;
+  /** «Залетает в соцсетях»: новые «залёты» недели (до пяти); null или нет — раздела нет (таблиц нет или ничего не залетело). */
+  social?: SocialDigest | null;
   baseUrl: string;
 }
 
@@ -83,6 +86,21 @@ function historyLines(history: DigestFacts["history"]): string[] {
   return lines.length > 0 ? ["", "<b>История каталогов</b>", ...lines] : [];
 }
 
+/** Раздел «Залетает в соцсетях»: до пяти новых «залётов» недели — бренд, название, просмотры и лайки, ссылка на рилс; лента — в панели. */
+function socialLines(social: DigestFacts["social"], base: string): string[] {
+  if (social?.error) return ["", "<b>Залетает в соцсетях</b>", `⚠️ Не загрузилось: ${telegramEscape(social.error)}`];
+  if (!social || social.items.length === 0) return [];
+  const lines = ["", "<b>Залетает в соцсетях</b>", `Новых за неделю: ${social.total} (рилсы Instagram про Zara и Uniqlo; лайки и просмотры — не продажи).`];
+  for (const item of social.items) {
+    const numbers = [item.views != null ? `${compactRu(item.views)} просмотров` : null, item.likes != null ? `${compactRu(item.likes)} лайков` : null].filter(Boolean).join(", ");
+    const name = telegramEscape(`${BRAND_LABEL[item.brand]} · ${item.title}`);
+    lines.push(`• ${name} (${DIRECTION_LABEL[item.direction].toLowerCase()}) — ${numbers ? `${telegramEscape(numbers)}, ` : ""}${VERDICT_LABEL[item.verdict].toLowerCase()} — <a href="${telegramEscape(item.url)}">рилс</a>`);
+  }
+  const directions = [...new Set(social.items.map((i) => i.direction))];
+  lines.push(`Лента: ${directions.map((d) => `<a href="${base}/assortment-development/${d}?view=social">${DIRECTION_LABEL[d]}</a>`).join(" · ")}`);
+  return lines;
+}
+
 export function digestMessage(facts: DigestFacts): string {
   const base = facts.baseUrl.replace(/\/+$/, "");
   const lines = [`🧵 <b>Разработка ассортимента — неделя ${day(facts.from)}–${day(facts.to)}</b>`];
@@ -117,6 +135,8 @@ export function digestMessage(facts: DigestFacts): string {
       lines.push(`• <a href="${base}/assortment-development/collections/${c.id}">${telegramEscape(c.title)}</a> — ${telegramEscape(c.progress)}, ${telegramEscape(c.status)}${c.status === "сохранена" ? ` v${c.version}` : ""}`);
     }
   }
+  lines.push(...socialLines(facts.social, base));
+  if (facts.social?.items.length) anything = true;
   if (facts.crawl && (facts.crawl.ok.length > 0 || facts.crawl.failing.length > 0)) {
     lines.push("", "<b>Автообход каталогов</b>");
     if (facts.crawl.ok.length > 0) lines.push(`Работает: ${telegramEscape(facts.crawl.ok.join(", "))}.`);

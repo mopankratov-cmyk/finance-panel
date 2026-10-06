@@ -10,6 +10,7 @@ import { isMissingColumnError } from "./errors";
 import { loadHistoryState } from "./observationStateStore";
 import { isRuSource, RU_SOURCE_IDS } from "./ruMarket";
 import { cardSignal, type ObservationLite } from "./signals";
+import { loadSocialDigest } from "./socialFeedStore";
 
 /** Пульс автообхода по источникам; null — колонок пульса нет или обход не запускался. */
 async function loadCrawlHealth(db: SupabaseClient, since: string): Promise<DigestFacts["crawl"]> {
@@ -117,7 +118,16 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
     .filter((c) => c.status !== "archived")
     .map((c) => ({ id: c.id, title: c.title, progress: c.progress.label, status: COLLECTION_STATUS_LABEL[c.status].toLowerCase(), version: c.version }));
 
-  return { from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), history: await loadHistoryLine(db, to), baseUrl };
+  return { from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), history: await loadHistoryLine(db, to), social: await loadSocialDigestSafe(db, from, to), baseUrl };
+}
+
+/** Раздел соцсетей второстепенный: его сбой не роняет всю сводку, а называется строкой в ней. */
+async function loadSocialDigestSafe(db: SupabaseClient, from: Date, to: Date): Promise<DigestFacts["social"]> {
+  try {
+    return await loadSocialDigest(db, from, to);
+  } catch (error) {
+    return { items: [], total: 0, error: (error instanceof Error ? error.message : String(error)).slice(0, 160) };
+  }
 }
 
 /**

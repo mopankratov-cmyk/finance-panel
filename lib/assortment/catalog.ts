@@ -153,6 +153,8 @@ export interface CatalogCard {
   referenceStatus?: string | null;
   /** Только на экране: модель скрыта кнопкой «Не интересно» (можно вернуть). */
   hiddenLocal?: boolean;
+  /** «Залетает в соцсетях»: к модели привязаны «залетевшие» рилсы Instagram за 30 дней (Zara и Uniqlo); нет — метки нет. */
+  social?: { verdict: "strong" | "viral"; reels: number } | null;
 }
 
 /** Ссылка на товар: у Shopify в handle только slug, у остальных — полный адрес. */
@@ -277,12 +279,20 @@ export function rejectedFormFrom(params: PageParams, direction: AssortmentDirect
   return /^[a-z0-9_-]{1,40}$/i.test(raw) ? raw : "";
 }
 
-/** Вид раздела: лента находок, «Каталоги брендов» или «Формы» (разбор каталога по формам). */
-export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms";
+/** Вид раздела: лента находок, «Каталоги брендов», «Формы» (разбор каталога по формам) или «Залетает» (рилсы Instagram). */
+export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms" | "social";
 
 export function sectionViewFrom(params: PageParams): SectionView {
   const view = one(params, "view");
-  return view === "catalog" || view === "forms" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
+  return view === "catalog" || view === "forms" || view === "social" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
+}
+
+/**
+ * Вкладка — лента находок (грузит /references?view=…). Каталог, «Формы» и «Залетает» — свои экраны: запрос ленты для них роут молча
+ * превратил бы в «Новинки», и под чужим названием показалось бы «Находок пока нет».
+ */
+export function isFeedView(view: SectionView): boolean {
+  return view !== "catalog" && view !== "forms" && view !== "social";
 }
 
 /**
