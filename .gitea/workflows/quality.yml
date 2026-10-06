@@ -54,4 +54,9 @@ jobs:
 
       - name: Проверить production-сборку
         working-directory: repo
+        env:
+          # Без кэша сборка на раннере упирается в потолок кучи Node (~2 ГБ на ВМ в 8 ГБ) на этапе проверки типов:
+          # «FATAL ERROR: Reached heap limit … JavaScript heap out of memory» → «Failed to type check».
+          # Пик по памяти холодной сборки ~3,3 ГБ; потолок поднимаем, чтобы он не был причиной красной проверки.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: npm run build
