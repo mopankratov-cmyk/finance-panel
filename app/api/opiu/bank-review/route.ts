@@ -190,7 +190,15 @@ export async function POST(request: Request) {
   }
 
   if (body.action === "match_transfers") {
-    try { return NextResponse.json({ matchedTransfers: await matchBankReviewTransfers() }); }
+    try {
+      const bankReviewTransfers = await matchBankReviewTransfers();
+      const ddsResult = await db.rpc("link_unlinked_dds_transfers");
+      if (ddsResult.error && !missingMigration(ddsResult.error.code)) throw new Error(ddsResult.error.message);
+      const ddsTransfers = ddsResult.error
+        ? 0
+        : Number(((ddsResult.data ?? {}) as { linkedPairs?: number }).linkedPairs ?? 0);
+      return NextResponse.json({ bankReviewTransfers, ddsTransfers });
+    }
     catch (error) { return jsonError(error instanceof Error ? error.message : "Не удалось связать выписки", 500); }
   }
 
@@ -545,6 +553,27 @@ export async function PATCH(request: Request) {
     patch?: Record<string, unknown>;
   } | null;
   if (!body) return jsonError("Некорректный JSON", 400);
+
+  if (body.action === "remember_counterparty") {
+    const id = text(body.id, 100);
+    const counterparty = text((body as { counterparty?: unknown }).counterparty);
+    if (!id || !counterparty) return jsonError("Не указан платёж или контрагент", 400);
+    const source = await db.from("bank_review_items")
+      .select("id,counterparty")
+      .eq("id", id)
+      .in("status", ACTIVE_STATUSES)
+      .maybeSingle();
+    if (source.error) return jsonError(source.error.message, 500);
+    if (!source.data) return jsonError("Платёж на проверке не найден", 404);
+    const query = db.from("bank_review_items")
+      .update({ counterparty, updated_at: new Date().toISOString() })
+      .in("status", ACTIVE_STATUSES);
+    const updated = source.data.counterparty.trim()
+      ? await query.eq("counterparty", source.data.counterparty).select("id")
+      : await query.eq("id", id).select("id");
+    if (updated.error) return jsonError(updated.error.message, 500);
+    return NextResponse.json({ updatedIds: (updated.data ?? []).map((row) => String(row.id)) });
+  }
 
   if (body.action === "ask_manager") {
     const id = text(body.id, 100);

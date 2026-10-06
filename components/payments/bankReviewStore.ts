@@ -182,6 +182,25 @@ export async function updateBankReviewItem(
   });
 }
 
+export async function rememberBankReviewCounterparty(id: string, counterparty: string): Promise<string[]> {
+  const result = await api<{ updatedIds: string[] }>("/api/opiu/bank-review", {
+    method: "PATCH",
+    body: JSON.stringify({ action: "remember_counterparty", id, counterparty }),
+  });
+  return result.updatedIds;
+}
+
+export async function matchBankReviewTransfers(): Promise<{ bankReviewTransfers: number; ddsTransfers: number }> {
+  const result = await api<{ bankReviewTransfers: number; ddsTransfers: number }>("/api/opiu/bank-review", {
+    method: "POST",
+    body: JSON.stringify({ action: "match_transfers" }),
+  });
+  return {
+    bankReviewTransfers: Number(result.bankReviewTransfers ?? 0),
+    ddsTransfers: Number(result.ddsTransfers ?? 0),
+  };
+}
+
 export async function askManagerAboutBankReviewItem(id: string, question: string) {
   await api<{ ok: true }>("/api/opiu/bank-review", {
     method: "PATCH",

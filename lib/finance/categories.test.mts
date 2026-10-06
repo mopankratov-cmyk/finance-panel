@@ -47,6 +47,12 @@ test("строки графика кредита — раздел «Финанс
   assert.equal(sectionForCategory(INTERCOMPANY_LOAN_CATEGORIES.issued), "Инвестиционная");
 });
 
+test("статья вывода денег доступна в ДДС как операционный расход", () => {
+  assert.ok(DDS_CATEGORIES.includes("Вывод денег"));
+  assert.equal(sectionForCategory("Вывод денег"), "Операционная");
+  assert.ok(categoryOptions("").includes("Вывод денег"));
+});
+
 test("старые статьи импорта календаря получают раздел, а не «Прочее»", () => {
   assert.equal(sectionForCategory("Зарплата"), "Операционная");
   assert.equal(sectionForCategory("Кредиты и займы"), "Финансовая");
