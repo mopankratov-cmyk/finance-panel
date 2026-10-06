@@ -1,0 +1,560 @@
+{
+  "reel-desktop-likes-visible.md": {
+    "shows": "рилс, десктопная вёрстка, лайки видны («Like / 3.7K / Comment / 59»)",
+    "expect": {
+      "code": "Dd4Is8To7B0",
+      "author": "by.annamirabelle",
+      "likes": "3.7K",
+      "comments": "59",
+      "dateLink": "6 days ago",
+      "captionAge": "6d",
+      "altDate": "September 29, 2026",
+      "postedAtUtc": "2026-09-29T15:58:38.592Z",
+      "captionRef": "5854/722/710",
+      "hashtags": [
+        "zarajacket",
+        "zaraviraljacket",
+        "zaranew"
+      ],
+      "visibleComments": 15,
+      "distinctCommenters": 14,
+      "morePosts": 9
+    },
+    "target": "https://www.instagram.com/reel/Dd4Is8To7B0/",
+    "request": {
+      "url": "https://www.instagram.com/reel/Dd4Is8To7B0/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 20507,
+    "ms": 6836,
+    "capturedAt": "2026-10-06T15:43:27.528Z"
+  },
+  "reel-desktop-likes-hidden-collab.md": {
+    "shows": "рилс, десктоп, лайки СКРЫТЫ (после Like сразу Comment), соавторство «A and B»",
+    "expect": {
+      "code": "DeHdeCIoNkt",
+      "authors": [
+        "buyer_services_",
+        "addicted_tozara"
+      ],
+      "likes": null,
+      "comments": "10",
+      "dateLink": "1 day ago",
+      "captionAge": "1d",
+      "altDate": "October 05, 2026",
+      "postedAtUtc": "2026-10-05T14:48:42.986Z",
+      "captionRef": "5854/722/710",
+      "hashtags": [],
+      "visibleComments": 5,
+      "morePosts": 9
+    },
+    "target": "https://www.instagram.com/reel/DeHdeCIoNkt/",
+    "request": {
+      "url": "https://www.instagram.com/reel/DeHdeCIoNkt/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 15072,
+    "ms": 6299,
+    "capturedAt": "2026-10-06T15:43:27.024Z"
+  },
+  "reel-desktop-edited-hashtag-article.md": {
+    "shows": "рилс, десктоп, «Edited•2w», артикул хэштегом #487882, абсолютная дата «September 15», в сетке чужой пост соавтора",
+    "expect": {
+      "code": "DdVk7eRtLMC",
+      "author": "jpnbrands",
+      "likes": "6.4K",
+      "comments": "176",
+      "dateLink": "September 15",
+      "captionAge": "Edited•2w",
+      "altDate": "September 15, 2026",
+      "postedAtUtc": "2026-09-16T05:51:52.572Z",
+      "hashtags": [
+        "487882"
+      ],
+      "visibleComments": 15,
+      "morePosts": 9,
+      "morePostsForeign": [
+        "coauthor1/Dd8nlbbje56"
+      ]
+    },
+    "target": "https://www.instagram.com/reel/DdVk7eRtLMC/",
+    "request": {
+      "url": "https://www.instagram.com/reel/DdVk7eRtLMC/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 20074,
+    "ms": 6060,
+    "capturedAt": "2026-10-06T15:44:32.263Z"
+  },
+  "post-carousel-desktop-likes-hidden.md": {
+    "shows": "карусель /p/, десктоп, лайки скрыты; адрес задан как мобильный пример, но вёрстка пришла десктопная — вёрстка выпадает случайно",
+    "expect": {
+      "code": "Dd08gHjCN0c",
+      "author": "by.annamirabelle",
+      "likes": null,
+      "comments": "23",
+      "dateLink": "September 28",
+      "captionAge": "1w",
+      "altDate": "September 28, 2026",
+      "postedAtUtc": "2026-09-28T10:14:18.783Z",
+      "hashtags": [],
+      "visibleComments": 12,
+      "morePosts": 9
+    },
+    "target": "https://www.instagram.com/p/Dd08gHjCN0c/",
+    "request": {
+      "url": "https://www.instagram.com/p/Dd08gHjCN0c/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 18256,
+    "ms": 4898,
+    "capturedAt": "2026-10-06T15:43:31.929Z"
+  },
+  "reel-mobile-layout.md": {
+    "shows": "рилс, МОБИЛЬНАЯ вёрстка: «90 likes», «View all 5 comments», ссылки intent://, подпись обрезана, комментариев и главного alt нет",
+    "expect": {
+      "code": "Dd5ra5iCAzK",
+      "author": "jpnbrands",
+      "likes": "90",
+      "comments": "5",
+      "dateLink": "6 days ago",
+      "altDate": null,
+      "postedAtUtc": "2026-09-30T06:21:15.293Z",
+      "visibleComments": 0,
+      "morePosts": 8,
+      "morePostsForeign": [
+        "coauthor1/Dd8nlbbje56"
+      ]
+    },
+    "target": "https://www.instagram.com/reel/Dd5ra5iCAzK/",
+    "request": {
+      "url": "https://www.instagram.com/reel/Dd5ra5iCAzK/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 10476,
+    "ms": 5525,
+    "capturedAt": "2026-10-06T15:43:33.055Z"
+  },
+  "reel-desktop-verified-author.md": {
+    "shows": "рилс, десктоп, автор с галочкой (Verified в шапке и в подписи), кириллический хэштег в адресе %-кодирован",
+    "expect": {
+      "code": "Dd27pt9Rn1M",
+      "author": "365.prosto",
+      "likes": "3.6K",
+      "comments": "118",
+      "dateLink": "7 days ago",
+      "captionAge": "1w",
+      "altDate": "September 28, 2026",
+      "postedAtUtc": "2026-09-29T04:45:22.003Z",
+      "hashtags": [
+        "uniqlo",
+        "lifewear",
+        "распаковка"
+      ],
+      "visibleComments": 15,
+      "morePosts": 9
+    },
+    "target": "https://www.instagram.com/reel/Dd27pt9Rn1M/",
+    "request": {
+      "url": "https://www.instagram.com/reel/Dd27pt9Rn1M/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 20708,
+    "ms": 5271,
+    "capturedAt": "2026-10-06T15:43:37.202Z"
+  },
+  "topic-zara-viral-jacket.md": {
+    "shows": "страница темы /popular/: заголовок с числом рилсов, ИИ-сводка, 10 соседних тем, 12 карточек с просмотрами",
+    "expect": {
+      "reelsInTopic": "4.3K",
+      "pills": 10,
+      "cards": 12,
+      "firstCard": {
+        "code": "DdzBLwaAG34",
+        "author": "what.bri.wears",
+        "views": "35.5K"
+      },
+      "ourReel": {
+        "code": "Dd4Is8To7B0",
+        "views": "315K"
+      }
+    },
+    "target": "https://www.instagram.com/popular/zara-viral-jacket/",
+    "request": {
+      "url": "https://www.instagram.com/popular/zara-viral-jacket/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 20901,
+    "ms": 4309,
+    "capturedAt": "2026-10-06T15:45:34.481Z"
+  },
+  "topic-zara-bag.md": {
+    "shows": "страница темы; просмотры «4,112» без K, ник автора в тексте ссылки обрезан «boutique\\_pian...»",
+    "expect": {
+      "reelsInTopic": "3M",
+      "pills": 10,
+      "cards": 12,
+      "firstCard": {
+        "code": "DdjRoaltQr4",
+        "author": "zeynepbusrau",
+        "views": "374K",
+        "verified": true
+      }
+    },
+    "target": "https://www.instagram.com/popular/zara-bag/",
+    "request": {
+      "url": "https://www.instagram.com/popular/zara-bag/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 19014,
+    "ms": 5087,
+    "capturedAt": "2026-10-06T15:44:31.306Z"
+  },
+  "topic-uniqlo-jacket.md": {
+    "shows": "страница темы Uniqlo; номер товара в подписи «484610 Harrington Jacket»",
+    "expect": {
+      "reelsInTopic": "213K",
+      "pills": 10,
+      "cards": 12,
+      "firstCard": {
+        "code": "DdfGMmhSyY0",
+        "author": "rachtrinity",
+        "views": "1.1M"
+      }
+    },
+    "target": "https://www.instagram.com/popular/uniqlo-jacket/",
+    "request": {
+      "url": "https://www.instagram.com/popular/uniqlo-jacket/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 20804,
+    "ms": 5835,
+    "capturedAt": "2026-10-06T15:44:37.144Z"
+  },
+  "profile-jpnbrands.md": {
+    "shows": "профиль: подписчики, био, хайлайты, сетка из 12 (закреплённые первыми, один чужой пост соавтора)",
+    "expect": {
+      "nick": "jpnbrands",
+      "followers": "57.6K",
+      "following": "102",
+      "grid": 12
+    },
+    "target": "https://www.instagram.com/jpnbrands/",
+    "request": {
+      "url": "https://www.instagram.com/jpnbrands/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 15819,
+    "ms": 6043,
+    "capturedAt": "2026-10-06T15:44:38.308Z"
+  },
+  "profile-by-annamirabelle.md": {
+    "shows": "профиль: подписчики с запятой «3,003», почта в био заменена",
+    "expect": {
+      "nick": "by.annamirabelle",
+      "followers": "3,003",
+      "following": "60",
+      "grid": 12
+    },
+    "target": "https://www.instagram.com/by.annamirabelle/",
+    "request": {
+      "url": "https://www.instagram.com/by.annamirabelle/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 13503,
+    "ms": 10494,
+    "capturedAt": "2026-10-06T15:44:47.640Z"
+  },
+  "google-reel-zara-ref.json": {
+    "shows": "Google parsed_light без gl: general.country = страна выхода прокси (здесь Kyrgyzstan)",
+    "expect": {
+      "organic": 10,
+      "firstLink": "https://www.instagram.com/reel/DeExO9NMruK/"
+    },
+    "target": "https://www.google.com/search?q=site%3Ainstagram.com%2Freel%20zara%20ref%20after%3A2026-09-29&start=0",
+    "request": {
+      "url": "https://www.google.com/search?q=site%3Ainstagram.com%2Freel%20zara%20ref%20after%3A2026-09-29&start=0&brd_json=1",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "parsed_light"
+    },
+    "httpStatus": 200,
+    "contentType": "application/json",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 6213,
+    "ms": 12134,
+    "capturedAt": "2026-10-06T15:45:30.011Z"
+  },
+  "google-reel-uniqlo-jacket-gl-us.json": {
+    "shows": "Google parsed_light с &gl=us: general.country нет",
+    "expect": {
+      "organic": 10,
+      "firstLink": "https://www.instagram.com/reel/DeJ051ioDKn/"
+    },
+    "target": "https://www.google.com/search?q=site%3Ainstagram.com%2Freel%20uniqlo%20jacket%20after%3A2026-09-29&start=0&gl=us",
+    "request": {
+      "url": "https://www.google.com/search?q=site%3Ainstagram.com%2Freel%20uniqlo%20jacket%20after%3A2026-09-29&start=0&gl=us&brd_json=1",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "parsed_light"
+    },
+    "httpStatus": 200,
+    "contentType": "application/json",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 6234,
+    "ms": 3744,
+    "capturedAt": "2026-10-06T15:46:41.684Z"
+  },
+  "zara-card-p05854722.md": {
+    "shows": "карточка Zara (витрина US): огромное меню, затем «# НАЗВАНИЕ», строка цены (PRICE), «Beige5854/722/710» слитно, описание, состав; картинок в markdown нет",
+    "expect": {
+      "name": "HIGH-NECK POCKET JACKET",
+      "color": "Beige",
+      "ref": "5854/722/710",
+      "images": 0
+    },
+    "target": "https://www.zara.com/us/en/x-p05854722.html",
+    "request": {
+      "url": "https://www.zara.com/us/en/x-p05854722.html",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=utf-8",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 19031,
+    "ms": 20281,
+    "capturedAt": "2026-10-06T15:45:38.176Z"
+  },
+  "uniqlo-card-E487882.md": {
+    "shows": "карточка Uniqlo (ES): цены товара в markdown нет, блок товара повторён дважды, фото модели image.uniqlo.com",
+    "expect": {
+      "name": "Hybrid Down Short Jacket",
+      "productId": "487882",
+      "colour": "32 BEIGE",
+      "gender": "Women",
+      "fit": "Oversized"
+    },
+    "target": "https://www.uniqlo.com/es/en/products/E487882-000/00",
+    "request": {
+      "url": "https://www.uniqlo.com/es/en/products/E487882-000/00",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 7079,
+    "ms": 4531,
+    "capturedAt": "2026-10-06T15:45:29.254Z"
+  },
+  "reel-not-found-shell.md": {
+    "shows": "несуществующий рилс: HTTP 200 и x-brd-status-code 200, но в теле только заголовок «Instagram» и логотип — это не «0 лайков», а «страницы нет»",
+    "expect": {
+      "isEmptyShell": true
+    },
+    "target": "https://www.instagram.com/reel/Dzzzzzzzzzz/",
+    "request": {
+      "url": "https://www.instagram.com/reel/Dzzzzzzzzzz/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": "text/html; charset=\"utf-8\"",
+    "brd": {
+      "statusCode": "200",
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 22156,
+    "ms": 4105,
+    "capturedAt": "2026-10-06T15:45:33.361Z"
+  },
+  "error-proxy-timeout-empty.md": {
+    "shows": "сбой прокси: HTTP 200, ПУСТОЕ тело, x-brd-error-code proxy_timeout; повтор того же адреса прошёл (2 сбоя на 14 запросов к Instagram)",
+    "expect": {
+      "retryable": true
+    },
+    "target": "https://www.instagram.com/reel/DdVk7eRtLMC/",
+    "request": {
+      "url": "https://www.instagram.com/reel/DdVk7eRtLMC/",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 200,
+    "contentType": null,
+    "brd": {
+      "statusCode": "502",
+      "error": "Proxy Connect Timeout",
+      "errorCode": "proxy_timeout"
+    },
+    "rawBytes": 0,
+    "ms": 14541,
+    "capturedAt": "2026-10-06T15:43:35.266Z"
+  },
+  "error-google-captcha-empty.json": {
+    "shows": "Google без gl упёрся в капчу: HTTP 200, пустое тело, x-brd-error-code captcha; с &gl=us прошёл",
+    "expect": {
+      "retryable": true
+    },
+    "target": "https://www.google.com/search?q=site%3Ainstagram.com%2Freel%20uniqlo%20jacket%20after%3A2026-09-29&start=0",
+    "request": {
+      "url": "https://www.google.com/search?q=site%3Ainstagram.com%2Freel%20uniqlo%20jacket%20after%3A2026-09-29&start=0&brd_json=1",
+      "zone": "mcp_unlocker",
+      "format": "raw",
+      "data_format": "parsed_light"
+    },
+    "httpStatus": 200,
+    "contentType": null,
+    "brd": {
+      "statusCode": "502",
+      "error": "redirect location was rejected",
+      "errorCode": "captcha"
+    },
+    "rawBytes": 0,
+    "ms": 6826,
+    "capturedAt": "2026-10-06T15:45:24.720Z"
+  },
+  "error-bad-zone.md": {
+    "shows": "неверная зона: HTTP 400, текст «zone \"…\" not found» — ошибка настройки, не повторять",
+    "expect": {
+      "retryable": false
+    },
+    "target": "https://www.instagram.com/jpnbrands/",
+    "request": {
+      "url": "https://www.instagram.com/jpnbrands/",
+      "zone": "no_such_zone_fixture",
+      "format": "raw",
+      "data_format": "markdown"
+    },
+    "httpStatus": 400,
+    "contentType": "text/html; charset=utf-8",
+    "brd": {
+      "statusCode": null,
+      "error": null,
+      "errorCode": null
+    },
+    "rawBytes": 37,
+    "ms": 158,
+    "capturedAt": "2026-10-06T15:45:30.171Z"
+  }
+}
