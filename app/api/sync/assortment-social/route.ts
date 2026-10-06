@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { UNLOCKER_TIMEOUT_MS, unlockerConfig, unlockerFetch } from "@/lib/assortment/brightdataUnlocker";
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
 import { socialConfig } from "@/lib/assortment/socialReels";
-import { runSocialReels, type SocialPhase } from "@/lib/assortment/socialReelsStore";
+import { runSocialReels, socialRunLog, type SocialPhase } from "@/lib/assortment/socialReelsStore";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -63,15 +63,9 @@ export async function GET(request: NextRequest) {
     }
     if (summary.skippedBecause) return NextResponse.json({ ok: true, ...body });
 
-    const hardStop = summary.stoppedBy === "billing" || summary.stoppedBy === "auth" || summary.stoppedBy === "config";
-    const nothingWorked = summary.requests > 0 && summary.failedRequests >= summary.requests;
-    const status = hardStop || nothingWorked ? "error" : summary.stoppedBy === "budget" || summary.stoppedBy === "time" ? "partial" : "ok";
-    const note = [
-      summary.stopMessage,
-      summary.failedRequests > 0 ? `сбоев страниц: ${summary.failedRequests} из ${summary.requests}` : null,
-      summary.errors.length ? summary.errors.slice(0, 3).join("; ") : null,
-    ].filter(Boolean).join(". ");
-    await writeSyncLog(JOB, status, summary.measured + summary.discover.newPosts, note || null, startedAt);
+    // Тревоги (вёрстка Instagram изменилась, поиск не завершается) — «ошибка», даже если запросы прошли: сторож скажет.
+    const { status, note } = socialRunLog(summary);
+    await writeSyncLog(JOB, status, summary.measured + summary.discover.newPosts, note, startedAt);
     return NextResponse.json({ ok: status !== "error", ...body }, { status: status === "error" ? 502 : 200 });
   } catch (error) {
     if (isMissingAssortmentSchema(error)) return NextResponse.json({ ok: true, skipped: "таблицы модуля не созданы" });

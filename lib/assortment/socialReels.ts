@@ -1,3 +1,4 @@
+import { containsMoney } from "./attributes";
 import type { AssortmentDirection } from "./constants";
 
 /**
@@ -237,6 +238,11 @@ export interface ParsedReel {
   likesHidden: boolean;
   /** null — число не нашлось (мобильная вёрстка без «View all»). */
   comments: number | null;
+  /**
+   * Десктопная вёрстка: блок счётчиков «Like / Comment / Share / Save» распознан. Нет — вёрстка изменилась: лайки и комментарии
+   * не «скрыты» и не «0», а неизвестны (замер не засчитываем, прогон говорит об этом в журнале). Мобильная вёрстка — всегда true.
+   */
+  countsFound: boolean;
   visibleComments: ReelComment[];
   distinctCommenters: number;
   /** Подпись картинки Instagram (ИИ-описание кадра): «overcoat, parka, purse». Текст с кадра (OCR) не берём. */
@@ -249,6 +255,8 @@ export interface ParsedReel {
 const COUNTS_DESKTOP = /\n[ \t]*Like[ \t]*\n+(?:[ \t]*(\d[\d.,]*[ \t]*[KMBkmb]?)[ \t]*\n+)?[ \t]*Comment[ \t]*\n+(?:[ \t]*(\d[\d.,]*[ \t]*[KMBkmb]?)[ \t]*\n+)?[ \t]*Share[ \t]*\n+[ \t]*Save/;
 const COMMENT_BLOCK = /\]\(\/([A-Za-z0-9._]+)\/\)[ \t\u00a0]+\[\d+[smhdwy]\]\(\/p\/[A-Za-z0-9_-]+\/c\/\d+\/?\)[ \t]*\n+([\s\S]*?)\n+[ \t]*(?:Like|\d[\d.,]*[KMkm]?[ \t]+likes?)[ \t]*\n+[ \t]*Reply/g;
 const CAPTION_HEAD = /\]\(\/([A-Za-z0-9._]+)\/\)[ \t\u00a0]+(?:Edited[ \t\u00a0]*•[ \t\u00a0]*)?\d+[smhdwy][ \t]*\n/g;
+/** Шапка комментария: ссылка-ник и ссылка на сам комментарий /p/<код>/c/<id>. С неё начинается чужой текст — подпись кончается раньше. */
+const COMMENT_HEAD = /\[[^\]]*\]\(\/[A-Za-z0-9._]+\/\)[ \t\u00a0]+\[\d+[smhdwy]\]\(\/p\/[A-Za-z0-9_-]+\/c\/\d+\/?\)/g;
 
 function altItemsOf(tail: string): string[] {
   const m = /May be (?:an? [a-z ]+? )?of ([\s\S]+)$/i.exec(tail);
@@ -289,6 +297,7 @@ export function parseReelPage(md: string): ParsedReel | null {
   let likes: number | null = null;
   let likesHidden = false;
   let comments: number | null = null;
+  let countsFound = true;
   let caption = "";
   let captionRaw = "";
   let captionTruncated = false;
@@ -297,6 +306,7 @@ export function parseReelPage(md: string): ParsedReel | null {
 
   if (layout === "desktop") {
     const counts = COUNTS_DESKTOP.exec(body);
+    countsFound = Boolean(counts);
     if (counts) {
       likes = parseCount(counts[1]);
       likesHidden = counts[1] == null;
@@ -309,10 +319,15 @@ export function parseReelPage(md: string): ParsedReel | null {
     const loadMore = body.indexOf("Load more comments");
     if (head && head.index < countsAt && (loadMore < 0 || head.index < loadMore)) {
       const start = head.index + head[0].length;
-      const ends = [body.indexOf("\nLoad more comments", start), body.indexOf("\n[![", start), countsAt].filter((i) => i >= start);
+      // Подпись кончается на первой шапке комментария (ник + /p/<код>/c/<id>), а не только на аватарке комментатора или «Load more»:
+      // без них ник и текст комментария ушли бы в отрывок подписи и в базу.
+      COMMENT_HEAD.lastIndex = start;
+      const firstComment = COMMENT_HEAD.exec(body);
+      const ends = [body.indexOf("\nLoad more comments", start), body.indexOf("\n[![", start), firstComment?.index ?? -1, countsAt].filter((i) => i >= start);
       captionRaw = body.slice(start, Math.min(...ends));
     }
-    const segment = loadMore >= 0 ? body.slice(loadMore, countsAt) : "";
+    // Комментарии — по их шапкам во всём теле после подписи: «Load more comments» при малом числе комментариев нет.
+    const segment = body.slice(head ? head.index : sep >= 0 ? sep : 0, countsAt);
     for (const m of segment.matchAll(COMMENT_BLOCK)) {
       const text = unescapeMarkdown(m[2]).replace(/\s+/g, " ").trim();
       if (!text) continue;
@@ -350,6 +365,7 @@ export function parseReelPage(md: string): ParsedReel | null {
     likes,
     likesHidden,
     comments,
+    countsFound,
     visibleComments,
     distinctCommenters: commenters.size,
     altItems: alt ? altItemsOf(alt[2]) : [],
@@ -373,6 +389,11 @@ export interface TopicCard {
 }
 
 export interface ParsedTopic {
+  /**
+   * Вёрстка темы распознана: есть шапка «… • N reels on Instagram». Без неё пустой ответ — не «тема пуста», а сбой страницы
+   * (стена входа, новая вёрстка): тему из-за такого ответа в мёртвые не записываем.
+   */
+  recognized: boolean;
   title: string | null;
   /** Сколько рилсов в теме (оценка Instagram, «4.3K»). */
   total: number | null;
@@ -412,8 +433,12 @@ export function parseTopicPage(md: string): ParsedTopic | null {
     }
     const author = /\]\(\/([A-Za-z0-9._]+)\/?\)\]\(\/([A-Za-z0-9._]+)\/?\)/.exec(chunk)?.[2] ?? /\[[^\]]*\]\(\/([A-Za-z0-9._]+)\)[ \t]*\n/.exec(chunk)?.[1];
     if (!author) continue;
-    const views = /views[ \t]*(\d[\d.,]*[ \t]*[KMBkmb]?)/.exec(chunk);
-    if (!captionRaw && views) captionRaw = chunk.slice((views.index ?? 0) + views[0].length);
+    // Счётчик — отдельной строкой «views315K» после ссылки на автора. Подпись (alt картинки) стоит раньше и бывает с «views 2026»:
+    // по всему куску карточки неверное число стало бы «фактом площадки».
+    const from = avatarAt >= 0 ? avatarAt : 0;
+    const viewsLine = /(?:^|\n)[ \t]*views[ \t]*(\d[\d.,]*[ \t]*[KMBkmb]?)[ \t]*(?=\n|$)/.exec(chunk.slice(from));
+    const views = viewsLine ? { count: viewsLine[1], end: from + (viewsLine.index ?? 0) + viewsLine[0].length } : null;
+    if (!captionRaw && views) captionRaw = chunk.slice(views.end);
     const caption = plainCaption(captionRaw);
     const ms = codeTime(code);
     cards.push({
@@ -421,12 +446,12 @@ export function parseTopicPage(md: string): ParsedTopic | null {
       author,
       caption,
       hashtags: hashtagsOf(captionRaw, caption),
-      views: views ? parseCount(views[1]) : null,
+      views: views ? parseCount(views.count) : null,
       verified: /\n[ \t]*Verified[ \t]*\n/.test(chunk),
       publishedAt: ms == null ? null : new Date(ms).toISOString(),
     });
   }
-  return { title: /^# (.+)$/m.exec(md)?.[1]?.trim() ?? head?.[1]?.trim() ?? null, total: parseCount(head?.[2]), neighbors, cards };
+  return { recognized: Boolean(head), title: /^# (.+)$/m.exec(md)?.[1]?.trim() ?? head?.[1]?.trim() ?? null, total: parseCount(head?.[2]), neighbors, cards };
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +570,30 @@ export function uniqloCardUrls(id6: string): string[] {
   return ["es", "uk", "us"].map((c) => `https://www.uniqlo.com/${c}/en/products/E${id6}-000/00`);
 }
 
+/**
+ * Номер модели из адреса карточки бренда — тот же ключ, что у номеров из подписей: Zara «…-p05854722.html» → «zara:5854722»
+ * (последние 7 цифр p-кода), Uniqlo «…/products/E487882-000…» → «uniqlo:487882». Адрес находки хранится нормализованным
+ * (без www, без витрины), а у рилса — как открыли: сравнивать строки адресов нельзя, номер — можно.
+ */
+export function socialRefKeyFromUrl(raw: string | null | undefined): string | null {
+  let url: URL;
+  try {
+    url = new URL(String(raw ?? ""));
+  } catch {
+    return null;
+  }
+  const host = url.hostname.toLowerCase();
+  if (/(^|\.)zara\.com$/.test(host)) {
+    const code = /-p(\d{8})\.html$/.exec(url.pathname)?.[1];
+    return code ? `zara:${code.slice(-7)}` : null;
+  }
+  if (/(^|\.)uniqlo\.com$/.test(host)) {
+    const id = /\/products\/E?(4\d{5})(?:-|\/|$)/i.exec(url.pathname)?.[1];
+    return id ? `uniqlo:${id}` : null;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // Номера товаров, бренд, раздел, пол
 
@@ -557,7 +606,14 @@ export interface ProductRef {
   raw: string;
 }
 
-const MONEY_AFTER = /^[ \t\u00a0]?(?:[$€₽£¥₸₺₴]|руб|р\.|тг|тенге|eur|usd|kzt|byn|pln|zł|грн|сум|сом|tl\b|lira)/i;
+/**
+ * Сумма сразу после номера: валюта-суффикс («710 €», «487882 тг»). Знак или код валюты, за которым идёт число, — начало СЛЕДУЮЩЕЙ
+ * суммы («5854/722/710 $89.90», «арт 487882 ₸24990»): номер перед ней — не сумма.
+ */
+const MONEY_AFTER = new RegExp(
+  String.raw`^[ \t\u00a0]?(?:[$€₽£¥₸₺₴](?![ \t\u00a0]?\d)|(?:usd|eur|kzt|gbp|chf|rub|byn|pln|uah|cny)(?![\p{L}])(?![ \t\u00a0]?\d)|(?:руб(?:л\p{L}*|\.)?|р\.|тг|тнг|тенге|грн|сум|сом|zł|tl|lira)(?![\p{L}]))`,
+  "iu",
+);
 const ZARA_MARKER = /(?:ref(?:erence)?s?|code|cod|art(?:ikel)?|артикул\p{L}*|арт|номер|zara)[\s.:#№|/-]*$/iu;
 
 /**
@@ -617,16 +673,32 @@ export function detectBrand(input: { caption?: string | null; hashtags?: string[
   return topicBrand;
 }
 
-const JACKET_WORDS = /(?<![\p{L}])(?:jackets?|coats?|overcoat|bombers?|puffers?|parkas?|blousons?|anoraks?|windbreakers?|trench(?:coat)?|outerwear|куртк\p{L}*|пуховик\p{L}*|пальто|телогрейк\p{L}*|плащ\p{L}*|шуб[аыук]|анорак\p{L}*|бомбер\p{L}*|парк[аиуе](?![\p{L}])|ветровк\p{L}*|тренч\p{L}*|дубл[её]нк\p{L}*|косух\p{L}*|chaquetas?|cazadoras?|abrigos?|plum[ií]fero|giacca|giubbotto|piumino|cappotto|ceket|mont|kaban|kurtka|veste|manteau|doudoune|jacke|mantel|płaszcz)(?![\p{L}])/iu;
+/**
+ * Слова раздела «куртки». «veste» — только с французским определителем («une / ma / cette veste»): по-французски это куртка, а
+ * по-итальянски — платье и одежда вообще, по-португальски — глагол «носит» («ela veste Zara»). «mont» (тур. «куртка») — не «Mont Blanc».
+ */
+const JACKET_WORDS = /(?<![\p{L}])(?:jackets?|coats?|overcoat|bombers?|puffers?|parkas?|blousons?|anoraks?|windbreakers?|trench(?:coat)?|outerwear|куртк\p{L}*|пуховик\p{L}*|пальто|телогрейк\p{L}*|плащ\p{L}*|шуб[аыук]|анорак\p{L}*|бомбер\p{L}*|парк[аиуе](?![\p{L}])|ветровк\p{L}*|тренч\p{L}*|дубл[её]нк\p{L}*|косух\p{L}*|chaquetas?|cazadoras?|abrigos?|plum[ií]fero|giacca|giubbotto|piumino|cappotto|ceket|mont(?![ \t\u00a0-]+(?:blanc|saint|st|royal|ventoux|tremblant)(?![\p{L}]))|kaban|kurtka|(?:une|ma|ta|sa|cette|ces|mes|nouvelle|belle|petite|grande)[ \t\u00a0]+vestes?|manteau|doudoune|jacke|mantel|płaszcz)(?![\p{L}])/iu;
 const BAG_WORDS = /(?<![\p{L}])(?:bags?|handbags?|purses?|totes?|clutch(?:es)?|crossbody|сумк\p{L}*|сумочк\p{L}*|клатч\p{L}*|шопер\p{L}*|bolsos?|borsa|borse|çanta|sac|sacs|tasche|torebk\p{L}*|torba)(?![\p{L}])/iu;
 
 function hits(pattern: RegExp, text: string): number {
   return [...text.matchAll(new RegExp(pattern.source, `${pattern.flags.replace("g", "")}g`))].length;
 }
 
-/** Слитные хэштеги («zarajacket», «chanelbag»): ищем корень внутри тега. */
-const JACKET_TAG = /jacket|coat|bomber|puffer|parka|blouson|outerwear|куртк|пуховик|пальто|ceket|chaqueta|cazadora|abrigo|kurtka|jacke|manteau|doudoune/i;
-const BAG_TAG = /bag|purse|tote|clutch|сумк|bolso|borsa|çanta|tasche/i;
+/**
+ * Слитные хэштеги («zarajacket», «chanelbag», «bagsoftheday»): корень стоит в конце тега или перед известным хвостом («s», «oftheday»,
+ * «haul», «zara»…). Подстрокой нельзя: «baggyjeans», «zarabaggy» — джинсы, а не сумки. Приставки, что меняют смысл («teabag»,
+ * «airbag», «topcoat» — лак для ногтей, «lifejacket»), — не раздел.
+ */
+const TAG_TAIL = String.raw`(?:s|es)?(?:women|womens|woman|lovers?|addict|addiction|oftheday|ootd|haul|collection|inspo|style|styling|season|love|goals|outfits?|trends?|zara|uniqlo|зара|юникло)?`;
+const JACKET_TAG = new RegExp(String.raw`^([\p{L}\p{N}_]*?)(?:jacket|jacke|coat|bomber|puffer|parka|blouson|outerwear|куртк[аиуе]|курточк[аиу]|пуховик|пальто|ceket|chaqueta|cazadora|abrigo|kurtka|manteau|doudoune)${TAG_TAIL}$`, "iu");
+const JACKET_TAG_STOP = /^(?:life|yellow|strait|straight|dust|top|base|under|petti|turn|red|gel|clear|photo)$/i;
+const BAG_TAG = new RegExp(String.raw`^([\p{L}\p{N}_]*?)(?:bag|purse|tote|clutch|сумк[аиуе]|сумочк[аиу]|bolso|borsa|çanta|tasche)${TAG_TAIL}$`, "iu");
+const BAG_TAG_STOP = /^(?:tea|sand|air|bean|punch|punching|sleeping|dirt|scum|wind|rag|money|mail|gas|ice)$/i;
+
+function tagIs(tag: string, pattern: RegExp, stop: RegExp): boolean {
+  const m = pattern.exec(tag);
+  return Boolean(m) && !stop.test(m?.[1] ?? "");
+}
 
 /** Раздел: куртки или сумки — по словам подписи, хэштегам, подписи картинки и теме; при обоих — по теме, затем по числу слов; иначе null. */
 export function detectDirection(input: { caption?: string | null; hashtags?: readonly string[] | null; alt?: readonly string[] | string | null; topic?: string | null; title?: string | null }): AssortmentDirection | null {
@@ -636,8 +708,8 @@ export function detectDirection(input: { caption?: string | null; hashtags?: rea
   const tags = input.hashtags ?? [];
   const jt = JACKET_WORDS.test(topic);
   const bt = BAG_WORDS.test(topic);
-  const j = hits(JACKET_WORDS, text) + (jt ? 1 : 0) + tags.filter((t) => JACKET_TAG.test(t)).length;
-  const b = hits(BAG_WORDS, text) + (bt ? 1 : 0) + tags.filter((t) => BAG_TAG.test(t)).length;
+  const j = hits(JACKET_WORDS, text) + (jt ? 1 : 0) + tags.filter((t) => tagIs(t, JACKET_TAG, JACKET_TAG_STOP)).length;
+  const b = hits(BAG_WORDS, text) + (bt ? 1 : 0) + tags.filter((t) => tagIs(t, BAG_TAG, BAG_TAG_STOP)).length;
   if (j > 0 && b === 0) return "jackets";
   if (b > 0 && j === 0) return "bags";
   if (j === 0 && b === 0) return null;
@@ -645,7 +717,7 @@ export function detectDirection(input: { caption?: string | null; hashtags?: rea
   return j > b ? "jackets" : b > j ? "bags" : null;
 }
 
-const MENSWEAR = /(?<![\p{L}])(?:men'?s|menswear|for men|zara ?man|мужск\p{L}*|для мужчин|hombre|uomo|herren|homme|erkek)(?![\p{L}])/iu;
+const MENSWEAR = /(?<![\p{L}])(?:men'?s|menswear|for men|for him|for my (?:husband|boyfriend)|zara ?man|мужск\p{L}*|мужчин\p{L}*|для него|для мужа|мужу|для парня|парню|hombre|uomo|herren|homme|erkek)(?![\p{L}])/iu;
 
 /** Явно мужская вещь по подписи — только чтобы исключить (женское подтверждает лишь карточка бренда или каталог). */
 export function looksMenswear(...texts: Array<string | null | undefined>): boolean {
@@ -729,20 +801,61 @@ export function intentShare(comments: ReadonlyArray<ReelComment | string>, capti
 // Подпись для хранения: без @упоминаний и без цен
 
 const CURRENCY = "[$€₽£¥₸₺₴]";
-const MONEY_UNIT = String.raw`(?:руб(?:\.|л\p{L}*)?|р\.|тг|тенге|сом|сум|грн|byn|kzt|rub|eur(?:os?)?|евро|usd|долл\p{L}*|dollars?|zł|zl|pln|tl|lira|lei|kč|chf|yen|円|元|юан\p{L}*|rmb|cny|uah)`;
+/** Буквенные коды валют: и перед числом («USD 70», «KZT 4500»), и после («45 GBP»). Английских слов («try») здесь нет. */
+const MONEY_CODE = String.raw`(?:usd|eur|rub|kzt|gbp|chf|byn|pln|uah|cny|rmb|aed|jpy)`;
+/** Единицы, что пишут после числа: «4500р», «4 500 р.», «12 990 руб», «7 990 тг / тнг / тенге», «1 500 000 сум». */
+const MONEY_UNIT = String.raw`(?:руб(?:\.|л\p{L}*)?|р\.?|тг|тнг|тенге|сом|сум|грн|евро|euros?|долл\p{L}*|dollars?|zł|zl|tl|lira|lei|kč|yen|円|元|юан\p{L}*)`;
 const AMOUNT = String.raw`\d{1,3}(?:[ \u00a0.,']\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?`;
-const PRICE = new RegExp(`${CURRENCY}[ \\u00a0]?(?:${AMOUNT})|(?:${AMOUNT})[ \\u00a0]?(?:${CURRENCY}|${MONEY_UNIT}(?![\\p{L}]))`, "giu");
+/**
+ * Число суммы: не середина другого числа и не часть номера Zara «MMMM/QQQ/CCC» (номер не вырезаем, даже если рядом валюта).
+ * Множитель «тыс. / к / k / млн» — часть суммы: «12 тыс. руб», «4,5к руб», «$4.5k».
+ */
+const NUM = String.raw`(?<!\d)(?<!\d{4}\/\d{3}\/)(?:${AMOUNT})(?!\d)(?!\/\d)(?:[ \u00a0]?(?:тыс\.?|млн\.?|k|к)(?![\p{L}]))?`;
+const OPT_SP = String.raw`[ \u00a0]?`;
+/**
+ * Сумма по сторонам валюты: знак или код ПЕРЕД числом связан только со следующим числом, знак, код или единица ПОСЛЕ — только
+ * с предыдущим. Знак или код, за которым идёт число, суффиксом не считаем: «5854/722/710 $89.90» — номер, затем сумма «$89.90».
+ */
+const PRICE = new RegExp(
+  [
+    String.raw`(?:${CURRENCY}|(?<![\p{L}])${MONEY_CODE})${OPT_SP}${NUM}`,
+    String.raw`${NUM}${OPT_SP}${CURRENCY}(?!${OPT_SP}\d)`,
+    String.raw`${NUM}${OPT_SP}${MONEY_CODE}(?![\p{L}])(?!${OPT_SP}\d)`,
+    String.raw`${NUM}${OPT_SP}${MONEY_UNIT}(?![\p{L}]|-\p{L})`,
+  ].join("|"),
+  "giu",
+);
+/** Число сразу после слова «цена / price / стоимость» — сумма и без валюты: «Цена: 4990». */
+const PRICE_WORD_AMOUNT = new RegExp(String.raw`((?<![\p{L}])(?:цен[аеуы]|стоимост\p{L}*|prices?|prix|precio|prezzo|preis|fiyat\p{L}*)[ \t\u00a0]*[:=\-–—]?[ \t\u00a0]*)${NUM}`, "giu");
 
-/** Вырезать суммы: число с валютой или «тг/руб/₽/$/€» (цены из подписей не собираем и не храним). */
+/** Вырезать суммы: число с валютой по её стороне, «тг/руб/р/₽/$/€/USD…», число после «цена» (цены из подписей не собираем и не храним). */
 export function stripPrices(text: string): string {
-  return text.replace(PRICE, "…").replace(new RegExp(CURRENCY, "g"), "");
+  return text.replace(PRICE, "…").replace(PRICE_WORD_AMOUNT, "$1…").replace(new RegExp(CURRENCY, "g"), "");
+}
+
+/** Слово «цена» на другом языке и сразу число или конец тега: «#prix», «#precio99», «#fiyatı». «#priceless», «#ценности» — не деньги. */
+const PRICE_TAG = /^(?:цен[аеуы]|стоимост\p{L}*|prices?|prix|precio|prezzo|preis|fiyat\p{L}*)(?:\d|$)/iu;
+
+/** Хэштег про деньги («#цена4990руб», «#4990тг», «#usd70», «#цена»): такие не храним и не показываем. */
+export function isMoneyTag(tag: string): boolean {
+  const t = tag.replace(/^#/, "");
+  PRICE.lastIndex = 0;
+  const hit = PRICE.test(t);
+  PRICE.lastIndex = 0;
+  return hit || containsMoney(t) || PRICE_TAG.test(t);
+}
+
+/** Хэштеги для базы: без денежных. */
+export function cleanHashtags(tags: readonly string[]): string[] {
+  return tags.filter((t) => !isMoneyTag(t));
 }
 
 /** Отрывок подписи для базы: ≤ 500 знаков, без @упоминаний и без сумм. */
 export function sanitizeCaption(text: string | null | undefined, max = CAPTION_EXCERPT_MAX): string | null {
   const plain = unescapeMarkdown(text ?? "")
     .replace(/@[\p{L}\p{N}._]+/gu, "")
-    .replace(/https?:\/\/\S+/g, "");
+    .replace(/https?:\/\/\S+/g, "")
+    .replace(/#([\p{L}\p{N}_]+)/gu, (tag, body: string) => (isMoneyTag(body) ? "" : tag));
   const cleaned = stripPrices(plain).replace(/[ \t\u00a0]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
   if (!cleaned) return null;
   // Режем по символам, а не по UTF-16: половинка эмодзи — невалидный текст для базы.
@@ -805,6 +918,10 @@ export interface VerdictInput {
   nowMs: number;
   likes: number | null;
   comments: number | null;
+  /**
+   * Видимые комментарии: всего и с намерением купить. null — тел комментариев не видели (мобильная вёрстка их не отдаёт): Б тогда
+   * «не измерено», а не «нет». { count: 0, total: 0 } — видели, но покупательских нет (ответы автора, слова-пароли).
+   */
   intent: { count: number; total: number } | null;
   baseline: Pick<Baseline, "likesMedian" | "commentsMedian" | "likesPosts"> | null;
   followers: number | null;
@@ -817,6 +934,8 @@ export interface VerdictResult {
   rule: "main" | "fallback";
   a: boolean;
   b: boolean;
+  /** Б не измерено: комментариев хватает, а их тела не видны. Без А вердикта нет (ждём замера с комментариями), с А — «залетает». */
+  bUnknown: boolean;
   likesRatio: number | null;
   commentsRatio: number | null;
   intentShare: number | null;
@@ -840,22 +959,24 @@ export function verdictV1(input: VerdictInput): VerdictResult {
   const main = Boolean(base && base.likesPosts >= MIN_BASELINE_LIKE_POSTS && base.likesMedian != null && base.commentsMedian != null);
   const likesRatio = input.likes != null && base?.likesMedian != null ? round2(input.likes / Math.max(base.likesMedian, 1)) : null;
   const commentsRatio = input.comments != null && base?.commentsMedian != null ? round2(input.comments / Math.max(base.commentsMedian, 1)) : null;
-  const result = (verdict: SocialVerdict, a: boolean, b: boolean): VerdictResult => ({
-    verdict, preliminary: !main && (verdict === "viral" || verdict === "strong"), rule: main ? "main" : "fallback", a, b,
+  const result = (verdict: SocialVerdict, a: boolean, b: boolean, bUnknown = false): VerdictResult => ({
+    verdict, preliminary: !main && (verdict === "viral" || verdict === "strong"), rule: main ? "main" : "fallback", a, b, bUnknown,
     likesRatio, commentsRatio, intentShare: share == null ? null : round2(share), ageDays, ruleVersion: REELS_RULE_VERSION,
   });
   if (ageMs < MIN_AGE_MS) return result("too_fresh", false, false);
   if (ageMs > MAX_AGE_DAYS * DAY_MS) return result("too_old", false, false);
   let a: boolean;
-  let b: boolean;
+  let commentsOk: boolean;
   if (main && base) {
     a = input.likes != null && input.likes >= LIKES_MIN && input.likes >= LIKES_MULTIPLIER * (base.likesMedian as number);
-    b = input.comments != null && input.comments >= COMMENTS_MIN && input.comments >= COMMENTS_MULTIPLIER * (base.commentsMedian as number) && intentOk;
+    commentsOk = input.comments != null && input.comments >= COMMENTS_MIN && input.comments >= COMMENTS_MULTIPLIER * (base.commentsMedian as number);
   } else {
     a = input.likes != null && (input.likes >= FALLBACK_LIKES_MIN || (input.followers != null && input.followers > 0 && input.likes >= FALLBACK_FOLLOWER_SHARE * input.followers));
-    b = input.comments != null && input.comments >= COMMENTS_MIN && intentOk;
+    commentsOk = input.comments != null && input.comments >= COMMENTS_MIN;
   }
-  return result(a && b ? "strong" : a || b ? "viral" : "normal", a, b);
+  const b = commentsOk && intentOk;
+  const bUnknown = commentsOk && input.intent == null;
+  return result(a && b ? "strong" : a || b ? "viral" : "normal", a, b, bUnknown);
 }
 
 /** Стоит ли докачивать прошлые посты автора ради этого кандидата. */
@@ -953,14 +1074,16 @@ export function googleQuery(template: string, nowMs: number): string {
   return `site:instagram.com/reel ${template} after:${after}`;
 }
 
-const TOPIC_MEN = new Set(["men", "mens", "man", "menswear", "мужская", "мужские", "мужской", "мужская", "hombre", "uomo", "herren", "homme", "erkek", "kids", "baby", "boys"]);
+/** Темы не про женское: мужское и детское («girls» в теме Zara — детский отдел), «for guys». */
+const TOPIC_MEN = new Set(["men", "mens", "man", "menswear", "guy", "guys", "him", "hombre", "uomo", "herren", "homme", "erkek", "kids", "kid", "baby", "boys", "boy", "girls", "girl", "children", "child", "teen", "teens"]);
+const TOPIC_MEN_RU = /^(?:мужск|мужчин|мужу|парн|дет(?:и|ей|ям|ях|ск)|мальчик|девочк|подрост)/u;
 
 /** Соседняя тема годится в список: про Zara или Uniqlo, про куртки или сумки, не мужская и не детская. */
 export function acceptNeighborTopic(slug: string): SocialBrand | null {
   const s = slug.toLowerCase();
   const brand: SocialBrand | null = /zara|зара/.test(s) ? "zara" : /uniqlo|юникло/.test(s) ? "uniqlo" : null;
   if (!brand) return null;
-  const tokens = s.split(/[-_\s]+/);
-  if (tokens.some((t) => TOPIC_MEN.has(t))) return null;
+  const tokens = s.split(/[-_\s]+/).map((t) => t.replace(/['’]/g, ""));
+  if (tokens.some((t) => TOPIC_MEN.has(t) || TOPIC_MEN_RU.test(t))) return null;
   return detectDirection({ topic: s }) ? brand : null;
 }

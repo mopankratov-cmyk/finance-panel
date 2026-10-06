@@ -8,11 +8,12 @@ import { thumbUrl } from "./catalog";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import {
-  acceptNeighborTopic, COST_PER_REQUEST_USD, detectBrand, detectDirection, extractRefs, GOOGLE_QUERIES, googleQuery, HISTORY_LIMIT, intentShare,
+  acceptNeighborTopic, cleanHashtags, COMMENTS_MIN, COST_PER_REQUEST_USD, detectBrand, detectDirection, extractRefs, GOOGLE_QUERIES, googleQuery, HISTORY_LIMIT, intentShare,
   BASELINE_POSTS, looksMenswear, MAX_AGE_DAYS, measureDue, medianBaseline, MIN_AGE_MS, MIN_BASELINE_LIKE_POSTS, parseGoogleReels, parseProfilePage, parseReelPage,
-  parseTopicPage, parseUniqloCard, parseZaraCard, passesPrefilter, postUrl, profileUrl, sanitizeCaption, SEED_ACCOUNTS, SEED_TOPICS,
+  parseTopicPage, parseUniqloCard, parseZaraCard, passesPrefilter, postUrl, profileUrl, REELS_RULE_VERSION, sanitizeCaption, SEED_ACCOUNTS, SEED_TOPICS,
   shortcodeToDate, SOCIAL_PLATFORM, topicUrl, uniqloCardUrls, verdictV1, withinDiscoveryWindow, zaraCardUrl,
-  type AccountKind, type BaselinePost, type CardGender, type GridPost, type ParsedReel, type SeedTopic, type SocialBrand, type SocialConfig, type SocialVerdict,
+  type AccountKind, type BaselinePost, type CardGender, type GridPost, type ParsedProfile, type ParsedReel, type SeedTopic, type SocialBrand, type SocialConfig,
+  type SocialVerdict,
 } from "./socialReels";
 
 export { SEED_ACCOUNTS, SEED_TOPICS } from "./socialReels";
@@ -57,6 +58,13 @@ export const MAX_PARALLEL = 4;
 const MATCH_RECHECK_DAYS = 7;
 /** Номеров одного рилса проверяем на сайте бренда не больше двух (подборка из шести вещей — не одна модель). */
 const BRAND_SITE_REFS = 2;
+/** Тема мёртвая после стольких пустых ответов подряд с распознанной вёрсткой; мёртвую перепроверяем раз в 4 недели. */
+export const TOPIC_DEAD_MISSES = 3;
+export const DEAD_TOPIC_RECHECK_DAYS = 28;
+/** Поиск не дошёл до конца столько прогонов подряд — прогон «ошибка» (сторож скажет): потолок прогона мал или Instagram сбоит. */
+export const DISCOVER_STALL_RUNS = 3;
+/** Доля страниц рилсов без распознанного блока счётчиков, от которой прогон — «ошибка» (вёрстка Instagram изменилась). */
+const LAYOUT_ALARM_MIN = 3;
 
 export type MatchStatus = "catalog" | "brand_site" | "men" | "kids" | "not_found" | "no_ref" | "pending";
 type AccountStatus = "watched" | "seen" | "excluded";
@@ -67,6 +75,8 @@ export interface HistoryPoint {
   likes: number | null;
   comments: number | null;
   views: number | null;
+  /** Отметка: в этот момент рилс впервые «залетел» (вердикт сменился на «залетает» / «сильный»). По ней сводка выбирает неделю. */
+  verdict?: "strong" | "viral";
 }
 
 export interface AccountRow {
@@ -297,16 +307,48 @@ async function releaseLease(db: SupabaseClient, nowMs: number, token: string): P
 // ---------------------------------------------------------------------------
 // Состояние поиска — в capabilities источника S068 (Instagram Reels) под ключом social
 
+/** Незавершённый поиск: что уже пройдено и сколько прогонов подряд он не дошёл до конца. Следующий прогон продолжает с места. */
+export interface DiscoverProgress {
+  startedAt: string;
+  topics: string[];
+  google: string[];
+  runs: number;
+  /** Соседние темы, найденные в этом поиске: в список тем идут, когда поиск дойдёт до конца (иначе он бы не кончался). */
+  newTopics: SeedTopic[];
+  /** Тем с рилсами в этом поиске (за все его прогоны): ни одной — разбор сломан или стена входа, поиск не засчитываем. */
+  withReels: number;
+}
+
 export interface SocialState {
   discoveredAt: string | null;
   autoTopics: SeedTopic[];
-  deadTopics: string[];
+  /** Мёртвые темы: slug → когда признали (после TOPIC_DEAD_MISSES пустых ответов подряд); раз в 4 недели перепроверяем. */
+  deadTopics: Record<string, string>;
+  /** Пустых ответов подряд с распознанной вёрсткой (страница темы есть, рилсов нет). Сбой или стена входа не в счёт. */
+  topicMisses: Record<string, number>;
+  pending: DiscoverProgress | null;
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
 export function readSocialState(capabilities: unknown): SocialState {
-  const raw = (capabilities as { social?: unknown } | null)?.social as Partial<SocialState> | undefined;
-  const topics = Array.isArray(raw?.autoTopics) ? raw.autoTopics.filter((t): t is SeedTopic => Boolean(t) && typeof t.slug === "string" && (t.brand === "zara" || t.brand === "uniqlo")) : [];
-  return { discoveredAt: typeof raw?.discoveredAt === "string" ? raw.discoveredAt : null, autoTopics: topics, deadTopics: arr(raw?.deadTopics) };
+  const raw = (capabilities as { social?: unknown } | null)?.social as Record<string, unknown> | undefined;
+  const topics = Array.isArray(raw?.autoTopics) ? (raw.autoTopics as unknown[]).filter((t): t is SeedTopic => isRecord(t) && typeof t.slug === "string" && (t.brand === "zara" || t.brand === "uniqlo")) : [];
+  const deadTopics: Record<string, string> = {};
+  // Прежний вид — список без даты: такие темы перепроверяем при первом же поиске.
+  if (Array.isArray(raw?.deadTopics)) for (const slug of arr(raw.deadTopics)) deadTopics[slug] = RELEASED;
+  else if (isRecord(raw?.deadTopics)) for (const [slug, at] of Object.entries(raw.deadTopics)) if (typeof at === "string") deadTopics[slug] = at;
+  const topicMisses: Record<string, number> = {};
+  if (isRecord(raw?.topicMisses)) for (const [slug, n] of Object.entries(raw.topicMisses)) if (Number.isFinite(Number(n)) && Number(n) > 0) topicMisses[slug] = Math.floor(Number(n));
+  const p = isRecord(raw?.pending) ? raw.pending : null;
+  const pending: DiscoverProgress | null = p && typeof p.startedAt === "string"
+    ? {
+      startedAt: p.startedAt, topics: arr(p.topics), google: arr(p.google), runs: Math.max(0, Math.floor(Number(p.runs) || 0)),
+      newTopics: Array.isArray(p.newTopics) ? (p.newTopics as unknown[]).filter((t): t is SeedTopic => isRecord(t) && typeof t.slug === "string" && (t.brand === "zara" || t.brand === "uniqlo")) : [],
+      withReels: Math.max(0, Math.floor(Number(p.withReels) || 0)),
+    }
+    : null;
+  return { discoveredAt: typeof raw?.discoveredAt === "string" ? raw.discoveredAt : null, autoTopics: topics, deadTopics, topicMisses, pending };
 }
 
 async function loadState(db: SupabaseClient): Promise<{ capabilities: Record<string, unknown>; state: SocialState } | null> {
@@ -326,8 +368,12 @@ async function saveState(db: SupabaseClient, capabilities: Record<string, unknow
   if (error) throw new Error(error.message);
 }
 
-/** Пора ли искать: по метке последнего поиска; если источника S068 нет — по самому свежему рилсу, найденному поиском. */
+/**
+ * Пора ли искать: незавершённый поиск — продолжаем каждый прогон; иначе по метке последнего поиска; если источника S068 нет — по
+ * самому свежему рилсу, найденному поиском.
+ */
 export function discoverDue(state: SocialState | null, posts: Iterable<PostRow>, nowMs: number): boolean {
+  if (state?.pending) return true;
   let last = state?.discoveredAt ? ms(state.discoveredAt) : NaN;
   if (!state) {
     for (const p of posts) {
@@ -340,12 +386,20 @@ export function discoverDue(state: SocialState | null, posts: Iterable<PostRow>,
   return !Number.isFinite(last) || nowMs - last >= DISCOVER_EVERY_DAYS * DAY_MS;
 }
 
-export function activeTopics(state: SocialState | null): SeedTopic[] {
-  const dead = new Set(state?.deadTopics ?? []);
+/** Темы поиска: стартовые и авто, без мёртвых — кроме тех, кого пора перепроверить (раз в 4 недели). */
+export function activeTopics(state: SocialState | null, nowMs: number): SeedTopic[] {
+  const dead = state?.deadTopics ?? {};
   const out: SeedTopic[] = [];
-  for (const t of [...SEED_TOPICS, ...(state?.autoTopics ?? [])]) if (!dead.has(t.slug) && !out.some((o) => o.slug === t.slug)) out.push(t);
+  for (const t of [...SEED_TOPICS, ...(state?.autoTopics ?? [])]) {
+    const deadAt = dead[t.slug];
+    if (deadAt != null && nowMs - ms(deadAt) < DEAD_TOPIC_RECHECK_DAYS * DAY_MS) continue;
+    if (!out.some((o) => o.slug === t.slug)) out.push(t);
+  }
   return out;
 }
+
+/** Ключ запроса Google в прогрессе поиска. */
+const googleKey = (brand: SocialBrand, template: string) => `${brand}:${template}`;
 
 // ---------------------------------------------------------------------------
 // Аккаунты: правила без затирания ручного
@@ -413,7 +467,7 @@ export function mergeCandidate(existing: PostRow | undefined, c: Candidate, nowM
       views: c.views ?? existing.views,
       brand,
       caption_excerpt: existing.caption_excerpt ?? sanitizeCaption(c.caption),
-      hashtags: union(existing.hashtags, c.hashtags),
+      hashtags: cleanHashtags(union(existing.hashtags, c.hashtags)),
       refs: union(existing.refs, refsOf(c.caption, c.hashtags, brand)),
       direction: existing.direction ?? detectDirection({ caption: c.caption, hashtags: c.hashtags, topic: c.topic }),
     };
@@ -436,7 +490,8 @@ export function mergeCandidate(existing: PostRow | undefined, c: Candidate, nowM
     brand: brandFromText,
     direction: detectDirection({ caption: c.caption, hashtags: c.hashtags, topic: c.topic }),
     caption_excerpt: sanitizeCaption(c.caption),
-    hashtags: c.hashtags,
+    // Хэштеги про деньги («#цена4990руб», «#4990тг») не храним: цены из подписей не собираем.
+    hashtags: cleanHashtags(c.hashtags),
     refs: refsOf(c.caption, c.hashtags, brandFromText),
     likes: null,
     comments: null,
@@ -461,19 +516,43 @@ export function mergeCandidate(existing: PostRow | undefined, c: Candidate, nowM
   };
 }
 
+const isViralMark = (h: HistoryPoint | null | undefined) => h?.verdict === "viral" || h?.verdict === "strong";
+
+/** Точка истории; не больше 10 последних, но отметку первого «залёта» не выбрасываем (по ней сводка выбирает неделю). */
 export function pushHistory(history: readonly HistoryPoint[], point: HistoryPoint): HistoryPoint[] {
-  return [...history, point].slice(-HISTORY_LIMIT);
+  const all = [...history, point];
+  if (all.length <= HISTORY_LIMIT) return all;
+  const mark = all.findIndex(isViralMark);
+  if (mark < 0 || mark >= all.length - HISTORY_LIMIT) return all.slice(-HISTORY_LIMIT);
+  return [all[mark], ...all.slice(-(HISTORY_LIMIT - 1))];
 }
 
-/** Замер со страницы рилса: числа, доля «купить», подпись (если полная), номера, бренд, раздел; «мужское» — сразу в исключение. */
-export function applyMeasurement(post: PostRow, page: ParsedReel, nowMs: number): PostRow {
+/**
+ * Отметить первый «залёт»: вердикт впервые стал «залетает» или «сильный». Замер в этом же прогоне — отметка на его точке;
+ * вердикт сменился позже замера (досчиталась база автора) — своя точка с временем смены.
+ */
+function markFirstViral(post: PostRow, verdict: "strong" | "viral", nowMs: number): HistoryPoint[] {
+  if (post.history.some(isViralMark)) return post.history;
+  const at = iso(nowMs);
+  const last = post.history[post.history.length - 1];
+  if (last && last.at === at) return [...post.history.slice(0, -1), { ...last, verdict }];
+  return pushHistory(post.history, { at, likes: post.likes, comments: post.comments, views: post.views, verdict });
+}
+
+/**
+ * Замер со страницы рилса: числа, доля «купить», подпись (если полная), номера, бренд, раздел; «мужское» — сразу в исключение.
+ * `countCheck: false` — числа записываем, но замер не засчитываем (намерение не измерено: тел комментариев не видно) — пост
+ * перемерим, а Б не судим как «нет».
+ */
+export function applyMeasurement(post: PostRow, page: ParsedReel, nowMs: number, options: { countCheck?: boolean; note?: string | null } = {}): PostRow {
   const caption = page.captionTruncated ? null : page.caption;
-  const hashtags = union(post.hashtags, page.hashtags);
+  const hashtags = cleanHashtags(union(post.hashtags, page.hashtags));
   const textRefs = extractRefs(`${caption ?? ""} ${page.hashtags.map((h) => `#${h}`).join(" ")}`, null);
   const brand = detectBrand({ caption: caption ?? post.caption_excerpt, hashtags, topic: post.topics[0] ?? null, refs: textRefs }) ?? post.brand;
   const refs = union(post.refs, refsOf(caption, page.hashtags, brand));
   // Мобильная вёрстка тел комментариев не отдаёт: прежнюю долю не затираем нулём.
   const intent = page.visibleComments.length > 0 ? intentShare(page.visibleComments, page.caption) : null;
+  const counted = options.countCheck !== false;
   const next: PostRow = {
     ...post,
     url: postUrl(page.code, page.kind),
@@ -488,33 +567,60 @@ export function applyMeasurement(post: PostRow, page: ParsedReel, nowMs: number)
     refs,
     brand,
     direction: post.direction ?? detectDirection({ caption: caption ?? post.caption_excerpt, hashtags, alt: page.altItems, topic: post.topics[0] ?? null }),
-    checks: post.checks + 1,
-    last_checked_at: iso(nowMs),
-    last_error: null,
+    checks: counted ? post.checks + 1 : post.checks,
+    // Не засчитан — и срок замера не сдвигаем: перемерим следующим прогоном.
+    last_checked_at: counted ? iso(nowMs) : post.last_checked_at,
+    last_error: options.note ?? null,
     history: pushHistory(post.history, { at: iso(nowMs), likes: page.likes, comments: page.comments ?? post.comments, views: post.views }),
   };
   if (!next.match_status && looksMenswear(caption, post.topics[0])) next.match_status = "men";
   return next;
 }
 
-/** Вердикт по сохранённым числам и базе автора (без запросов). Старше 21 дня — прежний вердикт не трогаем. */
+/** База автора посчитана (хоть из нуля постов — тогда запасное правило). */
+function hasBaseline(account: AccountRow | undefined): account is AccountRow {
+  return Boolean(account?.baseline_at) && account?.baseline_posts != null;
+}
+
+/** Рилс с шансом «залететь» ждёт базы автора: замерен, в окне, прошёл предфильтр, а базы ещё нет. */
+export function awaitsBaseline(post: PostRow, account: AccountRow | undefined, nowMs: number): boolean {
+  if (post.hidden_at || (post.likes == null && post.comments == null) || !passesPrefilter(post)) return false;
+  const t = ms(post.published_at);
+  return Number.isFinite(t) && nowMs - t <= MAX_AGE_DAYS * DAY_MS && !hasBaseline(account);
+}
+
+/**
+ * Вердикт по сохранённым числам и базе автора (без запросов). Старше 21 дня — прежний вердикт не трогаем.
+ * Без базы автора: рилс с шансом (лайков ≥ 1 000, комментариев ≥ 30 или просмотров ≥ 100 000) не судим — ждёт базы (запасное
+ * правило — только для посчитанной базы, где меньше 6 постов); без шанса — «обычно»: основное правило «залёта» не даст при любой
+ * базе (А требует ≥ 1 000 лайков, Б — ≥ 30 комментариев). Б не измерено (тел комментариев не видели) и А нет — вердикта нет.
+ */
 export function judgePost(post: PostRow, account: AccountRow | undefined, nowMs: number): PostRow {
   const published = ms(post.published_at);
-  if (!Number.isFinite(published) || post.checks < 1 || (post.likes == null && post.comments == null)) return post;
-  const baseline = account && account.baseline_posts != null
-    ? { likesMedian: account.likes_median, commentsMedian: account.comments_median, likesPosts: account.baseline_posts }
-    : null;
+  if (!Number.isFinite(published) || (post.likes == null && post.comments == null)) return post;
+  const age = nowMs - published;
+  if (age > MAX_AGE_DAYS * DAY_MS) return post;
+  const unjudged = (): PostRow => (post.verdict == null && !post.verdict_preliminary && post.likes_ratio == null && post.comments_ratio == null && post.rule_version == null
+    ? post
+    : { ...post, verdict: null, verdict_preliminary: false, rule_version: null, likes_ratio: null, comments_ratio: null });
+  if (!hasBaseline(account)) {
+    if (passesPrefilter(post)) return unjudged();
+    return { ...post, verdict: age < MIN_AGE_MS ? "too_fresh" : "normal", verdict_preliminary: false, rule_version: REELS_RULE_VERSION, likes_ratio: null, comments_ratio: null };
+  }
   const v = verdictV1({
     publishedAtMs: published,
     nowMs,
     likes: post.likes,
     comments: post.comments,
-    intent: post.intent_total ? { count: post.intent_count ?? 0, total: post.intent_total } : null,
-    baseline,
-    followers: account?.followers ?? null,
+    intent: post.intent_total != null ? { count: post.intent_count ?? 0, total: post.intent_total } : null,
+    baseline: { likesMedian: account.likes_median, commentsMedian: account.comments_median, likesPosts: account.baseline_posts as number },
+    followers: account.followers ?? null,
   });
   if (v.verdict === "too_old") return post;
-  return { ...post, verdict: v.verdict, verdict_preliminary: v.preliminary, rule_version: v.ruleVersion, likes_ratio: v.likesRatio, comments_ratio: v.commentsRatio };
+  if (v.bUnknown && v.verdict === "normal") return unjudged();
+  const next: PostRow = { ...post, verdict: v.verdict, verdict_preliminary: v.preliminary, rule_version: v.ruleVersion, likes_ratio: v.likesRatio, comments_ratio: v.commentsRatio };
+  if (v.verdict === "viral" || v.verdict === "strong") next.history = markFirstViral(post, v.verdict, nowMs);
+  return next;
 }
 
 /** Привязку пора делать: «залетел», не скрыт, не мужское; ещё не привязан, или «не нашли / есть у бренда» старше недели. */
@@ -622,22 +728,50 @@ export interface SocialRunSummary {
   failedRequests: number;
   weekRequestsBefore: number | null;
   allowed: number;
-  due: { discover: boolean; topics: number; google: number; profiles: number; measure: number; match: number };
-  discover: { ran: boolean; topics: number; google: number; profiles: number; candidates: number; newPosts: number; newTopics: number };
+  /** Запросов, отложенных под замер и базу авторов: поиск их не трогает. */
+  reserved: number;
+  due: { discover: boolean; topics: number; google: number; profiles: number; measure: number; baselines: number; match: number };
+  discover: {
+    ran: boolean;
+    /** Поиск дошёл до конца (метка поиска поставлена); нет — продолжим в следующий прогон с места остановки. */
+    complete: boolean;
+    resumed: boolean;
+    topics: number;
+    topicsWithReels: number;
+    /** Ответов темы без распознанной вёрстки (стена входа, новая вёрстка) — тему в мёртвые из-за них не пишем. */
+    topicsUnrecognized: number;
+    newDeadTopics: number;
+    google: number;
+    profiles: number;
+    candidates: number;
+    newPosts: number;
+    newTopics: number;
+  };
   measured: number;
   notFound: number;
+  /** Страниц рилсов без распознанного блока счётчиков: замер не засчитан. */
+  layoutFailures: number;
+  /**
+   * Замеров без тел комментариев при ≥ 30 комментариях: намерение не измерено (Б — не «нет»). Мобильная вёрстка — замер не засчитан,
+   * перемерим; десктоп — засчитан.
+   */
+  intentUnmeasured: number;
   baselines: number;
+  /** Рилсов с шансом, что ждут базы автора: вердикта у них нет, досчитаем в следующих прогонах. */
+  awaitingBaseline: number;
   judged: Record<"strong" | "viral" | "normal", number>;
   matched: Partial<Record<MatchStatus, number>>;
   errors: string[];
+  /** Тревоги: прогон в журнале — «ошибка», даже если запросы прошли (вёрстка изменилась, поиск не завершается). */
+  alarms: string[];
 }
 
 function emptySummary(): SocialRunSummary {
   return {
-    skipped: null, skippedBecause: null, stoppedBy: null, stopMessage: null, requests: 0, failedRequests: 0, weekRequestsBefore: null, allowed: 0,
-    due: { discover: false, topics: 0, google: 0, profiles: 0, measure: 0, match: 0 },
-    discover: { ran: false, topics: 0, google: 0, profiles: 0, candidates: 0, newPosts: 0, newTopics: 0 },
-    measured: 0, notFound: 0, baselines: 0, judged: { strong: 0, viral: 0, normal: 0 }, matched: {}, errors: [],
+    skipped: null, skippedBecause: null, stoppedBy: null, stopMessage: null, requests: 0, failedRequests: 0, weekRequestsBefore: null, allowed: 0, reserved: 0,
+    due: { discover: false, topics: 0, google: 0, profiles: 0, measure: 0, baselines: 0, match: 0 },
+    discover: { ran: false, complete: false, resumed: false, topics: 0, topicsWithReels: 0, topicsUnrecognized: 0, newDeadTopics: 0, google: 0, profiles: 0, candidates: 0, newPosts: 0, newTopics: 0 },
+    measured: 0, notFound: 0, layoutFailures: 0, intentUnmeasured: 0, baselines: 0, awaitingBaseline: 0, judged: { strong: 0, viral: 0, normal: 0 }, matched: {}, errors: [], alarms: [],
   };
 }
 
@@ -695,6 +829,13 @@ function accountFullPayload(a: AccountRow): Record<string, unknown> {
   return { ...accountMachinePayload(a), kind: a.kind, origin: a.origin, status: a.status, note: a.note, first_seen_at: a.first_seen_at };
 }
 
+const emptyState = (): SocialState => ({ discoveredAt: null, autoTopics: [], deadTopics: {}, topicMisses: {}, pending: null });
+
+const GOOGLE_KEYS: ReadonlyArray<{ brand: SocialBrand; template: string; key: string }> = (["zara", "uniqlo"] as const)
+  .flatMap((brand) => GOOGLE_QUERIES[brand].map((template) => ({ brand, template, key: googleKey(brand, template) })));
+
+type BaselineNeed = { posts: PostRow[]; grid: GridPost[]; awaiting: boolean };
+
 export async function runSocialReels(db: SupabaseClient, options: RunSocialOptions): Promise<SocialRunSummary> {
   const clock = options.now ?? Date.now;
   const nowMs = clock();
@@ -719,17 +860,27 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
   summary.allowed = Math.max(0, Math.min(config.maxRequestsPerRun, config.weeklyRequests - week));
 
   const stateRow = await loadState(db);
-  const state: SocialState = stateRow?.state ?? { discoveredAt: null, autoTopics: [], deadTopics: [] };
+  const state: SocialState = stateRow?.state ?? emptyState();
   const phase = options.phase ?? null;
   const excluded = (handle: string | null) => Boolean(handle && accounts.get(handle)?.status === "excluded");
   const seedsMissing = SEED_ACCOUNTS.filter((s) => !accounts.has(s.handle));
+  const progressTopics = new Set(state.pending?.topics ?? []);
+  const progressGoogle = new Set(state.pending?.google ?? []);
+  const awaitingAuthors = new Set([...posts.values()]
+    .filter((p) => p.account_handle && !excluded(p.account_handle) && awaitsBaseline(p, accounts.get(p.account_handle), nowMs))
+    .map((p) => p.account_handle as string));
 
   summary.due.discover = phase === "discover" || (phase == null && discoverDue(stateRow?.state ?? null, posts.values(), nowMs));
-  summary.due.topics = summary.due.discover ? activeTopics(state).length : 0;
-  summary.due.google = summary.due.discover ? GOOGLE_QUERIES.zara.length + GOOGLE_QUERIES.uniqlo.length : 0;
+  summary.due.topics = summary.due.discover ? activeTopics(state, nowMs).filter((t) => !progressTopics.has(t.slug)).length : 0;
+  summary.due.google = summary.due.discover ? GOOGLE_KEYS.filter((q) => !progressGoogle.has(q.key)).length : 0;
   summary.due.profiles = phase === "measure" || phase === "match" ? 0 : [...accounts.values()].filter((a) => profileDue(a, nowMs)).length + seedsMissing.length;
   summary.due.measure = phase === "discover" || phase === "match" ? 0 : [...posts.values()].filter((p) => !p.hidden_at && !excluded(p.account_handle) && measureDue({ publishedAtMs: ms(p.published_at), checks: p.checks, lastCheckedAtMs: p.last_checked_at ? ms(p.last_checked_at) : null }, nowMs)).length;
+  summary.due.baselines = phase === "discover" || phase === "match" ? 0 : awaitingAuthors.size;
   summary.due.match = phase === "discover" || phase === "measure" ? 0 : [...posts.values()].filter((p) => matchDue(p, nowMs)).length;
+  // Резерв под замер и базу авторов (не больше половины прогона): поиск, упёршийся в потолок, не должен оставить замер без запросов.
+  summary.reserved = phase == null
+    ? Math.min(summary.due.measure + Math.min(summary.due.baselines, config.maxBaselineAuthorsPerRun) * (BASELINE_POSTS + 1), Math.floor(summary.allowed / 2))
+    : 0;
   if (options.dryRun) return summary;
   if (!options.hasKey) return { ...summary, skipped: "нет ключа Bright Data (BRIGHTDATA_API_TOKEN)", skippedBecause: "no_key" };
 
@@ -742,17 +893,30 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
   const dirtyPosts = new Set<string>();
   const dirtyAccounts = new Set<string>();
   const newAccounts = new Set<string>();
+  /** Профили, скачанные в этом прогоне (поиск или база автора): второй раз не качаем. null — профиля нет (закрыт, удалён). */
+  const profiles = new Map<string, ParsedProfile | null>();
   const stopped = () => summary.stoppedBy != null;
+  /** Потолок шага: поиск не трогает резерв замера. Упёрся — шаг кончился, прогон идёт дальше. */
+  let stepCap = Number.POSITIVE_INFINITY;
+  let stepCut = false;
+  const stepStopped = () => stopped() || stepCut;
   const note = (text: string) => {
     if (summary.errors.length < 12) summary.errors.push(text.slice(0, 200));
   };
+  const alarm = (text: string) => {
+    summary.alarms.push(text.slice(0, 240));
+  };
 
-  /** Один запрос с учётом: потолок прогона и недели, дедлайн, остановки. null — не начат (стоп). Временный сбой — один повтор. */
+  /** Один запрос с учётом: потолок прогона, недели и шага, дедлайн, остановки. null — не начат (стоп). Временный сбой — один повтор. */
   const request = async (url: string, format: UnlockerFormat, retry = true): Promise<UnlockerResult | null> => {
     if (stopped()) return null;
     if (summary.requests >= summary.allowed) {
       summary.stoppedBy = "budget";
       summary.stopMessage = summary.allowed === 0 ? "исчерпан потолок запросов недели" : "достигнут потолок запросов прогона или недели";
+      return null;
+    }
+    if (summary.requests >= stepCap) {
+      stepCut = true;
       return null;
     }
     if (clock() >= deadline) {
@@ -811,6 +975,100 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     }
   };
 
+  /**
+   * База автора: медиана последних 12 постов по дате — из сеток «More posts from» замеренных рилсов и из сетки профиля (12 постов).
+   * Профиль берём, если в сетках рилсов меньше 6 пригодных постов, если он уже скачан в этом прогоне, или если после подсчёта
+   * постов с видимыми лайками всё ещё меньше 6 (закреплённые, соавторские и свежие посты съедают сетку рилса). Рилс кандидата в этом
+   * прогоне не мерили (база досчитывается позже), а профиль постов не дал (стена входа, закрыт) — сетка со страницы самого кандидата.
+   * false — база не сохранена (остановка или временный сбой): досчитаем в следующем прогоне.
+   */
+  const computeBaseline = async (author: string, account: AccountRow, need: BaselineNeed): Promise<boolean> => {
+    const candidates = new Set(need.posts.map((p) => p.code));
+    const grid = new Map<string, GridPost>();
+    const addGrid = (list: readonly GridPost[]) => {
+      for (const g of list) {
+        if (g.owner !== author) continue;
+        const prev = grid.get(g.code);
+        grid.set(g.code, prev ? { ...prev, pinned: prev.pinned || g.pinned } : g);
+      }
+    };
+    addGrid(need.grid);
+    const eligible = () => [...grid.values()]
+      .filter((g) => !g.pinned && !candidates.has(g.code) && g.publishedAt && nowMs - ms(g.publishedAt) >= MIN_AGE_MS)
+      .sort((a, b) => ms(b.publishedAt) - ms(a.publishedAt))
+      .slice(0, BASELINE_POSTS);
+    const measured = new Map<string, BaselinePost>();
+    let profileUsed = false;
+    const takeProfileGrid = async (): Promise<boolean> => {
+      profileUsed = true;
+      let profile = profiles.get(author);
+      if (profile === undefined) {
+        const r = await request(profileUrl(author), "markdown");
+        if (!r || (!r.ok && r.kind === "transient")) return false;
+        profile = r.ok ? parseProfilePage(r.body) : null;
+        profiles.set(author, profile);
+      }
+      if (profile?.followers != null) account.followers = profile.followers;
+      if (profile) addGrid(profile.posts);
+      return true;
+    };
+    const takeCandidateGrid = async (): Promise<boolean> => {
+      const top = [...need.posts].sort((a, b) => (b.likes ?? -1) - (a.likes ?? -1))[0];
+      if (!top) return true;
+      const r = await request(top.url, "markdown");
+      if (!r || (!r.ok && r.kind === "transient")) return false;
+      const page = r.ok ? parseReelPage(r.body) : null;
+      if (page) addGrid(page.otherPosts);
+      return true;
+    };
+    const fetchGrid = async (): Promise<boolean> => {
+      const todo = eligible().filter((g) => !measured.has(g.code));
+      let done = 0;
+      await pool(todo, parallel, stopped, async (g) => {
+        const stored = posts.get(g.code);
+        // Уже мерили за неделю — берём из базы, страницу не качаем.
+        if (stored && stored.checks > 0 && stored.last_checked_at && nowMs - ms(stored.last_checked_at) < BASELINE_FRESH_DAYS * DAY_MS && (stored.likes != null || stored.comments != null)) {
+          measured.set(g.code, { code: g.code, publishedAtMs: ms(g.publishedAt), likes: stored.likes_hidden ? null : stored.likes, comments: stored.comments, owner: author });
+          done += 1;
+          return;
+        }
+        const r = await request(postUrl(g.code, g.kind), "markdown");
+        if (!r) return;
+        done += 1;
+        if (!r.ok) return;
+        const page = parseReelPage(r.body);
+        // Без распознанного блока счётчиков лайки не «скрыты», а неизвестны — такой пост в базу не идёт.
+        if (!page || !page.countsFound) return;
+        measured.set(g.code, { code: g.code, publishedAtMs: ms(g.publishedAt), likes: page.likes, comments: page.comments, owner: page.author ?? author });
+        // Свежий пост автора из сетки — сам кандидат (так нашёлся второй залёт jpnbrands).
+        if (page.author === author && withinDiscoveryWindow(g.code, nowMs) && g.kind === "reel") {
+          const base = posts.get(g.code) ?? mergeCandidate(undefined, { code: g.code, kind: g.kind, author, caption: null, hashtags: [], views: null, via: "author", topic: null, brandHint: null }, nowMs);
+          putPost(applyMeasurement({ ...base, found_via: union(base.found_via, ["author"]) }, page, nowMs));
+        }
+      });
+      return done === todo.length;
+    };
+    const short = () => eligible().length < MIN_BASELINE_LIKE_POSTS;
+    if (short() || profiles.has(author)) {
+      if (!(await takeProfileGrid())) return false;
+    }
+    if (short() && need.grid.length === 0) {
+      if (!(await takeCandidateGrid())) return false;
+    }
+    if (!(await fetchGrid())) return false;
+    let baseline = medianBaseline([...measured.values()], { nowMs, author });
+    if (baseline.likesPosts < MIN_BASELINE_LIKE_POSTS && !profileUsed) {
+      if (!(await takeProfileGrid())) return false;
+      if (!(await fetchGrid())) return false;
+      baseline = medianBaseline([...measured.values()], { nowMs, author });
+    }
+    account.likes_median = baseline.likesMedian;
+    account.comments_median = baseline.commentsMedian;
+    account.baseline_posts = baseline.likesPosts;
+    account.baseline_at = iso(nowMs);
+    return true;
+  };
+
   try {
     // Стартовые аккаунты — при первом прогоне (существующие не трогаем: вставка без перезаписи).
     if (seedsMissing.length) {
@@ -831,64 +1089,121 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       ensureAccount(c.author);
     };
 
-    // (а) Поиск: темы и Google — раз в 6 дней; профили наблюдаемых — по их сроку.
+    // (а) Поиск: темы и Google — раз в 6 дней (незавершённый — с места остановки); профили наблюдаемых — по их сроку.
     if (phase == null || phase === "discover") {
       const counters = { candidates: 0, newPosts: 0 };
+      stepCap = summary.allowed - summary.reserved;
       if (summary.due.discover) {
         summary.discover.ran = true;
-        const topics = activeTopics(state);
-        const known = new Set(topics.map((t) => t.slug).concat(state.deadTopics));
-        const newTopics: SeedTopic[] = [];
-        await pool(topics, parallel, stopped, async (topic) => {
+        summary.discover.resumed = state.pending != null;
+        const progress: DiscoverProgress = state.pending ?? { startedAt: iso(nowMs), topics: [], google: [], runs: 0, newTopics: [], withReels: 0 };
+        const doneTopics = new Set(progress.topics);
+        const doneGoogle = new Set(progress.google);
+        const topics = activeTopics(state, nowMs).filter((t) => !doneTopics.has(t.slug));
+        const known = new Set([...SEED_TOPICS, ...state.autoTopics, ...progress.newTopics].map((t) => t.slug).concat(Object.keys(state.deadTopics)));
+        const found: SeedTopic[] = [...progress.newTopics];
+        // Пустая тема с распознанной вёрсткой или «страницы нет» — промах; TOPIC_DEAD_MISSES подряд — мёртвая (перепроверка мёртвой
+        // снова пуста — ещё на 4 недели).
+        const missTopic = (slug: string) => {
+          const n = (state.topicMisses[slug] ?? 0) + 1;
+          state.topicMisses[slug] = n;
+          if (n >= TOPIC_DEAD_MISSES || state.deadTopics[slug] != null) {
+            if (state.deadTopics[slug] == null) summary.discover.newDeadTopics += 1;
+            state.deadTopics[slug] = iso(nowMs);
+          }
+        };
+        // Ответы без рилсов: сбой страницы (стена входа, новая вёрстка, временный сбой) — тему повторим, если тревога; «страницы нет» — промах.
+        const broken: string[] = [];
+        let gone = 0;
+        await pool(topics, parallel, stepStopped, async (topic) => {
           const r = await request(topicUrl(topic.slug), "markdown");
           if (!r) return;
-          if (!r.ok) return note(`тема ${topic.slug}: ${r.reason}`);
+          doneTopics.add(topic.slug);
+          if (!r.ok) {
+            if (r.kind === "failed") {
+              gone += 1;
+              missTopic(topic.slug);
+            } else broken.push(topic.slug);
+            return note(`тема ${topic.slug}: ${r.reason}`);
+          }
           summary.discover.topics += 1;
           const page = parseTopicPage(r.body);
           if (!page || page.cards.length === 0) {
-            if (!state.deadTopics.includes(topic.slug)) state.deadTopics.push(topic.slug);
+            // Пустая тема — только если Instagram сам пишет «0 reels». Стена входа, новая вёрстка или «4.3K reels» без карточек —
+            // сбой страницы, а не пустая тема: в мёртвые из-за него не пишем.
+            if (page?.recognized && page.total === 0) missTopic(topic.slug);
+            else {
+              summary.discover.topicsUnrecognized += 1;
+              broken.push(topic.slug);
+            }
             return;
           }
+          summary.discover.topicsWithReels += 1;
+          delete state.topicMisses[topic.slug];
+          delete state.deadTopics[topic.slug];
           for (const card of page.cards) {
             if (!withinDiscoveryWindow(card.code, nowMs)) continue;
             addCandidate({ code: card.code, kind: "reel", author: card.author, caption: card.caption, hashtags: card.hashtags, views: card.views, via: "topic", topic: topic.slug, brandHint: topic.brand }, counters);
           }
           for (const n of page.neighbors) {
             const brand = acceptNeighborTopic(n.slug);
-            if (brand && !known.has(n.slug) && !newTopics.some((t) => t.slug === n.slug)) newTopics.push({ slug: n.slug, brand });
+            if (brand && !known.has(n.slug) && !found.some((t) => t.slug === n.slug)) found.push({ slug: n.slug, brand });
           }
         });
-        for (const brand of ["zara", "uniqlo"] as const) {
-          await pool(GOOGLE_QUERIES[brand], parallel, stopped, async (template) => {
-            const r = await request(googleSearchUrl(googleQuery(template, nowMs)), "parsed_light");
-            if (!r) return;
-            if (!r.ok) return note(`Google «${template}»: ${r.reason}`);
-            summary.discover.google += 1;
-            for (const g of parseGoogleReels(r.body)) {
-              if (!withinDiscoveryWindow(g.code, nowMs)) continue;
-              addCandidate({ code: g.code, kind: g.kind, author: null, caption: null, hashtags: [], views: null, via: "google", topic: null, brandHint: brand }, counters);
-            }
-          });
+        await pool(GOOGLE_KEYS.filter((q) => !doneGoogle.has(q.key)), parallel, stepStopped, async ({ brand, template, key }) => {
+          const r = await request(googleSearchUrl(googleQuery(template, nowMs)), "parsed_light");
+          if (!r) return;
+          doneGoogle.add(key);
+          if (!r.ok) return note(`Google «${template}»: ${r.reason}`);
+          summary.discover.google += 1;
+          for (const g of parseGoogleReels(r.body)) {
+            if (!withinDiscoveryWindow(g.code, nowMs)) continue;
+            addCandidate({ code: g.code, kind: g.kind, author: null, caption: null, hashtags: [], views: null, via: "google", topic: null, brandHint: brand }, counters);
+          }
+        });
+        if (summary.discover.topicsUnrecognized > 0) note(`тем без распознанной вёрстки: ${summary.discover.topicsUnrecognized} (стена входа или новая вёрстка) — в мёртвые не записаны`);
+        const withReels = progress.withReels + summary.discover.topicsWithReels;
+        // Ни одна тема поиска не дала рилсов, а сбоев и «страницы нет» не меньше трёх — разбор сломан или стена входа у всех: тревога,
+        // поиск не засчитываем, темы со сбоем — заново следующим прогоном.
+        const noReels = withReels === 0 && broken.length + gone >= 3;
+        if (noReels) {
+          alarm(`ни одна тема не дала рилсов: без распознанной вёрстки или со сбоем — ${broken.length}, «страницы нет» — ${gone} — вёрстка Instagram изменилась или стена входа`);
+          for (const slug of broken) doneTopics.delete(slug);
         }
-        const added = newTopics.slice(0, NEW_TOPICS_PER_DISCOVER);
-        summary.discover.newTopics = added.length;
-        state.autoTopics = [...state.autoTopics, ...added].slice(-AUTO_TOPICS_MAX);
-        // Метку поиска ставим, только если поиск дошёл до конца: остановка по деньгам не должна отложить его на 6 дней.
-        if (!stopped()) state.discoveredAt = iso(nowMs);
+        const remainingTopics = activeTopics(state, nowMs).filter((t) => !doneTopics.has(t.slug)).length;
+        const remainingGoogle = GOOGLE_KEYS.filter((q) => !doneGoogle.has(q.key)).length;
+        if (!noReels && remainingTopics === 0 && remainingGoogle === 0) {
+          summary.discover.complete = true;
+          const added = found.slice(0, NEW_TOPICS_PER_DISCOVER);
+          summary.discover.newTopics = added.length;
+          state.autoTopics = [...state.autoTopics, ...added].slice(-AUTO_TOPICS_MAX);
+          state.discoveredAt = iso(nowMs);
+          state.pending = null;
+        } else {
+          // Остановка (потолок, время, деньги) или тревога: пройденное запоминаем — следующий прогон продолжит, а не начнёт заново.
+          state.pending = { startedAt: progress.startedAt, topics: [...doneTopics], google: [...doneGoogle], runs: progress.runs + 1, newTopics: found, withReels };
+          if (state.pending.runs >= DISCOVER_STALL_RUNS) {
+            alarm(`поиск не завершён прогонов подряд: ${state.pending.runs} (осталось тем: ${remainingTopics}, запросов Google: ${remainingGoogle}) — мал потолок запросов прогона или сбои`);
+          }
+        }
         if (stateRow) await saveState(db, stateRow.capabilities, state);
       }
       const dueProfiles = [...accounts.values()].filter((a) => profileDue(a, nowMs));
-      await pool(dueProfiles, parallel, stopped, async (account) => {
+      await pool(dueProfiles, parallel, stepStopped, async (account) => {
         const r = await request(profileUrl(account.handle), "markdown");
         if (!r) return;
         dirtyAccounts.add(account.handle);
         if (!r.ok) {
           account.last_error = r.reason;
           // Окончательный отказ (профиля нет) — следующая попытка через срок, а не каждый день; временный — завтра.
-          if (r.kind === "failed") account.last_checked_at = iso(nowMs);
+          if (r.kind === "failed") {
+            account.last_checked_at = iso(nowMs);
+            profiles.set(account.handle, null);
+          }
           return note(`профиль ${account.handle}: ${r.reason}`);
         }
         const profile = parseProfilePage(r.body);
+        profiles.set(account.handle, profile);
         if (!profile) {
           account.last_error = "профиль не открылся (закрыт или удалён)";
           account.last_checked_at = iso(nowMs);
@@ -905,6 +1220,8 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       });
       summary.discover.candidates = counters.candidates;
       summary.discover.newPosts = counters.newPosts;
+      stepCap = Number.POSITIVE_INFINITY;
+      stepCut = false;
       await flush();
     }
 
@@ -914,6 +1231,9 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       const due = [...posts.values()]
         .filter((p) => !p.hidden_at && !excluded(p.account_handle) && measureDue({ publishedAtMs: ms(p.published_at), checks: p.checks, lastCheckedAtMs: p.last_checked_at ? ms(p.last_checked_at) : null }, nowMs))
         .sort((a, b) => a.checks - b.checks || (b.views ?? -1) - (a.views ?? -1) || ms(b.published_at) - ms(a.published_at));
+      let parsed = 0;
+      let desktopWithComments = 0;
+      let desktopNoBodies = 0;
       await pool(due, parallel, stopped, async (post) => {
         const r = await request(post.url, "markdown");
         if (!r) return;
@@ -922,80 +1242,88 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
           putPost({ ...post, last_error: r.reason, checks: r.kind === "failed" ? post.checks + 1 : post.checks, last_checked_at: r.kind === "failed" ? iso(nowMs) : post.last_checked_at });
           return;
         }
-        const page = parseReelPage(r.body);
+        let page = parseReelPage(r.body);
         if (!page) {
           summary.notFound += 1;
           putPost({ ...post, last_error: "страницы рилса нет (удалён или закрыт)", checks: post.checks + 1, last_checked_at: iso(nowMs) });
           return;
         }
+        // Мобильная вёрстка (Bright Data отдаёт её вперемешку с десктопной): тел комментариев нет, подпись обрезана — ещё один
+        // запрос за десктопной, если от комментариев (Б) или номера в подписи что-то зависит.
+        if (page.layout === "mobile" && ((page.comments ?? 0) >= COMMENTS_MIN || page.captionTruncated)) {
+          const again = await request(post.url, "markdown", false);
+          const second = again && again.ok ? parseReelPage(again.body) : null;
+          if (second && second.code === page.code && second.layout === "desktop" && second.countsFound) page = second;
+        }
         if (excluded(page.author)) {
           putPost({ ...post, account_handle: page.author, last_error: "автор исключён", checks: post.checks + 1, last_checked_at: iso(nowMs) });
           return;
         }
+        parsed += 1;
+        if (!page.countsFound) {
+          // Рилс есть, а блока «Like / Comment / Share» нет — вёрстка изменилась: числа неизвестны (не 0), замер не засчитан.
+          summary.layoutFailures += 1;
+          putPost({ ...post, account_handle: page.author ?? post.account_handle, last_error: "не распознан блок счётчиков (вёрстка Instagram изменилась) — замер не засчитан" });
+          return;
+        }
+        // Комментариев на (Б) хватает, а их тел не видно — намерение не измерено (не «нет»). Мобильная вёрстка (повтор за десктопной
+        // не помог) — замер не засчитываем, перемерим следующим прогоном; десктоп без тел — засчитываем, а при массовом сбое — тревога.
+        const intentMissing = (page.comments ?? 0) >= COMMENTS_MIN && page.visibleComments.length === 0 && post.intent_total == null;
+        if (intentMissing) summary.intentUnmeasured += 1;
+        if (page.layout === "desktop" && (page.comments ?? 0) >= COMMENTS_MIN) {
+          desktopWithComments += 1;
+          if (page.visibleComments.length === 0) desktopNoBodies += 1;
+        }
         summary.measured += 1;
         measuredPages.set(post.code, page);
-        putPost(applyMeasurement(post, page, nowMs));
+        putPost(applyMeasurement(post, page, nowMs, !intentMissing ? {} : page.layout === "mobile"
+          ? { countCheck: false, note: "мобильная вёрстка: тела комментариев не видны — намерение не измерено, перемерим" }
+          : { note: "тела комментариев не распознаны — намерение не измерено" }));
         ensureAccount(page.author);
       });
+      if (summary.layoutFailures >= LAYOUT_ALARM_MIN && summary.layoutFailures * 2 >= parsed) {
+        alarm(`у ${summary.layoutFailures} из ${parsed} рилсов не распознан блок счётчиков — вёрстка Instagram изменилась, замеры не засчитаны`);
+      }
+      if (desktopNoBodies >= LAYOUT_ALARM_MIN && desktopNoBodies * 2 >= desktopWithComments) {
+        alarm(`у ${desktopNoBodies} из ${desktopWithComments} рилсов с комментариями не распознаны тела комментариев — условие Б не измеряется`);
+      }
 
-      // База автора: только ради кандидатов с шансом, не больше N авторов за прогон, если база старше 7 дней.
-      const byAuthor = new Map<string, { posts: PostRow[]; grid: GridPost[] }>();
+      // База автора: сначала авторы рилсов с шансом, что ждут базы (вердикта у них нет), затем устаревшие базы замеренных сейчас;
+      // не больше N авторов за прогон — остальные досчитаются в следующих.
+      const needs = new Map<string, BaselineNeed>();
+      const need = (author: string): BaselineNeed => {
+        let entry = needs.get(author);
+        if (!entry) {
+          entry = { posts: [], grid: [], awaiting: !hasBaseline(accounts.get(author)) };
+          needs.set(author, entry);
+        }
+        return entry;
+      };
       for (const [code, page] of measuredPages) {
         const post = posts.get(code);
         const author = post?.account_handle;
-        if (!post || !author || !passesPrefilter(post)) continue;
+        if (!post || !author || excluded(author) || !passesPrefilter(post)) continue;
         const account = accounts.get(author);
         if (account?.baseline_at && nowMs - ms(account.baseline_at) < BASELINE_FRESH_DAYS * DAY_MS) continue;
-        const entry = byAuthor.get(author) ?? { posts: [], grid: [] };
-        entry.posts.push(post);
+        const entry = need(author);
+        if (!entry.posts.some((p) => p.code === code)) entry.posts.push(post);
         entry.grid.push(...page.otherPosts.filter((g) => g.owner === author));
-        byAuthor.set(author, entry);
       }
-      const authors = [...byAuthor.entries()]
-        .sort((a, b) => Math.max(...b[1].posts.map((p) => p.likes ?? 0)) - Math.max(...a[1].posts.map((p) => p.likes ?? 0)))
+      for (const post of posts.values()) {
+        const author = post.account_handle;
+        if (!author || excluded(author) || !awaitsBaseline(post, accounts.get(author), nowMs)) continue;
+        const entry = need(author);
+        if (!entry.posts.some((p) => p.code === post.code)) entry.posts.push(post);
+      }
+      const topLikes = (entry: BaselineNeed) => Math.max(0, ...entry.posts.map((p) => p.likes ?? 0));
+      const queue = [...needs.entries()]
+        .sort((a, b) => Number(b[1].awaiting) - Number(a[1].awaiting) || topLikes(b[1]) - topLikes(a[1]))
         .slice(0, config.maxBaselineAuthorsPerRun);
-      for (const [author, entry] of authors) {
+      for (const [author, entry] of queue) {
         if (stopped()) break;
         const account = accounts.get(author);
         if (!account) continue;
-        const candidates = new Set(entry.posts.map((p) => p.code));
-        const unique = new Map<string, GridPost>();
-        for (const g of entry.grid) if (!unique.has(g.code)) unique.set(g.code, g);
-        const gridPosts = [...unique.values()]
-          .filter((g) => !g.pinned && !candidates.has(g.code) && g.publishedAt && nowMs - ms(g.publishedAt) >= MIN_AGE_MS)
-          .sort((a, b) => ms(b.publishedAt) - ms(a.publishedAt))
-          .slice(0, BASELINE_POSTS);
-        const baselinePosts: BaselinePost[] = [];
-        await pool(gridPosts, parallel, stopped, async (g) => {
-          const stored = posts.get(g.code);
-          // Уже мерили за неделю — берём из базы, страницу не качаем.
-          if (stored && stored.checks > 0 && stored.last_checked_at && nowMs - ms(stored.last_checked_at) < BASELINE_FRESH_DAYS * DAY_MS) {
-            baselinePosts.push({ code: g.code, publishedAtMs: ms(g.publishedAt), likes: stored.likes_hidden ? null : stored.likes, comments: stored.comments, owner: author });
-            return;
-          }
-          const r = await request(postUrl(g.code, g.kind), "markdown");
-          if (!r || !r.ok) return;
-          const page = parseReelPage(r.body);
-          if (!page) return;
-          baselinePosts.push({ code: g.code, publishedAtMs: ms(g.publishedAt), likes: page.likes, comments: page.comments, owner: page.author ?? author });
-          // Свежий пост автора из сетки — сам кандидат (так нашёлся второй залёт jpnbrands).
-          if (page.author === author && withinDiscoveryWindow(g.code, nowMs) && g.kind === "reel") {
-            const base = posts.get(g.code) ?? mergeCandidate(undefined, { code: g.code, kind: g.kind, author, caption: null, hashtags: [], views: null, via: "author", topic: null, brandHint: null }, nowMs);
-            putPost(applyMeasurement({ ...base, found_via: union(base.found_via, ["author"]) }, page, nowMs));
-          }
-        });
-        if (stopped() && baselinePosts.length < gridPosts.length) break;
-        const baseline = medianBaseline(baselinePosts, { nowMs, author });
-        // Мало постов с видимыми лайками — запасное правило зовёт подписчиков: берём их с профиля, если ещё не знаем.
-        if (baseline.likesPosts < MIN_BASELINE_LIKE_POSTS && account.followers == null) {
-          const r = await request(profileUrl(author), "markdown");
-          const profile = r && r.ok ? parseProfilePage(r.body) : null;
-          if (profile?.followers != null) account.followers = profile.followers;
-        }
-        account.likes_median = baseline.likesMedian;
-        account.comments_median = baseline.commentsMedian;
-        account.baseline_posts = baseline.likesPosts;
-        account.baseline_at = iso(nowMs);
+        if (!(await computeBaseline(author, account, entry))) continue;
         dirtyAccounts.add(author);
         summary.baselines += 1;
       }
@@ -1004,10 +1332,12 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     // Вердикт — по сохранённым числам и текущей базе, без запросов.
     for (const post of [...posts.values()]) {
       if (!inJudgeWindow(post, nowMs)) continue;
-      const next = judgePost(post, post.account_handle ? accounts.get(post.account_handle) : undefined, nowMs);
-      if (next !== post && (next.verdict !== post.verdict || next.verdict_preliminary !== post.verdict_preliminary || next.likes_ratio !== post.likes_ratio || next.comments_ratio !== post.comments_ratio || next.rule_version !== post.rule_version)) putPost(next);
+      const account = post.account_handle ? accounts.get(post.account_handle) : undefined;
+      const next = judgePost(post, account, nowMs);
+      if (next !== post && (next.verdict !== post.verdict || next.verdict_preliminary !== post.verdict_preliminary || next.likes_ratio !== post.likes_ratio || next.comments_ratio !== post.comments_ratio || next.rule_version !== post.rule_version || next.history !== post.history)) putPost(next);
       const v = (next.verdict ?? "") as string;
       if (v === "strong" || v === "viral" || v === "normal") summary.judged[v] += 1;
+      if (next.verdict == null && !excluded(next.account_handle) && awaitsBaseline(next, account, nowMs)) summary.awaitingBaseline += 1;
     }
     await flush();
 
@@ -1033,9 +1363,10 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
         catalog ??= await loadCatalogIndex(db);
         const hit = post.refs.map((key) => catalogHitFor(catalog as CatalogIndex, key)).find((h): h is CatalogHit => Boolean(h));
         if (hit) {
+          // Раздел — по модели каталога, а не по подписи: «#baggyjeans» в подписи куртку в «Сумки» не уводит.
           putPost({
             ...post, match_status: "catalog", match_model_key: hit.modelKey, match_url: hit.url, match_title: hit.title, match_image: hit.image, match_gender: "women",
-            match_checked_at: iso(nowMs), direction: post.direction ?? hit.direction, last_error: null,
+            match_checked_at: iso(nowMs), direction: hit.direction ?? post.direction, last_error: null,
           });
           count("catalog");
           continue;
@@ -1064,7 +1395,8 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
           putPost({
             ...post, match_status: result.status, match_model_key: null, match_url: result.url, match_title: result.card.name, match_image: result.card.image,
             match_gender: result.card.gender, match_checked_at: iso(nowMs), last_error: null,
-            direction: post.direction ?? detectDirection({ title: result.card.name }),
+            // Название карточки бренда с понятным разделом («… Jacket», «… Bag») сильнее подписи.
+            direction: detectDirection({ title: result.card.name }) ?? post.direction,
           });
           count(result.status);
         } else if (stopped() || transient) {
@@ -1108,6 +1440,27 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     }
   }
   return summary;
+}
+
+/**
+ * Строка журнала прогона для сторожа. «error»: остановка по деньгам, ключу или зоне, все запросы упали, или тревога (вёрстка
+ * Instagram изменилась, поиск не завершается) — даже если запросы прошли. «partial»: потолок, время или поиск продолжится завтра.
+ */
+export function socialRunLog(summary: SocialRunSummary): { status: "ok" | "partial" | "error"; note: string | null } {
+  const hardStop = summary.stoppedBy === "billing" || summary.stoppedBy === "auth" || summary.stoppedBy === "config";
+  const nothingWorked = summary.requests > 0 && summary.failedRequests >= summary.requests;
+  const alarmed = summary.alarms.length > 0;
+  const discoverUnfinished = summary.discover.ran && !summary.discover.complete;
+  const unfinished = summary.stoppedBy === "budget" || summary.stoppedBy === "time" || discoverUnfinished;
+  const status = hardStop || nothingWorked || alarmed ? "error" : unfinished ? "partial" : "ok";
+  const note = [
+    alarmed ? summary.alarms.join("; ") : null,
+    discoverUnfinished && !alarmed ? "поиск не дошёл до конца — продолжим в следующий прогон" : null,
+    summary.stopMessage,
+    summary.failedRequests > 0 ? `сбоев страниц: ${summary.failedRequests} из ${summary.requests}` : null,
+    summary.errors.length ? summary.errors.slice(0, 3).join("; ") : null,
+  ].filter(Boolean).join(". ");
+  return { status, note: note || null };
 }
 
 // ---------------------------------------------------------------------------
@@ -1250,7 +1603,7 @@ export async function loadViralReels(db: SupabaseClient, options: { direction: A
       brand: p.brand,
       direction: options.direction,
       captionExcerpt: p.caption_excerpt,
-      hashtags: p.hashtags,
+      hashtags: cleanHashtags(p.hashtags),
       refs: p.refs,
       verdict,
       preliminary: p.verdict_preliminary,

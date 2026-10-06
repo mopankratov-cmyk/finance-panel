@@ -5,7 +5,7 @@ import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
 import type { SocialEvidence } from "./evidence";
 import { DEFAULT_FEED_PERIOD, nextSocialRun, pickSocialDigest, SOCIAL_JOB, type FeedPeriod, type SocialDigest, type SocialDigestPost } from "./socialFeed";
-import { profileUrl, SOCIAL_PLATFORM, type AccountKind } from "./socialReels";
+import { profileUrl, SOCIAL_PLATFORM, socialRefKeyFromUrl, type AccountKind } from "./socialReels";
 import { loadAccounts, loadViralReels, SOCIAL_MIGRATION, type SocialReelCard } from "./socialReelsStore";
 
 /**
@@ -298,8 +298,9 @@ const isSocialBrandUrl = (url: string | null | undefined) => {
 };
 
 /**
- * Рилсы, привязанные к находке: по модели каталога (находка отобрана из каталога Zara/Uniqlo) или по карточке бренда (находка
- * добавлена ссылкой на карточку, к которой привязан рилс). null — таблиц нет: в карточке остаётся прежняя заглушка.
+ * Рилсы, привязанные к находке: по модели каталога (находка отобрана из каталога Zara/Uniqlo) или по номеру модели из адреса карточки
+ * бренда (находка добавлена ссылкой — «Добавить в находки» из ленты). Адрес находки хранится нормализованным (без www, Uniqlo — без
+ * витрины), у рилса — как открыли: строки адресов не совпадут, номер совпадёт. null — таблиц нет: в карточке прежняя заглушка.
  */
 export async function loadModelSocial(db: SupabaseClient, ref: { id: string; url: string | null; brand: string | null }): Promise<SocialEvidence | null> {
   const empty: SocialEvidence = { reels: 0, authors: 0, strong: false, preliminaryOnly: false, topUrl: null, topViews: null, topLikes: null, lastCheckedAt: null, ruleVersion: null };
@@ -312,6 +313,8 @@ export async function loadModelSocial(db: SupabaseClient, ref: { id: string; url
     if (keys.length === 0 && !url) return isSocialBrand(ref.brand) ? empty : { ...empty, outOfScope: true };
     const reads: Array<PromiseLike<{ data: unknown; error: unknown }>> = [];
     if (keys.length) reads.push(db.from(POSTS).select(MODEL_POST_COLUMNS).eq("platform", SOCIAL_PLATFORM).in("match_model_key", keys));
+    const refKey = socialRefKeyFromUrl(url);
+    if (refKey) reads.push(db.from(POSTS).select(MODEL_POST_COLUMNS).eq("platform", SOCIAL_PLATFORM).contains("refs", [refKey]));
     if (url) reads.push(db.from(POSTS).select(MODEL_POST_COLUMNS).eq("platform", SOCIAL_PLATFORM).eq("match_url", url));
     const results = await Promise.all(reads);
     const byCode = new Map<string, ModelPost>();

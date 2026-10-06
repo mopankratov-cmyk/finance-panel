@@ -206,15 +206,25 @@ export function firstMeasuredAt(post: Pick<SocialDigestPost, "history" | "first_
 }
 
 /**
- * Новые «залёты» недели [from, to): «залетает» или «сильный залёт», впервые замерены за эту неделю (рилс не повторяется из недели в
- * неделю), не скрыт, не мужское и не детское, автор не исключён, бренд и раздел известны. Сначала сильные, затем по просмотрам и лайкам.
+ * Когда рилс впервые «залетел»: точка истории с отметкой вердикта (замер 3-го или 7-го дня, запоздалая база автора). Отметки нет
+ * (записи до неё) — первый замер.
+ */
+export function firstViralAt(post: Pick<SocialDigestPost, "history" | "first_seen_at">): string | null {
+  const mark = (post.history ?? []).find((h) => h && (h.verdict === "viral" || h.verdict === "strong"));
+  return mark?.at ?? firstMeasuredAt(post);
+}
+
+/**
+ * Новые «залёты» недели [from, to): «залетает» или «сильный залёт», ВПЕРВЫЕ получивший этот вердикт за эту неделю (рилс не
+ * повторяется из недели в неделю, а «залетевший» на повторном замере не теряется), не скрыт, не мужское и не детское, автор не
+ * исключён, бренд и раздел известны. Сначала сильные, затем по просмотрам и лайкам.
  */
 export function pickSocialDigest(posts: readonly SocialDigestPost[], fromMs: number, toMs: number, excluded: ReadonlySet<string>, limit = 5): SocialDigest {
   const fresh = posts.filter((p) => {
     if (p.verdict !== "strong" && p.verdict !== "viral") return false;
     if (p.hidden_at || p.match_status === "men" || p.match_status === "kids") return false;
     if (!p.brand || !p.direction || (p.account_handle && excluded.has(p.account_handle))) return false;
-    const at = Date.parse(firstMeasuredAt(p) ?? "");
+    const at = Date.parse(firstViralAt(p) ?? "");
     return Number.isFinite(at) && at >= fromMs && at < toMs;
   });
   fresh.sort((a, b) => (a.verdict === b.verdict ? 0 : a.verdict === "strong" ? -1 : 1) || (b.views ?? -1) - (a.views ?? -1) || (b.likes ?? -1) - (a.likes ?? -1) || a.code.localeCompare(b.code));

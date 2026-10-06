@@ -4,9 +4,11 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { googleSearchUrl, UnlockerStopError, type UnlockerFormat, type UnlockerResult } from "../lib/assortment/brightdataUnlocker.ts";
-import { GOOGLE_QUERIES, googleQuery, profileUrl, SEED_ACCOUNTS, SEED_TOPICS, socialConfig, topicUrl, uniqloCardUrls, type SocialConfig } from "../lib/assortment/socialReels.ts";
+import { pickSocialDigest } from "../lib/assortment/socialFeed.ts";
+import { GOOGLE_QUERIES, googleQuery, HISTORY_LIMIT, parseReelPage, profileUrl, SEED_ACCOUNTS, SEED_TOPICS, shortcodeToDate, socialConfig, topicUrl, uniqloCardUrls, type SocialConfig } from "../lib/assortment/socialReels.ts";
 import {
-  countAppearances, loadPosts, loadViralReels, matchDue, mergeCandidate, nextAccountStatus, readSocialState, runSocialReels, SOCIAL_USAGE_KIND, type PostRow, type RunSocialOptions,
+  activeTopics, applyMeasurement, countAppearances, judgePost, loadPosts, loadViralReels, matchDue, mergeCandidate, nextAccountStatus, pushHistory, readSocialState, runSocialReels,
+  SOCIAL_USAGE_KIND, socialRunLog, type AccountRow, type PostRow, type RunSocialOptions,
 } from "../lib/assortment/socialReelsStore.ts";
 
 /**
@@ -203,6 +205,12 @@ const allSeeds = (status: "watched" | "seen" = "watched"): Row[] => SEED_ACCOUNT
   baseline_posts: null, baseline_at: null, appearances: 0, first_seen_at: iso(NOW - 10 * DAY), last_checked_at: iso(NOW - DAY), last_error: null,
 }));
 
+/** Стартовые аккаунты, у части — посчитанная база автора (вердикт без базы не выносится). */
+const seedsWithBaseline = (bases: Record<string, { likes: number; comments: number; posts?: number }>): Row[] => allSeeds().map((a) => {
+  const b = bases[a.handle as string];
+  return b ? { ...a, likes_median: b.likes, comments_median: b.comments, baseline_posts: b.posts ?? 9, baseline_at: iso(NOW - DAY) } : a;
+});
+
 // --- без миграции, без ключа, выключено ---
 
 test("Без миграции: прогон тихо выходит с причиной и не тратит ни одного запроса; лента — null (вкладку прячем)", async () => {
@@ -391,8 +399,8 @@ test("Привязка: номер Zara есть в каталоге — мод�
 });
 
 test("Привязка Uniqlo вне каталога: карточка на сайте бренда (ES) — название, фото image.uniqlo.com, пол «женское»", async () => {
-  const p = post("DdVk7eRtLMC", { published_at: "2026-09-16T05:51:52.572Z", account_handle: "jpnbrands", likes: 6400, comments: 176, checks: 1, verdict: "strong", refs: ["uniqlo:487882"], brand: "uniqlo", direction: "jackets" });
-  const { db, tables } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: [p] } });
+  const p = post("DdVk7eRtLMC", { published_at: "2026-09-16T05:51:52.572Z", account_handle: "jpnbrands", likes: 6400, comments: 176, intent_count: 11, intent_total: 15, checks: 1, verdict: "strong", refs: ["uniqlo:487882"], brand: "uniqlo", direction: "jackets" });
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: seedsWithBaseline({ jpnbrands: { likes: 236, comments: 5 } }), assortment_social_post: [p] } });
   const web = fakeWeb({ [uniqloCardUrls("487882")[0]]: fixture("uniqlo-card-E487882.md") });
   const out = await run(db, web, { phase: "match" });
   assert.equal(out.matched.brand_site, 1);
@@ -403,7 +411,7 @@ test("Привязка Uniqlo вне каталога: карточка на с�
 });
 
 test("Привязка: мужская карточка — «men» и в ленте нет; ES не открылась — пробуем UK; временный сбой — «pending»; без номера — «no_ref» без запроса", async () => {
-  const base = { published_at: iso(NOW - 5 * DAY), account_handle: "uniqlousa", likes: 9000, comments: 40, checks: 1, verdict: "viral", brand: "uniqlo", direction: "jackets" } as const;
+  const base = { published_at: iso(NOW - 5 * DAY), account_handle: "uniqlousa", likes: 9000, comments: 40, intent_count: 1, intent_total: 10, checks: 1, verdict: "viral", brand: "uniqlo", direction: "jackets" } as const;
   const men = fixture("uniqlo-card-E487882.md").replace("Women's Hybrid", "Men's Hybrid").replace(/\n(\s*)WOMEN\n/, "\n$1MEN\n");
   const posts = [
     post("DdMEN111111", { ...base, refs: ["uniqlo:487882"] }),
@@ -412,7 +420,7 @@ test("Привязка: мужская карточка — «men» и в лен
     post("DdNOREF4444", { ...base, refs: [] }),
   ];
   const [es, uk] = uniqloCardUrls("412345");
-  const { db, tables } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: posts } });
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: seedsWithBaseline({ uniqlousa: { likes: 800, comments: 20 } }), assortment_social_post: posts } });
   const web = fakeWeb({
     [uniqloCardUrls("487882")[0]]: men,
     [es]: "# Something\n\nProduct not found",
@@ -510,7 +518,7 @@ test("Поиск: темы и Google — только рилсы моложе 21
     [topicUrl("zara-viral-jacket")]: fixture("topic-zara-viral-jacket.md"),
     [topicUrl("zara-bag")]: fixture("topic-zara-bag.md"),
     [topicUrl("uniqlo-jacket")]: fixture("topic-uniqlo-jacket.md"),
-    [topicUrl("zara-jackets")]: " Instagram \n\n# Zara Jackets\n",
+    [topicUrl("zara-jackets")]: "   Zara Jackets • 0 reels on Instagram   \n\n# Zara Jackets\n",
     [googleSearchUrl(googleQuery(GOOGLE_QUERIES.zara[0], NOW))]: fixture("google-reel-zara-ref.json"),
     [googleSearchUrl(googleQuery(GOOGLE_QUERIES.uniqlo[0], NOW))]: fixture("google-reel-uniqlo-jacket-gl-us.json"),
     [profileUrl("jpnbrands")]: fixture("profile-jpnbrands.md"),
@@ -540,7 +548,9 @@ test("Поиск: темы и Google — только рилсы моложе 21
   assert.ok(state.autoTopics.length > 0 && state.autoTopics.length <= 10, `новых тем ${state.autoTopics.length}`);
   assert.ok(state.autoTopics.every((t) => /zara|uniqlo/.test(t.slug)));
   assert.ok(!state.autoTopics.some((t) => t.slug === "zara-tote-bag-price" && false));
-  assert.ok(state.deadTopics.includes("zara-jackets"), "пустая тема — в мёртвые");
+  assert.equal(state.topicMisses["zara-jackets"], 1, "пустая тема («0 reels») — промах");
+  assert.equal(state.deadTopics["zara-jackets"], undefined, "после одного пустого ответа тема ещё не мёртвая");
+  assert.equal(state.pending, null, "поиск дошёл до конца");
   // Тот же день, обычный прогон: поиск не повторяется (раз в 6 дней), темы не качаются.
   const again = fakeWeb(pages);
   await run(db, again, {});
@@ -650,4 +660,307 @@ test("Крон: GET, checkCronAuth, журнал под именем сторо�
   assert.deepEqual(vercel.crons.filter((c) => c.path.startsWith("/api/sync/assortment-social")), [{ path: "/api/sync/assortment-social", schedule: "20 6 * * *" }]);
   const store = readFileSync(join(root, "lib/assortment/socialReelsStore.ts"), "utf8");
   assert.doesNotMatch(store, /\.limit\(/, "чтение — листанием, не .limit()");
+});
+
+// --- по ревью: база автора, поиск, вёрстка, сводка ---
+
+const IG_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+/** Код рилса с заданной датой публикации (обратное к shortcodeToDate): 8 знаков времени + 3 знака «шарда». */
+function codeAt(msTime: number, salt = 0): string {
+  let n = (msTime - 1314220021721) * 32;
+  let head = "";
+  while (n > 0) {
+    head = IG_ALPHABET[n % 64] + head;
+    n = Math.floor(n / 64);
+  }
+  const code = head + [salt % 64, Math.floor(salt / 64) % 64, 7].map((i) => IG_ALPHABET[i]).join("");
+  assert.ok(Math.abs((shortcodeToDate(code)?.getTime() ?? 0) - msTime) < 1000, `codeAt ${code}`);
+  return code;
+}
+const gridDate = (msTime: number) => new Date(msTime).toLocaleDateString("en-US", { month: "long", day: "2-digit", year: "numeric", timeZone: "UTC" });
+
+/** Автор с кандидатом и обычными постами в сетке «More posts from»: страницы всех постов, строка кандидата для базы. */
+function authorPages(handle: string, salt: number, o: { likes: number; comments: number; candLikes: number; candComments: number; normal?: number; pinned?: number; young?: number; commentTexts?: string[] }) {
+  const pages: Record<string, Page> = {};
+  const cand = codeAt(NOW - 5 * DAY, salt);
+  const grid: string[] = [];
+  const add = (code: string, t: number) => {
+    grid.push(gridCard(handle, code, "reel", gridDate(t)));
+    pages[reelUrl(code)] = reelPage({ code, author: handle, likes: o.likes, comments: o.comments });
+  };
+  for (let i = 0; i < (o.pinned ?? 0); i += 1) add(codeAt(NOW - (200 + i) * DAY, salt + 100 + i), NOW - (200 + i) * DAY);
+  for (let i = 0; i < (o.young ?? 0); i += 1) add(codeAt(NOW - (0.5 + i * 0.2) * DAY, salt + 200 + i), NOW - (0.5 + i * 0.2) * DAY);
+  for (let i = 0; i < (o.normal ?? 9); i += 1) add(codeAt(NOW - (6 + i) * DAY, salt + 300 + i), NOW - (6 + i) * DAY);
+  pages[reelUrl(cand)] = reelPage({ code: cand, author: handle, likes: o.candLikes, comments: o.candComments, caption: "Uniqlo puffer jacket", commentTexts: o.commentTexts ?? ["so nice", "love it", "wow", "beautiful"], grid: grid.join("\n\n") });
+  const row = post(cand, { published_at: iso(NOW - 5 * DAY), account_handle: handle, brand: "uniqlo", direction: "jackets", first_seen_at: iso(NOW - 2 * DAY), found_via: ["profile"] });
+  return { pages, row, cand, grid };
+}
+
+test("Базы автора нет — вердикта нет (не запасное правило); автор за потолком баз досчитывается следующим прогоном без нового замера — по сетке со страницы рилса", async () => {
+  const big = ["big.a", "big.b", "big.c", "big.d"].map((h, i) => authorPages(h, 10 + i * 1000, { likes: 20_000, comments: 3, candLikes: 21_000, candComments: 50 }));
+  // Настоящий залёт мелкого автора: 2 000 лайков при медиане 50 (40×), подписчики неизвестны, профиль не открылся.
+  const small = authorPages("small.stylist", 9000, { likes: 50, comments: 1, candLikes: 2000, candComments: 10 });
+  const all = [...big, small];
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: all.map((a) => a.row) } });
+  const pages = Object.assign({}, ...all.map((a) => a.pages)) as Record<string, Page>;
+  const first = await run(db, fakeWeb(pages), { phase: "measure" });
+  assert.equal(first.baselines, 4, "потолок — 4 автора за прогон");
+  const by = (code: string) => tables.assortment_social_post.find((r) => r.code === code)!;
+  for (const b of big) assert.equal(by(b.cand).verdict, "normal", "крупный аккаунт с базой: 21 000 при медиане 20 000 — «обычно»");
+  assert.deepEqual([by(small.cand).verdict, by(small.cand).verdict_preliminary], [null, false], "без базы — не «обычно» по запасному правилу, а «ждёт базы»");
+  assert.equal(first.awaitingBaseline, 1);
+  assert.equal(socialRunLog(first).status, "ok");
+  // Назавтра рилс не мерим (следующий замер — на 7-й день), а базу досчитываем: профиль не открылся — сетка со страницы рилса.
+  const web = fakeWeb(pages);
+  const second = await run(db, web, { phase: "measure", now: () => NOW + DAY });
+  assert.equal(second.baselines, 1);
+  assert.deepEqual([by(small.cand).checks, by(small.cand).last_checked_at], [1, iso(NOW)], "страница рилса — ради сетки, замер не засчитан повторно");
+  assert.ok(web.calls.includes(profileUrl("small.stylist")) && web.calls.includes(reelUrl(small.cand)));
+  const acc = tables.assortment_social_account.find((a) => a.handle === "small.stylist")!;
+  assert.deepEqual([acc.baseline_posts, acc.likes_median], [9, 50]);
+  assert.deepEqual([by(small.cand).verdict, by(small.cand).verdict_preliminary, by(small.cand).checks], ["viral", false, 1], "основное правило: 40× медианы");
+});
+
+test("Очередь баз: сначала авторы, чьи рилсы ждут базы (вердикта нет), а не самые залайканные с устаревшей базой", async () => {
+  const stale = authorPages("stale.big", 20, { likes: 20_000, comments: 3, candLikes: 30_000, candComments: 50 });
+  const fresh = authorPages("new.small", 4000, { likes: 50, comments: 1, candLikes: 2000, candComments: 10 });
+  const accounts = [...allSeeds(), { platform: "instagram", handle: "stale.big", kind: "blogger", origin: "auto", status: "seen", likes_median: 20_000, comments_median: 3, baseline_posts: 9, baseline_at: iso(NOW - 10 * DAY), appearances: 0 }];
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: accounts, assortment_social_post: [stale.row, fresh.row] } });
+  const out = await run(db, fakeWeb({ ...stale.pages, ...fresh.pages }), { phase: "measure", config: cfg({ maxBaselineAuthorsPerRun: 1 }) });
+  assert.equal(out.baselines, 1);
+  assert.equal(tables.assortment_social_account.find((a) => a.handle === "new.small")!.baseline_posts, 9, "база — тому, кто без вердикта");
+  assert.equal(tables.assortment_social_post.find((r) => r.code === fresh.cand)!.verdict, "viral");
+  assert.equal(tables.assortment_social_post.find((r) => r.code === stale.cand)!.verdict, "normal", "устаревшая база — тоже база: вердикт есть");
+});
+
+test("Без базы автора: крупный аккаунт с обычным рилсом (≥ 5 000 лайков) не «залетает»; рилс без шанса — «обычно» без базы", () => {
+  const account = { ...allSeeds()[0], handle: "big.blog", baseline_posts: null, baseline_at: null } as unknown as AccountRow;
+  const p = { ...post("DdBIG000000", { published_at: iso(NOW - 5 * DAY), account_handle: "big.blog", likes: 6500, comments: 45, intent_count: 0, intent_total: 4, checks: 1 }) } as unknown as PostRow;
+  assert.equal(judgePost(p, account, NOW).verdict, null, "ждёт базы");
+  assert.equal(judgePost(p, undefined, NOW).verdict, null);
+  const quiet = { ...p, likes: 120, comments: 4, views: null } as PostRow;
+  assert.equal(judgePost(quiet, account, NOW).verdict, "normal", "лайков < 1 000 и комментариев < 30 — «залёта» не даст никакая база");
+  const based = { ...account, likes_median: 6000, comments_median: 40, baseline_posts: 9, baseline_at: iso(NOW - DAY) } as AccountRow;
+  assert.equal(judgePost(p, based, NOW).verdict, "normal");
+  const few = { ...based, baseline_posts: 3 } as AccountRow;
+  assert.deepEqual([judgePost(p, few, NOW).verdict, judgePost(p, few, NOW).verdict_preliminary], ["viral", true], "запасное правило — только когда база посчитана и в ней < 6 постов");
+});
+
+/** Калибровка 06.10: прошлые посты jpnbrands (лайки, комментарии). */
+const JPN_POSTS: Record<string, { likes: number; comments: number; kind: "reel" | "p" }> = {
+  DeGmqJRCDPx: { likes: 65, comments: 3, kind: "reel" }, Dd8NdvPi0Yp: { likes: 1482, comments: 176, kind: "reel" }, Dd5ra5iCAzK: { likes: 90, comments: 5, kind: "reel" },
+  Dd0mRmIiacc: { likes: 387, comments: 2, kind: "reel" }, Ddqfse0AohS: { likes: 301, comments: 5, kind: "p" }, DdnniDmIw5R: { likes: 111, comments: 3, kind: "reel" },
+  DdlO3H9iUKx: { likes: 236, comments: 18, kind: "reel" },
+};
+
+test("Пример владельца jpnbrands целиком: сетка рилса даёт 3 поста (закреплённые и соавторский съели её) — база дополняется сеткой профиля; основное правило, без «предварительно»", async () => {
+  const pages: Record<string, Page> = { [reelUrl("DdVk7eRtLMC")]: fixture("reel-desktop-edited-hashtag-article.md"), [profileUrl("jpnbrands")]: fixture("profile-jpnbrands.md") };
+  for (const [code, p] of Object.entries(JPN_POSTS)) pages[reelUrl(code, p.kind)] = reelPage({ code, author: "jpnbrands", likes: p.likes, comments: p.comments, kind: p.kind });
+  const cand = post("DdVk7eRtLMC", { published_at: "2026-09-16T05:51:52.572Z", account_handle: "jpnbrands", brand: "uniqlo", direction: "jackets", found_via: ["profile"] });
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: [cand] } });
+  const web = fakeWeb(pages);
+  const out = await run(db, web, { phase: "measure" });
+  assert.equal(out.baselines, 1);
+  assert.ok(web.calls.includes(profileUrl("jpnbrands")), "профиль — ради базы");
+  const acc = tables.assortment_social_account.find((a) => a.handle === "jpnbrands")!;
+  assert.deepEqual([acc.baseline_posts, acc.likes_median, acc.comments_median, acc.followers], [6, 268.5, 5, 57_600], "90, 111, 236, 301, 387, 1 482 → 268,5");
+  const p = tables.assortment_social_post.find((r) => r.code === "DdVk7eRtLMC")!;
+  assert.deepEqual([p.likes, p.comments, p.intent_count, p.intent_total], [6400, 176, 11, 15]);
+  assert.deepEqual([p.verdict, p.verdict_preliminary, p.rule_version], ["strong", false, "reels-v1"]);
+  const feed = (await loadViralReels(db, { direction: "jackets", nowMs: NOW }))!;
+  const card = feed.cards.find((c) => c.code === "DdVk7eRtLMC")!;
+  assert.deepEqual([card.preliminary, card.kinds.verdict], [false, "calc"], "на экране — расчёт, а не «гипотеза: мало постов»");
+});
+
+test("Официальный аккаунт: в сетке рилса 3 закреплённых и 2 свежих — база из профиля, обычный рилс (1,1× медианы) не «залетает» по запасному правилу", async () => {
+  const a = authorPages("uniqlousa", 1, { likes: 7000, comments: 40, candLikes: 8000, candComments: 45, pinned: 3, young: 2, normal: 4 });
+  const more = Array.from({ length: 5 }, (_, i) => codeAt(NOW - (11 + i) * DAY, 500 + i));
+  for (const [i, code] of more.entries()) a.pages[reelUrl(code)] = reelPage({ code, author: "uniqlousa", likes: 7000, comments: 40 });
+  a.pages[profileUrl("uniqlousa")] = ["UNIQLO USA (@uniqlousa) • Instagram photos and videos", "## uniqlousa", "*   [1.2M followers](#)", ...a.grid, ...more.map((code, i) => gridCard("uniqlousa", code, "reel", gridDate(NOW - (11 + i) * DAY)))].join("\n\n");
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: [a.row] } });
+  await run(db, fakeWeb(a.pages), { phase: "measure" });
+  const acc = tables.assortment_social_account.find((r) => r.handle === "uniqlousa")!;
+  assert.ok(Number(acc.baseline_posts) >= 6, `постов в базе ${acc.baseline_posts}`);
+  assert.equal(acc.likes_median, 7000);
+  const p = tables.assortment_social_post.find((r) => r.code === a.cand)!;
+  assert.deepEqual([p.verdict, p.verdict_preliminary], ["normal", false]);
+  assert.deepEqual((await loadViralReels(db, { direction: "jackets", nowMs: NOW }))!.cards.map((c) => c.code), [], "в ленте его нет");
+});
+
+const LOGIN_WALL = " Instagram \n\n[Log In](/accounts/login/?next=%2Fpopular%2Fzara-jacket%2F&source=desktop_nav)\n\n[Sign Up](/accounts/emailsignup/)\n\nSee more from Instagram";
+const emptyTopic = (slug: string) => `   ${slug} • 0 reels on Instagram   \n\n# ${slug}\n`;
+const stateOf = (tables: Record<string, Row[]>) => readSocialState(tables.assortment_sources.find((s) => s.source_id === "S068")!.capabilities);
+const quietSeeds = () => allSeeds().map((a) => ({ ...a, last_checked_at: iso(NOW + 60 * DAY) }));
+
+test("Стена входа вместо тем (ответ 200) — темы не «мёртвые», прогон — «ошибка» с тревогой, назавтра темы запрашиваются снова", async () => {
+  const wall = Object.fromEntries(SEED_TOPICS.map((t) => [topicUrl(t.slug), LOGIN_WALL])) as Record<string, Page>;
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
+  const out = await run(db, fakeWeb(wall), { phase: "discover" });
+  const state = stateOf(tables);
+  assert.deepEqual([Object.keys(state.deadTopics).length, Object.keys(state.topicMisses).length], [0, 0], "сбой страницы — не промах темы");
+  assert.equal(out.discover.topicsUnrecognized, SEED_TOPICS.length);
+  assert.equal(out.discover.complete, false);
+  assert.match(out.alarms.join(" "), /ни одна тема не дала рилсов/);
+  assert.equal(socialRunLog(out).status, "error", "сторож увидит");
+  assert.equal(state.discoveredAt, null, "поиск не засчитан");
+  const again = fakeWeb({});
+  await run(db, again, { now: () => NOW + DAY });
+  assert.equal(again.calls.filter((u) => u.includes("/popular/")).length, SEED_TOPICS.length, "темы со сбоем повторяем");
+});
+
+test("Все темы ответили «страницы нет» (404) — тоже тревога: ни одна тема не дала рилсов", async () => {
+  const { db } = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
+  const out = await run(db, fakeWeb({}), { phase: "discover" });
+  assert.match(out.alarms.join(" "), /ни одна тема не дала рилсов/);
+  assert.equal(socialRunLog(out).status, "error");
+});
+
+test("Тема «0 reels» мёртвая после трёх пустых ответов подряд; мёртвую перепроверяем через 4 недели; прежний список мёртвых — перепроверяем сразу", async () => {
+  const pages: Record<string, Page> = { [topicUrl("zara-viral-jacket")]: fixture("topic-zara-viral-jacket.md"), [topicUrl("zara-jackets")]: emptyTopic("Zara Jackets") };
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
+  for (let day = 0; day < 3; day += 1) {
+    const out = await run(db, fakeWeb(pages), { phase: "discover", now: () => NOW + day * DAY });
+    assert.equal(out.alarms.length, 0, "одна тема с рилсами — разбор жив");
+    const state = stateOf(tables);
+    assert.equal(state.topicMisses["zara-jackets"], day + 1);
+    assert.equal(state.deadTopics["zara-jackets"] != null, day === 2, `день ${day}`);
+  }
+  const week = fakeWeb(pages);
+  await run(db, week, { phase: "discover", now: () => NOW + 9 * DAY });
+  assert.ok(!week.calls.includes(topicUrl("zara-jackets")), "мёртвую не запрашиваем");
+  const month = fakeWeb(pages);
+  await run(db, month, { phase: "discover", now: () => NOW + 31 * DAY });
+  assert.ok(month.calls.includes(topicUrl("zara-jackets")), "через 4 недели — перепроверка");
+  const legacy = readSocialState({ social: { discoveredAt: null, autoTopics: [], deadTopics: ["zara-jackets"] } });
+  assert.ok(activeTopics(legacy, NOW).some((t) => t.slug === "zara-jackets"), "дата неизвестна — перепроверяем");
+});
+
+test("Поиск упёрся в потолок прогона: замер идёт из резерва, пройденное запоминается и завтра продолжается с места; не завершён 3 прогона — тревога", async () => {
+  const cand = codeAt(NOW - 4 * DAY, 5);
+  const pages: Record<string, Page> = { [reelUrl(cand)]: reelPage({ code: cand, author: "by.annamirabelle", likes: 100, comments: 2 }) };
+  for (const t of SEED_TOPICS) pages[topicUrl(t.slug)] = emptyTopic(t.slug);
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: quietSeeds(), assortment_social_post: [post(cand, { published_at: iso(NOW - 4 * DAY), account_handle: "by.annamirabelle" })] } });
+  const day0 = fakeWeb(pages);
+  const out0 = await run(db, day0, { config: cfg({ maxRequestsPerRun: 40 }) });
+  assert.equal(out0.requests, 40);
+  assert.ok(day0.calls.includes(reelUrl(cand)), "замер не съеден поиском");
+  assert.equal(tables.assortment_social_post.find((r) => r.code === cand)!.checks, 1);
+  assert.equal(out0.discover.complete, false);
+  assert.equal(socialRunLog(out0).status, "partial");
+  const pending = stateOf(tables).pending!;
+  assert.equal(pending.topics.length + pending.google.length, 39);
+  const day1 = fakeWeb(pages);
+  const out1 = await run(db, day1, { config: cfg({ maxRequestsPerRun: 40 }), now: () => NOW + DAY });
+  assert.equal(day1.calls.filter((u) => u.includes("/popular/")).length, 0, "пройденные темы не повторяем");
+  assert.equal(day1.calls.length, SEED_TOPICS.length + 20 - 39, "только оставшиеся запросы Google");
+  assert.deepEqual([out1.discover.resumed, out1.discover.complete, stateOf(tables).pending, stateOf(tables).discoveredAt], [true, true, null, iso(NOW + DAY)]);
+  // Потолок 10: поиск не успевает три прогона подряд — тревога.
+  const small = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
+  const runs = [];
+  for (let day = 0; day < 3; day += 1) runs.push(await run(small.db, fakeWeb(pages), { config: cfg({ maxRequestsPerRun: 10 }), now: () => NOW + day * DAY }));
+  assert.deepEqual(runs.map((r) => r.alarms.length > 0), [false, false, true]);
+  assert.match(runs[2].alarms[0], /поиск не завершён прогонов подряд: 3/);
+  assert.equal(socialRunLog(runs[2]).status, "error");
+});
+
+test("Мобильная вёрстка: при ≥ 30 комментариях — повтор за десктопной; снова мобильная — замер не засчитан, Б «не измерено» (не «обычно»); назавтра десктоп — «залетает»", async () => {
+  const mobile = fixture("reel-mobile-layout.md").replace("90 likes", "1,482 likes").replace("View all 5 comments", "View all 176 comments");
+  const m = parseReelPage(mobile)!;
+  assert.deepEqual([m.layout, m.likes, m.comments, m.visibleComments.length], ["mobile", 1482, 176, 0]);
+  const at = Date.parse(m.publishedAt!) + 4 * DAY;
+  const desktop = reelPage({ code: m.code, author: "jpnbrands", likes: 1482, comments: 176, caption: "Флисовые брюки Uniqlo", commentTexts: ["Цена?", "Сколько стоит?", "цена", "Где купить?", "Артикул?"] });
+  const accounts = () => allSeeds().map((a) => (a.handle === "jpnbrands" ? { ...a, likes_median: 236, comments_median: 5, baseline_posts: 8, baseline_at: iso(at - DAY) } : { ...a, last_checked_at: iso(at) }));
+  const row = () => post(m.code, { published_at: m.publishedAt, account_handle: "jpnbrands", brand: "uniqlo", direction: "jackets", first_seen_at: iso(at - 2 * DAY) });
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: accounts(), assortment_social_post: [row()] } });
+  const twice = fakeWeb({ [reelUrl(m.code)]: mobile });
+  const out = await run(db, twice, { phase: "measure", now: () => at });
+  assert.equal(twice.calls.length, 2, "повтор за десктопной");
+  assert.equal(out.intentUnmeasured, 1);
+  const p = tables.assortment_social_post[0];
+  assert.deepEqual([p.likes, p.comments, p.intent_total, p.checks, p.verdict], [1482, 176, null, 0, null], "не засчитан и не «обычно»");
+  assert.match(String(p.last_error), /мобильная вёрстка/);
+  await run(db, fakeWeb({ [reelUrl(m.code)]: desktop }), { phase: "measure", now: () => at + DAY });
+  const after = tables.assortment_social_post[0];
+  assert.deepEqual([after.checks, after.intent_count, after.intent_total, after.verdict, after.verdict_preliminary], [1, 5, 5, "viral", false], "второй залёт jpnbrands — по Б");
+  // Первый ответ мобильный, повтор — десктопный: замер засчитан сразу.
+  let n = 0;
+  const flip = fakeDb({ tables: { assortment_social_account: accounts(), assortment_social_post: [row()] } });
+  await run(flip.db, fakeWeb({ [reelUrl(m.code)]: () => (n++ === 0 ? mobile : desktop) }), { phase: "measure", now: () => at });
+  assert.deepEqual([flip.tables.assortment_social_post[0].checks, flip.tables.assortment_social_post[0].verdict], [1, "viral"]);
+});
+
+test("Блок счётчиков не распознан: замер не засчитан, причина в рилсе, при массовом сбое — тревога и «ошибка» в журнале", async () => {
+  const codes = [0, 1, 2].map((i) => codeAt(NOW - 5 * DAY, 40 + i));
+  const pages = Object.fromEntries(codes.map((code) => [reelUrl(code), reelPage({ code, author: "x.blog", likes: 3700, comments: 59 }).replace("\n\nLike\n\n3700\n\n", "\n\nLike\n\n3,700 likes\n\n")])) as Record<string, Page>;
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: codes.map((code) => post(code, { published_at: iso(NOW - 5 * DAY) })) } });
+  const out = await run(db, fakeWeb(pages), { phase: "measure" });
+  assert.deepEqual([out.measured, out.layoutFailures], [0, 3]);
+  for (const p of tables.assortment_social_post) {
+    assert.deepEqual([p.checks, p.likes, p.last_checked_at], [0, null, null], "три слота замера не съедены");
+    assert.match(String(p.last_error), /не распознан блок счётчиков/);
+  }
+  assert.match(out.alarms.join(" "), /не распознан блок счётчиков/);
+  assert.equal(socialRunLog(out).status, "error");
+});
+
+test("Десктоп без тел комментариев при ≥ 30 комментариях: замер засчитан, намерение «не измерено» (Б — не «нет»); массово — тревога", async () => {
+  const codes = [0, 1, 2].map((i) => codeAt(NOW - 5 * DAY, 60 + i));
+  const pages = Object.fromEntries(codes.map((code) => [reelUrl(code), reelPage({ code, author: "by.annamirabelle", likes: 300, comments: 120 })])) as Record<string, Page>;
+  const accounts = seedsWithBaseline({ "by.annamirabelle": { likes: 83.5, comments: 8, posts: 6 } });
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: accounts, assortment_social_post: codes.map((code) => post(code, { published_at: iso(NOW - 5 * DAY), account_handle: "by.annamirabelle" })) } });
+  const out = await run(db, fakeWeb(pages), { phase: "measure" });
+  assert.deepEqual([out.measured, out.intentUnmeasured], [3, 3]);
+  for (const p of tables.assortment_social_post) {
+    assert.deepEqual([p.checks, p.intent_total, p.verdict], [1, null, null], "120 комментариев без тел — не «обычно»");
+    assert.match(String(p.last_error), /тела комментариев не распознаны/);
+  }
+  assert.match(out.alarms.join(" "), /не распознаны тела комментариев/);
+});
+
+test("Сводка — по неделе первого «залёта»: рилс «обычно» на первом замере и «залетает» на замере 7-го дня попадает в сводку второй недели; отметка переживает обрезку истории", () => {
+  const account = { ...allSeeds()[0], handle: "a.blog", likes_median: 300, comments_median: 4, baseline_posts: 9, baseline_at: "2026-10-02T00:00:00.000Z" } as unknown as AccountRow;
+  const published = Date.parse("2026-09-30T10:00:00Z");
+  const page = (likes: number) => ({ ...parseReelPage(reelPage({ code: "Dd4Is8To7B0", author: "a.blog", likes, comments: 6, caption: "Zara jacket", commentTexts: ["nice"] }))!, publishedAt: iso(published) });
+  let p = { ...post("Dd4Is8To7B0", { published_at: iso(published), account_handle: "a.blog", brand: "zara", direction: "jackets" }) } as unknown as PostRow;
+  const first = Date.parse("2026-10-03T06:20:00Z");
+  p = judgePost(applyMeasurement(p, page(400), first), account, first);
+  assert.equal(p.verdict, "normal");
+  const seventh = Date.parse("2026-10-10T06:20:00Z");
+  p = judgePost(applyMeasurement(p, page(9000), seventh), account, seventh);
+  assert.equal(p.verdict, "viral");
+  const week1 = [Date.parse("2026-09-28T00:00:00Z"), Date.parse("2026-10-05T00:00:00Z")] as const;
+  const week2 = [week1[1], Date.parse("2026-10-12T00:00:00Z")] as const;
+  const digestPost = { ...p, first_seen_at: p.first_seen_at, hidden_at: null };
+  assert.equal(pickSocialDigest([digestPost], week1[0], week1[1], new Set()).items.length, 0);
+  assert.deepEqual(pickSocialDigest([digestPost], week2[0], week2[1], new Set()).items.map((i) => i.url), [p.url]);
+  // Тот же вердикт назавтра — отметка не переезжает.
+  const later = judgePost(p, account, seventh + DAY);
+  assert.equal(later.history, p.history);
+  let history = p.history;
+  for (let i = 0; i < 15; i += 1) history = pushHistory(history, { at: iso(seventh + (i + 1) * 3600_000), likes: 9000 + i, comments: 6, views: null });
+  assert.equal(history.length, HISTORY_LIMIT);
+  assert.equal(history.filter((h) => h.verdict === "viral").length, 1, "отметку первого «залёта» не выбрасываем");
+  assert.deepEqual(pickSocialDigest([{ ...digestPost, history }], week2[0], week2[1], new Set()).items.length, 1);
+});
+
+test("Раздел — по модели каталога и по названию карточки бренда, а не по хэштегу подписи («#baggyjeans» куртку в «Сумки» не уводит)", async () => {
+  const base = { published_at: iso(NOW - 5 * DAY), account_handle: "by.annamirabelle", likes: 9000, comments: 10, intent_count: 0, intent_total: 4, checks: 1, verdict: "viral", brand: "zara", direction: "bags", last_checked_at: iso(NOW - DAY) } as const;
+  const posts = [post("DdCAT000000", { ...base, refs: ["zara:5854722"] }), post("DdSITE00000", { ...base, brand: "uniqlo", refs: ["uniqlo:487882"] })];
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: seedsWithBaseline({ "by.annamirabelle": { likes: 83.5, comments: 8, posts: 6 } }), assortment_social_post: posts, assortment_source_items: [zaraCatalogRow] } });
+  await run(db, fakeWeb({ [uniqloCardUrls("487882")[0]]: fixture("uniqlo-card-E487882.md") }), { phase: "match" });
+  const by = (code: string) => tables.assortment_social_post.find((r) => r.code === code)!;
+  assert.deepEqual([by("DdCAT000000").match_status, by("DdCAT000000").direction], ["catalog", "jackets"]);
+  assert.deepEqual([by("DdSITE00000").match_status, by("DdSITE00000").direction], ["brand_site", "jackets"]);
+  assert.deepEqual((await loadViralReels(db, { direction: "bags", nowMs: NOW }))!.cards.map((c) => c.code), []);
+  assert.deepEqual((await loadViralReels(db, { direction: "jackets", nowMs: NOW }))!.cards.map((c) => c.code).sort(), ["DdCAT000000", "DdSITE00000"]);
+});
+
+test("Хэштеги с деньгами не пишутся в базу и не отдаются лентой", async () => {
+  const c = { code: "Dd4Is8To7B0", kind: "reel" as const, author: "a.blog", caption: "Куртка Zara 5854/722/710 #цена4990руб #4990тг", hashtags: ["цена4990руб", "4990тг", "zarajacket"], views: 1000, via: "topic" as const, topic: "zara-jacket", brandHint: "zara" as const };
+  const fresh = mergeCandidate(undefined, c, NOW);
+  assert.deepEqual(fresh.hashtags, ["zarajacket"]);
+  assert.equal(fresh.caption_excerpt, "Куртка Zara 5854/722/710");
+  assert.deepEqual(fresh.refs, ["zara:5854722"]);
+  const merged = mergeCandidate({ ...fresh, hashtags: ["usd70", "zarajacket"] }, c, NOW);
+  assert.deepEqual(merged.hashtags, ["zarajacket"]);
 });

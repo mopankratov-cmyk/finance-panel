@@ -4,11 +4,12 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  acceptNeighborTopic, detectBrand, detectDirection, extractRefs, intentShare, isEmptyReelShell, looksMenswear, measureDue, medianBaseline, parseAltDate,
+  acceptNeighborTopic, cleanHashtags, detectBrand, detectDirection, extractRefs, intentShare, isEmptyReelShell, looksMenswear, measureDue, medianBaseline, parseAltDate,
   parseCount, parseGoogleReels, parseProfilePage, parseReelPage, parseTopicPage, parseUniqloCard, parseZaraCard, passwordWords, REELS_RULE_VERSION,
-  sanitizeCaption, SEED_ACCOUNTS, SEED_TOPICS, shortcodeToDate, socialConfig, verdictV1, withinDiscoveryWindow,
+  sanitizeCaption, SEED_ACCOUNTS, SEED_TOPICS, shortcodeToDate, socialConfig, socialRefKeyFromUrl, uniqloCardUrls, verdictV1, withinDiscoveryWindow, zaraCardUrl,
   type BaselinePost, type VerdictInput,
 } from "../lib/assortment/socialReels.ts";
+import { normalizeProductUrl } from "../lib/assortment/extract.ts";
 import { containsMoney } from "../lib/assortment/attributes.ts";
 
 /**
@@ -464,4 +465,115 @@ test("Стартовые источники: ≈25 аккаунтов (офиц�
   for (const slug of ["zara-viral-jacket", "zara-high-collar-jacket", "zara-bag", "uniqlo-jacket", "uniqlo-down-jacket", "uniqlo-round-mini-shoulder-bag"]) assert.ok(SEED_TOPICS.some((t) => t.slug === slug), slug);
   for (const t of SEED_TOPICS) assert.ok(detectDirection({ topic: t.slug }), `${t.slug}: тема про куртки или сумки`);
   for (const t of SEED_TOPICS) assert.equal(looksMenswear(t.slug.replace(/-/g, " ")), false, t.slug);
+});
+
+// --- по ревью: вёрстка, деньги, раздел, пол, адрес модели ---
+
+test("Подпись кончается на шапке первого комментария: без «Load more comments» и без аватарок ник и текст комментатора в отрывок не попадают", () => {
+  const anna = fixture("reel-desktop-likes-visible.md");
+  // Мало комментариев — «Load more comments» нет; аватарок нет (вёрстка без картинок).
+  const bare = anna.replace(/\[!\[commenter\d+'s profile picture\]\([^)]*\)\]\(\/commenter\d+\/\)\n\n/g, "").replace("Load more comments\n", "");
+  assert.ok(!bare.includes("Load more comments") && !bare.includes("commenter1's profile picture"), "варианты вёрстки собраны");
+  for (const md of [bare, anna.replace("Load more comments\n", "")]) {
+    const r = parseReelPage(md)!;
+    assert.match(r.caption, /Reference 5854\/722\/710/);
+    assert.doesNotMatch(r.caption, /commenter\d|This jacket looks perfect|\b5h\b/, "чужой текст — не подпись");
+    assert.doesNotMatch(sanitizeCaption(r.caption) ?? "", /commenter\d/);
+    assert.equal(r.visibleComments.length, 15, "комментарии разобраны и без «Load more comments»");
+    assert.deepEqual(intentShare(r.visibleComments, r.caption), { count: 9, total: 15, share: 0.6 });
+  }
+});
+
+test("Блок счётчиков не распознан (вёрстка изменилась) — countsFound=false: лайки и комментарии неизвестны, а не «скрыты»", () => {
+  const anna = fixture("reel-desktop-likes-visible.md");
+  assert.equal(parseReelPage(anna)!.countsFound, true);
+  const changed = anna.replace(/\nLike\n\n3\.7K\n/, "\nLike\n\n3,700 likes\n");
+  assert.notEqual(changed, anna, "вариант собран");
+  const r = parseReelPage(changed)!;
+  assert.deepEqual([r.countsFound, r.likes, r.likesHidden, r.comments], [false, null, false, null]);
+  assert.equal(parseReelPage(fixture("reel-desktop-likes-hidden-collab.md"))!.countsFound, true, "скрытые лайки — блок есть, это не сбой");
+  assert.equal(parseReelPage(fixture("reel-mobile-layout.md"))!.countsFound, true);
+});
+
+test("Просмотры темы — со строки счётчика после автора, а не из подписи с «views 2026»", () => {
+  const md = fixture("topic-zara-viral-jacket.md");
+  const from = "![Love it! Zara did it right👌 Link in my stories 🔗\nReference 5854/722/710";
+  assert.ok(md.includes(from));
+  const changed = md.replace(from, "![Love it! Zara did it right👌 City views 2026 🔗\nReference 5854/722/710");
+  const card = parseTopicPage(changed)!.cards.find((c) => c.code === "Dd4Is8To7B0")!;
+  assert.equal(card.views, 315_000);
+  assert.match(card.caption, /City views 2026/, "подпись та же");
+});
+
+test("Цены: сторона валюты — номер перед «$89.90» не теряется и не портится; «4500р», «KZT 4500», «12 тыс. руб» и прочие суммы вырезаны", () => {
+  const zara = "Zara jacket 5854/722/710 $89.90";
+  assert.deepEqual(extractRefs(zara, "zara").map((r) => r.key), ["zara:5854722"]);
+  assert.equal(sanitizeCaption(zara), "Zara jacket 5854/722/710 …");
+  const uniqlo = "Uniqlo арт 487882 ₸24990";
+  assert.deepEqual(extractRefs(uniqlo, "uniqlo").map((r) => r.key), ["uniqlo:487882"]);
+  assert.equal(sanitizeCaption(uniqlo), "Uniqlo арт 487882 …");
+  assert.deepEqual(extractRefs("ZARA 5854/722/710 € 59,95").map((r) => r.key), ["zara:5854722"]);
+  assert.deepEqual(extractRefs("арт 487882 тг").map((r) => r.key), [], "сумма в тенге после шести цифр — не номер");
+  const amounts = ["4500р", "4 500 р", "4 500 р.", "KZT 4500", "USD 70", "RUB 4990", "45 GBP", "CHF 89", "89 CHF", "12 тыс. руб", "4,5к руб", "4990 rub", "1 500 000 сум",
+    "4990 рублей", "4990руб.", "2 990,00 ₽", "7 990 ₸", "59,90 EUR", "99.90 USD", "4.990 руб", "4500 тнг", "4500тенге"];
+  for (const amount of amounts) {
+    const out = sanitizeCaption(`Куртка ${amount}`) ?? "";
+    assert.equal(containsMoney(out), false, `${amount} → «${out}»`);
+    assert.doesNotMatch(out, /\d/, `${amount} → «${out}»: сумма не осталась`);
+  }
+  assert.equal(sanitizeCaption("Куртка 44 р-р, рост 170"), "Куртка 44 р-р, рост 170", "размер — не сумма");
+});
+
+test("Хэштеги про деньги не храним: «#цена4990руб», «#4990тг», «#usd70», «#prix» — вон; «#sale50», «#priceless», «#zarabag» — остаются", () => {
+  const tags = ["цена4990руб", "4990тг", "usd70", "prix", "цена", "sale50", "priceless", "zarabag", "487882"];
+  const kept = cleanHashtags(tags);
+  assert.deepEqual(kept, ["sale50", "priceless", "zarabag", "487882"]);
+  assert.equal(containsMoney(kept.join(" ")), false);
+  const out = sanitizeCaption("Куртка Zara #цена4990руб #4990тг #sale50")!;
+  assert.equal(out, "Куртка Zara #sale50");
+  assert.equal(containsMoney(out), false);
+});
+
+test("Раздел по слитным хэштегам — по корню на конце тега: «#baggyjeans», «#zarabaggy», «#teabag», «#lifejacket» — не раздел; «#zarabag», «#bagsoftheday» — сумки", () => {
+  for (const tag of ["baggyjeans", "zarabaggy", "teabag", "airbag", "lifejacket", "topcoat", "bagel"]) assert.equal(detectDirection({ caption: "Zara new in", hashtags: [tag] }), null, tag);
+  assert.equal(detectDirection({ caption: "Zara new in", hashtags: ["zarabag"] }), "bags");
+  assert.equal(detectDirection({ caption: "Zara new in", hashtags: ["bagsoftheday"] }), "bags");
+  assert.equal(detectDirection({ caption: "Zara new in", hashtags: ["zarajacket"] }), "jackets");
+  assert.equal(detectDirection({ caption: "Zara new in", hashtags: ["zarajacketwomen"] }), "jackets");
+  assert.equal(detectDirection({ caption: "jeans w/ #baggyjeans", hashtags: ["baggyjeans", "zara"] }), null);
+  assert.equal(detectDirection({ caption: "Weekend at Mont Blanc in Zara" }), null, "Mont Blanc — не «mont»");
+  assert.equal(detectDirection({ caption: "Zara mont aldım" }), "jackets", "тур. «mont» — куртка");
+  assert.equal(detectDirection({ caption: "Una veste di Zara bellissima" }), null, "ит. «veste» — платье");
+  assert.equal(detectDirection({ caption: "Ela veste Zara todos os dias" }), null, "порт. «veste» — глагол");
+  assert.equal(detectDirection({ caption: "Ma nouvelle veste Zara" }), "jackets", "фр. «une / ma veste» — куртка");
+});
+
+test("Только женское: соседние темы с girls / guys / детской — не берём; «for him», «мужу», «мужчине», «парню» — мужское", () => {
+  for (const slug of ["zara-girls-jacket", "zara-girl-bag", "uniqlo-jacket-for-guys", "zara-jacket-for-him", "zara-детская-куртка", "zara-куртка-для-мальчика", "uniqlo-kid-jacket", "zara-teen-bag"]) {
+    assert.equal(acceptNeighborTopic(slug), null, slug);
+  }
+  assert.equal(acceptNeighborTopic("zara-women-jacket"), "zara");
+  for (const text of ["Perfect gift for him", "Куртка мужчине на зиму", "Купила мужу", "подарок для мужа", "куртка парню", "для парня", "for my boyfriend"]) assert.equal(looksMenswear(text), true, text);
+  for (const text of ["Women's jacket", "for her", "подарок маме", "for women"]) assert.equal(looksMenswear(text), false, text);
+});
+
+test("Б не измерено (тел комментариев нет, а их ≥ 30): не «нет» — без А вердикта нет, с А — «залетает»", () => {
+  const baseline = { likesMedian: 100, commentsMedian: 5, likesPosts: 8 };
+  const base = { publishedAtMs: CAPTURE - 5 * DAYMS, nowMs: CAPTURE, baseline, followers: null };
+  const noA = verdictV1({ ...base, likes: 300, comments: 176, intent: null });
+  assert.deepEqual([noA.verdict, noA.b, noA.bUnknown], ["normal", false, true], "правило говорит «обычно», а замер — «не измерено»");
+  const withA = verdictV1({ ...base, likes: 5000, comments: 176, intent: null });
+  assert.deepEqual([withA.verdict, withA.a, withA.bUnknown], ["viral", true, true]);
+  assert.equal(verdictV1({ ...base, likes: 300, comments: 176, intent: { count: 0, total: 0 } }).bUnknown, false, "видели комментарии, покупательских нет — это «нет»");
+  assert.equal(verdictV1({ ...base, likes: 300, comments: 12, intent: null }).bUnknown, false, "комментариев мало — Б «нет» и без тел");
+});
+
+test("Номер модели из адреса карточки бренда — как у номеров из подписей; адрес находки нормализован (без www, без витрины)", () => {
+  assert.equal(socialRefKeyFromUrl(zaraCardUrl("5854722")), "zara:5854722");
+  assert.equal(socialRefKeyFromUrl(normalizeProductUrl(zaraCardUrl("5854722"))), "zara:5854722");
+  assert.equal(socialRefKeyFromUrl("https://www.zara.com/us/en/high-neck-pocket-jacket-p05854722.html?v1=123"), "zara:5854722");
+  assert.equal(socialRefKeyFromUrl(uniqloCardUrls("487882")[0]), "uniqlo:487882");
+  assert.equal(socialRefKeyFromUrl(normalizeProductUrl(uniqloCardUrls("487882")[0])), "uniqlo:487882");
+  assert.equal(socialRefKeyFromUrl("https://www.polene-paris.com/products/numero-un"), null);
+  assert.equal(socialRefKeyFromUrl("not a url"), null);
 });

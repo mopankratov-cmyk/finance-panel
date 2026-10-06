@@ -11,6 +11,7 @@ import { isFeedView, sectionViewFrom, type CatalogCard } from "../lib/assortment
 import { digestMessage, type DigestDirection, type DigestFacts } from "../lib/assortment/digest.ts";
 import { loadDigestFacts } from "../lib/assortment/digestFacts.ts";
 import { buildEvidence } from "../lib/assortment/evidence.ts";
+import { normalizeProductUrl } from "../lib/assortment/extract.ts";
 import { jobFreshness, WATCHED_JOBS, type JobRun } from "../lib/assortment/jobsWatch.ts";
 import {
   cardTitle, compactRu, firstMeasuredAt, importableBrandUrl, nextSocialRun, parseFeedPeriod, parseHandle, pickSocialDigest, refArticle, sampleLinksFor, SOCIAL_CRON,
@@ -19,6 +20,7 @@ import {
 import {
   addSocialAccount, attachSocialFlags, countSocialFeed, loadModelSocial, loadSocialAccountsView, loadSocialFeed, setReelHidden, setSocialAccountStatus,
 } from "../lib/assortment/socialFeedStore.ts";
+import { uniqloCardUrls, zaraCardUrl } from "../lib/assortment/socialReels.ts";
 import type { SocialReelCard } from "../lib/assortment/socialReelsStore.ts";
 
 /**
@@ -79,6 +81,7 @@ function fakeDb(init: { tables?: Record<string, Row[]>; missing?: string[]; fail
         gte: (c: string, v: unknown) => (filters.push((r) => r[c] != null && (typeof v === "number" ? Number(r[c]) >= v : String(r[c]) >= String(v))), q),
         lt: (c: string, v: unknown) => (filters.push((r) => r[c] != null && String(r[c]) < String(v)), q),
         in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
+        contains: (c: string, vs: unknown[]) => (filters.push((r) => Array.isArray(r[c]) && vs.every((v) => (r[c] as unknown[]).includes(v))), q),
         is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), q),
         not: (c: string, operator: string, v: unknown) => {
           if (operator !== "is" || v !== null) throw new Error(`подставка: not(${operator})`);
@@ -479,7 +482,7 @@ test("Карточка модели: «Независимые публикаци
     assortment_social_post: [
       post("DdA1111111", { views: 480000 }), post("DdB2222222", { verdict: "viral", account_handle: "aida.uniq", views: 1_200_000, url: "https://www.instagram.com/reel/DdB2222222/" }),
       post("DdH3333333", { hidden_at: iso(NOW) }), post("DdX4444444", { account_handle: "noisy" }),
-      post("DdS5555555", { match_status: "brand_site", match_model_key: null, match_url: "https://www.uniqlo.com/es/en/products/E487882-000/00", account_handle: "aida.uniq" }),
+      post("DdS5555555", { match_status: "brand_site", match_model_key: null, match_url: "https://www.uniqlo.com/es/en/products/E487882-000/00", account_handle: "aida.uniq", brand: "uniqlo", refs: ["uniqlo:487882"] }),
     ],
   } });
   const social = (await loadModelSocial(db, { id: "ref-1", url: "https://www.zara.com/us/en/jacket-p05854722.html", brand: "Zara" }))!;
@@ -501,6 +504,30 @@ test("Карточка модели: «Независимые публикаци
   const failed = (await loadModelSocial(fakeDb({ fail: ["assortment_social_post"], tables: { assortment_source_items: [{ source_id: "S001", source_item_id: "5854722", reference_id: "ref-1" }] } }).db, { id: "ref-1", url: null, brand: "Zara" }))!;
   assert.match(buildEvidence([], null, failed).spread.find((r) => r.label === "Независимые публикации")!.value, /не загрузилось/, "сбой назван");
   assert.match(read("lib/assortment/model.ts"), /buildEvidence\(obs, otherBrands, social\)/);
+});
+
+test("«Добавить в находки» из ленты → карточка модели видит рилс: адрес находки нормализован (без www, Uniqlo — без витрины), сверяем по номеру модели", async () => {
+  const zaraUrl = zaraCardUrl("5854722");
+  const uniqloUrl = uniqloCardUrls("487882")[0];
+  const { db } = fakeDb({ tables: {
+    assortment_social_account: [account("x.blog"), account("y.blog")],
+    assortment_social_post: [
+      post("DdZ1111111", { account_handle: "x.blog", verdict: "viral", match_status: "brand_site", match_model_key: null, match_url: zaraUrl, refs: ["zara:5854722"], views: 315000 }),
+      post("DdU2222222", { account_handle: "y.blog", verdict: "strong", brand: "uniqlo", match_status: "brand_site", match_model_key: null, match_url: uniqloUrl, refs: ["uniqlo:487882"], views: 90000 }),
+    ],
+  } });
+  // Так находку сохраняет importReference: normalizeProductUrl снимает www., у Uniqlo — витрину /es/en и /00.
+  const zaraRef = normalizeProductUrl(zaraUrl);
+  const uniqloRef = normalizeProductUrl(uniqloUrl);
+  assert.notEqual(zaraRef, zaraUrl);
+  assert.notEqual(uniqloRef, uniqloUrl);
+  const zara = (await loadModelSocial(db, { id: "ref-z", url: zaraRef, brand: "Zara" }))!;
+  assert.deepEqual([zara.reels, zara.topUrl], [1, "https://www.instagram.com/reel/DdZ1111111/"]);
+  assert.equal(buildEvidence([], null, zara).spread.find((r) => r.label === "Независимые публикации")!.value, "1 рилс у 1 автора · залетает");
+  const uniqlo = (await loadModelSocial(db, { id: "ref-u", url: uniqloRef, brand: "Uniqlo" }))!;
+  assert.deepEqual([uniqlo.reels, uniqlo.strong], [1, true]);
+  const other = (await loadModelSocial(db, { id: "ref-o", url: normalizeProductUrl(zaraCardUrl("1111111")), brand: "Zara" }))!;
+  assert.equal(other.reels, 0, "другой номер — «не найдено»");
 });
 
 // ---------------------------------------------------------------------------
