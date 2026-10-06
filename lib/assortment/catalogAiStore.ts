@@ -8,13 +8,12 @@ import type { StoredVerdict } from "./attributeVerdictsStore";
 import type { Verdict } from "./attributeVerdicts";
 import { CATALOG_SEEN_DAYS } from "./catalog";
 import {
-  allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, isJudgeableField, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
+  allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, isEligibleHead, isJudgeableField, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
   type CatalogAiConfig, type CatalogProvider, type CatalogHead, type ExistingResult, type PhotoTraitsReport, type StoredAttributes, type TraitModel,
 } from "./catalogAi";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { modelKey } from "./modelKey";
-import { isRuSource } from "./ruMarket";
 import { summarizeQueue, type QueueSummary } from "./catalogAi";
 
 /**
@@ -665,7 +664,7 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
     const fresh = usable.filter((r) => r.prompt_version === PROMPT_VERSION);
     const models: TraitModel[] = fresh.map((r) => ({ sourceId: r.source_id, sourceName: nameOf.get(r.source_id) || r.source_id, attributes: r.attributes as StoredAttributes }));
     // Знаменатель покрытия — модели, которые вообще можно разобрать: с фото и не «Рынок РФ».
-    const eligible = heads.filter((h) => h.imageUrls.length > 0 && !isRuSource(h.sourceId)).length;
+    const eligible = heads.filter(isEligibleHead).length;
     // Очередь сборщика по этому разделу — тем же правилом, по которому он сам берёт модели: неудавшиеся с тремя попытками и
     // модели с нестабильным ключом в «осталось разобрать» не входят, их сборщик не возьмёт.
     // Вспомогательное чтение: его сбой не роняет основной отчёт (блок «Признаки по фото» живёт и без очереди), полоска «На чём стоят
@@ -711,7 +710,7 @@ export async function loadQueueDirect(db: SupabaseClient, direction: AssortmentD
   // Вида каталога ещё нет (миграция): очередь неизвестна, а не пуста.
   if (!heads) return { eligible: 0, queue: { queued: 0, exhausted: 0, unstable: 0 }, catalogMissing: true };
   const existing = (await loadExisting(db)) ?? new Map();
-  return { eligible: heads.filter((h) => h.imageUrls.length > 0 && !isRuSource(h.sourceId)).length, queue: summarizeQueue(heads, existing) };
+  return { eligible: heads.filter(isEligibleHead).length, queue: summarizeQueue(heads, existing) };
 }
 
 // ---------------------------------------------------------------------------
