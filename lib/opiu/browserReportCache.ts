@@ -1,4 +1,11 @@
-const CACHE_PREFIX = "finance-panel:report-cache:v1:";
+// Версия — часть ключа. Снимок не протухает по таймеру, поэтому после любого
+// изменения СОСТАВА строк отчёта (новый блок, переименование, другие данные в
+// строках) версию нужно поднять: иначе у тех, кто открывал отчёт раньше,
+// остаётся старый вид до ручного «Обновить» — отдельно на каждой вкладке.
+// v2: блок «Расходы ниже EBITDA» (проценты, пени, налог, НДС, чистая прибыль).
+const CACHE_VERSION = "v2";
+const CACHE_PREFIX = `finance-panel:report-cache:${CACHE_VERSION}:`;
+const LEGACY_CACHE_PREFIXES = ["finance-panel:report-cache:v1:"];
 const MAX_CACHE_ENTRIES = 24;
 
 export interface BrowserReportCacheEntry<T> {
@@ -56,11 +63,19 @@ export function readBrowserReportCache<T>(key: string): BrowserReportCacheEntry<
 
 function pruneReportCache(storage: Storage): void {
   const entries: Array<{ key: string; savedAt: number }> = [];
+  const legacyKeys: string[] = [];
   for (let index = 0; index < storage.length; index += 1) {
     const key = storage.key(index);
-    if (!key?.startsWith(CACHE_PREFIX)) continue;
+    if (!key) continue;
+    if (LEGACY_CACHE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+      legacyKeys.push(key);
+      continue;
+    }
+    if (!key.startsWith(CACHE_PREFIX)) continue;
     entries.push({ key, savedAt: parseEntry<unknown>(storage.getItem(key))?.savedAt ?? 0 });
   }
+  // Снимки прежних версий читать нельзя и хранить незачем — освобождаем место.
+  legacyKeys.forEach((key) => storage.removeItem(key));
   entries
     .sort((left, right) => right.savedAt - left.savedAt)
     .slice(MAX_CACHE_ENTRIES)
