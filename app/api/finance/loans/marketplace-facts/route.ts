@@ -20,6 +20,23 @@ type IgnoredContractRow = { marketplace: string; contract_number: string };
 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
 
+/**
+ * Старые договоры уже содержат номер WB в служебной метке платежа, но были
+ * заведены до таблицы loan_marketplace_contract_links. Такая метка — ровно та
+ * же однозначная связь, которую GET использует для показа договора, поэтому
+ * POST не должен требовать повторного ручного выбора.
+ */
+async function findLegacyLoanIdByContract(contractNumber: string) {
+  const payments = await loadAllSupabasePages<PaymentRow>((from, to) => getSupabaseAdmin()!
+    .from("payments").select("comment").not("comment", "is", null).like("comment", "%[loan:%").order("id").range(from, to), { label: "Старые метки договоров", maxPages: 50 });
+  const loanIds = new Set(payments.flatMap((payment) => {
+    if (normalizedContractNumber(contractNumberFromComment(payment.comment)) !== contractNumber) return [];
+    const loanId = payment.comment?.match(/\[loan:([0-9a-f-]{36})/i)?.[1];
+    return loanId ? [loanId] : [];
+  }));
+  return loanIds.size === 1 ? [...loanIds][0] : null;
+}
+
 export async function GET() {
   const denied = await requireApiSession(["director", "fin_director", "financier"]);
   if (denied) return denied;
@@ -163,8 +180,16 @@ export async function POST(request: Request) {
     if (body?.action !== "allocate-contract") return NextResponse.json({ error: "Неизвестное действие сверки WB" }, { status: 400 });
     const linkResult = await db.from("loan_marketplace_contract_links").select("loan_id").eq("marketplace", "wb").eq("contract_number", contractNumber).maybeSingle();
     if (linkResult.error) throw linkResult.error;
-    if (!linkResult.data) return NextResponse.json({ error: "Сначала свяжите номер WB с договором панели" }, { status: 409 });
-    const loanId = String(linkResult.data.loan_id);
+    let loanId = linkResult.data?.loan_id ? String(linkResult.data.loan_id) : null;
+    if (!loanId) {
+      loanId = await findLegacyLoanIdByContract(contractNumber);
+      if (!loanId) return NextResponse.json({ error: "Не удалось однозначно определить договор панели по номеру WB" }, { status: 409 });
+      // Запоминаем найденную однозначную связь, чтобы следующий запуск не
+      // перечитывал старую историю и не зависел от ручного действия.
+      const saved = await db.from("loan_marketplace_contract_links")
+        .upsert({ marketplace: "wb", contract_number: contractNumber, loan_id: loanId, updated_at: new Date().toISOString() }, { onConflict: "marketplace,contract_number" });
+      if (saved.error) throw saved.error;
+    }
     const [reportRows, scheduleDbRows, allocationRows] = await Promise.all([
       loadAllSupabasePages<Record<string, unknown>>((from, to) => db.from("wb_report_rows")
         .select("cabinet_id,rrd_id,rr_dt,deduction,bonus_type_name,supplier_oper_name")

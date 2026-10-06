@@ -132,11 +132,15 @@ export async function POST() {
         : { data: [] as Array<{ schedule_row_id: string }>, error: null };
       if (allocationsResult.error && !/does not exist|schema cache/i.test(allocationsResult.error.message)) throw allocationsResult.error;
       const partiallyPaidIds = new Set((allocationsResult.data ?? []).map((row) => String(row.schedule_row_id)));
-      const replaceable = existing.filter((row) => row.status === "planned" && !partiallyPaidIds.has(row.id));
-      // Факты и частично закрытые строки — история, источник её не переписывает.
-      // Важно: пустой план не означает, что график нельзя восстановить. Именно
-      // этот случай раньше оставлял договор без будущих строк.
-      const keep = existing.filter((row) => !replaceable.some((candidate) => candidate.id === row.id));
+      // Сохраняем только подтверждённые факты. Статус "cancelled" без ссылки
+      // на факт не является оплатой: его оставляла прежняя ошибочная сборка
+      // графика, из-за чего июль–август пропадали, а суммы склеивались в
+      // сентябре. Исходный файл договора для такой строки надёжнее.
+      const protectedIds = new Set(existing
+        .filter((row) => row.status === "paid" || Boolean(row.paidByPaymentId) || Boolean(row.paidByMarketplaceSource) || partiallyPaidIds.has(row.id))
+        .map((row) => row.id));
+      const replaceable = existing.filter((row) => !protectedIds.has(row.id));
+      const keep = existing.filter((row) => protectedIds.has(row.id));
       const paymentIds = replaceable.map((row) => row.calendarPaymentId).filter((id): id is string => Boolean(id));
       const allCalendarPaymentIds = existing.map((row) => row.calendarPaymentId).filter((id): id is string => Boolean(id));
       const locationResult = allCalendarPaymentIds.length
