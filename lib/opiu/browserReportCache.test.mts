@@ -34,6 +34,26 @@ test("report cache survives a new read and does not expire by time", () => {
   delete (globalThis as { window?: unknown }).window;
 });
 
+test("снимок прежней версии кэша не читается и убирается при следующей записи", () => {
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage, sessionStorage },
+  });
+
+  const key = reportCacheKey("opiu-month", ["2026-10-05", "norvia"]);
+  const legacyKey = `finance-panel:report-cache:v1:${key}`;
+  localStorage.setItem(legacyKey, JSON.stringify({ savedAt: 1, data: { rows: ["старый вид без блока «Расходы ниже EBITDA»"] } }));
+
+  assert.equal(readBrowserReportCache(key), null, "старый снимок v1 не должен подхватываться");
+
+  writeBrowserReportCache(key, { rows: ["новый вид"] });
+  assert.equal(localStorage.getItem(legacyKey), null, "после записи v1-снимок удалён");
+  assert.deepEqual(readBrowserReportCache<{ rows: string[] }>(key)?.data, { rows: ["новый вид"] });
+  delete (globalThis as { window?: unknown }).window;
+});
+
 test("report cache key separates filters", () => {
   assert.notEqual(
     reportCacheKey("wb", ["2026-08-31", "norvia"]),
