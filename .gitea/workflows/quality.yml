@@ -7,9 +7,16 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# Один тяжёлый production-build за раз на ВМ. Холодная сборка пикует ~3,3 ГБ, и
+# три параллельных next build на 8-ГБ ВМ выбивают память на проверке типов —
+# quality краснеет НЕ из-за кода. А раз quality теперь обязательный чек мёржа,
+# такой ложно-красный блокирует все PR и провоцирует форс-мёрж мимо гейта (06.10
+# так и сломали main). Глобальная очередь: прогоны ждут друг друга, но слот при
+# этом не держат (заблокированный concurrency-прогон раннер не занимает).
+# cancel-in-progress=false — гасить прогон ДРУГОГО PR нельзя (группа общая).
 concurrency:
-  group: quality-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: quality-build
+  cancel-in-progress: false
 
 jobs:
   checks:
@@ -19,9 +26,10 @@ jobs:
     # приложения; переменная наследуется и сборщиком, и его typecheck worker.
     env:
       NODE_OPTIONS: "--max-old-space-size=4096"
-    # Зависшая проверка держит слот раннера (capacity 3) и блокирует
-    # ai-gate и deploy всех остальных PR — ограничиваем по времени.
-    timeout-minutes: 45
+    # Зависшая проверка держит слот раннера и (при общей очереди) блокирует
+    # сборки всех остальных PR — ограничиваем по времени. Норма прогона ~10–12 мин,
+    # 30 — запас; раньше было 45, но с очередью один застрявший build дороже.
+    timeout-minutes: 30
     steps:
       - name: Клонировать код PR
         env:
