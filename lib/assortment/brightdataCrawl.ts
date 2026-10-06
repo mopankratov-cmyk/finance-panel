@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
 import {
   asCatalogItem, boughtRecently, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, partRecords, PENDING_TTL_MS, purchaseKey,
-  readBought, readCoverage, readPending, sectionLabel, targetSignature, writeBought,
+  readBought, readCoverage, readPending, readTriggerFailure, sectionLabel, targetSignature, triggerFailureNote, writeBought, writeTriggerFailure,
   isDeadImageUrl, readPhotoPending, uniqueRecords, writeCoverage, writePending, writePhotoPending, ZARA_PHOTOS, zaraModelCode, zaraPhotoFilter, zaraPhotosByCode,
   type MappedRecord, type PendingSnapshot, type PhotoPending,
 } from "./brightdataCatalog";
@@ -51,6 +51,7 @@ async function mark(db: SupabaseClient, sourceId: string, patch: Record<string, 
 /**
  * Окончательный отказ Bright Data по выборке (4xx, кроме 408 и 429): повторять бессмысленно, пробу снимаем. Сбой связи, таймаут,
  * 5xx и 429 — временные: оплаченная выборка остаётся в очереди до суток, а не выбрасывается после первого же сбоя скачивания.
+ * То же правило — для отказа в самой покупке (фильтр не принят): денег не взято, следующая цель покупается.
  */
 function isPermanentDownloadError(error: unknown): boolean {
   const status = error instanceof BrightDataError ? error.status : undefined;
@@ -75,7 +76,11 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
     const pending: PendingSnapshot[] = [];
     let bought: Record<string, string> = {};
     let started = 0;
-    const queue = (caps: unknown) => writeBought(writePending(caps, pending), bought, nowMs);
+    // Отказы Bright Data по отдельным целям (фильтр не принят): цель не куплена, остальные покупаются.
+    const rejected: string[] = [];
+    // Покупка без сбоя снимает сбой прошлого запуска; сбой этого запуска — записывается заново (см. ниже).
+    const queue = (caps: unknown) => writeTriggerFailure(writeBought(writePending(caps, pending), bought, nowMs), null);
+    const failed = (caps: unknown, message: string) => writeTriggerFailure(started > 0 ? queue(caps) : caps, { at: now, message });
     try {
       source = await readSource(db, sourceId);
       pending.push(...readPending(source.capabilities).filter((p) => nowMs - Date.parse(p.triggeredAt) < PENDING_TTL_MS));
@@ -89,9 +94,18 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
         const signature = targetSignature(target);
         const key = purchaseKey({ ...target, targetKey: signature });
         if (!options.force && (pending.some((p) => purchaseKey(p) === key) || boughtRecently(bought[key], nowMs))) continue;
-        const snapshotId = target.kind === "dataset"
-          ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
-          : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
+        let snapshotId: string;
+        try {
+          snapshotId = target.kind === "dataset"
+            ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
+            : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
+        } catch (error) {
+          // Окончательный отказ по этой цели (фильтр части не принят и т. п.) — денег не взято, повтор бессмыслен: называем и покупаем
+          // следующие (сбой курток коллабораций не оставляет без покупки их сумки). 429, 5xx, таймаут, сбой связи — стоп, как раньше.
+          if (!isPermanentDownloadError(error)) throw error;
+          rejected.push(`${sectionLabel(target)} — ${error instanceof Error ? error.message.slice(0, 160) : "отказ"}`);
+          continue;
+        }
         pending.push({
           snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind, targetKey: signature,
           ...(target.kind === "dataset" ? { recordsLimit: target.recordsLimit ?? 50, coverage: filterSignature(target.filter) } : {}),
@@ -103,13 +117,21 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
         // выборки — их номеров нигде не осталось бы, и повторный запуск купил бы всё заново.
         await mark(db, sourceId, { capabilities: queue(source.capabilities), last_attempt_at: now, last_error: null });
       }
+      if (rejected.length > 0) {
+        // Сбой запуска хранится отдельно от last_error (capabilities.brightdata_trigger_failure): сбор в 06:30 перепишет last_error,
+        // а этот сбой присоединит к своим ошибкам — иначе не купленная часть раздела пропала бы из «Источников» через полтора часа.
+        const message = `не куплено: ${rejected.join("; ")}`.slice(0, 400);
+        await mark(db, sourceId, { capabilities: failed(source.capabilities, message), last_attempt_at: now, last_error: `Bright Data: ${message}` });
+        results.push({ sourceId, phase: "trigger", ok: false, error: message, triggered: started, pending: pending.length });
+        continue;
+      }
       if (started === 0) continue;
       results.push({ sourceId, phase: "trigger", ok: true, triggered: started, pending: pending.length });
     } catch (error) {
-      const message = error instanceof Error ? error.message.slice(0, 200) : "ошибка запуска";
+      const message = [error instanceof Error ? error.message.slice(0, 200) : "ошибка запуска", ...(rejected.length ? [`не куплено: ${rejected.join("; ")}`] : [])].join("; ").slice(0, 400);
       // Если сбой пришёл при самой записи уже оплаченной пробы — ещё одна попытка сохранить очередь вместе с причиной одним обращением.
       const patch: Record<string, unknown> = { last_attempt_at: now, last_error: `Bright Data: ${message}${started > 0 ? ` (оплачено и сохранено проб: ${started})` : ""}` };
-      if (source && started > 0) patch.capabilities = queue(source.capabilities);
+      if (source) patch.capabilities = failed(source.capabilities, message);
       await mark(db, sourceId, patch).catch(() => undefined);
       results.push({ sourceId, phase: "trigger", ok: false, error: message, ...(started > 0 ? { triggered: started, pending: pending.length } : {}) });
     }
@@ -273,7 +295,7 @@ async function processSnapshot(
   // раздела (CHAQUETA Zara, коллаборации Uniqlo) — тоже окно: её отсутствие не
   // говорит, что вещь пропала из раздела, а «пропало» судится по полному прогону.
   const coverage: RunCoverage = snapshot.kind === "dataset" && !snapshot.part ? (quiet ? "window" : "full") : "window";
-  return ingestRecords(db, source, snapshot, records, deadline, { coverage, quiet, churnGuard, drainOrphans: snapshot.kind === "dataset", imagesKnown: snapshot.kind === "dataset" });
+  return ingestRecords(db, source, snapshot, records, deadline, { coverage, quiet, churnGuard, drainOrphans: snapshot.kind === "dataset", imagesKnown: snapshot.kind === "dataset", part: snapshot.part ?? null });
 }
 
 export interface IngestResult {
@@ -316,6 +338,8 @@ export async function ingestRecords(
      * обрезана: «невиданное» там — не обязательно новое, хвост не разбираем.
      */
     drainOrphans?: boolean;
+    /** Часть раздела (CHAQUETA Zara, коллаборации Uniqlo) — пометка прогона в журнале наблюдений. */
+    part?: string | null;
   } = {},
 ): Promise<IngestResult> {
   const quiet = Boolean(options.quiet);
@@ -383,7 +407,7 @@ export async function ingestRecords(
   const items: SnapshotItem[] = relevant.map((r) => ({ sourceItemId: r.sourceItemId, direction: target.direction, title: r.title, brand: r.brand ?? source.name, images: r.images }));
   await recordObservation(db, {
     sourceId: source.sourceId, direction: target.direction, coverage,
-    seen: relevant.length, added, startedAt: now, snapshotId: (target as { snapshotId?: string }).snapshotId ?? null,
+    seen: relevant.length, added, startedAt: now, snapshotId: (target as { snapshotId?: string }).snapshotId ?? null, part: options.part ?? null,
   }, items);
   return { collected: relevant.length, added, baseline: asBaseline, churn, missingPhotos };
 }
@@ -408,8 +432,12 @@ async function zaraRowsWithoutPhotos(db: SupabaseClient): Promise<Array<{ source
     if (isMissingColumnError(error instanceof Error ? error : new Error(String(error)))) return [];
     throw error;
   }
+  // Первыми — модели с находкой в ленте: выборка фото берёт до 400 моделей по порядку, и строки части раздела (CHAQUETA Zara легла
+  // базой с мёртвыми снимками — до нескольких сотен) иначе вытесняли бы свежие находки, и те неделю стояли бы в ленте без фото.
+  // Сортировка устойчивая: внутри групп — прежний порядок по номеру.
   return data
-    .filter((r) => !Array.isArray(r.image_urls) || r.image_urls.every((u) => typeof u !== "string" || isDeadImageUrl(u)));
+    .filter((r) => !Array.isArray(r.image_urls) || r.image_urls.every((u) => typeof u !== "string" || isDeadImageUrl(u)))
+    .sort((a, b) => Number(Boolean(b.reference_id)) - Number(Boolean(a.reference_id)));
 }
 
 /**
@@ -489,6 +517,9 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
       const errors: string[] = [];
       const coverage = readCoverage(source.capabilities);
       const bought = readBought(source.capabilities);
+      // Сбой запуска (часть раздела не куплена): сбор пишет last_error заново — присоединяем, пока запуск без сбоя его не снимет.
+      const triggerFailure = readTriggerFailure(source.capabilities);
+      const triggerNote = triggerFailureNote(triggerFailure, Date.now());
       // Покупка не состоялась (окончательный отказ Bright Data) — отметку снимаем: повторный запуск в тот же день может заказать снова.
       const release = (snapshot: PendingSnapshot) => {
         const key = purchaseKey(snapshot);
@@ -568,8 +599,9 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
         }
       }
       result.pending = left.length + photoLeft.length;
-      const caps = writeBought(writeCoverage(writePending(source.capabilities, left), coverage), bought, Date.now());
-      const patch: Record<string, unknown> = { capabilities: sourceId === ZARA_PHOTOS.sourceId ? writePhotoPending(caps, photoLeft) : caps, last_attempt_at: now, last_error: errors.length ? `Bright Data: ${errors.join("; ")}` : null };
+      const caps = writeTriggerFailure(writeBought(writeCoverage(writePending(source.capabilities, left), coverage), bought, Date.now()), triggerNote ? triggerFailure : null);
+      const shown = triggerNote ? [triggerNote, ...errors] : errors;
+      const patch: Record<string, unknown> = { capabilities: sourceId === ZARA_PHOTOS.sourceId ? writePhotoPending(caps, photoLeft) : caps, last_attempt_at: now, last_error: shown.length ? `Bright Data: ${shown.join("; ")}` : null };
       if ((result.collected ?? 0) > 0) patch.last_success_at = now;
       await mark(db, sourceId, patch);
       if (errors.length) {

@@ -3,7 +3,7 @@
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { AssortmentSource } from "@/lib/assortment/coverage";
-import { HISTORY_STATUS_HINT, HISTORY_STATUS_LABEL, onlyKnownSources, type HistoryStatus, type SourceHistory } from "@/lib/assortment/observationState";
+import { HISTORY_STATUS_HINT, HISTORY_STATUS_LABEL, onlyKnownSources, runCountsText, type HistoryStatus, type SourceHistory } from "@/lib/assortment/observationState";
 import { plural } from "@/lib/warehouse/plural";
 
 type State =
@@ -84,7 +84,7 @@ export function ObservationState({ sources }: { sources: AssortmentSource[] }) {
                 <span className="text-xs leading-5 text-slate-600">
                   {h.days} {plural(h.days, "день", "дня", "дней")} наблюдений
                   {h.firstDay ? ` с ${dm(h.firstDay)}` : ""}
-                  {` · прогонов ${h.runs} (полных ${h.full}, по верху выдачи ${h.window}, оборванных ${h.partial})`}
+                  {` · ${runCountsText(h)}`}
                   {h.lastFullOn ? ` · последний полный ${dm(h.lastFullOn)}` : ""}
                   {h.lastError ? <span className="text-amber-800"> · последний оборван: {h.lastError.slice(0, 80)}</span> : null}
                 </span>

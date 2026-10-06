@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Attributes } from "./attributes";
+import { partLabel } from "./brightdataCatalog";
 import { rowsByIds } from "./byIds";
 import { COLLECTION_STATUS_LABEL } from "./collections";
 import { listCollections } from "./collectionsStore";
@@ -131,5 +132,5 @@ async function loadHistoryLine(db: SupabaseClient, now: Date): Promise<DigestFac
   if (sources.length === 0) return null;
   const { data } = await db.from("assortment_sources").select("source_id,name");
   const nameOf = new Map((data ?? []).map((r) => [String(r.source_id), String(r.name ?? "")]));
-  return sources.map((s) => ({ name: nameOf.get(s.sourceId) || s.sourceId, status: s.status }));
+  return sources.map((s) => ({ name: nameOf.get(s.sourceId) || s.sourceId, status: s.status, ...(s.partNames.length ? { parts: s.partNames.map(partLabel) } : {}) }));
 }

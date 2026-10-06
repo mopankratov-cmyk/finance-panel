@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { moscowToday } from "@/lib/sync/moscowDay";
-import { isMissingAssortmentSchema } from "./errors";
+import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { summarizeHistory, type RunRow, type SourceHistory } from "./observationState";
 
 /** За сколько дней читаем журнал прогонов: хватает, чтобы увидеть и «копится», и «динамика» (28 дней). */
 const HISTORY_DAYS = 120;
+const RUN_COLUMNS = "source_id,direction,observed_on,coverage,seen,added,error,started_at";
 
 export interface HistoryState {
   /** false — журнала ещё нет (миграция 202610050001 не применена). */
@@ -28,12 +29,20 @@ function unavailable(error: unknown): boolean {
 export async function loadHistoryState(db: SupabaseClient, now: Date | number = new Date(), direction?: string): Promise<HistoryState> {
   const today = moscowToday(now);
   const since = new Date(Date.parse(`${today}T00:00:00Z`) - HISTORY_DAYS * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const load = (columns: string) => loadAllSupabasePages<RunRow>((from, to) => db.from("assortment_run")
+    .select(columns)
+    .gte("observed_on", since)
+    .order("started_at", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: RunRow[] | null; error: { message: string } | null }>, { label: "Журнал прогонов", pageSize: 1000 });
   try {
-    const rows = await loadAllSupabasePages<RunRow>((from, to) => db.from("assortment_run")
-      .select("source_id,direction,observed_on,coverage,seen,added,error,started_at")
-      .gte("observed_on", since)
-      .order("started_at", { ascending: true })
-      .range(from, to) as unknown as PromiseLike<{ data: RunRow[] | null; error: { message: string } | null }>, { label: "Журнал прогонов", pageSize: 1000 });
+    let rows: RunRow[];
+    try {
+      rows = await load(`${RUN_COLUMNS},part`);
+    } catch (error) {
+      // Миграции 202610060010 (пометка части раздела) ещё нет — читаем без неё: части тогда не отличить, как до неё.
+      if (!isMissingColumnError({ message: error instanceof Error ? error.message : String(error) })) throw error;
+      rows = await load(RUN_COLUMNS);
+    }
     const mine = direction ? rows.filter((r) => r.direction == null || r.direction === direction) : rows;
     return { available: true, today, sources: summarizeHistory(mine, today) };
   } catch (error) {
