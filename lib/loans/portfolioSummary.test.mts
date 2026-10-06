@@ -28,6 +28,21 @@ test("договорный остаток поддерживает поквар�
   assert.equal(actualLoanBalance(5_000_000, schedule, "2026-07-01"), 5_450_000, "до фактической оплаты берётся остаток перед последней обязанностью");
 });
 
+test("неоплаченный финальный платёж не обнуляет фактический остаток тела", () => {
+  const schedule = [
+    row({
+      id: "final-principal",
+      date: "2026-10-30",
+      principal: 1_748_373,
+      status: "planned",
+      balanceBefore: 1_748_373,
+      balanceAfter: 0,
+    }),
+  ];
+  assert.equal(projectedLoanBalanceAt(1_748_373, schedule, "2026-10-31"), 0, "прогноз после договорной даты остаётся нулевым");
+  assert.equal(actualLoanBalance(1_748_373, schedule, "2026-10-31"), 1_748_373, "фактический долг остаётся до оплаты");
+});
+
 test("помесячный свод разделяет начислено, остаток и факт", () => {
   const schedule = [
     row({ date: "2026-09-10", principal: 100_000, interest: 20_000, status: "done" }),
