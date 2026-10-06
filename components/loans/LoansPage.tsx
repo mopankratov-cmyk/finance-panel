@@ -459,7 +459,10 @@ export function LoansPage() {
       // Иначе пользователю приходилось отдельно запускать ту же сверку ещё раз.
       const repairedFacts = await loadMarketplaceFacts();
       const linkedContracts = [...new Map(repairedFacts
-        .filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber)
+        // После восстановления точные удержания переходят в ready, а
+        // частичные — в review. Оба состояния уже однозначно связаны с
+        // договором и должны распределиться за одно нажатие.
+        .filter((fact) => (fact.state === "review" || fact.state === "ready") && fact.loanId && fact.contractNumber)
         .map((fact) => [fact.contractNumber!, fact.loanId!] as const)).entries()];
       let wbAllocated = 0;
       for (const [contractNumber, loanId] of linkedContracts) {

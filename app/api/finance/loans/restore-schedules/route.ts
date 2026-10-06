@@ -191,6 +191,11 @@ export async function POST() {
         original_due_date: null, balance_before: row.balanceBefore, balance_after: row.balanceAfter,
       })));
       if (savedRows.error) throw savedRows.error;
+      const sourceDueDate = source.map((row) => row.date).sort().at(-1);
+      if (sourceDueDate) {
+        const updatedLoan = await client.from("loans").update({ due_date: sourceDueDate }).eq("id", loanId);
+        if (updatedLoan.error) throw updatedLoan.error;
+      }
       repaired.push(loan.creditor);
     }
     return NextResponse.json({ ok: true, repaired, skipped });
