@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireApiSession } from "@/lib/auth/apiGuard";
 import { getServerSession } from "@/lib/auth/server";
+import { pdfFromSignedContainer } from "@/lib/loans/signedPdf";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const maxDuration = 60;
@@ -194,9 +195,16 @@ export async function POST(request: Request) {
     // ниже — без заявленного типа, подделанного поверх произвольного
     // содержимого, файл прошёл бы проверку выше и лёг в приватный бакет как
     // будто это настоящий договор.
-    const bytes = Buffer.from(await file.arrayBuffer());
+    const uploadedBytes = Buffer.from(await file.arrayBuffer());
+    // Контур ЭДО нередко прикладывает CMS/PKCS#7-подпись под именем `.pdf`.
+    // Внутри такого контейнера лежит сам PDF, который нужен панели для
+    // распознавания графика. Сохраняем извлечённый документ; оригинальный
+    // подписанный контейнер остаётся у пользователя как юридический оригинал.
+    const bytes = mimeType === "application/pdf" && !matchesMagicBytes(mimeType, uploadedBytes)
+      ? pdfFromSignedContainer(uploadedBytes) ?? uploadedBytes
+      : uploadedBytes;
     if (!matchesMagicBytes(mimeType, bytes)) {
-      throw new DocumentStorageError("Файл не похож на заявленный формат — содержимое не совпадает", 415);
+      throw new DocumentStorageError("Не удалось извлечь PDF из подписанного контейнера. Загрузите исходный PDF без контейнера подписи.", 415);
     }
 
     const db = await database();

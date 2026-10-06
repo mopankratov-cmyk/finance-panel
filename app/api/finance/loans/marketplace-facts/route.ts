@@ -26,7 +26,7 @@ const roundMoney = (value: number) => Math.round(value * 100) / 100;
  * же однозначная связь, которую GET использует для показа договора, поэтому
  * POST не должен требовать повторного ручного выбора.
  */
-async function findLegacyLoanIdByContract(contractNumber: string) {
+async function findLegacyLoanIdsByContract(contractNumber: string) {
   const payments = await loadAllSupabasePages<PaymentRow>((from, to) => getSupabaseAdmin()!
     .from("payments").select("comment").not("comment", "is", null).like("comment", "%[loan:%").order("id").range(from, to), { label: "Старые метки договоров", maxPages: 50 });
   const loanIds = new Set(payments.flatMap((payment) => {
@@ -34,7 +34,7 @@ async function findLegacyLoanIdByContract(contractNumber: string) {
     const loanId = payment.comment?.match(/\[loan:([0-9a-f-]{36})/i)?.[1];
     return loanId ? [loanId] : [];
   }));
-  return loanIds.size === 1 ? [...loanIds][0] : null;
+  return loanIds;
 }
 
 export async function GET() {
@@ -166,8 +166,9 @@ export async function POST(request: Request) {
   if (denied) return denied;
   const db = getSupabaseAdmin();
   if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
-  const body = await request.json().catch(() => null) as { action?: unknown; contractNumber?: unknown } | null;
+  const body = await request.json().catch(() => null) as { action?: unknown; contractNumber?: unknown; loanId?: unknown } | null;
   const contractNumber = normalizedContractNumber(typeof body?.contractNumber === "string" ? body.contractNumber : "");
+  const requestedLoanId = typeof body?.loanId === "string" && /^[0-9a-f-]{36}$/i.test(body.loanId) ? body.loanId : null;
   if (contractNumber.length < 6) return NextResponse.json({ error: "Укажите номер договора WB" }, { status: 400 });
   try {
     if (body?.action === "ignore-contract") {
@@ -182,7 +183,14 @@ export async function POST(request: Request) {
     if (linkResult.error) throw linkResult.error;
     let loanId = linkResult.data?.loan_id ? String(linkResult.data.loan_id) : null;
     if (!loanId) {
-      loanId = await findLegacyLoanIdByContract(contractNumber);
+      const legacyLoanIds = await findLegacyLoanIdsByContract(contractNumber);
+      // Экран уже получил loanId из той же подтверждённой метки в истории.
+      // Это снимает редкую неоднозначность у старых дублей одного номера, но
+      // не позволяет подставить произвольный договор: id обязан быть среди
+      // договоров с этим же номером WB.
+      loanId = requestedLoanId && legacyLoanIds.has(requestedLoanId)
+        ? requestedLoanId
+        : legacyLoanIds.size === 1 ? [...legacyLoanIds][0] : null;
       if (!loanId) return NextResponse.json({ error: "Не удалось однозначно определить договор панели по номеру WB" }, { status: 409 });
       // Запоминаем найденную однозначную связь, чтобы следующий запуск не
       // перечитывал старую историю и не зависел от ручного действия.

@@ -86,11 +86,11 @@ async function ignoreClosedWbContract(contractNumber: string): Promise<void> {
 
 type WbAllocationResult = { allocatedRows?: number; allocatedAmountRub?: number; unresolvedFacts?: number; error?: string };
 
-async function allocateWbContractAutomatically(contractNumber: string): Promise<WbAllocationResult> {
+async function allocateWbContractAutomatically(contractNumber: string, loanId?: string | null): Promise<WbAllocationResult> {
   const response = await fetch("/api/finance/loans/marketplace-facts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "allocate-contract", contractNumber }),
+    body: JSON.stringify({ action: "allocate-contract", contractNumber, loanId: loanId ?? undefined }),
   });
   const body = await response.json().catch(() => ({})) as WbAllocationResult;
   if (!response.ok) throw new Error(body.error || "Не удалось распределить удержания WB");
@@ -458,12 +458,12 @@ export function LoansPage() {
       // Восстановленный исторический хвост сразу используем для удержаний WB.
       // Иначе пользователю приходилось отдельно запускать ту же сверку ещё раз.
       const repairedFacts = await loadMarketplaceFacts();
-      const linkedContracts = [...new Set(repairedFacts
+      const linkedContracts = [...new Map(repairedFacts
         .filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber)
-        .map((fact) => fact.contractNumber!))];
+        .map((fact) => [fact.contractNumber!, fact.loanId!] as const)).entries()];
       let wbAllocated = 0;
-      for (const contractNumber of linkedContracts) {
-        const allocation = await allocateWbContractAutomatically(contractNumber);
+      for (const [contractNumber, loanId] of linkedContracts) {
+        const allocation = await allocateWbContractAutomatically(contractNumber, loanId);
         wbAllocated += allocation.allocatedAmountRub ?? 0;
       }
       const [fresh, schedule, freshFacts] = await Promise.all([loadFinanceState(), loadLoanScheduleRows(), loadMarketplaceFacts()]);
@@ -489,13 +489,13 @@ export function LoansPage() {
       // Когда номер WB уже связан с договором, дальнейший выбор строк не
       // нужен: удержания разносятся по наиболее ранним просроченным строкам
       // того же вида. Нераспознанные договоры по-прежнему остаются в очереди.
-      const linkedContracts = [...new Set(facts
+      const linkedContracts = [...new Map(facts
         .filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber)
-        .map((fact) => fact.contractNumber!))];
+        .map((fact) => [fact.contractNumber!, fact.loanId!] as const)).entries()];
       let allocatedAmount = 0;
       let allocatedRows = 0;
-      for (const contractNumber of linkedContracts) {
-        const result = await allocateWbContractAutomatically(contractNumber);
+      for (const [contractNumber, loanId] of linkedContracts) {
+        const result = await allocateWbContractAutomatically(contractNumber, loanId);
         allocatedAmount += result.allocatedAmountRub ?? 0;
         allocatedRows += result.allocatedRows ?? 0;
       }
@@ -552,10 +552,10 @@ export function LoansPage() {
     }
   }, []);
 
-  const allocateWbContract = useCallback(async (contractNumber: string) => {
+  const allocateWbContract = useCallback(async (contractNumber: string, loanId?: string | null) => {
     setWbAllocatingContract(contractNumber);
     try {
-      const body = await allocateWbContractAutomatically(contractNumber);
+      const body = await allocateWbContractAutomatically(contractNumber, loanId);
       const [freshFacts, fresh, schedule] = await Promise.all([loadMarketplaceFacts(), loadFinanceState(), loadLoanScheduleRows()]);
       setMarketplaceFacts(freshFacts);
       dispatch({ type: "LOAD", payload: fresh });
@@ -799,7 +799,7 @@ export function LoansPage() {
               <h2 className="font-bold text-amber-950">Удержания WB ждут проверки</h2>
               <p className="mt-1 text-sm text-amber-900">Связанные договоры распределяются автоматически по дате и виду платежа, включая частичные суммы. Вручную нужно указать только неизвестный номер договора.</p>
             </div>
-            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-50">Обновить сверку</button>{[...new Set(marketplaceFacts.filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber).map((fact) => fact.contractNumber!))].map((contractNumber) => <button key={contractNumber} type="button" onClick={() => void allocateWbContract(contractNumber)} disabled={wbAllocatingContract !== null} className="min-h-11 shrink-0 rounded-xl bg-amber-700 px-4 text-sm font-semibold text-white hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:opacity-50">{wbAllocatingContract === contractNumber ? "Распределяю…" : `Распределить № ${contractNumber}`}</button>)}</div>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void reconcileWithWb()} disabled={marketplaceLoading} className="min-h-11 shrink-0 rounded-xl border border-amber-300 bg-white px-4 text-sm font-semibold text-amber-900 hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 disabled:opacity-50">Обновить сверку</button>{[...new Map(marketplaceFacts.filter((fact) => fact.state === "review" && fact.loanId && fact.contractNumber).map((fact) => [fact.contractNumber!, fact.loanId!] as const)).entries()].map(([contractNumber, loanId]) => <button key={contractNumber} type="button" onClick={() => void allocateWbContract(contractNumber, loanId)} disabled={wbAllocatingContract !== null} className="min-h-11 shrink-0 rounded-xl bg-amber-700 px-4 text-sm font-semibold text-white hover:bg-amber-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2 disabled:opacity-50">{wbAllocatingContract === contractNumber ? "Распределяю…" : `Распределить № ${contractNumber}`}</button>)}</div>
           </div>
           <div className="max-h-80 overflow-y-auto">
             {marketplaceFacts.filter((fact) => fact.state === "review" || fact.state === "unassigned").slice(0, 20).map((fact) => {
