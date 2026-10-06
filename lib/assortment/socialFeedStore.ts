@@ -94,7 +94,8 @@ export async function loadSocialRunStatus(db: SupabaseClient, nowMs: number): Pr
   return {
     lastRunAt: last?.started_at ?? null,
     lastStatus: status,
-    lastNote: last?.error ? String(last.error).slice(0, 240) : null,
+    // Метка `[stop:billing]` нужна сторожу задач, на вкладке она лишняя.
+    lastNote: last?.error ? String(last.error).replace(/\s*\[stop:[a-z_]+\]\s*$/, "").slice(0, 240) || null : null,
     lastOkAt: runs.find((r) => r.status === "ok" || r.status === "partial")?.started_at ?? null,
     nextRunAt: nextSocialRun(nowMs),
   };

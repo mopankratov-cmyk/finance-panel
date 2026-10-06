@@ -474,7 +474,8 @@ test("Метка «залетает» в каталоге: модель Zara/Uni
 
 test("Карточка модели: «Независимые публикации» — по привязанным рилсам вместо заглушки; без привязки — честно «не найдено», не Zara/Uniqlo — «не собираем»", async () => {
   const placeholder = buildEvidence([], null).spread.find((r) => r.label === "Независимые публикации")!;
-  assert.deepEqual([placeholder.value, placeholder.detail], ["нет данных", "соцсети пока не подключены"], "без данных (и в снимке подборки) — прежняя заглушка");
+  // Рилсы подключены (#1553), остальные соцсети — нет: «соцсети не подключены» было бы неправдой (Ф2).
+  assert.deepEqual([placeholder.value, placeholder.detail], ["нет данных", "рилсы Instagram сюда не подгружались; другие соцсети не подключены — Этап 6 ждёт решения владельца"], "без данных (и в снимке подборки) — заглушка честно называет, что подключено");
 
   const { db } = fakeDb({ tables: {
     assortment_source_items: [{ source_id: "S001", source_item_id: "5854722", reference_id: "ref-1" }],
@@ -499,7 +500,7 @@ test("Карточка модели: «Независимые публикаци
   assert.deepEqual(buildEvidence([], null, none).spread.find((r) => r.label === "Независимые публикации")!.value, "не найдено");
   const polene = (await loadModelSocial(db, { id: "ref-4", url: "https://www.polene-paris.com/products/numero-un", brand: "Polène" }))!;
   assert.equal(polene.outOfScope, true);
-  assert.match(buildEvidence([], null, polene).spread.find((r) => r.label === "Независимые публикации")!.detail, /только про Zara и Uniqlo/);
+  assert.match(buildEvidence([], null, polene).spread.find((r) => r.label === "Независимые публикации")!.detail, /только про Zara и Uniqlo; другие соцсети не подключены — Этап 6 ждёт решения владельца/);
   assert.equal(await loadModelSocial(fakeDb({ missing: ["assortment_social_post"], tables: { assortment_source_items: [{ source_id: "S001", source_item_id: "5854722", reference_id: "ref-1" }] } }).db, { id: "ref-1", url: null, brand: "Zara" }), null, "таблиц нет — заглушка");
   const failed = (await loadModelSocial(fakeDb({ fail: ["assortment_social_post"], tables: { assortment_source_items: [{ source_id: "S001", source_item_id: "5854722", reference_id: "ref-1" }] } }).db, { id: "ref-1", url: null, brand: "Zara" }))!;
   assert.match(buildEvidence([], null, failed).spread.find((r) => r.label === "Независимые публикации")!.value, /не загрузилось/, "сбой назван");

@@ -13,6 +13,8 @@ import {
   type CatalogAiConfig, type CatalogProvider, type CatalogHead, type CatalogStopReason, type ExistingResult, type PhotoTraitsReport, type QueueSummary, type StoredAttributes, type TraitModel,
 } from "./catalogAi";
 import type { AssortmentDirection } from "./constants";
+import { engineBudgetConfig, engineRoomUsd, type EngineBudgetConfig } from "./engineBudget";
+import { loadEngineWeek } from "./engineBudgetStore";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { modelKey } from "./modelKey";
 
@@ -359,8 +361,13 @@ export interface RunSummary {
   failed: number;
   costUsd: number;
   stoppedBy: "budget" | "time" | "auth" | "billing" | "rate_limit" | "config" | "errors" | null;
-  /** При stoppedBy «budget» — во что именно упёрлись: бюджет недели или потолок суток (для метки причины в журнале). */
-  limitReason?: "budget" | "daily_limit";
+  /**
+   * При stoppedBy «budget» — во что именно упёрлись: бюджет недели, потолок суток или общий потолок движка (каталоги в приоритете) —
+   * для метки причины в журнале.
+   */
+  limitReason?: "budget" | "daily_limit" | "engine_budget";
+  /** Остаток общего потолка движка для разбора по фото на старте прогона, $; null — учёт движка не прочитан (таблицы нет). */
+  engineRoomUsd?: number | null;
   /** Временные сбои (перегрузка, сеть, наш таймаут): попытка модели не потрачена. */
   transient: number;
   /**
@@ -428,13 +435,20 @@ export interface RunOptions {
   /** Сколько моделей в работе одновременно. */
   parallel?: number;
   dryRun?: boolean;
+  /** Общий потолок движка (по умолчанию — из окружения). */
+  engine?: EngineBudgetConfig;
+}
+
+/** Причина-«лимит» по ответу allowance: что именно кончилось (run_cap — не лимит, следующий прогон продолжит). */
+function limitOf(reason: ReturnType<typeof allowance>["reason"]): NonNullable<RunSummary["limitReason"]> {
+  return reason === "daily_limit" ? "daily_limit" : reason === "engine_budget" ? "engine_budget" : "budget";
 }
 
 /**
- * Один прогон: считает, сколько разрешают бюджет недели и потолок суток, берёт
- * очередь (сначала новые модели) и разбирает пачками. Расход записывается ПОСЛЕ
- * каждого ответа, а бюджет проверяется ДО каждой пачки — перерасхода больше
- * пачки не бывает.
+ * Один прогон: считает, сколько разрешают бюджет недели, общий потолок движка
+ * (с резервом под каталоги) и потолок суток, берёт очередь (сначала новые модели)
+ * и разбирает пачками. Расход записывается ПОСЛЕ каждого ответа, а бюджет
+ * проверяется ДО каждой пачки — перерасхода больше пачки не бывает.
  */
 export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Promise<RunSummary> {
   const config = options.config ?? catalogAiConfig();
@@ -457,11 +471,15 @@ export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Pro
   const spend = await loadSpend(db, startedAt);
   if (!spend) return { ...summary, skipped: "нет таблиц признаков (миграция 202610050005)" };
   summary.spend = spend;
-  const first = allowance(config, spend.weekUsd, spend.callsToday, runCap);
+  // Общий потолок движка: разбор по фото отказывает раньше каталогов — ему остаётся то, что не отложено под Zara, Uniqlo и прочие покупки.
+  const week = await loadEngineWeek(db, startedAt);
+  const engineRoom = week ? engineRoomUsd(week, CATALOG_AI_KIND, options.engine ?? engineBudgetConfig()) : Number.POSITIVE_INFINITY;
+  summary.engineRoomUsd = week ? engineRoom : null;
+  const first = allowance(config, spend.weekUsd, spend.callsToday, runCap, engineRoom);
   summary.allowReason = first.reason;
-  // Бюджет недели или потолок суток исчерпаны — каталог и таблицу результатов не читаем вовсе (за сутки таких прогонов
+  // Бюджет недели, общий потолок или потолок суток исчерпаны — каталог и таблицу результатов не читаем вовсе (за сутки таких прогонов
   // до десяти): ни тяжёлых выборок, ни замка, ни строки в журнале.
-  if (!options.dryRun && first.models === 0) return first.reason === "run_cap" ? summary : { ...summary, stoppedBy: "budget", limitReason: first.reason === "daily_limit" ? "daily_limit" : "budget" };
+  if (!options.dryRun && first.models === 0) return first.reason === "run_cap" ? summary : { ...summary, stoppedBy: "budget", limitReason: limitOf(first.reason) };
 
   // Замок берём до чтения очереди: иначе прогон, стартовавший в конце чужого, читает уже устаревший расход и результаты.
   const lease = options.dryRun ? "dry" : await acquireLease(db, startedAt);
@@ -475,7 +493,7 @@ export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Pro
     summary.candidates = queue.length;
     summary.allowed = Math.min(first.models, queue.length);
     if (options.dryRun || queue.length === 0) return summary;
-    return await processQueue(db, queue, existing, config, options, summary, spend, { startedAt, startBudget, runCap, parallel, now });
+    return await processQueue(db, queue, existing, config, options, summary, spend, { startedAt, startBudget, runCap, parallel, now, engineRoom });
   } finally {
     if (lease !== "dry") await releaseLease(db, startedAt, lease);
   }
@@ -483,11 +501,13 @@ export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Pro
 
 async function processQueue(
   db: SupabaseClient, queue: CatalogHead[], existing: Map<string, ExistingResult>, config: CatalogAiConfig, options: RunOptions,
-  summary: RunSummary, spend: Spend, ctx: { startedAt: number; startBudget: number; runCap: number; parallel: number; now: () => number },
+  summary: RunSummary, spend: Spend, ctx: { startedAt: number; startBudget: number; runCap: number; parallel: number; now: () => number; engineRoom: number },
 ): Promise<RunSummary> {
   const { startedAt, startBudget, runCap, parallel, now } = ctx;
 
   let weekUsd = spend.weekUsd;
+  // Остаток общего потолка тает вместе с расходом прогона: проверка ДО каждой пачки — и по нему.
+  let engineRoom = ctx.engineRoom;
   let callsToday = spend.callsToday;
   let doneInRun = 0;
   let deadBatches = 0;
@@ -506,11 +526,11 @@ async function processQueue(
       summary.stoppedBy = "time";
       break;
     }
-    const left = allowance(config, weekUsd, callsToday, runCap - doneInRun);
+    const left = allowance(config, weekUsd, callsToday, runCap - doneInRun, engineRoom);
     if (left.models === 0) {
       // Упёрлись только в размер прогона — это не нехватка бюджета: следующий прогон продолжит.
       summary.stoppedBy = left.reason === "run_cap" ? null : "budget";
-      if (left.reason !== "run_cap") summary.limitReason = left.reason === "daily_limit" ? "daily_limit" : "budget";
+      if (left.reason !== "run_cap") summary.limitReason = limitOf(left.reason);
       break;
     }
     const batch: CatalogHead[] = [];
@@ -555,6 +575,7 @@ async function processQueue(
       usageError = error instanceof Error ? error.message : "ошибка записи";
     }
     weekUsd += batchCost;
+    engineRoom -= batchCost;
     callsToday += batch.length;
     doneInRun += batch.length;
     summary.done += ok;

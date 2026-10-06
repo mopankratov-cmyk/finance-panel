@@ -15,6 +15,24 @@ export class BrightDataError extends Error {
   }
 }
 
+/**
+ * Нет денег или аккаунт не активен: 402, «Customer is not active», нехватка баланса. Это не отказ по цели и не временный сбой: прогон
+ * останавливается одной причиной, оплаченные выборки остаются в очереди (их заберут, когда баланс пополнят).
+ */
+const BILLING_TEXT = /customer is not active|insufficient (?:funds|balance)|balance is (?:too )?low|payment required/i;
+
+export function isBrightDataBilling(error: unknown): boolean {
+  const status = error instanceof BrightDataError ? error.status : (error as { status?: unknown } | null)?.status;
+  if (status === 402) return true;
+  return BILLING_TEXT.test(error instanceof Error ? error.message : String(error ?? ""));
+}
+
+/**
+ * Слова остановки «нет денег» в last_error источника и строке журнала: по ним сторож источников узнаёт, что источник молчит из-за денег
+ * Bright Data (об этом уже сказал сторож задач одной тревогой), а не из-за поломки сборщика.
+ */
+export const BRIGHTDATA_BILLING_WORDS = "нет денег или аккаунт не активен (402)";
+
 export function hasBrightData(): boolean {
   return Boolean(process.env.BRIGHTDATA_API_TOKEN);
 }

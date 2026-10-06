@@ -3,26 +3,64 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ANTHROPIC_MODEL } from "@/lib/ai/models";
 import { AI_META_KEY, aiPrompt, mergeAiAttributes, parseAiAttributes } from "./aiAttributes";
 import type { Attributes } from "./attributes";
+import { catalogAiConfig } from "./catalogAi";
 import type { AssortmentDirection } from "./constants";
+import { ENGINE_KIND } from "./engineBudget";
+import { addEngineUsage } from "./engineBudgetStore";
 import { RU_SOURCE_IDS } from "./ruMarket";
 import { signedUrls } from "./storage";
 
 export class AiAttributesUnavailableError extends Error {}
 
+/** Ответ ИИ и его расход: токены и деньги (Polza — списанные рубли по курсу, факт; Anthropic — токены по цене модели, расчёт). */
+export interface ModelAnswer {
+  text: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+}
+
+/**
+ * Цены Anthropic, $ за миллион токенов (прайс на 09.2026) — для расчёта расхода старого разбора находок. Модель без записи считается по
+ * цене Opus 5 — оценка сверху: расход не занижаем.
+ */
+export const ANTHROPIC_PRICES: Record<string, { in: number; out: number }> = {
+  "claude-opus-5-5": { in: 4, out: 20 },
+  "claude-opus-5": { in: 5, out: 25 },
+  "claude-opus-4-8": { in: 5, out: 25 },
+  "claude-sonnet-5-5": { in: 2, out: 10 },
+  "claude-sonnet-5": { in: 2, out: 10 },
+  "claude-haiku-4-5": { in: 1, out: 5 },
+};
+
+export function anthropicCallUsd(model: string, inputTokens: number, outputTokens: number): number {
+  const price = ANTHROPIC_PRICES[model] ?? ANTHROPIC_PRICES["claude-opus-5"];
+  return Math.round(((inputTokens * price.in + outputTokens * price.out) / 1_000_000) * 100_000) / 100_000;
+}
+
 export function aiAttributesConfigured(): boolean {
   return Boolean(process.env.ANTHROPIC_API_KEY || process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY);
 }
 
-async function askAnthropic(direction: AssortmentDirection, imageUrls: string[]): Promise<{ text: string; model: string }> {
+async function askAnthropic(direction: AssortmentDirection, imageUrls: string[]): Promise<ModelAnswer> {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 55_000, maxRetries: 0 });
   const content: Anthropic.MessageCreateParams["messages"][number]["content"] = imageUrls.map((url) => ({ type: "image" as const, source: { type: "url" as const, url } }));
   content.push({ type: "text", text: "Опиши признаки по этим фото." });
   // Opus 5 не принимает temperature (см. lib/loans/aiRecognition.ts).
   const response = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 1200, system: aiPrompt(direction), messages: [{ role: "user", content }] });
-  return { text: response.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"), model: ANTHROPIC_MODEL };
+  const inputTokens = response.usage?.input_tokens ?? 0;
+  const outputTokens = response.usage?.output_tokens ?? 0;
+  return { text: response.content.filter((c) => c.type === "text").map((c) => c.text).join("\n"), model: ANTHROPIC_MODEL, inputTokens, outputTokens, costUsd: anthropicCallUsd(ANTHROPIC_MODEL, inputTokens, outputTokens) };
 }
 
-async function askPolza(direction: AssortmentDirection, imageUrls: string[]): Promise<{ text: string; model: string }> {
+/** Расход ответа Polza: списанные рубли (usage.cost_rub или cost) по курсу учёта движка — факт провайдера; без суммы — 0 (не придумываем). */
+export function polzaCallUsd(usage: { cost_rub?: number | string; cost?: number | string } | undefined, rubPerUsd: number): number {
+  const rub = Number(usage?.cost_rub ?? usage?.cost);
+  return Number.isFinite(rub) && rub > 0 ? Math.round((rub / rubPerUsd) * 100_000) / 100_000 : 0;
+}
+
+async function askPolza(direction: AssortmentDirection, imageUrls: string[]): Promise<ModelAnswer> {
   const model = process.env.POLZA_MODEL || "openai/gpt-4o";
   const response = await fetch("https://polza.ai/api/v1/chat/completions", {
     method: "POST",
@@ -39,13 +77,23 @@ async function askPolza(direction: AssortmentDirection, imageUrls: string[]): Pr
     }),
     signal: AbortSignal.timeout(55_000),
   });
-  const payload = (await response.json().catch(() => null)) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } } | null;
+  const payload = (await response.json().catch(() => null)) as {
+    choices?: Array<{ message?: { content?: string } }>;
+    usage?: { prompt_tokens?: number; completion_tokens?: number; cost_rub?: number | string; cost?: number | string };
+    error?: { message?: string };
+  } | null;
   if (!response.ok) throw new Error(payload?.error?.message || `Polza вернула ошибку ${response.status}`);
-  return { text: payload?.choices?.[0]?.message?.content ?? "", model: `polza:${model}` };
+  return {
+    text: payload?.choices?.[0]?.message?.content ?? "",
+    model: `polza:${model}`,
+    inputTokens: Number(payload?.usage?.prompt_tokens) || 0,
+    outputTokens: Number(payload?.usage?.completion_tokens) || 0,
+    costUsd: polzaCallUsd(payload?.usage, catalogAiConfig().rubPerUsd),
+  };
 }
 
 /** Основной провайдер — Anthropic, резерв — Polza (как у распознавания договоров). */
-async function askModel(direction: AssortmentDirection, imageUrls: string[]): Promise<{ text: string; model: string }> {
+async function askModel(direction: AssortmentDirection, imageUrls: string[]): Promise<ModelAnswer> {
   let primaryError = "";
   if (process.env.ANTHROPIC_API_KEY) {
     try {
@@ -64,8 +112,14 @@ async function askModel(direction: AssortmentDirection, imageUrls: string[]): Pr
   throw new AiAttributesUnavailableError(primaryError ? `ИИ не ответил: ${primaryError}` : "ИИ не подключён: нет ключей Anthropic и Polza");
 }
 
-/** Оценить признаки одной модели по первым двум фото. */
-export async function estimateAttributes(db: SupabaseClient, referenceId: string): Promise<{ filled: string[]; model: string } | null> {
+/**
+ * Оценить признаки одной модели по первым двум фото. Расход ответа — в сквозной учёт движка (статья reference_ai) сразу после ответа:
+ * он оплачен, даже если запись признаков потом не удалась. Провайдер прежний (решения владельца о смене нет) — только учёт. Сбой записи
+ * учёта признаков не роняет: о нём скажет onUsageError (крон пишет его в журнал).
+ */
+export async function estimateAttributes(
+  db: SupabaseClient, referenceId: string, options: { onUsageError?: (message: string) => void } = {},
+): Promise<{ filled: string[]; model: string } | null> {
   const { data: ref, error } = await db.from("assortment_references").select("id,direction,attributes,version").eq("id", referenceId).maybeSingle();
   if (error) throw new Error(error.message);
   if (!ref) return null;
@@ -78,6 +132,8 @@ export async function estimateAttributes(db: SupabaseClient, referenceId: string
 
   const direction = ref.direction as AssortmentDirection;
   const answer = await askModel(direction, imageUrls);
+  await addEngineUsage(db, Date.now(), ENGINE_KIND.referenceAi, { calls: 1, inputTokens: answer.inputTokens, outputTokens: answer.outputTokens, costUsd: answer.costUsd })
+    .catch((error) => options.onUsageError?.(error instanceof Error ? error.message : "учёт расхода не записался"));
   const estimate = parseAiAttributes(direction, answer.text);
   const { attributes, filled } = mergeAiAttributes((ref.attributes ?? {}) as Attributes, estimate, answer.model, new Date().toISOString());
   const { data: updated, error: updateError } = await db.from("assortment_references")

@@ -6,6 +6,8 @@ import { googleSearchUrl, isUnlockerStop, type UnlockerFormat, type UnlockerResu
 import { rowsByIds } from "./byIds";
 import { thumbUrl } from "./catalog";
 import type { AssortmentDirection } from "./constants";
+import { ENGINE_KIND, engineBudgetConfig, socialRoomUsd, type EngineBudgetConfig } from "./engineBudget";
+import { loadEngineWeek } from "./engineBudgetStore";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import {
   acceptNeighborTopic, cleanHashtags, COMMENTS_MIN, COST_PER_REQUEST_USD, detectBrand, detectDirection, extractRefs, GOOGLE_QUERIES, googleQuery, HISTORY_LIMIT, intentShare,
@@ -36,7 +38,7 @@ const SOURCES = "assortment_sources";
 const SOURCE_ITEMS = "assortment_source_items";
 const HEADS_VIEW = "assortment_catalog_heads";
 export const SOCIAL_SOURCE_ID = "S068";
-export const SOCIAL_USAGE_KIND = "brightdata_social";
+export const SOCIAL_USAGE_KIND = ENGINE_KIND.social;
 const LOCK_KIND = `lock:${SOCIAL_USAGE_KIND}`;
 const LEASE_MS = 6 * 60 * 1000;
 const RELEASED = "1970-01-01T00:00:00.000Z";
@@ -717,6 +719,8 @@ export interface RunSocialOptions {
   /** Абсолютное время (мс), после которого новые запросы не начинаются. */
   deadlineMs?: number;
   parallel?: number;
+  /** Общий потолок движка (по умолчанию — из окружения). */
+  engine?: EngineBudgetConfig;
 }
 
 export interface SocialRunSummary {
@@ -728,6 +732,14 @@ export interface SocialRunSummary {
   failedRequests: number;
   weekRequestsBefore: number | null;
   allowed: number;
+  /**
+   * Во что упирается разрешённое число запросов: run — потолок прогона, social_line — недельная строка соцсетей
+   * (ASSORTMENT_SOCIAL_WEEKLY_USD; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS сведён в неё же), engine — общий потолок движка (рилсы
+   * отказывают первыми — резерв под каталоги).
+   */
+  capBy: "run" | "social_line" | "engine" | null;
+  /** Остаток общего потолка движка для рилсов на старте, $ (оценка); null — учёт движка не прочитан. */
+  engineRoomUsd: number | null;
   /** Запросов, отложенных под замер и базу авторов: поиск их не трогает. */
   reserved: number;
   due: { discover: boolean; topics: number; google: number; profiles: number; measure: number; baselines: number; match: number };
@@ -768,7 +780,7 @@ export interface SocialRunSummary {
 
 function emptySummary(): SocialRunSummary {
   return {
-    skipped: null, skippedBecause: null, stoppedBy: null, stopMessage: null, requests: 0, failedRequests: 0, weekRequestsBefore: null, allowed: 0, reserved: 0,
+    skipped: null, skippedBecause: null, stoppedBy: null, stopMessage: null, requests: 0, failedRequests: 0, weekRequestsBefore: null, allowed: 0, capBy: null, engineRoomUsd: null, reserved: 0,
     due: { discover: false, topics: 0, google: 0, profiles: 0, measure: 0, baselines: 0, match: 0 },
     discover: { ran: false, complete: false, resumed: false, topics: 0, topicsWithReels: 0, topicsUnrecognized: 0, newDeadTopics: 0, google: 0, profiles: 0, candidates: 0, newPosts: 0, newTopics: 0 },
     measured: 0, notFound: 0, layoutFailures: 0, intentUnmeasured: 0, baselines: 0, awaitingBaseline: 0, judged: { strong: 0, viral: 0, normal: 0 }, matched: {}, errors: [], alarms: [],
@@ -857,7 +869,18 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
   const week = await loadWeekRequests(db, nowMs);
   if (week == null) return { ...summary, skipped: "нет таблицы учёта расхода assortment_ai_usage (миграция 202610050005) — платные запросы не начинаем", skippedBecause: "no_usage" };
   summary.weekRequestsBefore = week;
-  summary.allowed = Math.max(0, Math.min(config.maxRequestsPerRun, config.weeklyRequests - week));
+  // Недельный потолок рилсов один — строка соцсетей в общем потолке движка (ASSORTMENT_SOCIAL_WEEKLY_USD; явный потолок запросов недели
+  // сведён в неё же), и рилсы отказывают первыми: им остаётся то, что не отложено под каталоги. Учёт не прочитался — не платим вслепую.
+  const engineWeekNow = await loadEngineWeek(db, nowMs);
+  const room = engineWeekNow ? socialRoomUsd(engineWeekNow, options.engine ?? engineBudgetConfig()) : null;
+  summary.engineRoomUsd = room?.usd ?? null;
+  const caps: Array<[NonNullable<SocialRunSummary["capBy"]>, number]> = [
+    ["run", config.maxRequestsPerRun],
+    ...(room ? [[room.by, Math.floor(room.usd / COST_PER_REQUEST_USD + 1e-6)] as [NonNullable<SocialRunSummary["capBy"]>, number]] : []),
+  ];
+  const binding = caps.reduce((a, b) => (b[1] < a[1] ? b : a));
+  summary.allowed = Math.max(0, binding[1]);
+  summary.capBy = binding[0];
 
   const stateRow = await loadState(db);
   const state: SocialState = stateRow?.state ?? emptyState();
@@ -912,7 +935,11 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     if (stopped()) return null;
     if (summary.requests >= summary.allowed) {
       summary.stoppedBy = "budget";
-      summary.stopMessage = summary.allowed === 0 ? "исчерпан потолок запросов недели" : "достигнут потолок запросов прогона или недели";
+      summary.stopMessage = summary.capBy === "engine"
+        ? `упёрлись в общий потолок движка (остаток для рилсов ≈$${(summary.engineRoomUsd ?? 0).toFixed(2)}, оценка): соцсети отказывают первыми, каталоги Zara и Uniqlo в приоритете`
+        : summary.capBy === "social_line"
+          ? `${summary.allowed === 0 ? "строка соцсетей недели выбрана" : "упёрлись в строку соцсетей недели"} (ASSORTMENT_SOCIAL_WEEKLY_USD, остаток ≈$${(summary.engineRoomUsd ?? 0).toFixed(2)}, оценка)`
+          : "достигнут потолок запросов прогона";
       return null;
     }
     if (summary.requests >= stepCap) {
@@ -1460,6 +1487,8 @@ export function socialRunLog(summary: SocialRunSummary): { status: "ok" | "parti
     summary.failedRequests > 0 ? `сбоев страниц: ${summary.failedRequests} из ${summary.requests}` : null,
     summary.errors.length ? summary.errors.slice(0, 3).join("; ") : null,
   ].filter(Boolean).join(". ");
+  // «Нет денег» — метка в конце строки: по ней сторож задач шлёт одну тревогу на Bright Data сразу, а не через три дня ошибок.
+  if (summary.stoppedBy === "billing") return { status, note: `${note || "Bright Data: нет денег или аккаунт не активен (402)"} [stop:billing]` };
   return { status, note: note || null };
 }
 

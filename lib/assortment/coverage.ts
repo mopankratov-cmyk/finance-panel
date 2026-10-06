@@ -1,5 +1,6 @@
 import { hasScheduledCollector, staleAfterMs } from "./collectorSchedule";
 import { ACCESS_STATUSES, type AccessStatus, type AssortmentDirection } from "./constants";
+import { STAGE6_AWAITING_OWNER, STAGE6_CONNECTED, STAGE6_STALE_MS } from "./stage6Sources";
 
 /**
  * Паспорт источника (таблица assortment_sources, ID S001–S127 из приложения
@@ -39,6 +40,13 @@ export function effectiveAccessStatus(
 ): AccessStatus {
   const declared = source.accessStatus;
   if (declared === "disabled" || declared === "unavailable") return declared;
+  // Этап 6 (соцсети и поиск вне WB): не «доступ не проверен», а «не подключено» — ждёт решения владельца.
+  if (STAGE6_AWAITING_OWNER.has(source.sourceId)) return "not_connected";
+  // Подключённый источник Этапа 6 (рилсы): пульс — удачный прогон его крона (подставляет загрузчик паспорта из журнала).
+  if (STAGE6_CONNECTED[source.sourceId]) {
+    const recent = source.lastSuccessAt && nowMs - new Date(source.lastSuccessAt).getTime() <= STAGE6_STALE_MS;
+    return recent ? "auto_verified" : "partial";
+  }
   const hint = { accessStatus: declared, accessNote: source.accessNote };
   if (!hasScheduledCollector(source.sourceId, hint)) {
     return declared === "auto_verified" ? "manual_only" : declared;

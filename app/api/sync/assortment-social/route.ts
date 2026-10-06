@@ -20,8 +20,9 @@ const PHASES: readonly SocialPhase[] = ["discover", "measure", "match"];
  * поиск по темам /popular/ и Google — раз в 6+ дней, профили наблюдаемых аккаунтов — когда им пора (раз в 6 дней), замер постов
  * 2–21 дня (первый, на 3-й и 7-й день), база автора, вердикт reels-v1, привязка «залетевших» к модели каталога или карточке бренда.
  *
- * Деньги: каждый запрос Bright Data — в учёт assortment_ai_usage (kind brightdata_social); потолки
- * ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN (150) и ASSORTMENT_SOCIAL_WEEKLY_REQUESTS (1 500 ≈ $2,25) проверяются до запроса.
+ * Деньги: каждый запрос Bright Data — в учёт assortment_ai_usage (kind brightdata_social); потолки ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN
+ * (150) и недельная строка соцсетей ASSORTMENT_SOCIAL_WEEKLY_USD ($3 ≈ 2 000 запросов; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS сведён в
+ * неё же) в общем потолке движка проверяются до запроса.
  * Выключатель ASSORTMENT_SOCIAL=off. Ключ BRIGHTDATA_API_TOKEN, зона BRIGHTDATA_UNLOCKER_ZONE (по умолчанию mcp_unlocker).
  * Без миграции 202610060011 — тихо выходит с причиной; без ключа — строка-ошибка в журнале (сторож скажет через три дня).
  * Деньги / ключ / зона Bright Data — остановка прогона одной причиной; сбой одной страницы прогон не роняет.

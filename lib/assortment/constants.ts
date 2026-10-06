@@ -36,12 +36,16 @@ export function parseDirection(value: string | null | undefined): AssortmentDire
   return ASSORTMENT_DIRECTIONS.find((direction) => direction === value) ?? null;
 }
 
-/** Доступ к источнику по факту проверки, а не по исследованию. */
+/**
+ * Доступ к источнику по факту проверки, а не по исследованию. «not_connected» в базе не хранится (CHECK паспорта его не знает): это
+ * подпись экрана для источников Этапа 6, подключение которых ждёт решения владельца (stage6Sources.ts).
+ */
 export const ACCESS_STATUSES = [
   "auto_verified",
   "partial",
   "manual_only",
   "untested",
+  "not_connected",
   "unavailable",
   "disabled",
 ] as const;
@@ -52,6 +56,7 @@ export const ACCESS_STATUS_LABEL: Record<AccessStatus, string> = {
   partial: "Частично",
   manual_only: "Только вручную",
   untested: "Доступ не проверен",
+  not_connected: "Не подключено: ждёт решения владельца",
   unavailable: "Временно недоступен",
   disabled: "Отключён",
 };

@@ -14,7 +14,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: "bags", label: DIRECTION_LABEL.bags },
 ];
 
-const SUMMARY: AccessStatus[] = ["auto_verified", "partial", "manual_only", "disabled", "untested"];
+const SUMMARY: AccessStatus[] = ["auto_verified", "partial", "manual_only", "disabled", "untested", "not_connected"];
 
 /** Экран «Источники»: что отслеживается и с каким доступом, по обоим разделам. */
 export function AssortmentSources() {

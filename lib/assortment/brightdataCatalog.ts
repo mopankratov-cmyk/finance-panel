@@ -215,6 +215,27 @@ export interface PendingSnapshot {
   targetKey?: string;
   /** Часть раздела (CHAQUETA Zara, коллаборации Uniqlo): свой охват и своё правило отбора записей. */
   part?: TargetPart;
+  /**
+   * Когда сбор упёрся в «нет денег» (402) на этой выборке: она оплачена, и ждёт пополнения дольше суток (BILLING_HOLD_TTL_MS), а не
+   * снимается как зависшая.
+   */
+  billingHeldAt?: string;
+  /**
+   * Свежая покупка той же цели уже применена (эта выборка задержана «нет денег» в прошлый плановый день): эту только учитываем в расходе,
+   * в раздел не кладём — её недельная давность легла бы сегодняшней датой.
+   */
+  supersededAt?: string;
+}
+
+/**
+ * Сколько ждёт оплаченная выборка, которую не дал скачать «нет денег» (402): деньги за неё уже взяты, а баланс пополняют не сразу.
+ * Две недели — оценка, сколько Bright Data хранит готовую выборку; дальше её уже не скачать.
+ */
+export const BILLING_HOLD_TTL_MS = 14 * 24 * 3600 * 1000;
+
+/** Проба ещё ждёт: обычная — сутки, задержанная «нет денег» — до двух недель. */
+export function pendingAlive(p: { triggeredAt: string; billingHeldAt?: string }, nowMs: number): boolean {
+  return nowMs - Date.parse(p.triggeredAt) < (p.billingHeldAt ? BILLING_HOLD_TTL_MS : PENDING_TTL_MS);
 }
 
 /** Отпечаток цели запуска: по нему повторный платный запуск узнаёт, что по этой цели проба уже ждёт. */
@@ -653,6 +674,8 @@ export function zaraPhotosByCode(records: unknown[]): Map<string, string[]> {
 export interface PhotoPending {
   snapshotId: string;
   triggeredAt: string;
+  /** Сбор упёрся в «нет денег» (402) на этой выборке: ждёт пополнения до двух недель (pendingAlive). */
+  billingHeldAt?: string;
 }
 
 /** Выборки фото — отдельно от проб разделов: у них нет раздела и свой разбор. */

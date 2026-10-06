@@ -3,12 +3,13 @@ import test from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { stripMoney } from "../lib/assortment/brightdata.ts";
-import { clearDeadZaraPhotos, collectBrightData, requestZaraPhotos, triggerBrightData, triggerZaraPhotos } from "../lib/assortment/brightdataCrawl.ts";
+import { BrightDataError, isBrightDataBilling, stripMoney } from "../lib/assortment/brightdata.ts";
+import { brightdataRunLog, clearDeadZaraPhotos, collectBrightData, requestZaraPhotos, triggerBrightData, triggerZaraPhotos } from "../lib/assortment/brightdataCrawl.ts";
 import {
   asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, keepPartRecord, looksLikeChurn, mapRecord, novelCandidates, partRecords, purchaseKey, readBought, readCoverage,
-  readPending, readTriggerFailure, targetSignature, triggerFailureNote, uniqueRecords, writeCoverage, writePending,
+  readPending, readTriggerFailure, targetSignature, triggerFailureNote, uniqueRecords, writeCoverage, writePending, pendingAlive, readPhotoPending, BILLING_HOLD_TTL_MS, ZARA_PHOTOS,
 } from "../lib/assortment/brightdataCatalog.ts";
+import { jobsFreshness, type JobRun } from "../lib/assortment/jobsWatch.ts";
 import { classifyItem } from "../lib/assortment/crawl.ts";
 import { modelKey } from "../lib/assortment/modelKey.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
@@ -258,13 +259,13 @@ test("Фото Zara из «Zara.com products»: номер модели из а�
 
 test("Фото Zara заказываются сами после сбора Zara и вручную ?phase=photos; применяются ближайшим сбором", () => {
   const crawl = readFileSync(join(root, "lib/assortment/brightdataCrawl.ts"), "utf8");
-  assert.match(crawl, /if \(\(result\.collected \?\? 0\) > 0 && photoLeft\.length === 0\)/, "после свежего сбора Zara");
+  assert.match(crawl, /if \(!billingStop && !purchaseStop && \(result\.collected \?\? 0\) > 0 && photoLeft\.length === 0\)/, "после свежего сбора Zara (и не после «нет денег»)");
   assert.match(crawl, /r\.image_urls\.every\(\(u\) => typeof u !== "string" \|\| isDeadImageUrl\(u\)\)/, "мёртвые ссылки в базе — как «фото нет»");
   assert.match(crawl, /refs\.filter\(\(r\) => !withMedia\.has\(r\.id\)\)\.slice\(0, 20\)/, "потолок 20 — только по находкам без фото");
   assert.match(crawl, /imagesKnown: options\.imagesKnown && !livePhotos\.has\(r\.sourceItemId\)/, "еженедельный сбор не стирает живые фото из второго набора — не покупаем их заново");
   assert.match(crawl, /isMissingColumnError\(error instanceof Error \? error : new Error\(String\(error\)\)\)\) return \[\];\s*throw error;/, "сбой базы не глотается");
   assert.match(crawl, /photoLeft\.push\(pending\);/, "сбой применения — выборка остаётся в очереди");
-  assert.match(crawl, /if \(waiting\.length === 0\) \{\s*const next = await triggerZaraPhotos/, "вручную — новую выборку только если до вызова ничего не ждало: повторный вызов не покупает ещё одну");
+  assert.match(crawl, /if \(waiting\.length === 0\) \{\s*const refusal = await photosRefusal\(db, engine, spent, options\.readRetryDelayMs\);[\s\S]{0,300}const next = await triggerZaraPhotos/, "вручную — новую выборку только если до вызова ничего не ждало (повторный вызов не покупает ещё одну) и она помещается в потолок движка");
   const route = readFileSync(join(root, "app/api/sync/assortment-brightdata/route.ts"), "utf8");
   assert.match(route, /get\("phase"\) === "photos"/);
 });
@@ -287,21 +288,37 @@ test("Мёртвые ссылки Zara снимаются сразу при ра
 // --- поведение: платная выборка не теряется, запуск не покупает дважды (аудит 05.10) ---
 
 type Caps = Record<string, unknown>;
-/** Паспорт источников: у каждого свои capabilities; чужие таблицы (строки каталога) пусты. */
-function sourcesDb(initial: Record<string, Caps>, failUpdate?: (patch: Record<string, unknown>) => boolean) {
-  const state = { caps: { ...initial } as Record<string, Caps>, patches: [] as Array<{ id: string; patch: Record<string, unknown> }> };
+/**
+ * Паспорт источников: у каждого свои capabilities; учёт расхода движка (assortment_ai_usage) — строки `usage` с фильтрами eq и gte (окно
+ * недели проверяется, как в базе); чужие таблицы (строки каталога) пусты.
+ */
+function sourcesDb(initial: Record<string, Caps>, failUpdate?: (patch: Record<string, unknown>) => boolean, usage: Array<Record<string, unknown>> = []) {
+  const state = { caps: { ...initial } as Record<string, Caps>, patches: [] as Array<{ id: string; patch: Record<string, unknown> }>, usage: usage.map((u) => ({ ...u })) };
   const db = {
     from: (table: string) => {
       let patch: Record<string, unknown> | null = null;
       let id = "";
+      const isUsage = table === "assortment_ai_usage";
+      const eqs: Array<[string, unknown]> = [];
+      const gtes: Array<[string, unknown]> = [];
+      const usageRows = () => state.usage.filter((r) => eqs.every(([c, v]) => r[c] === v) && gtes.every(([c, v]) => r[c] != null && String(r[c]) >= String(v)));
       const q: Record<string, unknown> = {
         select: () => q,
         update: (p: Record<string, unknown>) => { patch = p; return q; },
-        eq: (_c: string, v: string) => { id = v; return q; },
-        not: () => q, gte: () => q, order: () => q, limit: () => q,
+        eq: (c: string, v: string) => { eqs.push([c, v]); if (!isUsage) id = v; return q; },
+        not: () => q, order: () => q, limit: () => q,
+        gte: (c: string, v: unknown) => { if (isUsage) gtes.push([c, v]); return q; },
         range: () => Promise.resolve({ data: [], error: null }),
-        maybeSingle: () => Promise.resolve({ data: { source_id: id, name: id === "S001" ? "Zara" : id, capabilities: state.caps[id] ?? {} }, error: null }),
+        insert: (row: Record<string, unknown>) => { if (isUsage) state.usage.push({ ...row }); return Promise.resolve({ error: null }); },
+        maybeSingle: () => Promise.resolve(isUsage
+          ? { data: usageRows()[0] ?? null, error: null }
+          : { data: { source_id: id, name: id === "S001" ? "Zara" : id, capabilities: state.caps[id] ?? {} }, error: null }),
         then: (resolve: (v: unknown) => unknown) => {
+          if (isUsage) {
+            const hit = usageRows();
+            if (patch) for (const r of hit) Object.assign(r, patch);
+            return Promise.resolve({ data: patch ? hit.map((r) => ({ day: r.day })) : hit, error: null }).then(resolve);
+          }
           // сбой записи в базу: патч не применяется
           if (table === "assortment_sources" && patch && failUpdate?.(patch)) return Promise.resolve({ data: null, error: { message: "db write failed" } }).then(resolve);
           if (table === "assortment_sources" && patch) {
@@ -981,4 +998,450 @@ test("force=1 накануне планового дня заменяет пла
   assert.equal(purchases, forced, "плановый запуск среды ничего не купил: выборки вторника ждут сбора");
   const docs = readFileSync(join(root, "docs/assortment-development-integration.md"), "utf8");
   assert.match(docs, /`force=1` накануне планового дня заменяет плановую покупку/);
+});
+
+// --- Ф2: общий потолок движка, учёт расхода, «нет денег» (402) ---
+
+const WEDNESDAY = new Date("2026-10-07T05:00:00Z");
+const ENGINE = { weeklyUsd: 30, socialWeeklyUsd: 3 };
+const spentToday = (kind: string, cost: number) => ({ day: "2026-10-07", kind, calls: 1, failed_calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: cost, updated_at: "2026-10-07T04:00:00.000Z" });
+/** Подставной Bright Data: платные вызовы (выборка набора, запуск сборщика) считаются; ответ — номер пробы или заданная ошибка. */
+function paidBrightData(fail?: (url: string) => Response | null) {
+  const paid: Array<{ url: string; body: Record<string, unknown> | unknown[] }> = [];
+  const handler = (url: string, init?: RequestInit) => {
+    const failure = fail?.(url);
+    if (failure) {
+      if (url.includes("/datasets/filter") || url.includes("/datasets/v3/trigger")) paid.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+      return failure;
+    }
+    if (url.includes("/datasets/filter") || url.includes("/datasets/v3/trigger")) {
+      paid.push({ url, body: JSON.parse(String(init?.body ?? "{}")) });
+      return new Response(JSON.stringify({ snapshot_id: `snap_${paid.length}` }), { status: 200 });
+    }
+    return new Response("{}", { status: 200 });
+  };
+  return { paid, handler };
+}
+
+test("Ф2, потолок движка до платного запуска: при $25 из $30 (разбор по фото и рилсы) Zara и Uniqlo по средам куплены, а части разделов, ASOS и H&M — нет и названы", async () => {
+  const { db, state } = sourcesDb({}, undefined, [spentToday("catalog_attributes", 23), spentToday("brightdata_social", 2)]);
+  const { paid, handler } = paidBrightData();
+  const results = await withFetch(handler, () => triggerBrightData(db, { now: WEDNESDAY, engine: ENGINE }));
+  // Норма Zara и Uniqlo — $5 сверху (2,5 + 0,75 + 1 + 0,75): в остаток $5 она помещается целиком, остальное уже нет.
+  assert.deepEqual(paid.map((p) => [p.url.includes("/datasets/filter") ? "набор" : "сборщик", (p.body as { records_limit?: number }).records_limit ?? null]), [
+    ["набор", 1000], ["набор", 300], ["набор", 400], ["набор", 300],
+  ], "куплены только основные выборки Zara и Uniqlo; сборщики ASOS и H&M не запускались");
+  const asos = results.find((r) => r.sourceId === "S046")!;
+  assert.equal(asos.ok, false);
+  assert.equal(asos.refusedByBudget, 4);
+  assert.match(String(state.patches.filter((p) => p.id === "S046").pop()!.patch.last_error), /не куплено по потолку движка: .*общий потолок движка: запуск ≈\$0,06 \(оценка\) не помещается в остаток \$0,00 — за 7 дней \$25,00 из \$30,00, под каталоги отложено \$5,00/);
+  const zara = results.find((r) => r.sourceId === "S001")!;
+  assert.deepEqual([zara.triggered, zara.refusedByBudget], [2, 1], "Zara: куртки и сумки куплены, часть CHAQUETA — нет");
+  assert.equal(readTriggerFailure(state.caps.S001)?.message.includes("Zara CHAQUETA без трикотажа"), true, "не купленная часть видна в «Источниках» до следующего удачного запуска");
+  assert.equal(results.find((r) => r.sourceId === "S003")!.triggered, 2);
+  assert.equal(results.find((r) => r.sourceId === "S007")!.refusedByBudget, 2);
+});
+
+test("Ф2, потолок выбран: ни одного платного вызова Bright Data; без таблицы учёта — прежнее правило; учёт не прочитался — не покупаем вслепую", async () => {
+  const full = sourcesDb({}, undefined, [spentToday("catalog_attributes", 20), spentToday("brightdata:zara", 10)]);
+  const a = paidBrightData();
+  const results = await withFetch(a.handler, () => triggerBrightData(full.db, { now: WEDNESDAY, engine: ENGINE }));
+  assert.equal(a.paid.length, 0, "ни одной покупки");
+  assert.ok(results.length > 0 && results.every((r) => !r.ok && (r.refusedByBudget ?? 0) > 0));
+  // Пробы, оплаченные раньше и ещё не собранные, — тоже в неделе: второй запуск в тот же день потолок свободным не видит.
+  const pendingZara = BRIGHTDATA_TARGETS.filter((t) => t.sourceId === "S001" && !t.part).map((t, i) => ({ snapshotId: `snap_p${i}`, datasetId: t.datasetId, direction: t.direction, method: t.method, triggeredAt: "2026-10-07T04:00:00.000Z", kind: "dataset", recordsLimit: t.recordsLimit, targetKey: targetSignature(t) }));
+  // Неделя $24,75 + оплаченная утром и не собранная Zara (оценка $3,25) = $28: повторная покупка курток ($2,5) не помещается, сумки ($0,75) — да.
+  // Без учёта проб в очереди куртки купились бы второй раз (остаток выглядел бы как $5,25).
+  const inflight = sourcesDb({ S001: { brightdata_pending: pendingZara } }, undefined, [spentToday("catalog_attributes", 23), spentToday("brightdata_social", 1.75)]);
+  const b = paidBrightData();
+  await withFetch(b.handler, () => triggerBrightData(inflight.db, { now: WEDNESDAY, engine: ENGINE, only: "S001", force: true }));
+  assert.deepEqual(b.paid.map((p) => (p.body as { records_limit?: number }).records_limit), [300], "куплены только сумки");
+  // Учёт не прочитался и после повторов — покупок нет, причина в «Источниках» названа сбоем чтения, а не потолком.
+  const broken = sourcesDb({});
+  let reads = 0;
+  const brokenDb = { from: (table: string) => (table === "assortment_ai_usage" ? { select: () => ({ gte: () => { reads += 1; return Promise.resolve({ data: null, error: { message: "таймаут запроса" } }); } }) } : (broken.db as unknown as { from: (t: string) => unknown }).from(table)) } as never;
+  const d = paidBrightData();
+  const blocked = await withFetch(d.handler, () => triggerBrightData(brokenDb, { now: WEDNESDAY, engine: ENGINE, only: "S001", readRetryDelayMs: 0 }));
+  assert.equal(d.paid.length, 0);
+  assert.equal(reads, 3, "три попытки чтения, а не одна");
+  assert.match(String(blocked[0].error), /^не куплено \(раздел «куртки», раздел «сумки», .*\) — учёт расхода движка не прочитался: таймаут запроса \(попыток: 3\) — покупка отложена, чтобы не платить вслепую; повторить вручную: \?phase=trigger&source=S001&force=1$/);
+  assert.doesNotMatch(String(blocked[0].error), /по потолку движка/, "сбой чтения — не решение потолка");
+  // Таблицы учёта нет (миграция 202610050005 не применена) — учесть нечем: прежнее правило без потолка, код не падает.
+  const noTable = sourcesDb({});
+  const noTableDb = { from: (table: string) => (table === "assortment_ai_usage" ? { select: () => ({ gte: () => Promise.resolve({ data: null, error: { code: "42P01", message: 'relation "public.assortment_ai_usage" does not exist' } }) }) } : (noTable.db as unknown as { from: (t: string) => unknown }).from(table)) } as never;
+  const e = paidBrightData();
+  await withFetch(e.handler, () => triggerBrightData(noTableDb, { now: WEDNESDAY, engine: ENGINE, only: "S001" }));
+  assert.equal(e.paid.length, 3, "куртки, сумки и часть CHAQUETA — как до Ф2");
+});
+
+test("Ф2, «нет денег» (402 / Customer is not active) при покупке: стоп всего запуска одной причиной, оплаченное сохранено, остальным источникам дня — та же причина; в журнале — одна строка с меткой [stop:billing]", async () => {
+  let attempts = 0;
+  const { paid, handler } = paidBrightData((url) => {
+    if (!url.includes("/datasets/filter") && !url.includes("/datasets/v3/trigger")) return null;
+    attempts += 1;
+    return attempts === 3 ? new Response("Customer is not active", { status: 402 }) : null;
+  });
+  const { db, state } = sourcesDb({}, undefined, []);
+  const results = await withFetch(handler, () => triggerBrightData(db, { now: WEDNESDAY, engine: ENGINE }));
+  assert.equal(paid.length, 3, "после 402 ни одной попытки покупки: следующие цели получили бы тот же ответ");
+  assert.deepEqual(readPending(state.caps.S046).map((p) => p.snapshotId), ["snap_1", "snap_2"], "две оплаченные до 402 пробы ASOS сохранены");
+  assert.deepEqual(results.map((r) => [r.sourceId, r.billing ?? false]), [["S046", true], ["S001", true], ["S003", true], ["S007", true]]);
+  for (const id of ["S001", "S003", "S007"]) assert.match(String(readTriggerFailure(state.caps[id])?.message), /не куплено: Bright Data — нет денег или аккаунт не активен \(402\)/, `${id}: причина в «Источниках»`);
+  const log = brightdataRunLog(results);
+  assert.equal(log.status, "error");
+  assert.match(String(log.note), /^Bright Data: нет денег или аккаунт не активен \(402\)/);
+  assert.equal((String(log.note).match(/\[stop:billing\]/g) ?? []).length, 1, "одна метка в конце строки");
+  assert.match(String(log.note), /\[stop:billing\]$/);
+});
+
+test("Ф2, «нет денег» при сборе: выборка остаётся в очереди с пометкой и ждёт пополнения дольше суток; выборки других источников не скачиваются, а помечаются; расход не учитывается, пока выборку не забрали", async () => {
+  const at = new Date(Date.now() - 3600 * 1000).toISOString();
+  const asos = BRIGHTDATA_TARGETS.find((t) => t.sourceId === "S046")!;
+  const zaraJackets = BRIGHTDATA_TARGETS.find((t) => t.sourceId === "S001" && t.direction === "jackets" && !t.part)!;
+  const { db, tables, caps } = catalogMemoryDb({
+    S046: { brightdata_pending: [
+      { snapshotId: "sd_asos", datasetId: asos.datasetId, direction: asos.direction, method: asos.method, triggeredAt: at, kind: "collect", targetKey: targetSignature(asos) },
+      { snapshotId: "sd_asos2", datasetId: asos.datasetId, direction: asos.direction, method: asos.method, triggeredAt: at, kind: "collect", targetKey: "other" },
+    ] },
+    S001: { brightdata_pending: [{ snapshotId: "snap_zara", datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", triggeredAt: at, kind: "dataset", recordsLimit: 1000, coverage: filterSignature(zaraJackets.filter), targetKey: targetSignature(zaraJackets) }], brightdata_photo_pending: [{ snapshotId: "snap_ph", triggeredAt: at }] },
+  });
+  const calls: string[] = [];
+  const results = await withFetch((url) => {
+    calls.push(url);
+    if (url.includes("/progress/sd_asos")) return new Response(JSON.stringify({ message: "Customer is not active" }), { status: 402 });
+    return new Response("{}", { status: 200 });
+  }, () => collectBrightData(db, Date.now() + 60_000));
+  assert.deepEqual(calls.map((u) => new URL(u).pathname), ["/datasets/v3/progress/sd_asos"], "после 402 ни одного скачивания");
+  assert.ok(results.every((r) => r.billing), "у всех источников с очередью — одна причина");
+  const asosLeft = readPending(caps("S046"));
+  const zaraLeft = readPending(caps("S001"));
+  assert.deepEqual([asosLeft.map((p) => p.snapshotId), zaraLeft.map((p) => p.snapshotId), readPhotoPending(caps("S001")).map((p) => p.snapshotId)], [["sd_asos", "sd_asos2"], ["snap_zara"], ["snap_ph"]], "оплаченные выборки на месте — и вторая проба ASOS, которую после 402 уже не запрашивали");
+  const later = Date.parse(at) + 30 * 3600 * 1000;
+  assert.ok([...asosLeft, ...zaraLeft, ...readPhotoPending(caps("S001"))].every((p) => p.billingHeldAt && pendingAlive(p, later)), "через 30 часов (дольше суток) выборки всё ещё ждут");
+  assert.equal(pendingAlive(zaraLeft[0], Date.parse(at) + BILLING_HOLD_TTL_MS + 1), false, "но не вечно");
+  assert.equal(pendingAlive({ triggeredAt: at }, later), false, "обычная проба через 30 часов — уже нет");
+  assert.equal((tables.assortment_ai_usage ?? []).length, 0, "за не забранную выборку расход не записан");
+  assert.match(String(tables.assortment_sources.find((r) => r.source_id === "S001")!.last_error), /нет денег или аккаунт не активен \(402\).*ждут в очереди: 2/);
+  const log = brightdataRunLog(results);
+  assert.equal(log.status, "error");
+  assert.match(String(log.note), /\[stop:billing\]$/);
+});
+
+test("Ф2, учёт расхода Bright Data: пришедшие записи × цена метода (оценка) — набор $2,5 за 1 000, сборщик $1,5 за 1 000; статья — бренд или часть раздела; учитывается один раз", async () => {
+  const fresh = new Date(Date.now() - 3600 * 1000).toISOString();
+  const chaqueta = BRIGHTDATA_TARGETS.find((t) => t.part === "zara_chaqueta")!;
+  const asos = BRIGHTDATA_TARGETS.find((t) => t.sourceId === "S046")!;
+  const { db, tables } = catalogMemoryDb({
+    S001: { brightdata_pending: [{ snapshotId: "snap_chaq", datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", triggeredAt: fresh, kind: "dataset", part: "zara_chaqueta", recordsLimit: 600, coverage: filterSignature(chaqueta.filter), targetKey: targetSignature(chaqueta) }] },
+    S046: { brightdata_pending: [{ snapshotId: "sd_asos", datasetId: asos.datasetId, direction: asos.direction, method: asos.method, triggeredAt: fresh, kind: "collect", targetKey: targetSignature(asos) }] },
+  });
+  // 40 записей CHAQUETA (за все заплачено, хотя правило части оставит меньше) и 30 записей ASOS + строка-ошибка сборщика.
+  const chaq = Array.from({ length: 40 }, (_, i) => zaraChaqueta(i % 2 ? "CROPPED KNIT JACKET" : "POCKET JACKET", { product_id: 7000000 + i, url: `https://www.zara.com/us/en/jacket-p0${7000000 + i}.html` }));
+  const asosRows = [...Array.from({ length: 30 }, (_, i) => ({ url: `https://www.asos.com/x/prd/${i}`, name: `Hobo bag ${i}`, product_id: 900 + i, category: "Bags" })), { error: "Crawler error", input: { keyword: "hobo bag" } }];
+  const results = await withFetch((url) => {
+    if (url.includes("/datasets/snapshots/snap_chaq/download")) return new Response(JSON.stringify(chaq), { status: 200 });
+    if (url.includes("/progress/sd_asos")) return new Response(JSON.stringify({ status: "ready" }), { status: 200 });
+    if (url.includes("/datasets/v3/snapshot/sd_asos")) return new Response(JSON.stringify(asosRows), { status: 200 });
+    if (url.includes("/datasets/filter")) return new Response(JSON.stringify({ snapshot_id: "snap_photos" }), { status: 200 });
+    return new Response("{}", { status: 200 });
+  }, () => collectBrightData(db, Date.now() + 60_000, { engine: ENGINE }));
+  const usage = Object.fromEntries((tables.assortment_ai_usage ?? []).map((r) => [r.kind, [r.calls, r.cost_usd]]));
+  assert.deepEqual(usage, { "brightdata:zara_chaqueta": [40, 0.1], "brightdata:asos": [30, 0.045] });
+  assert.equal(results.find((r) => r.sourceId === "S001")!.spentUsd, 0.1);
+  assert.equal(results.find((r) => r.sourceId === "S046")!.spentUsd, 0.045);
+  // Повторный сбор: очередь пуста — ни записей, ни расхода второй раз.
+  await withFetch(() => new Response("{}", { status: 200 }), () => collectBrightData(db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.deepEqual(Object.fromEntries((tables.assortment_ai_usage ?? []).map((r) => [r.kind, r.calls])), { "brightdata:zara_chaqueta": 40, "brightdata:asos": 30 });
+});
+
+test("Ф2, потолок в одном запуске: каждая покупка уменьшает остаток — при $26,5 из $30 куплены куртки и сумки Zara, на Uniqlo места не осталось", async () => {
+  const { db } = sourcesDb({}, undefined, [spentToday("catalog_attributes", 24.5), spentToday("brightdata_social", 2)]);
+  const { paid, handler } = paidBrightData();
+  const results = await withFetch(handler, () => triggerBrightData(db, { now: WEDNESDAY, engine: ENGINE }));
+  assert.deepEqual(paid.map((p) => (p.body as { records_limit?: number }).records_limit), [1000, 300], "2,5 + 0,75 из остатка 3,5 — дальше 0,25: Uniqlo ($1 и $0,75) не помещается");
+  assert.equal(results.find((r) => r.sourceId === "S003")!.refusedByBudget, 4);
+});
+
+test("Ф2, выборка фото Zara — тоже под потолком: после сбора Zara при выбранной неделе новая выборка не заказывается (и вручную ?phase=photos), причина видна", async () => {
+  const fresh = new Date(Date.now() - 3600 * 1000).toISOString();
+  const chaqueta = BRIGHTDATA_TARGETS.find((t) => t.part === "zara_chaqueta")!;
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow" }).format(new Date());
+  const { db, tables } = catalogMemoryDb({ S001: { brightdata_pending: [{ snapshotId: "snap_chaq", datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", triggeredAt: fresh, kind: "dataset", part: "zara_chaqueta", recordsLimit: 600, coverage: filterSignature(chaqueta.filter), targetKey: targetSignature(chaqueta) }] } });
+  (tables.assortment_ai_usage ??= []).push({ day: today, kind: "catalog_attributes", calls: 1, cost_usd: 29.9, updated_at: fresh });
+  const filters: string[] = [];
+  const handler = (url: string) => {
+    if (url.includes("/datasets/snapshots/snap_chaq/download")) return new Response(JSON.stringify([zaraChaqueta("HIGH-NECK POCKET JACKET")]), { status: 200 });
+    if (url.includes("/datasets/filter")) { filters.push(url); return new Response(JSON.stringify({ snapshot_id: "snap_photos" }), { status: 200 }); }
+    return new Response("{}", { status: 200 });
+  };
+  const results = await withFetch(handler, () => collectBrightData(db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.equal(filters.length, 0, "выборка фото не заказана");
+  assert.match(String(results.find((r) => r.sourceId === "S001")!.error), /фото Zara не заказаны: общий потолок движка/);
+  const manual = await withFetch(handler, () => requestZaraPhotos(db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.equal(filters.length, 0);
+  assert.equal(manual.ok, false);
+  assert.match(String(manual.error), /^новая выборка не заказана: общий потолок движка/);
+});
+
+// --- Ф2 по ревью: сбой чтения учёта, потолок яруса 0, 402 на покупке в сборе, задержанные выборки, «Customer is not active» по тексту ---
+
+/** Учёт расхода, который отвечает таймаутом `failures` раз подряд, потом — строками `usage` (паспорт — как у sourcesDb). */
+function flakyUsageDb(failures: number, usage: Array<Record<string, unknown>> = []) {
+  const base = sourcesDb({}, undefined, usage);
+  let reads = 0;
+  const db = {
+    from: (table: string) => {
+      if (table !== "assortment_ai_usage") return (base.db as unknown as { from: (t: string) => unknown }).from(table);
+      return { select: () => ({ gte: () => {
+        reads += 1;
+        return Promise.resolve(reads <= failures ? { data: null, error: { message: "canceling statement due to statement timeout" } } : { data: usage, error: null });
+      } }) };
+    },
+  } as never;
+  return { db, state: base.state, reads: () => reads };
+}
+const tag = (note: string | null) => /\[stop:([a-z_]+)\]$/.exec(note ?? "")?.[1] ?? null;
+const logRun = (job: string, results: Parameters<typeof brightdataRunLog>[0], startedAt: string, rows: number): JobRun => {
+  const { status, note } = brightdataRunLog(results);
+  return { job, status, error: note, started_at: startedAt, rows_affected: rows };
+};
+
+test("Ф2 по ревью: учёт расхода в среду не прочитался — чтение повторяется; прочитался со второй-третьей попытки — Zara и Uniqlo куплены", async () => {
+  const flaky = flakyUsageDb(2);
+  const { paid, handler } = paidBrightData();
+  const results = await withFetch(handler, () => triggerBrightData(flaky.db, { now: WEDNESDAY, engine: ENGINE, readRetryDelayMs: 0 }));
+  assert.equal(flaky.reads(), 3, "две неудачи и третья попытка");
+  assert.ok(paid.some((p) => (p.body as { records_limit?: number }).records_limit === 1000), "куртки Zara куплены");
+  assert.ok(results.every((r) => r.stop === undefined));
+});
+
+test("Ф2 по ревью: учёт не прочитался и после повторов — покупка отложена, причина названа сбоем чтения, метка [stop:engine_read], сторож задач поднимает тревогу в тот же день и держит её до удачной покупки", async () => {
+  const flaky = flakyUsageDb(99);
+  const { paid, handler } = paidBrightData();
+  const results = await withFetch(handler, () => triggerBrightData(flaky.db, { now: WEDNESDAY, engine: ENGINE, readRetryDelayMs: 0 }));
+  assert.equal(paid.length, 0, "вслепую не платим");
+  assert.deepEqual(results.map((r) => [r.sourceId, r.stop]), [["S046", "engine_read"], ["S001", "engine_read"], ["S003", "engine_read"], ["S007", "engine_read"]]);
+  const zaraError = String(flaky.state.patches.filter((p) => p.id === "S001").pop()!.patch.last_error);
+  assert.match(zaraError, /учёт расхода движка не прочитался: canceling statement due to statement timeout \(попыток: 3\) — покупка отложена, чтобы не платить вслепую; повторить вручную: \?phase=trigger&source=S001&force=1/);
+  assert.doesNotMatch(zaraError, /по потолку движка/, "сбой чтения — не «по потолку»");
+  const wed = logRun("assortment-brightdata-trigger", results, "2026-10-07T05:00:00Z", 0);
+  assert.equal(wed.status, "error");
+  assert.equal(tag(wed.error), "engine_read");
+  const at = (iso: string) => jobsFreshness([wed], Date.parse(iso)).jobs.find((j) => j.job === "assortment-brightdata-trigger")!;
+  const same = at("2026-10-07T09:30:00Z");
+  assert.equal(same.state, "stalled", "сорванная средовая покупка Zara и Uniqlo — тревога в тот же день");
+  assert.match(String(same.reason), /учёт расхода движка не прочитался/);
+  // Суббота: учёт снова читается, но покупка упёрлась в потолок (ASOS и H&M — ярус 1, без метки) — ничего не куплено, тревога держится.
+  const saturdayEmpty = { job: "assortment-brightdata-trigger", status: "error" as const, error: "S046: не куплено по потолку движка: …", started_at: "2026-10-10T05:00:00Z", rows_affected: 0 };
+  assert.equal(jobsFreshness([wed, saturdayEmpty], Date.parse("2026-10-10T09:30:00Z")).jobs.find((j) => j.job === "assortment-brightdata-trigger")!.state, "stalled");
+  // Ручной повтор купил выборки — «снова работают».
+  const manual = { job: "assortment-brightdata-trigger", status: "ok" as const, error: null, started_at: "2026-10-07T10:00:00Z", rows_affected: 4 };
+  assert.equal(jobsFreshness([wed, manual], Date.parse("2026-10-07T10:30:00Z")).state, "ok");
+});
+
+test("Ф2 по ревью: общий потолок не пустил Zara или Uniqlo (ярус 0, только по средам) — метка [stop:engine_budget] и тревога сразу; отказ ярусов ниже (части, ASOS, H&M) — без метки", async () => {
+  const low = { weeklyUsd: 2, socialWeeklyUsd: 3 };
+  const a = sourcesDb({});
+  const zara = await withFetch(paidBrightData().handler, () => triggerBrightData(a.db, { now: WEDNESDAY, engine: low, only: "S001" }));
+  assert.equal(zara[0].stop, "engine_budget", "куртки Zara ($2,5) не помещаются в $2");
+  const run = logRun("assortment-brightdata-trigger", zara, "2026-10-07T05:00:00Z", zara[0].triggered ?? 0);
+  assert.equal(tag(run.error), "engine_budget");
+  assert.equal(jobsFreshness([run], Date.parse("2026-10-07T09:30:00Z")).jobs.find((j) => j.job === "assortment-brightdata-trigger")!.state, "stalled");
+  // Суббота: Zara и Uniqlo не по плану, ASOS и H&M не поместились — это порядок приоритета, а не сорванная неделя каталогов.
+  const b = sourcesDb({}, undefined, [spentToday("catalog_attributes", 25)]);
+  const saturday = await withFetch(paidBrightData().handler, () => triggerBrightData(b.db, { now: new Date("2026-10-10T05:00:00Z"), engine: ENGINE }));
+  assert.ok(saturday.length > 0 && saturday.every((r) => (r.refusedByBudget ?? 0) > 0 && r.stop === undefined));
+  assert.equal(tag(brightdataRunLog(saturday).note), null);
+});
+
+test("Ф2 по ревью: окно недели учёта у платного запуска — 7 московских суток: расход 8-дневной давности остаток не занимает", async () => {
+  const old = { ...spentToday("catalog_attributes", 30), day: "2026-09-30" };
+  const { db } = sourcesDb({}, undefined, [old]);
+  const { paid, handler } = paidBrightData();
+  await withFetch(handler, () => triggerBrightData(db, { now: WEDNESDAY, engine: ENGINE, only: "S001" }));
+  assert.equal(paid.length, 3, "30.09 — за неделей: куртки, сумки и часть CHAQUETA куплены");
+  const fresh = sourcesDb({}, undefined, [{ ...old, day: "2026-10-01" }]);
+  const second = paidBrightData();
+  await withFetch(second.handler, () => triggerBrightData(fresh.db, { now: WEDNESDAY, engine: ENGINE, only: "S001" }));
+  assert.equal(second.paid.length, 0, "01.10 — в неделе: потолок выбран");
+});
+
+test("Ф2 по ревью: «Customer is not active» в теле 401/403 — тоже «нет денег»: стоп запуска, а не «отказ по цели» с покупкой следующих", async () => {
+  assert.equal(isBrightDataBilling(new BrightDataError("Bright Data ответил 403: Customer is not active", 403)), true);
+  assert.equal(isBrightDataBilling(new BrightDataError("Bright Data ответил 401: insufficient balance", 401)), true);
+  assert.equal(isBrightDataBilling(new BrightDataError("Bright Data ответил 403: filter field is not allowed", 403)), false);
+  const { paid, handler } = paidBrightData((url) => (url.includes("/datasets/filter") || url.includes("/datasets/v3/trigger") ? new Response("Customer is not active", { status: 403 }) : null));
+  const { db } = sourcesDb({});
+  const results = await withFetch(handler, () => triggerBrightData(db, { now: WEDNESDAY, engine: ENGINE }));
+  assert.equal(paid.length, 1, "после первого отказа ни одной попытки");
+  assert.ok(results.every((r) => r.billing));
+  assert.equal(tag(brightdataRunLog(results).note), "billing");
+});
+
+test("Ф2 по ревью: оплаченные, но не собранные фото Zara — тоже в неделе: второй запуск не видит потолок свободнее, чем он есть", async () => {
+  const photo = { snapshotId: "snap_ph", triggeredAt: "2026-10-07T04:00:00.000Z" };
+  const run = async (caps: Record<string, unknown>) => {
+    const { db } = sourcesDb({ S001: caps }, undefined, [spentToday("catalog_attributes", 26)]);
+    const { paid, handler } = paidBrightData();
+    await withFetch(handler, () => triggerBrightData(db, { now: WEDNESDAY, engine: ENGINE, only: "S001" }));
+    return paid.map((p) => (p.body as { records_limit?: number }).records_limit);
+  };
+  assert.deepEqual(await run({}), [1000, 300], "без ждущих фото: $26 + куртки $2,5 + сумки $0,75");
+  assert.deepEqual(await run({ brightdata_photo_pending: [photo] }), [300], "ждут фото (оценка $2,25): курткам места нет, сумки помещаются");
+});
+
+test("Ф2 по ревью: выборка, задержанная «нет денег» в прошлую среду, не отменяет покупку этой среды; купленная сегодня — отменяет (повтор крона)", async () => {
+  const held = { snapshotId: "snap_w1", datasetId: zaraMainJackets.datasetId, direction: "jackets", method: zaraMainJackets.method, kind: "dataset", recordsLimit: zaraMainJackets.recordsLimit,
+    targetKey: targetSignature(zaraMainJackets), triggeredAt: "2026-09-30T05:00:10.000Z", billingHeldAt: "2026-09-30T06:30:00.000Z" };
+  const { db, state } = sourcesDb({ S001: { brightdata_pending: [held] } });
+  const { paid, handler } = paidBrightData();
+  await withFetch(handler, () => triggerBrightData(db, { now: WEDNESDAY, engine: ENGINE, only: "S001" }));
+  assert.ok(paid.some((p) => (p.body as { records_limit?: number }).records_limit === 1000), "куртки Zara этой недели куплены");
+  assert.deepEqual(readPending(state.caps.S001).map((p) => p.snapshotId).sort(), ["snap_1", "snap_2", "snap_3", "snap_w1"].sort(), "оплаченная выборка прошлой недели осталась в очереди");
+  const today = { ...held, snapshotId: "snap_today", triggeredAt: "2026-10-07T04:00:00.000Z", billingHeldAt: "2026-10-07T04:30:00.000Z" };
+  const again = sourcesDb({ S001: { brightdata_pending: [today] } });
+  const second = paidBrightData();
+  await withFetch(second.handler, () => triggerBrightData(again.db, { now: WEDNESDAY, engine: ENGINE, only: "S001" }));
+  assert.ok(!second.paid.some((p) => (p.body as { records_limit?: number }).records_limit === 1000), "сегодняшняя выборка — та же покупка: куртки второй раз не куплены");
+});
+
+test("Ф2 по ревью: старая задержанная выборка ждёт свежую покупку той же цели и после неё в раздел не кладётся (только её расход в учёт); свежая не готова — старая ждёт", async () => {
+  const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
+  const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString();
+  const base = { datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", kind: "dataset", recordsLimit: zaraMainJackets.recordsLimit, coverage: filterSignature(zaraMainJackets.filter), targetKey: targetSignature(zaraMainJackets) };
+  const w1 = { ...base, snapshotId: "snap_w1", triggeredAt: weekAgo, billingHeldAt: weekAgo };
+  const w2 = { ...base, snapshotId: "snap_w2", triggeredAt: hourAgo };
+  const jacket = (id: number, name: string) => ({ product_id: id, product_name: name, url: `https://www.zara.com/us/en/x-p0${id}.html`, product_family: "CAZADORA", section: "WOMAN" });
+  const records: Record<string, unknown[]> = { snap_w1: [jacket(1000001, "GONE JACKET"), jacket(1000002, "KEPT JACKET")], snap_w2: [jacket(1000002, "KEPT JACKET"), jacket(1000003, "NEW JACKET")] };
+  const download = (ready: Set<string>) => (url: string) => {
+    const id = /snapshots\/(snap_w\d)\/download/.exec(url)?.[1];
+    if (id) return ready.has(id) ? new Response(JSON.stringify(records[id]), { status: 200 }) : new Response("", { status: 202 });
+    return new Response("{}", { status: 200 });
+  };
+  // Свежая ещё собирается — старая её ждёт: в раздел ничего не легло, обе в очереди.
+  const waiting = catalogMemoryDb({ S001: { brightdata_pending: [w1, w2] } });
+  await withFetch(download(new Set(["snap_w1"])), () => collectBrightData(waiting.db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.deepEqual((waiting.tables.assortment_source_items ?? []).map((r) => r.source_item_id), [], "недельная давность не легла сегодняшней датой");
+  assert.deepEqual(readPending(waiting.caps("S001")).map((p) => p.snapshotId).sort(), ["snap_w1", "snap_w2"]);
+  // Обе готовы: применена свежая, старая снята — её записи учтены в расходе, в раздел не легли.
+  const both = catalogMemoryDb({ S001: { brightdata_pending: [w1, w2] } });
+  const results = await withFetch(download(new Set(["snap_w1", "snap_w2"])), () => collectBrightData(both.db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.deepEqual((both.tables.assortment_source_items ?? []).map((r) => r.source_item_id).sort(), ["1000002", "1000003"], "модель, пропавшая за неделю, не числится увиденной сегодня");
+  assert.deepEqual(readPending(both.caps("S001")), []);
+  assert.deepEqual((both.tables.assortment_ai_usage ?? []).map((r) => [r.kind, r.calls]), [["brightdata:zara", 4]], "за обе выборки заплачено — обе в учёте");
+  assert.match(String(results.find((r) => r.sourceId === "S001")!.detail?.join("; ")), /snap_w1 .* заменена более свежей покупкой той же цели — в раздел не кладём/);
+  // Свежую применили, а старую забрать не успели (кончилось время сбора): пометка остаётся с ней — следующий сбор только учтёт её расход.
+  const late = catalogMemoryDb({ S001: { brightdata_pending: [w1, w2] } });
+  const clock = Date.now;
+  let downloads = 0;
+  const lateFetch = (url: string) => {
+    if (url.includes("/download")) downloads += 1;
+    return download(new Set(["snap_w1", "snap_w2"]))(url);
+  };
+  let deadline = Number.POSITIVE_INFINITY;
+  try {
+    // Время кончается сразу после первой (свежей) выборки.
+    Date.now = () => (downloads >= 1 ? deadline : clock());
+    deadline = clock() + 60_000;
+    await withFetch(lateFetch, () => collectBrightData(late.db, clock() + 30_000, { engine: ENGINE }));
+  } finally {
+    Date.now = clock;
+  }
+  const held = readPending(late.caps("S001"));
+  assert.deepEqual(held.map((p) => [p.snapshotId, Boolean(p.supersededAt)]), [["snap_w1", true]]);
+  await withFetch(download(new Set(["snap_w1"])), () => collectBrightData(late.db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.deepEqual((late.tables.assortment_source_items ?? []).map((r) => r.source_item_id).sort(), ["1000002", "1000003"], "и на следующем сборе старая в раздел не легла");
+  assert.deepEqual(readPending(late.caps("S001")), []);
+  // Свежая не удалась у Bright Data — других данных за неделю нет: применяется старая.
+  const failed = catalogMemoryDb({ S001: { brightdata_pending: [w1, w2] } });
+  await withFetch((url) => (url.includes("snap_w2") ? new Response("gone", { status: 404 }) : download(new Set(["snap_w1"]))(url)), () => collectBrightData(failed.db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.deepEqual((failed.tables.assortment_source_items ?? []).map((r) => r.source_item_id).sort(), ["1000001", "1000002"]);
+});
+
+test("Ф2 по ревью: «нет денег» при сборе — пометку «ждёт пополнения» получают только живые пробы: зависшая дольше суток не живёт две недели", async () => {
+  const asos = BRIGHTDATA_TARGETS.find((t) => t.sourceId === "S046")!;
+  const alive = new Date(Date.now() - 3600 * 1000).toISOString();
+  const stale = new Date(Date.now() - 30 * 3600 * 1000).toISOString();
+  const { db, caps } = catalogMemoryDb({
+    S046: { brightdata_pending: [{ snapshotId: "sd_asos", datasetId: asos.datasetId, direction: asos.direction, method: asos.method, triggeredAt: alive, kind: "collect", targetKey: targetSignature(asos) }] },
+    S001: { brightdata_pending: [
+      { snapshotId: "snap_alive", datasetId: ZARA_DS, direction: "bags", method: "brightdata_zara", triggeredAt: alive, kind: "dataset", recordsLimit: 300 },
+      { snapshotId: "snap_stale", datasetId: ZARA_DS, direction: "jackets", method: "brightdata_zara", triggeredAt: stale, kind: "dataset", recordsLimit: 1000 },
+    ] },
+  });
+  await withFetch((url) => (url.includes("/progress/sd_asos") ? new Response("Customer is not active", { status: 402 }) : new Response("{}", { status: 200 })), () => collectBrightData(db, Date.now() + 60_000));
+  const left = Object.fromEntries(readPending(caps("S001")).map((p) => [p.snapshotId, Boolean(p.billingHeldAt)]));
+  assert.deepEqual(left, { snap_alive: true, snap_stale: false });
+  assert.equal(pendingAlive(readPending(caps("S001")).find((p) => p.snapshotId === "snap_stale")!, Date.now()), false, "зависшая снимется ближайшим сбором, как раньше");
+});
+
+test("Ф2 по ревью: 402 на ПОКУПКЕ фото Zara в сборе запрещает только новые покупки — оплаченная выборка Uniqlo скачивается; тревога держится и после повторного сбора, пока покупка не пройдёт", async () => {
+  const hourAgo = new Date(Date.now() - 3600 * 1000).toISOString();
+  const uniqloJackets = BRIGHTDATA_TARGETS.find((t) => t.sourceId === "S003" && t.direction === "jackets" && !t.part)!;
+  const { db, tables, caps } = catalogMemoryDb({
+    S001: { brightdata_pending: [chaquetaSnapshot("snap_chaq")] },
+    S003: { brightdata_pending: [{ snapshotId: "snap_uq", datasetId: UNIQLO_DS, direction: "jackets", method: "brightdata_uniqlo", triggeredAt: hourAgo, kind: "dataset", recordsLimit: uniqloJackets.recordsLimit, coverage: filterSignature(uniqloJackets.filter), targetKey: targetSignature(uniqloJackets) }] },
+  });
+  const uq = [{ title: "Pufftech Jacket", item_id: "475000-09-003", group_id: "E475000-000", product_category: "WOMEN > Outerwear > Jackets", url: "https://www.uniqlo.com/es/en/products/E475000-000/00" }];
+  const calls: string[] = [];
+  const results = await withFetch((url) => {
+    calls.push(new URL(url).pathname);
+    if (url.includes("/datasets/snapshots/snap_chaq/download")) return new Response(JSON.stringify(Array.from({ length: 5 }, (_, i) => chaquetaJacket(i))), { status: 200 });
+    if (url.includes("/datasets/snapshots/snap_uq/download")) return new Response(JSON.stringify(uq), { status: 200 });
+    if (url.includes("/datasets/filter")) return new Response("insufficient balance", { status: 402 });
+    return new Response("{}", { status: 200 });
+  }, () => collectBrightData(db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.ok(calls.includes("/datasets/filter"), "покупку фото пробовали");
+  assert.ok(calls.includes("/datasets/snapshots/snap_uq/download"), "оплаченная выборка Uniqlo скачана, хотя покупка фото упёрлась в баланс");
+  assert.deepEqual(readPending(caps("S003")), []);
+  assert.ok((tables.assortment_source_items ?? []).some((r) => r.source_id === "S003"));
+  const zara = results.find((r) => r.sourceId === "S001")!;
+  assert.equal(zara.billing, true);
+  assert.match(String(zara.error), /^фото Zara не заказаны — нет денег или аккаунт не активен \(402\)/);
+  assert.equal(results.find((r) => r.sourceId === "S003")!.billing, undefined);
+  const morning = logRun("assortment-brightdata-collect", results, "2026-10-07T06:30:00Z", 1);
+  assert.equal(morning.status, "error");
+  assert.equal(tag(morning.error), "billing");
+  assert.match(String(morning.error), /платные покупки остановлены \(S001\) \[stop:billing\]$/);
+  // Повторный сбор в 08:30 прошёл чисто (скачивать было нечего), покупка в 05:00 была до 402: к 09:30 тревога не гаснет.
+  const trigger = { job: "assortment-brightdata-trigger", status: "ok" as const, error: null, started_at: "2026-10-07T05:00:00Z", rows_affected: 4 };
+  const retry = { job: "assortment-brightdata-collect", status: "ok" as const, error: null, started_at: "2026-10-07T08:30:00Z", rows_affected: 2 };
+  const watch = jobsFreshness([trigger, morning, retry], Date.parse("2026-10-07T09:30:00Z"));
+  assert.deepEqual(watch.stalled.map((j) => [j.job, j.billing]), [["assortment-brightdata-collect", "brightdata"]]);
+  // Рилсы на следующий день сделали запросы — деньги снова есть: «снова работают».
+  const reels = { job: "assortment-social", status: "ok" as const, error: null, started_at: "2026-10-08T06:20:00Z", rows_affected: 9 };
+  assert.equal(jobsFreshness([trigger, morning, retry, reels], Date.parse("2026-10-08T09:30:00Z")).state, "ok");
+});
+
+test("Ф2 по ревью: новая выборка фото Zara — с учётом расхода ЭТОГО сбора, ещё не записанного в учёт: без него сбор заказал бы фото сверх потолка", async () => {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Moscow" }).format(new Date());
+  const { db, tables } = catalogMemoryDb({ S001: { brightdata_pending: [chaquetaSnapshot("snap_chaq")] } });
+  // $22,5 + резерв Zara и Uniqlo $5 = $27,5: фото ($2,25) помещаются в $2,5 — но сбор только что забрал 200 записей CHAQUETA ($0,5).
+  (tables.assortment_ai_usage ??= []).push({ day: today, kind: "catalog_attributes", calls: 1, cost_usd: 22.5, updated_at: new Date().toISOString() });
+  const filters: string[] = [];
+  const results = await withFetch((url) => {
+    if (url.includes("/datasets/snapshots/snap_chaq/download")) return new Response(JSON.stringify(Array.from({ length: 200 }, (_, i) => chaquetaJacket(i))), { status: 200 });
+    if (url.includes("/datasets/filter")) { filters.push(url); return new Response(JSON.stringify({ snapshot_id: "snap_photos" }), { status: 200 }); }
+    return new Response("{}", { status: 200 });
+  }, () => collectBrightData(db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.equal(filters.length, 0, "фото не заказаны");
+  assert.match(String(results.find((r) => r.sourceId === "S001")!.error), /фото Zara не заказаны: общий потолок движка: запуск ≈\$2,25 \(оценка\) не помещается в остаток \$2,00/);
+  assert.equal(ZARA_PHOTOS.recordsLimit, 900);
+});
+
+test("Ф2 по ревью: ручной ?phase=photos при «нет денег» — выборка остаётся в очереди с пометкой и ждёт пополнения дольше суток", async () => {
+  const at = new Date(Date.now() - 3600 * 1000).toISOString();
+  const { db, caps } = catalogMemoryDb({ S001: { brightdata_photo_pending: [{ snapshotId: "snap_ph", triggeredAt: at }] } });
+  const result = await withFetch((url) => (url.includes("snap_ph") ? new Response("Customer is not active", { status: 402 }) : new Response("{}", { status: 200 })), () => requestZaraPhotos(db, Date.now() + 60_000, { engine: ENGINE }));
+  assert.equal(result.billing, true);
+  const left = readPhotoPending(caps("S001"));
+  assert.deepEqual(left.map((p) => p.snapshotId), ["snap_ph"]);
+  assert.ok(left[0].billingHeldAt && pendingAlive(left[0], Date.parse(at) + 30 * 3600 * 1000), "через 30 часов выборка всё ещё ждёт");
+});
+
+test("Ф2 по ревью: расход, не записанный в учёт, делает прогон «partial» с причиной (выборки при этом не потеряны)", () => {
+  const log = brightdataRunLog([{ sourceId: "S001", phase: "collect", ok: true, collected: 10, usageError: "расход не записался в учёт (brightdata:zara: таймаут)" }, { sourceId: "S003", phase: "collect", ok: true }]);
+  assert.equal(log.status, "partial");
+  assert.match(String(log.note), /^S001: расход не записался в учёт/);
+  assert.deepEqual(brightdataRunLog([{ sourceId: "S001", phase: "collect", ok: true }]), { status: "ok", note: null });
 });

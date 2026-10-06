@@ -93,9 +93,9 @@ test("Один простой — одно сообщение: пока набо
 
 test("Замолчал ещё один источник — новое сообщение, прежняя тревога закрывается молча", () => {
   const prior = `${ASSORTMENT_ALERT_PREFIX}S001`;
-  const next = assortmentAlertPlan(stalledFor("S001", "S131"), [prior]);
+  const next = assortmentAlertPlan(stalledFor("S001", "S046"), [prior]);
   assert.equal(next.send, "stalled");
-  assert.equal(next.openKey, `${ASSORTMENT_ALERT_PREFIX}S001,S131`);
+  assert.equal(next.openKey, `${ASSORTMENT_ALERT_PREFIX}S001,S046`);
   assert.deepEqual(next.resolveKeys, [prior]);
 });
 
@@ -118,13 +118,16 @@ test("Сообщение: названия с & экранируются, спи
   assert.match(text, /^🚨 <b>Сбор ассортимента: молчат источники \(2\)<\/b>/);
   assert.ok(text.includes("H&amp;M — последний успешный сбор"), "& экранирован");
   assert.ok(text.includes("12 сут назад"));
-  assert.ok(text.includes("Pull&amp;Bear (Zalando) — успешных сборов не было; ошибка: HTTP 403 &lt;captcha&gt;"), "ошибка экранирована");
+  // Zalando приносит Mac mini, но молчит один он — это его поломка, а не простой mini: своей строкой; ошибка и название экранированы.
+  assert.ok(text.includes("• Pull&amp;Bear (Zalando) — успешных сборов не было; ошибка: HTTP 403 &lt;captcha&gt;"), "ошибка экранирована");
+  assert.doesNotMatch(text, /Mac mini — молчат/, "один сайт через mini — не «Mac mini молчит»");
   assert.match(text, /Откройте «Разработка ассортимента → Источники»/);
   assert.ok(!/<(?!\/?b>)/.test(text), "в тексте нет посторонней разметки");
 
-  const many = assortmentFreshness(["S014", "S024", "S026", "S027", "S001", "S003", "S046", "S007", "S130", "S131", "S132", "S133"].map((id) => fact(id, { lastSuccessAt: ago(30 * DAY) })), now);
+  // Источники mini (S131–S134, S136–S140) — одной строкой: 11 обычных + строка mini = 12 строк.
+  const many = assortmentFreshness(["S014", "S024", "S026", "S027", "S001", "S003", "S046", "S007", "S130", "S135", "S128", "S131", "S132"].map((id) => fact(id, { lastSuccessAt: ago(30 * DAY) })), now);
   const long = assortmentStallTelegram(many);
-  assert.match(long, /…и ещё 2/, "показаны 10, остальные — числом");
+  assert.match(long, /…и ещё 2/, "показаны 10 строк, остальные — числом");
   assert.equal((long.match(/^• /gm) ?? []).length, 10);
   assert.equal(assortmentStallMessage(f), "Молчат сборщики ассортимента (2): H&M, Pull&Bear (Zalando)");
   assert.match(assortmentRecoveredTelegram(), /снова идёт/);

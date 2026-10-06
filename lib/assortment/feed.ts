@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
+import { rowsByIds } from "./byIds";
 import type { AssortmentDirection } from "./constants";
 import { isReferenceStatus, STATUS_LABEL } from "./decisions";
 import { formatValue, type Attributes } from "./attributes";
@@ -33,18 +33,8 @@ const HIDDEN_STATUSES = ["rejected", "archived"];
 /** «В работе»: отобранные, ждущие образца и уже в подборке — в «Новинках» их нет. */
 const WORK_STATUSES = ["selected", "sample_needed", "in_collection"];
 
-/** Сколько находок в одном запросе `.in()`: сотни uuid в адресе — это килобайты URL, шлюз может отказать. */
-const REF_CHUNK = 100;
 /** «Рынок РФ»: вкладка сортируется по продажам, поэтому сортировать надо ВЕСЬ замер (≈220 позиций), а не 60 самых новых. */
 const RU_POOL = 400;
-
-/** Строки таблицы по списку находок: пачками по REF_CHUNK и с листанием (предел PostgREST — 1000 строк); сбой чтения — исключение, а не «данных нет». */
-async function rowsByReferences<Row>(ids: string[], label: string, fetchPage: (part: string[], from: number, to: number) => PromiseLike<{ data: Row[] | null; error: { message: string } | null }>): Promise<Row[]> {
-  const parts: string[][] = [];
-  for (let i = 0; i < ids.length; i += REF_CHUNK) parts.push(ids.slice(i, i + REF_CHUNK));
-  const loaded = await Promise.all(parts.map((part) => loadAllSupabasePages<Row>((from, to) => fetchPage(part, from, to), { label, pageSize: 1000 })));
-  return loaded.flat();
-}
 
 export async function loadFeed(db: SupabaseClient, direction: AssortmentDirection, view: FeedView, limit = 60): Promise<FeedCard[]> {
   let query = db
@@ -69,13 +59,13 @@ export async function loadFeed(db: SupabaseClient, direction: AssortmentDirectio
 
   // Сбой чтения наблюдений или фото — ошибка, а не «наблюдений нет»: иначе карточки подписывались бы «Пока одна находка», а вкладка «Ритейл» была бы пустой.
   const [observations, media, learning] = await Promise.all([
-    rowsByReferences<Observation>(ids, "Наблюдения находок", (part, from, to) => db.from("assortment_observations")
+    rowsByIds<Observation>(ids, "Наблюдения находок", (part, from, to) => db.from("assortment_observations")
       .select("reference_id,group_kind,metric,value_text,value_num,null_reason,status,method,observed_at")
       .in("reference_id", part)
       .order("reference_id", { ascending: true })
       .order("id", { ascending: true })
       .range(from, to) as unknown as PromiseLike<{ data: Observation[] | null; error: { message: string } | null }>),
-    rowsByReferences<{ reference_id: string; storage_path: string | null; position: number | null }>(ids, "Фото находок", (part, from, to) => db.from("assortment_media")
+    rowsByIds<{ reference_id: string; storage_path: string | null; position: number | null }>(ids, "Фото находок", (part, from, to) => db.from("assortment_media")
       .select("reference_id,storage_path,position")
       .in("reference_id", part)
       .order("reference_id", { ascending: true })

@@ -670,3 +670,95 @@ test("Ф1: чтение базы — последняя строка журна�
   const empty = await loadReadiness(fakeDb({ ...fixture(), sync_log: [] }).db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: noReport as never });
   assert.doesNotMatch(lines(empty, "traits"), /остановился/);
 });
+
+// --- Ф2: расход движка ---
+
+test("Ф2: строка «Расход недели по статьям» — Polza факт провайдера, Bright Data оценка по записям, рилсы оценка по запросам, итог против потолка; резерв под каталоги; расхода нет — блока нет", async () => {
+  const { engineWeek, engineReserveUsd, engineRoomUsd } = await import("../lib/assortment/engineBudget.ts");
+  const week = engineWeek([
+    { kind: "catalog_attributes", cost_usd: 4.1 }, { kind: "brightdata:zara", cost_usd: 2.4 }, { kind: "brightdata:zara_photos", cost_usd: "1.8" }, { kind: "brightdata:asos", cost_usd: 0.3 },
+    { kind: "brightdata_social", cost_usd: 1.2 }, { kind: "lock:catalog_attributes", cost_usd: 0 }, { kind: "other_ai", cost_usd: 99 },
+  ]);
+  const config = { weeklyUsd: 30, socialWeeklyUsd: 3 };
+  const report = buildReadiness(input({ spend: { week, config, aiProvider: "polza" } }));
+  const t = lines(report, "spend");
+  assert.match(t, /^Расход недели по статьям \(7 дней\): разбор по фото \(Polza\) \$4,10 — факт провайдера; Bright Data: Zara \$2,40, фото Zara \$1,80, ASOS \$0,30 — оценка по записям; рилсы Instagram \$1,20 — оценка по запросам \(строка соцсетей \$3,00\)\. Итого \$9,80 из \$30,00\./, "чужое назначение и замок в итог не входят");
+  const usd = (n: number) => `$${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  assert.ok(t.includes(`Под каталоги до конца недели отложено ${usd(engineReserveUsd(week, 2))} (Zara и Uniqlo по средам отказывают последними): разбору по фото и рилсам доступно ещё ${usd(engineRoomUsd(week, "catalog_attributes", config))}.`));
+  assert.equal(report.groups.find((g) => g.key === "spend")!.problem, false);
+  assert.equal(report.groups.find((g) => g.key === "spend")!.lines[0].kind, "оценка", "в итоге есть оценки Bright Data — строка помечена «оценка»");
+  const html = text(renderToStaticMarkup(createElement(ReadinessStrip, { report })));
+  assert.match(html, /Расход движка: \$9,80 из \$30,00 за 7 дней/, "итог виден и в свёрнутой полоске");
+  // Anthropic — расчёт по токенам, а не факт.
+  assert.match(lines(buildReadiness(input({ spend: { week, config, aiProvider: "anthropic" } })), "spend"), /разбор по фото \(Anthropic\) \$4,10 — расчёт по токенам/);
+  // Потолок выбран — проблема, полоска раскрыта.
+  const full = buildReadiness(input({ spend: { week: engineWeek([{ kind: "catalog_attributes", cost_usd: 19 }, { kind: "brightdata:uniqlo", cost_usd: 11 }]), config, aiProvider: "polza" } }));
+  assert.equal(full.problem, true);
+  assert.match(lines(full, "spend"), /Потолок недели \$30,00 выбран: платные запуски ждут/);
+  assert.match(lines(full, "spend"), /выборок Bright Data не было|Uniqlo \$11,00/);
+  assert.equal(buildReadiness(input({ spend: { week: engineWeek([]), config, aiProvider: "polza" } })).groups.some((g) => g.key === "spend"), false, "за 7 дней расхода нет — блока нет");
+});
+
+test("Ф2: признаки по фото — общий потолок не оставил даже на один вызов: «Сборщик стоит — упёрся в общий потолок движка»; остаток потолка меньше очереди — названо", () => {
+  const stopped = buildReadiness(input({ traits: traits({ engineCallsLeft: 0 }) }));
+  assert.equal(stopped.problem, true);
+  assert.match(lines(stopped, "traits"), /Сборщик стоит — упёрся в общий потолок движка \(ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD\): каталоги Zara и Uniqlo в приоритете/);
+  const low = buildReadiness(input({ traits: traits({ engineCallsLeft: 10 }) }));
+  assert.match(lines(low, "traits"), /Остатка общего потолка движка \(после резерва под каталоги\) хватит примерно на 10 вызовов — меньше очереди/);
+  assert.doesNotMatch(lines(buildReadiness(input({ traits: traits({ engineCallsLeft: 100_000 }) })), "traits"), /потолка движка/, "остатка хватает — молчим");
+});
+
+test("Ф2: чтение базы — расход движка за 7 дней (скользящая неделя, как у бюджета разбора по фото) одним чтением учёта", async () => {
+  const { db } = fakeDb({
+    assortment_model_attributes: [attr("ok")],
+    assortment_ai_usage: [
+      { day: "2026-10-06", kind: "catalog_attributes", calls: 40, cost_usd: 0.07 },
+      { day: "2026-10-01", kind: "brightdata:zara", calls: 1200, cost_usd: 3 },
+      { day: "2026-09-20", kind: "brightdata:uniqlo", calls: 1200, cost_usd: 3 },
+    ],
+  });
+  const r = await loadReadiness(db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => report({ analyzed: 1, queue: { queued: 5, exhausted: 0, unstable: 0 } })) as never });
+  assert.match(lines(r, "spend"), /Bright Data: Zara \$3,00 — оценка по записям\. Итого \$3,07 из \$30,00\./, "Uniqlo 16-дневной давности в неделю не входит");
+  assert.deepEqual(r.errors, []);
+  assert.doesNotMatch(lines(r, "traits"), /общий потолок/);
+  // Каталоги выбрали неделю ($25 Zara + норма остальных покупок в резерве): у разбора по фото свой бюджет есть, а общий потолок — нет.
+  const capped = fakeDb({ assortment_model_attributes: [attr("ok")], assortment_ai_usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 40, cost_usd: 0.07 }, { day: "2026-10-05", kind: "brightdata:zara", calls: 10000, cost_usd: 25 }] });
+  const rc = await loadReadiness(capped.db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => report({ analyzed: 1, queue: { queued: 5, exhausted: 0, unstable: 0 } })) as never });
+  assert.match(lines(rc, "traits"), /Сборщик стоит — упёрся в общий потолок движка/, "остаток потолка у полоски — тем же правилом, что у сборщика");
+});
+
+// --- Ф2 по ревью ---
+
+test("Ф2 по ревью: расход движка не прочитался — строка «не загрузилось» на полоске, блока расхода нет (не тихий ноль); остальные части читаются", async () => {
+  // Падает только чтение недели движка (без фильтра по статье); свой бюджет разбора по фото читается.
+  const { db } = fakeDb({ assortment_model_attributes: [attr("ok")], assortment_ai_usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 40, cost_usd: 0.07 }] }, {
+    failIf: (table, filters) => table === "assortment_ai_usage" && !filters.some((f) => f.startsWith("eq:kind")),
+  });
+  const r = await loadReadiness(db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => report({ analyzed: 1, queue: { queued: 5, exhausted: 0, unstable: 0 } })) as never });
+  assert.ok(r.errors.some((e) => /^расход движка \(учёт расхода движка не прочитался: таймаут запроса\)$/.test(e)), r.errors.join("; "));
+  assert.equal(r.groups.some((g) => g.key === "spend"), false);
+  assert.ok(r.groups.some((g) => g.key === "traits"), "признаки по фото — на месте");
+});
+
+test("Ф2 по ревью: расход движка читается параллельно с остальными частями полоски, а не до них (лишний круг к базе)", async () => {
+  const inner = fakeDb({ assortment_model_attributes: [attr("ok")], assortment_ai_usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 40, cost_usd: 0.07 }] });
+  const order: string[] = [];
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const db = {
+    from: (table: string) => {
+      order.push(table);
+      const q = (inner.db as unknown as { from: (t: string) => Record<string, unknown> }).from(table);
+      if (table !== "assortment_ai_usage") return q;
+      const then = q.then as (a: unknown, b?: unknown) => Promise<unknown>;
+      q.then = (resolve: unknown, reject: unknown) => gate.then(() => then(resolve, reject));
+      return q;
+    },
+  } as never;
+  const pending = loadReadiness(db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => report({ analyzed: 1, queue: { queued: 5, exhausted: 0, unstable: 0 } })) as never });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(order.includes("assortment_model_attributes"), "признаки читаются, пока учёт расхода ещё не ответил");
+  release();
+  const r = await pending;
+  assert.match(lines(r, "spend"), /Итого \$0,07 из \$30,00/);
+});

@@ -447,11 +447,14 @@ test("Замеры: первый в окне 2–21 день, затем на 3-
 
 // --- настройки и стартовые источники ---
 
-test("Настройки: потолки по умолчанию 150 за прогон и 1 500 в неделю, выключатель off", () => {
-  assert.deepEqual(socialConfig({}), { enabled: true, maxRequestsPerRun: 150, weeklyRequests: 1500, maxBaselineAuthorsPerRun: 4 });
+test("Настройки: 150 запросов за прогон; в неделю — сколько даёт строка соцсетей ($3 ≈ 2 000 запросов), явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS — ограничение сверху; выключатель off", () => {
+  assert.deepEqual(socialConfig({}), { enabled: true, maxRequestsPerRun: 150, weeklyRequests: 2000, maxBaselineAuthorsPerRun: 4 });
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL: " OFF " }).enabled, false);
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN: "40", ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "300" }).maxRequestsPerRun, 40);
-  assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "abc" }).weeklyRequests, 1500);
+  assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "300" }).weeklyRequests, 300, "явный потолок запросов строже строки — он");
+  assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "5000" }).weeklyRequests, 2000, "явный потолок шире строки — строка");
+  assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_USD: "6" }).weeklyRequests, 4000, "владелец поднял строку — запросов больше");
+  assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "abc" }).weeklyRequests, 2000);
 });
 
 test("Стартовые источники: ≈25 аккаунтов (официальный @zara — «без номеров»), темы женских курток и сумок по обоим брендам", () => {

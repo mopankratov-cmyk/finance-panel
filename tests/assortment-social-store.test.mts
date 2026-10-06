@@ -4,6 +4,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { googleSearchUrl, UnlockerStopError, type UnlockerFormat, type UnlockerResult } from "../lib/assortment/brightdataUnlocker.ts";
+import { engineBudgetConfig } from "../lib/assortment/engineBudget.ts";
 import { pickSocialDigest } from "../lib/assortment/socialFeed.ts";
 import { GOOGLE_QUERIES, googleQuery, HISTORY_LIMIT, parseReelPage, profileUrl, SEED_ACCOUNTS, SEED_TOPICS, shortcodeToDate, socialConfig, topicUrl, uniqloCardUrls, type SocialConfig } from "../lib/assortment/socialReels.ts";
 import {
@@ -470,14 +471,15 @@ test("Потолок прогона: 5 запросов — ровно 5, ост
   assert.equal(tables.assortment_ai_usage.find((u) => u.kind === SOCIAL_USAGE_KIND)?.calls, 5);
 });
 
-test("Потолок недели: в учёте за 7 дней 1 498 из 1 500 — за прогон не больше 2 запросов", async () => {
+test("Потолок недели: явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS=1 500 сведён в строку соцсетей ($2,25) — в учёте за 7 дней 1 498 запросов, за прогон не больше 2", async () => {
   const posts = Array.from({ length: 5 }, (_, i) => post(`DdWEK${String(i).padStart(6, "0")}`, { published_at: iso(NOW - 5 * DAY) }));
   const usage = [{ day: "2026-10-01", kind: SOCIAL_USAGE_KIND, calls: 1000, failed_calls: 0, cost_usd: 1.5, updated_at: iso(NOW - 5 * DAY) }, { day: "2026-10-05", kind: SOCIAL_USAGE_KIND, calls: 498, failed_calls: 0, cost_usd: 0.747, updated_at: iso(NOW - DAY) }, { day: "2026-09-20", kind: SOCIAL_USAGE_KIND, calls: 5000, failed_calls: 0, cost_usd: 7.5, updated_at: iso(NOW - 16 * DAY) }];
   const { db } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: posts, assortment_ai_usage: usage } });
   const web = fakeWeb(Object.fromEntries(posts.map((p) => [p.url as string, reelPage({ code: p.code as string, author: "x.blog", likes: 10, comments: 1 })])));
-  const out = await run(db, web, { phase: "measure" });
+  const out = await run(db, web, { phase: "measure", engine: engineBudgetConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "1500" }) });
   assert.equal(out.weekRequestsBefore, 1498, "запросы 16-дневной давности в неделю не входят");
   assert.equal(out.allowed, 2);
+  assert.equal(out.capBy, "social_line");
   assert.equal(web.calls.length, 2);
   assert.equal(out.stoppedBy, "budget");
 });
@@ -963,4 +965,51 @@ test("Хэштеги с деньгами не пишутся в базу и не
   assert.deepEqual(fresh.refs, ["zara:5854722"]);
   const merged = mergeCandidate({ ...fresh, hashtags: ["usd70", "zarajacket"] }, c, NOW);
   assert.deepEqual(merged.hashtags, ["zarajacket"]);
+});
+
+// --- Ф2: общий потолок движка ---
+
+test("Ф2, общий потолок: рилсы отказывают первыми — при $25 из $30 (резерв под каталоги не выбран) ни одного запроса, причина названа; недельный потолок рилсов один — строка соцсетей ASSORTMENT_SOCIAL_WEEKLY_USD", async () => {
+  const posts = Array.from({ length: 4 }, (_, i) => post(`DdENG${String(i).padStart(6, "0")}`, { published_at: iso(NOW - 5 * DAY) }));
+  const usage = [
+    { day: "2026-10-06", kind: "catalog_attributes", calls: 3000, failed_calls: 0, cost_usd: 23, updated_at: iso(NOW - DAY) },
+    { day: "2026-10-05", kind: SOCIAL_USAGE_KIND, calls: 1000, failed_calls: 0, cost_usd: 1.5, updated_at: iso(NOW - DAY) },
+    { day: "2026-10-05", kind: "brightdata:asos", calls: 330, failed_calls: 0, cost_usd: 0.5, updated_at: iso(NOW - DAY) },
+  ];
+  const { db } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: posts, assortment_ai_usage: usage } });
+  const web = fakeWeb(Object.fromEntries(posts.map((p) => [p.url as string, reelPage({ code: p.code as string, author: "x.blog", likes: 10, comments: 1 })])));
+  const out = await run(db, web, { phase: "measure", engine: { weeklyUsd: 30, socialWeeklyUsd: 3 } });
+  assert.equal(web.calls.length, 0, "ни одного платного запроса");
+  assert.deepEqual([out.allowed, out.capBy, out.stoppedBy], [0, "engine", "budget"]);
+  assert.match(String(out.stopMessage), /общий потолок движка.*соцсети отказывают первыми, каталоги Zara и Uniqlo в приоритете/);
+  assert.equal(socialRunLog(out).status, "partial", "упёрлись в потолок — не поломка");
+
+  // Строка соцсетей $2 при потраченных $1,5 — ещё 333 запроса; прогон (1 000) и общий потолок шире: действует строка.
+  const roomy = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: [], assortment_ai_usage: [usage[1]] } });
+  const probe = await run(roomy.db, fakeWeb({}), { dryRun: true, config: cfg({ maxRequestsPerRun: 1000 }), engine: { weeklyUsd: 30, socialWeeklyUsd: 2 } });
+  assert.deepEqual([probe.allowed, probe.capBy], [333, "social_line"]);
+  // По умолчанию строка $3 — и она действует (раньше её перекрывал потолок 1 500 запросов ≈ $2,25, и $3 не значили ничего): ещё 1 000 запросов.
+  const byDefault = await run(roomy.db, fakeWeb({}), { dryRun: true, config: cfg({ maxRequestsPerRun: 5000 }), engine: engineBudgetConfig({}) });
+  assert.deepEqual([byDefault.allowed, byDefault.capBy], [1000, "social_line"]);
+  // Владелец поднял строку до $6 — разрешено больше; второго потолка, который бы это съел, нет.
+  const raised = await run(roomy.db, fakeWeb({}), { dryRun: true, config: cfg({ maxRequestsPerRun: 5000 }), engine: engineBudgetConfig({ ASSORTMENT_SOCIAL_WEEKLY_USD: "6" }) });
+  assert.deepEqual([raised.allowed, raised.capBy], [3000, "social_line"]);
+  // Явный потолок запросов недели строже строки — он, сведённый в ту же строку ($1,8 = 1 200 запросов, потрачено 1 000).
+  const explicit = await run(roomy.db, fakeWeb({}), { dryRun: true, config: cfg({ maxRequestsPerRun: 5000 }), engine: engineBudgetConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "1200" }) });
+  assert.deepEqual([explicit.allowed, explicit.capBy], [200, "social_line"]);
+  assert.equal(cfg().weeklyRequests, 2000, "справочно: строка $3 — 2 000 запросов в неделю");
+});
+
+test("Ф2, «нет денег» у рилсов: в журнале — метка [stop:billing] в конце строки (по ней сторож задач шлёт одну тревогу на Bright Data), на вкладке метки нет", async () => {
+  const posts = [post("DdPAYX000000", { published_at: iso(NOW - 5 * DAY) })];
+  const { db } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: posts } });
+  const web = fakeWeb({ [posts[0].url as string]: new UnlockerStopError("Bright Data: аккаунт не активен или нет средств (402)", "billing") });
+  const out = await run(db, web, { phase: "measure", parallel: 1 });
+  const log = socialRunLog(out);
+  assert.equal(log.status, "error");
+  assert.match(String(log.note), /нет средств \(402\) \[stop:billing\]$/);
+  const { loadSocialRunStatus } = await import("../lib/assortment/socialFeedStore.ts");
+  const syncLog = { from: () => { const q: Record<string, unknown> = { select: () => q, eq: () => q, order: () => q, limit: () => Promise.resolve({ data: [{ status: "error", error: log.note, started_at: iso(NOW) }], error: null }) }; return q; } } as never;
+  const status = await loadSocialRunStatus(syncLog, NOW);
+  assert.equal(status.lastNote, "Bright Data: аккаунт не активен или нет средств (402)");
 });

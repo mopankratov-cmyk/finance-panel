@@ -1,5 +1,6 @@
 import { containsMoney } from "./attributes";
 import type { AssortmentDirection } from "./constants";
+import { BRIGHTDATA_USD_PER_1000, engineBudgetConfig, socialWeeklyRequests } from "./engineBudget";
 
 /**
  * «Залетает в соцсетях» (решение владельца 06.10.2026): рилсы Instagram про Zara и Uniqlo, только женское. Чистые функции без базы
@@ -40,8 +41,8 @@ export const RECHECK_AGES_DAYS = [3, 7] as const;
 export const MAX_CHECKS = 3;
 export const HISTORY_LIMIT = 10;
 export const CAPTION_EXCERPT_MAX = 500;
-/** Оценка Bright Data: $1,5 за 1 000 запросов Web Unlocker. */
-export const COST_PER_REQUEST_USD = 0.0015;
+/** Оценка Bright Data: $1,5 за 1 000 запросов Web Unlocker — та же цена, что в сквозном учёте движка (engineBudget). */
+export const COST_PER_REQUEST_USD = BRIGHTDATA_USD_PER_1000.unlocker / 1000;
 
 export type SocialBrand = "zara" | "uniqlo";
 export type SocialVerdict = "strong" | "viral" | "normal" | "too_fresh" | "too_old";
@@ -54,7 +55,10 @@ export interface SocialConfig {
   enabled: boolean;
   /** Потолок запросов за один прогон крона. */
   maxRequestsPerRun: number;
-  /** Потолок запросов за 7 дней (по умолчанию 1 500 ≈ $2,25). */
+  /**
+   * Запросов за 7 дней — справочно: столько даёт действующая строка соцсетей в общем потолке движка (ASSORTMENT_SOCIAL_WEEKLY_USD, по
+   * умолчанию $3 ≈ 2 000; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS — ограничение сверху). Отдельным потолком не проверяется: потолок один.
+   */
   weeklyRequests: number;
   /** Сколько авторов за прогон досчитываем базой (их прошлые посты — до 12 запросов на автора). */
   maxBaselineAuthorsPerRun: number;
@@ -69,7 +73,7 @@ export function socialConfig(env: Record<string, string | undefined> = process.e
   return {
     enabled: (env.ASSORTMENT_SOCIAL ?? "").trim().toLowerCase() !== "off",
     maxRequestsPerRun: positiveInt(env.ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN, 150),
-    weeklyRequests: positiveInt(env.ASSORTMENT_SOCIAL_WEEKLY_REQUESTS, 1500),
+    weeklyRequests: socialWeeklyRequests(engineBudgetConfig(env)),
     maxBaselineAuthorsPerRun: positiveInt(env.ASSORTMENT_SOCIAL_BASELINE_AUTHORS, 4),
   };
 }

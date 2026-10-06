@@ -20,7 +20,8 @@ const JOB = "assortment-catalog-ai";
  * из ответа по курсу, у Anthropic — токены по цене) пишется в assortment_ai_usage; бюджет недели
  * (ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD, по умолчанию $20 из $30 на весь движок; считает только этот сборщик) и
  * потолок моделей в сутки (ASSORTMENT_CATALOG_AI_DAILY_LIMIT, 1500) проверяются
- * ДО каждой пачки. Выключатель: ASSORTMENT_CATALOG_AI=off. Без ключа выбранного
+ * ДО каждой пачки — как и общий потолок движка (ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD,
+ * $30 на всё; разбор по фото отказывает раньше каталогов Zara и Uniqlo). Выключатель: ASSORTMENT_CATALOG_AI=off. Без ключа выбранного
  * провайдера (при непустой очереди — строка-ошибка в журнале), без миграции или
  * без цены модели — прогон пропускается.
  *
@@ -73,7 +74,9 @@ export async function GET(request: NextRequest) {
       summary.transient > 0 ? `временных сбоев (перегрузка, сеть, таймаут; попытки не потрачены): ${summary.transient}` : null,
       summary.deferred > 0 ? `из них отложено на сутки (таймаут ИИ или второй сбой провайдера подряд у той же модели): ${summary.deferred}` : null,
       summary.deadSources.length > 0 ? `фото не скачиваются, источники пропущены: ${summary.deadSources.join(", ")}` : null,
-      summary.stoppedBy === "budget" ? (summary.limitReason === "daily_limit" ? "дошли до потолка суток" : "дошли до бюджета недели") : null,
+      summary.stoppedBy === "budget"
+        ? (summary.limitReason === "daily_limit" ? "дошли до потолка суток" : summary.limitReason === "engine_budget" ? "дошли до общего потолка движка (каталоги в приоритете)" : "дошли до бюджета недели")
+        : null,
     ].filter(Boolean).join(". ");
     const reason = runStopReason(summary);
     // «error» — ИИ не принял ключ/нет денег/лимит без единой разобранной или не вышло ничего у моделей, которые до этого не падали; лимит при

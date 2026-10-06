@@ -1,12 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
+import { BRIGHTDATA_BILLING_WORDS, BrightDataError, filterDataset, isBrightDataBilling, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
 import {
-  asCatalogItem, boughtRecently, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, partRecords, PENDING_TTL_MS, purchaseKey,
+  asCatalogItem, boughtRecently, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, partRecords, pendingAlive, purchaseKey,
   readBought, readCoverage, readPending, readTriggerFailure, sectionLabel, targetSignature, triggerFailureNote, writeBought, writeTriggerFailure,
   isDeadImageUrl, readPhotoPending, uniqueRecords, writeCoverage, writePending, writePhotoPending, ZARA_PHOTOS, zaraModelCode, zaraPhotoFilter, zaraPhotosByCode,
   type MappedRecord, type PendingSnapshot, type PhotoPending,
 } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
+import {
+  addToWeek, brightdataUsd, catalogWeeklyNeedUsd, engineBudgetConfig, engineRefusal, kindTier, pendingMaxUsd, targetKind, targetMaxUsd, ZARA_PHOTOS_KIND, ZARA_PHOTOS_MAX_USD,
+  type EngineBudgetConfig, type EngineWeek,
+} from "./engineBudget";
+import { addEngineUsage, loadEngineWeekForSpend } from "./engineBudgetStore";
 import { classifyItem, crawlPlan } from "./crawl";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { isMissingColumnError } from "./errors";
@@ -34,6 +39,23 @@ export interface BrightDataRunResult {
   /** Что с выборками фото: номер и состояние (для ручной проверки). */
   detail?: string[];
   error?: string;
+  /** Остановка «нет денег» (402, «Customer is not active»): новые покупки прогона остановлены; сторож задач шлёт одну тревогу. */
+  billing?: boolean;
+  /** Причина остановки «нет денег» одной строкой (для журнала). */
+  billingReason?: string;
+  /** Сколько оплаченных выборок источника оставлено в очереди с пометкой «нет денег» (ждут пополнения). */
+  billingHeld?: number;
+  /**
+   * Покупка дня отложена не по решению, а по сбою или потолку — метка в журнале, по ней сторож задач шлёт тревогу сразу: engine_read —
+   * учёт расхода не прочитался и после повторов (любая цель); engine_budget — общий потолок не пустил Zara или Uniqlo (ярус 0, только по средам).
+   */
+  stop?: "engine_read" | "engine_budget";
+  /** Сколько целей не куплено по общему потолку движка. */
+  refusedByBudget?: number;
+  /** Оценка расхода, записанного в учёт этим сбором, $. */
+  spentUsd?: number;
+  /** Расход не записался в учёт (выборки при этом не теряются). */
+  usageError?: string;
 }
 
 async function readSource(db: SupabaseClient, sourceId: string) {
@@ -52,54 +74,149 @@ async function mark(db: SupabaseClient, sourceId: string, patch: Record<string, 
  * Окончательный отказ Bright Data по выборке (4xx, кроме 408 и 429): повторять бессмысленно, пробу снимаем. Сбой связи, таймаут,
  * 5xx и 429 — временные: оплаченная выборка остаётся в очереди до суток, а не выбрасывается после первого же сбоя скачивания.
  * То же правило — для отказа в самой покупке (фильтр не принят): денег не взято, следующая цель покупается.
+ * «Нет денег» (402, «Customer is not active») проверяется раньше (isBrightDataBilling): прогон останавливается одной причиной, выборки ждут.
  */
 function isPermanentDownloadError(error: unknown): boolean {
   const status = error instanceof BrightDataError ? error.status : undefined;
   return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
 }
 
+/** Причина остановки «нет денег» одной строкой — одинаково в «Источниках», журнале и тревоге. */
+function billingReason(error: unknown): string {
+  const detail = error instanceof Error ? error.message.replace(/\s+/g, " ").slice(0, 160) : "";
+  return `${BRIGHTDATA_BILLING_WORDS}${detail ? `: ${detail}` : ""}`;
+}
+
+/**
+ * Оплаченная выборка, которую не дал забрать «нет денег»: ждёт пополнения до двух недель (pendingAlive), а не сутки. Только живая: проба,
+ * которая и так зависла дольше своего срока, пометку не получает — иначе она жила бы две недели и столько же не давала купить свою цель.
+ */
+const hold = <T extends { triggeredAt: string; billingHeldAt?: string }>(p: T, at: string): T =>
+  (p.billingHeldAt || !pendingAlive(p, Date.parse(at)) ? p : { ...p, billingHeldAt: at });
+
+/**
+ * Сколько оплачено и ещё не записано в учёт: пробы в очереди источника (их расход запишет сбор) — оценкой сверху. Платный запуск
+ * прибавляет их к неделе, иначе второй запуск в тот же день видел бы потолок свободным.
+ */
+function inFlight(week: EngineWeek, capabilities: unknown, sourceId: string, nowMs: number): EngineWeek {
+  let next = week;
+  for (const p of readPending(capabilities).filter((x) => pendingAlive(x, nowMs))) next = addToWeek(next, targetKind(p) ?? "brightdata:other", pendingMaxUsd(p));
+  if (sourceId === ZARA_PHOTOS.sourceId) {
+    for (const p of readPhotoPending(capabilities).filter((x) => pendingAlive(x, nowMs))) next = addToWeek(next, ZARA_PHOTOS_KIND, ZARA_PHOTOS_MAX_USD);
+  }
+  return next;
+}
+
+export interface TriggerOptions {
+  only?: string | null;
+  force?: boolean;
+  /** Только для тестов: день недели и сутки отметок покупок. */
+  now?: Date;
+  /** Общий потолок движка (по умолчанию — из окружения). */
+  engine?: EngineBudgetConfig;
+  /** Пауза между повторами чтения учёта, мс (тесты — 0). */
+  readRetryDelayMs?: number;
+}
+
 /**
  * Запуск проб по всем целям (ср и сб утром). Номера проб — в capabilities источника.
- * `now` — только для тестов (день недели и сутки отметок покупок).
+ *
+ * Перед каждой покупкой — общий потолок движка (ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD): оценка запуска сверху (потолок записей × цена
+ * метода) должна поместиться в остаток статьи с учётом резерва под каталоги выше по приоритету. Не поместилась — цель не покупается и
+ * названа в «Источниках», остальные идут. Учёт не прочитался и после повторов — не покупаем вслепую, причина так и названа («учёт не
+ * прочитался», а не «потолок»); таблицы учёта нет — прежнее правило без потолка. Отложенная по сбою чтения покупка и Zara или Uniqlo,
+ * не пущенные потолком (они только по средам: иначе неделя данных пропала бы молча), — метка в журнале, сторож задач шлёт тревогу сразу.
+ * «Нет денег» (402) — стоп всего запуска одной причиной: оплаченные пробы уже записаны, остальным источникам дня — та же причина.
  */
-export async function triggerBrightData(db: SupabaseClient, options: { only?: string | null; force?: boolean; now?: Date } = {}): Promise<BrightDataRunResult[]> {
+export async function triggerBrightData(db: SupabaseClient, options: TriggerOptions = {}): Promise<BrightDataRunResult[]> {
   const nowMs = options.now?.getTime() ?? Date.now();
+  const engine = options.engine ?? engineBudgetConfig();
+  const need = catalogWeeklyNeedUsd();
+  const isDue = (target: (typeof BRIGHTDATA_TARGETS)[number]) => options.force || target.weekdayUtc === undefined || new Date(nowMs).getUTCDay() === target.weekdayUtc;
   const bySource = new Map<string, typeof BRIGHTDATA_TARGETS>();
   for (const target of BRIGHTDATA_TARGETS) {
     if (options.only && target.sourceId !== options.only) continue;
+    if (!isDue(target)) continue;
     bySource.set(target.sourceId, [...(bySource.get(target.sourceId) ?? []), target]);
   }
   const results: BrightDataRunResult[] = [];
+  if (bySource.size === 0) return results;
+  let week: EngineWeek | null = null;
+  // Учёт не прочитался и после повторов: покупки откладываются (не платим вслепую) — это сбой, а не решение потолка.
+  let unread: string | null = null;
+  try {
+    week = await loadEngineWeekForSpend(db, nowMs, { delayMs: options.readRetryDelayMs });
+  } catch (error) {
+    unread = error instanceof Error ? error.message.slice(0, 200) : "учёт расхода движка не прочитался";
+  }
+  let billingStop: string | null = null;
   for (const [sourceId, targets] of bySource) {
     const now = new Date(nowMs).toISOString();
     let source: Awaited<ReturnType<typeof readSource>> | null = null;
+    if (billingStop) {
+      // Деньги кончились на предыдущем источнике: этот в день покупки тоже не куплен — та же причина в «Источниках», без новых вызовов.
+      const message = `не куплено: Bright Data — ${billingStop}`.slice(0, 400);
+      try {
+        source = await readSource(db, sourceId);
+        await mark(db, sourceId, { capabilities: writeTriggerFailure(source.capabilities, { at: now, message }), last_attempt_at: now, last_error: `Bright Data: ${message}` });
+      } catch {
+        // запись причины не удалась — итог прогона всё равно её называет
+      }
+      results.push({ sourceId, phase: "trigger", ok: false, billing: true, billingReason: billingStop, triggered: 0, error: billingStop });
+      continue;
+    }
     const pending: PendingSnapshot[] = [];
     let bought: Record<string, string> = {};
     let started = 0;
     // Отказы Bright Data по отдельным целям (фильтр не принят): цель не куплена, остальные покупаются.
     const rejected: string[] = [];
+    // Цели, не поместившиеся в общий потолок движка: не куплены, остальные — по своему остатку.
+    const refused: string[] = [];
+    // Цели, отложенные из-за сбоя чтения учёта; не пущенные потолком цели яруса 0 (Zara и Uniqlo по средам).
+    const postponed: string[] = [];
+    let tier0Refused = false;
     // Покупка без сбоя снимает сбой прошлого запуска; сбой этого запуска — записывается заново (см. ниже).
     const queue = (caps: unknown) => writeTriggerFailure(writeBought(writePending(caps, pending), bought, nowMs), null);
     const failed = (caps: unknown, message: string) => writeTriggerFailure(started > 0 ? queue(caps) : caps, { at: now, message });
     try {
       source = await readSource(db, sourceId);
-      pending.push(...readPending(source.capabilities).filter((p) => nowMs - Date.parse(p.triggeredAt) < PENDING_TTL_MS));
+      pending.push(...readPending(source.capabilities).filter((p) => pendingAlive(p, nowMs)));
       bought = readBought(source.capabilities);
+      if (week) week = inFlight(week, source.capabilities, sourceId, nowMs);
       for (const target of targets) {
-        if (!options.force && target.weekdayUtc !== undefined && new Date(nowMs).getUTCDay() !== target.weekdayUtc) continue;
         // Платный запуск не идемпотентен: повторная доставка крона (или второй вызов) купила бы те же выборки ещё раз ($2,5 за 1 000
         // записей). Пока по цели ждёт неснятая проба или её купили меньше суток назад (выборку уже забрали) — новую не заказываем;
         // у набора цель — раздел (часть раздела), а не фильтр: сменили фильтр — раздел в тот же день второй раз не покупаем.
         // Осознанный повтор — `force=1`.
         const signature = targetSignature(target);
         const key = purchaseKey({ ...target, targetKey: signature });
-        if (!options.force && (pending.some((p) => purchaseKey(p) === key) || boughtRecently(bought[key], nowMs))) continue;
+        // Проба в очереди мешает покупке, только если её купили в этот же плановый день (меньше суток назад): выборка, задержанная «нет
+        // денег» в прошлую среду, не отменяет покупку этой недели — иначе в раздел легла бы недельная давность, а свежая не купилась бы.
+        if (!options.force && (pending.some((p) => purchaseKey(p) === key && boughtRecently(p.triggeredAt, nowMs)) || boughtRecently(bought[key], nowMs))) continue;
+        // Потолок движка — до вызова: оценка сверху, а платим по пришедшим записям.
+        const kind = targetKind(target);
+        const estimate = targetMaxUsd(target);
+        if (unread) {
+          postponed.push(sectionLabel(target));
+          continue;
+        }
+        const refusal = week && kind ? engineRefusal(week, kind, estimate, engine, need) : null;
+        if (refusal) {
+          refused.push(`${sectionLabel(target)} — ${refusal}`);
+          if (kind && kindTier(kind) === 0) tier0Refused = true;
+          continue;
+        }
         let snapshotId: string;
         try {
           snapshotId = target.kind === "dataset"
             ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
             : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
         } catch (error) {
+          // Нет денег — стоп всего запуска: следующие цели получили бы тот же ответ.
+          if (isBrightDataBilling(error)) {
+            billingStop = billingReason(error);
+            break;
+          }
           // Окончательный отказ по этой цели (фильтр части не принят и т. п.) — денег не взято, повтор бессмыслен: называем и покупаем
           // следующие (сбой курток коллабораций не оставляет без покупки их сумки). 429, 5xx, таймаут, сбой связи — стоп, как раньше.
           if (!isPermanentDownloadError(error)) throw error;
@@ -113,16 +230,27 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
         });
         bought[key] = now;
         started += 1;
+        if (week && kind) week = addToWeek(week, kind, estimate);
         // Номер оплаченной пробы пишем СРАЗУ, а не после цикла: сбой следующей цели (429, таймаут 30 с, 5xx) иначе терял бы уже купленные
         // выборки — их номеров нигде не осталось бы, и повторный запуск купил бы всё заново.
         await mark(db, sourceId, { capabilities: queue(source.capabilities), last_attempt_at: now, last_error: null });
       }
-      if (rejected.length > 0) {
+      const problems = [
+        billingStop ? `Bright Data — ${billingStop}` : null,
+        postponed.length > 0 ? `не куплено (${postponed.join(", ")}) — ${unread} — покупка отложена, чтобы не платить вслепую; повторить вручную: ?phase=trigger&source=${sourceId}&force=1` : null,
+        rejected.length > 0 ? `не куплено: ${rejected.join("; ")}` : null,
+        refused.length > 0 ? `не куплено по потолку движка: ${refused.join("; ")}` : null,
+      ].filter((p): p is string => Boolean(p));
+      if (problems.length > 0) {
         // Сбой запуска хранится отдельно от last_error (capabilities.brightdata_trigger_failure): сбор в 06:30 перепишет last_error,
         // а этот сбой присоединит к своим ошибкам — иначе не купленная часть раздела пропала бы из «Источников» через полтора часа.
-        const message = `не куплено: ${rejected.join("; ")}`.slice(0, 400);
-        await mark(db, sourceId, { capabilities: failed(source.capabilities, message), last_attempt_at: now, last_error: `Bright Data: ${message}` });
-        results.push({ sourceId, phase: "trigger", ok: false, error: message, triggered: started, pending: pending.length });
+        const message = problems.join("; ").slice(0, 400);
+        const stop = postponed.length > 0 ? "engine_read" : tier0Refused ? "engine_budget" : null;
+        await mark(db, sourceId, { capabilities: failed(source.capabilities, message), last_attempt_at: now, last_error: `Bright Data: ${message}${billingStop && started > 0 ? ` (оплачено и сохранено проб: ${started})` : ""}` });
+        results.push({
+          sourceId, phase: "trigger", ok: false, error: billingStop ?? message, triggered: started, pending: pending.length,
+          ...(billingStop ? { billing: true, billingReason: billingStop } : {}), ...(refused.length ? { refusedByBudget: refused.length } : {}), ...(stop ? { stop } : {}),
+        });
         continue;
       }
       if (started === 0) continue;
@@ -504,17 +632,85 @@ async function applyZaraPhotos(db: SupabaseClient, records: unknown[], deadline:
   return updates.length;
 }
 
-/** Сбор готовых проб. Не готова — ждёт следующего захода; старше суток — снимается. */
-export async function collectBrightData(db: SupabaseClient, deadline: number): Promise<BrightDataRunResult[]> {
+/** Оплаченные записи одной выборки — в учёт движка оценкой (записи × цена метода). */
+interface Spent {
+  kind: string;
+  records: number;
+  usd: number;
+}
+
+/**
+ * Записать расход выборок, снятых из очереди: только ПОСЛЕ того, как очередь источника сохранена, — выборка, которую ещё раз скачает
+ * следующий сбор (сбой записи очереди), иначе учлась бы дважды. Сбой записи учёта выборки не теряет: он назван в итоге сбора.
+ */
+async function recordSpend(db: SupabaseClient, spent: Spent[], result: BrightDataRunResult): Promise<void> {
+  const byKind = new Map<string, { records: number; usd: number }>();
+  for (const s of spent) {
+    const agg = byKind.get(s.kind) ?? { records: 0, usd: 0 };
+    byKind.set(s.kind, { records: agg.records + s.records, usd: agg.usd + s.usd });
+  }
+  const problems: string[] = [];
+  let total = 0;
+  for (const [kind, agg] of byKind) {
+    try {
+      await addEngineUsage(db, Date.now(), kind, { calls: agg.records, costUsd: agg.usd });
+      total += agg.usd;
+    } catch (error) {
+      problems.push(`${kind}: ${error instanceof Error ? error.message.slice(0, 120) : "не записался"}`);
+    }
+  }
+  if (total > 0) result.spentUsd = Math.round(total * 100_000) / 100_000;
+  if (problems.length > 0) result.usageError = `расход не записался в учёт (${problems.join("; ")})`;
+}
+
+/** Записи выборки сборщика без строк-ошибок (`include_errors`): платим за собранное. */
+const collectedRecords = (rows: unknown[]) => rows.filter((r) => r && typeof r === "object" && !(r as { error?: unknown }).error).length;
+
+/**
+ * Сбор готовых проб. Не готова — ждёт следующего захода; старше суток — снимается. Расход пришедших записей — в учёт движка (оценка).
+ * «Нет денег» (402) при СКАЧИВАНИИ — стоп сбора одной причиной: эта и все ещё не забранные живые выборки остаются в очереди с пометкой
+ * (ждут пополнения до двух недель), у остальных источников очередь не трогается, кроме этой пометки. «Нет денег» при ПОКУПКЕ (выборка
+ * фото Zara) запрещает только новые покупки этого сбора: уже оплаченное скачивается дальше.
+ *
+ * Выборка, задержанная «нет денег» и заменённая покупкой той же цели в следующий плановый день, ждёт свежую: свежая применена — старую в
+ * раздел не кладём (недельная давность легла бы сегодняшней датой, и «появилось» сдвинулось бы на неделю), только учитываем её расход;
+ * свежая не удалась — применяется старая (других данных за неделю нет).
+ */
+export async function collectBrightData(db: SupabaseClient, deadline: number, options: { engine?: EngineBudgetConfig; readRetryDelayMs?: number } = {}): Promise<BrightDataRunResult[]> {
+  const engine = options.engine ?? engineBudgetConfig();
   const sourceIds = [...new Set(BRIGHTDATA_TARGETS.map((t) => t.sourceId))];
   const results: BrightDataRunResult[] = [];
+  let billingStop: string | null = null;
+  // «Нет денег» на покупке: новых покупок в этом сборе больше нет, а скачивание оплаченного идёт.
+  let purchaseStop: string | null = null;
   for (const sourceId of sourceIds) {
     const now = new Date().toISOString();
+    if (billingStop) {
+      // Деньги кончились на предыдущем источнике: выборки этого ждут пополнения — только пометка, без скачиваний.
+      try {
+        const source = await readSource(db, sourceId);
+        const waiting = readPending(source.capabilities).map((p) => hold(p, now));
+        const photos = sourceId === ZARA_PHOTOS.sourceId ? readPhotoPending(source.capabilities).map((p) => hold(p, now)) : [];
+        if (waiting.length + photos.length === 0) continue;
+        const caps = writePending(source.capabilities, waiting);
+        await mark(db, sourceId, {
+          capabilities: sourceId === ZARA_PHOTOS.sourceId ? writePhotoPending(caps, photos) : caps,
+          last_attempt_at: now, last_error: `Bright Data: ${billingStop}; оплаченные выборки ждут в очереди: ${waiting.length + photos.length}`,
+        });
+        const held = [...waiting, ...photos].filter((p) => p.billingHeldAt).length;
+        results.push({ sourceId, phase: "collect", ok: false, billing: true, billingReason: billingStop, billingHeld: held, collected: 0, added: 0, pending: waiting.length + photos.length, error: billingStop });
+      } catch (error) {
+        results.push({ sourceId, phase: "collect", ok: false, billing: true, billingReason: billingStop, error: `${billingStop}; пометка очереди не записалась: ${error instanceof Error ? error.message.slice(0, 120) : "сбой"}` });
+      }
+      continue;
+    }
     const result: BrightDataRunResult = { sourceId, phase: "collect", ok: true, collected: 0, added: 0 };
+    const spent: Spent[] = [];
     try {
       const source = await readSource(db, sourceId);
       const left: PendingSnapshot[] = [];
       const errors: string[] = [];
+      const detail: string[] = [];
       const coverage = readCoverage(source.capabilities);
       const bought = readBought(source.capabilities);
       // Сбой запуска (часть раздела не куплена): сбор пишет last_error заново — присоединяем, пока запуск без сбоя его не снимет.
@@ -525,28 +721,68 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
         const key = purchaseKey(snapshot);
         if (bought[key] === snapshot.triggeredAt) delete bought[key];
       };
-      for (const snapshot of readPending(source.capabilities)) {
+      const stopOnBilling = (error: unknown) => {
+        billingStop = billingReason(error);
+      };
+      const queue = readPending(source.capabilities);
+      // Самая свежая покупка той же цели, если эта выборка — более старая (задержана «нет денег» и заменена плановой покупкой).
+      const newestOf = (snapshot: PendingSnapshot): PendingSnapshot | null => queue
+        .filter((p) => p !== snapshot && purchaseKey(p) === purchaseKey(snapshot) && Date.parse(p.triggeredAt) > Date.parse(snapshot.triggeredAt))
+        .reduce<PendingSnapshot | null>((best, p) => (!best || Date.parse(p.triggeredAt) > Date.parse(best.triggeredAt) ? p : best), null);
+      // Применённые в этом сборе: заменённую старую выборку после свежей в раздел уже не кладём.
+      const applied = new Set<PendingSnapshot>();
+      const day = (iso: string) => iso.slice(0, 10);
+      for (const snapshot of [...queue.filter((s) => !newestOf(s)), ...queue.filter((s) => newestOf(s))]) {
+        const newest = newestOf(snapshot);
+        // Свежая уже применена — пометка остаётся с выборкой, если её саму забрать не успели: следующий сбор её только учтёт.
+        const superseded = snapshot.supersededAt !== undefined || (newest !== null && applied.has(newest));
+        const marked = superseded && !snapshot.supersededAt ? { ...snapshot, supersededAt: now } : snapshot;
+        if (billingStop) {
+          left.push(hold(marked, now));
+          continue;
+        }
         if (Date.now() > deadline) {
+          left.push(marked);
+          continue;
+        }
+        // Свежая покупка той же цели ещё не забрана — старая ждёт её (иначе легла бы в раздел первой, сегодняшней датой).
+        if (!superseded && newest && left.some((p) => p.snapshotId === newest.snapshotId)) {
           left.push(snapshot);
           continue;
         }
+        const supersededNote = (records: number | null) =>
+          `выборка ${snapshot.snapshotId} от ${day(snapshot.triggeredAt)} заменена более свежей покупкой той же цели — в раздел не кладём (даты наблюдений сдвинулись бы)${records === null ? ", не готова — снята" : `, записей ${records} учтены в расходе`}`;
+        const kind = targetKind(snapshot) ?? "brightdata:other";
         if (snapshot.kind === "dataset") {
           const rows = await downloadDatasetRecords(snapshot.snapshotId).catch((e) => {
+            if (isBrightDataBilling(e)) {
+              stopOnBilling(e);
+              left.push(hold(snapshot, now));
+              return undefined;
+            }
             errors.push(String(e?.message ?? e).slice(0, 160));
             // Оплаченная выборка не теряется на временном сбое скачивания (таймаут 60 с, 429, 5xx): остаётся в очереди до суток.
-            if (!isPermanentDownloadError(e) && Date.now() - Date.parse(snapshot.triggeredAt) < PENDING_TTL_MS) left.push(snapshot);
+            if (!isPermanentDownloadError(e) && pendingAlive(snapshot, Date.now())) left.push(snapshot);
             else if (isPermanentDownloadError(e)) release(snapshot);
             return undefined;
           });
           if (rows === undefined) continue;
           if (rows === null) {
-            if (Date.now() - Date.parse(snapshot.triggeredAt) < PENDING_TTL_MS) left.push(snapshot);
+            if (superseded) detail.push(supersededNote(null));
+            else if (pendingAlive(snapshot, Date.now())) left.push(snapshot);
             else errors.push(`выборка ${snapshot.snapshotId} не готова за сутки`);
+            continue;
+          }
+          // За все пришедшие записи заплачено (и за отсеянные правилом части) — в учёт все.
+          spent.push({ kind, records: rows.length, usd: brightdataUsd(rows.length, "dataset") });
+          if (superseded) {
+            detail.push(supersededNote(rows.length));
             continue;
           }
           // Потолок и полнота — по всем пришедшим записям (за них заплачено); в раздел идут только прошедшие правило части.
           const verdict = datasetVerdict(rows.length, snapshot, coverage[coverageKey(snapshot)]);
           const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline, partRecords(snapshot, rows), verdict.quiet, true);
+          applied.add(snapshot);
           if (verdict.remember && snapshot.coverage) coverage[coverageKey(snapshot)] = snapshot.coverage;
           if (verdict.warning) errors.push(verdict.warning);
           if (done.churn) errors.push(`${sectionLabel(snapshot)}: ${done.collected} моделей, из них слишком много новых разом — похоже на пересборку набора, сбор лёг базой`);
@@ -555,16 +791,39 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
           result.baseline = result.baseline || done.baseline;
           continue;
         }
-        const progress = await snapshotProgress(snapshot.snapshotId).catch((e) => ({ status: "error", error: String(e?.message ?? e) }));
+        const progress = await snapshotProgress(snapshot.snapshotId).catch((e) => ({ status: isBrightDataBilling(e) ? "billing" : "error", error: e }));
+        if (progress.status === "billing") {
+          stopOnBilling((progress as { error: unknown }).error);
+          left.push(hold(snapshot, now));
+          continue;
+        }
         if (progress.status === "ready") {
-          const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline);
+          let raw: unknown[];
+          try {
+            raw = await downloadRecords(snapshot.snapshotId);
+          } catch (e) {
+            if (!isBrightDataBilling(e)) throw e;
+            stopOnBilling(e);
+            left.push(hold(snapshot, now));
+            continue;
+          }
+          const records = collectedRecords(raw);
+          spent.push({ kind, records, usd: brightdataUsd(records, "collector") });
+          if (superseded) {
+            detail.push(supersededNote(records));
+            continue;
+          }
+          const done = await processSnapshot(db, { sourceId, name: source.name }, snapshot, deadline, raw);
+          applied.add(snapshot);
           result.collected = (result.collected ?? 0) + done.collected;
           result.added = (result.added ?? 0) + done.added;
           result.baseline = result.baseline || done.baseline;
         } else if (progress.status === "failed") {
           errors.push(`проба ${snapshot.snapshotId} не удалась у Bright Data`);
           release(snapshot);
-        } else if (Date.now() - Date.parse(snapshot.triggeredAt) < PENDING_TTL_MS) {
+        } else if (superseded) {
+          detail.push(supersededNote(null));
+        } else if (pendingAlive(snapshot, Date.now())) {
           left.push(snapshot);
         } else {
           errors.push(`проба ${snapshot.snapshotId} не готова за сутки`);
@@ -572,20 +831,33 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
       }
       // Фото Zara: применить готовую выборку; после свежего сбора Zara — заказать фото тем, у кого их нет.
       let photoLeft: PhotoPending[] = [];
+      // «Нет денег» пришёл на покупке фото этого источника (а не на скачивании).
+      let purchaseStoppedHere = false;
       if (sourceId === ZARA_PHOTOS.sourceId) {
         for (const pending of readPhotoPending(source.capabilities)) {
+          if (billingStop) {
+            photoLeft.push(hold(pending, now));
+            continue;
+          }
           const rows = Date.now() > deadline ? null : await downloadDatasetRecords(pending.snapshotId).catch((e) => {
+            if (isBrightDataBilling(e)) {
+              stopOnBilling(e);
+              photoLeft.push(hold(pending, now));
+              return undefined;
+            }
             errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`);
-            if (!isPermanentDownloadError(e) && Date.now() - Date.parse(pending.triggeredAt) < PENDING_TTL_MS) photoLeft.push(pending);
+            if (!isPermanentDownloadError(e) && pendingAlive(pending, Date.now())) photoLeft.push(pending);
             return undefined;
           });
           if (rows === undefined) continue;
           if (rows === null) {
-            if (Date.now() - Date.parse(pending.triggeredAt) < PENDING_TTL_MS) photoLeft.push(pending);
+            if (pendingAlive(pending, Date.now())) photoLeft.push(pending);
             continue;
           }
           try {
             result.photos = (result.photos ?? 0) + await applyZaraPhotos(db, rows, deadline);
+            // В учёт — только применённая выборка: не применилась — останется в очереди и учтётся, когда её заберут.
+            spent.push({ kind: ZARA_PHOTOS_KIND, records: rows.length, usd: brightdataUsd(rows.length, "dataset") });
           } catch (e) {
             // Оплаченная выборка не пропадает: остаётся в очереди, ошибка — в «Источниках».
             errors.push(`фото Zara: ${String((e as Error)?.message ?? e).slice(0, 120)}`);
@@ -593,17 +865,39 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
           }
         }
         await clearDeadZaraPhotos(db).catch((e) => { errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`); return 0; });
-        if ((result.collected ?? 0) > 0 && photoLeft.length === 0) {
-          const next = await triggerZaraPhotos(db).catch((e) => { errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`); return null; });
-          if (next) photoLeft = [next];
+        if (!billingStop && !purchaseStop && (result.collected ?? 0) > 0 && photoLeft.length === 0) {
+          // Платная выборка фото — под общим потолком движка (после Zara и Uniqlo по средам; расход этого сбора уже в неделе).
+          const refusal = await photosRefusal(db, engine, spent, options.readRetryDelayMs);
+          if (refusal) errors.push(`фото Zara не заказаны: ${refusal}`);
+          else {
+            const next = await triggerZaraPhotos(db).catch((e) => {
+              if (isBrightDataBilling(e)) {
+                // Нет денег на покупку: новые покупки сбора остановлены, а оплаченные выборки следующих источников забираются.
+                purchaseStop = billingReason(e);
+                purchaseStoppedHere = true;
+              } else errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`);
+              return null;
+            });
+            if (next) photoLeft = [next];
+          }
         }
       }
+      const stopReason = billingStop ?? (purchaseStoppedHere ? purchaseStop : null);
+      if (billingStop) errors.unshift(`${billingStop}; оплаченные выборки ждут в очереди: ${left.length + photoLeft.length}`);
+      else if (purchaseStoppedHere) errors.unshift(`фото Zara не заказаны — ${purchaseStop}; новые покупки сбора остановлены, оплаченные выборки забираются`);
       result.pending = left.length + photoLeft.length;
       const caps = writeTriggerFailure(writeBought(writeCoverage(writePending(source.capabilities, left), coverage), bought, Date.now()), triggerNote ? triggerFailure : null);
       const shown = triggerNote ? [triggerNote, ...errors] : errors;
       const patch: Record<string, unknown> = { capabilities: sourceId === ZARA_PHOTOS.sourceId ? writePhotoPending(caps, photoLeft) : caps, last_attempt_at: now, last_error: shown.length ? `Bright Data: ${shown.join("; ")}` : null };
       if ((result.collected ?? 0) > 0) patch.last_success_at = now;
       await mark(db, sourceId, patch);
+      await recordSpend(db, spent, result);
+      if (detail.length) result.detail = detail;
+      if (stopReason) {
+        result.billing = true;
+        result.billingReason = stopReason;
+        result.billingHeld = [...left, ...photoLeft].filter((p) => p.billingHeldAt).length;
+      }
       if (errors.length) {
         result.ok = false;
         result.error = errors.join("; ");
@@ -619,23 +913,54 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
 }
 
 /**
+ * Помещается ли новая выборка фото Zara в общий потолок движка: неделя из учёта плюс расход этого сбора, ещё не записанный. null —
+ * помещается (или таблицы учёта нет — прежнее правило); иначе причина. Учёт не прочитался — не заказываем вслепую.
+ */
+async function photosRefusal(db: SupabaseClient, engine: EngineBudgetConfig, spent: Spent[], readRetryDelayMs?: number): Promise<string | null> {
+  let week: EngineWeek | null;
+  try {
+    week = await loadEngineWeekForSpend(db, Date.now(), { delayMs: readRetryDelayMs });
+  } catch (error) {
+    return `${error instanceof Error ? error.message.slice(0, 120) : "учёт расхода не прочитался"} — не заказываем вслепую`;
+  }
+  if (!week) return null;
+  for (const s of spent) week = addToWeek(week, s.kind, s.usd);
+  return engineRefusal(week, ZARA_PHOTOS_KIND, ZARA_PHOTOS_MAX_USD, engine);
+}
+
+/**
  * Ручной запуск фото Zara (?phase=photos): готовую выборку — применить сразу;
  * неготовую свежую — ждать; новую заказать, только если до вызова ничего не
- * ждало (не покупаем выборку на каждый вызов).
+ * ждало (не покупаем выборку на каждый вызов) и она помещается в общий потолок
+ * движка. «Нет денег» (402) — выборка остаётся в очереди с пометкой.
  */
-export async function requestZaraPhotos(db: SupabaseClient, deadline: number): Promise<BrightDataRunResult> {
+export async function requestZaraPhotos(db: SupabaseClient, deadline: number, options: { engine?: EngineBudgetConfig; readRetryDelayMs?: number } = {}): Promise<BrightDataRunResult> {
+  const engine = options.engine ?? engineBudgetConfig();
   const source = await readSource(db, ZARA_PHOTOS.sourceId);
   const caps = (source.capabilities && typeof source.capabilities === "object" ? source.capabilities : {}) as Record<string, unknown>;
   const result: BrightDataRunResult = { sourceId: ZARA_PHOTOS.sourceId, phase: "trigger", ok: true, triggered: 0, photos: 0 };
   const left: PhotoPending[] = [];
+  const spent: Spent[] = [];
   const waiting = readPhotoPending(caps);
-  const fresh = (p: PhotoPending) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS;
+  const fresh = (p: PhotoPending) => pendingAlive(p, Date.now());
+  const now = new Date().toISOString();
+  let billing: string | null = null;
   result.detail = [];
   for (const pending of waiting) {
+    if (billing) {
+      left.push(hold(pending, now));
+      continue;
+    }
     let rows: unknown[] | null;
     try {
       rows = await downloadDatasetRecords(pending.snapshotId);
     } catch (e) {
+      if (isBrightDataBilling(e)) {
+        billing = billingReason(e);
+        left.push(hold(pending, now));
+        result.detail.push(`${pending.snapshotId}: ждёт — ${billing}`);
+        continue;
+      }
       // Окончательный отказ Bright Data (4xx, кроме 408 и 429) — снимаем: иначе выборка висела бы вечно и не давала заказать новую.
       // Сбой связи, таймаут, 5xx, 408 и 429 — временные: оплаченная выборка ждёт до суток, как и в плановом сборе (одно правило на оба пути).
       const message = String((e as Error)?.message ?? e).slice(0, 200);
@@ -650,6 +975,7 @@ export async function requestZaraPhotos(db: SupabaseClient, deadline: number): P
       continue;
     }
     const applied = await applyZaraPhotos(db, rows, deadline);
+    spent.push({ kind: ZARA_PHOTOS_KIND, records: rows.length, usd: brightdataUsd(rows.length, "dataset") });
     result.photos = (result.photos ?? 0) + applied;
     result.detail.push(`${pending.snapshotId}: записей ${rows.length}, фото получили ${applied}`);
   }
@@ -657,13 +983,57 @@ export async function requestZaraPhotos(db: SupabaseClient, deadline: number): P
   if (cleared) result.detail.push(`мёртвых ссылок снято: ${cleared}`);
   // Новую выборку — только если ничего не ждало: применили готовую — на этом всё (повторный вызов не покупает ещё одну).
   if (waiting.length === 0) {
-    const next = await triggerZaraPhotos(db);
-    if (next) {
-      left.push(next);
-      result.triggered = 1;
+    const refusal = await photosRefusal(db, engine, spent, options.readRetryDelayMs);
+    if (refusal) {
+      result.ok = false;
+      result.error = `новая выборка не заказана: ${refusal}`;
+      result.detail.push(result.error);
+    } else {
+      try {
+        const next = await triggerZaraPhotos(db);
+        if (next) {
+          left.push(next);
+          result.triggered = 1;
+        }
+      } catch (e) {
+        if (!isBrightDataBilling(e)) throw e;
+        billing = billingReason(e);
+      }
     }
+  }
+  if (billing) {
+    result.ok = false;
+    result.billing = true;
+    result.billingReason = billing;
+    result.billingHeld = left.filter((p) => p.billingHeldAt).length;
+    result.error = billing;
   }
   result.pending = left.length;
   await mark(db, ZARA_PHOTOS.sourceId, { capabilities: writePhotoPending(caps, left) });
+  await recordSpend(db, spent, result);
   return result;
+}
+
+/**
+ * Строка журнала прогона Bright Data (sync_log). «Нет денег» (402) — `error` с одной причиной и меткой `[stop:billing]` в конце: по ней
+ * сторож задач шлёт одну тревогу сразу, а полоска и экран «Синхронизация» метку вырезают. Покупка дня отложена из-за того, что учёт
+ * расхода не прочитался, или Zara и Uniqlo не пущены потолком — `error` с меткой `[stop:engine_read]` / `[stop:engine_budget]`: по ней
+ * тоже тревога сразу (Zara и Uniqlo покупаются только по средам — молча пропала бы неделя). Остальное — как раньше: все источники
+ * со сбоем — `error`, часть — `partial`. Расход, не записанный в учёт, — `partial` с причиной (выборки при этом не потеряны).
+ */
+export function brightdataRunLog(results: BrightDataRunResult[]): { status: "ok" | "partial" | "error"; note: string | null } {
+  const billing = results.filter((r) => r.billing);
+  if (billing.length > 0) {
+    const reason = billing[0].billingReason ?? billing[0].error?.split("; ")[0] ?? BRIGHTDATA_BILLING_WORDS;
+    const held = billing.reduce((sum, r) => sum + (r.billingHeld ?? 0), 0);
+    const after = held > 0 ? `, оплаченные выборки ждут пополнения в очереди: ${held}` : "";
+    return { status: "error", note: `Bright Data: ${reason} — платные покупки остановлены (${billing.map((r) => r.sourceId).join(", ")})${after} [stop:billing]` };
+  }
+  const failed = results.filter((r) => !r.ok);
+  const usage = results.filter((r) => r.usageError).map((r) => `${r.sourceId}: ${r.usageError}`);
+  const note = [...failed.map((r) => `${r.sourceId}: ${r.error}`), ...usage].join("; ");
+  const stop = results.some((r) => r.stop === "engine_read") ? "engine_read" : results.some((r) => r.stop === "engine_budget") ? "engine_budget" : null;
+  if (stop) return { status: "error", note: `${note} [stop:${stop}]` };
+  const status = failed.length === 0 ? (usage.length ? "partial" : "ok") : failed.length < results.length ? "partial" : "error";
+  return { status, note: note || null };
 }
