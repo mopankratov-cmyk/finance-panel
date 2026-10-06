@@ -75,5 +75,42 @@ export function findCertainTransferPairs(rows: TransferMatchRow[]): TransferPair
     used.add(row.id);
     used.add(otherId);
   }
+
+  // Banks can contain several identical transfers between the same two
+  // accounts on one day. Every row then has several equally valid matches,
+  // so the one-to-one pass above intentionally skips the whole batch. If the
+  // batch is closed (the same number of outgoing and incoming rows) and none
+  // of its rows can match another account/date, any stable one-to-one pairing
+  // represents the same transfers without inventing a missing side.
+  const batches = new Map<string, { outgoing: Set<string>; incoming: Set<string> }>();
+  for (const left of rows) {
+    if (left.amount >= 0 || used.has(left.id)) continue;
+    for (const rightId of candidates.get(left.id) ?? []) {
+      if (used.has(rightId)) continue;
+      const right = byId.get(rightId);
+      if (!right || right.amount <= 0 || left.date !== right.date) continue;
+      const key = [left.date, cents(left.amount), digits(left.bankAccountNumber), digits(right.bankAccountNumber)].join("|");
+      const batch = batches.get(key) ?? { outgoing: new Set<string>(), incoming: new Set<string>() };
+      batch.outgoing.add(left.id);
+      batch.incoming.add(right.id);
+      batches.set(key, batch);
+    }
+  }
+  for (const key of [...batches.keys()].sort()) {
+    const batch = batches.get(key)!;
+    const outgoing = [...batch.outgoing].filter(id => !used.has(id)).sort();
+    const incoming = [...batch.incoming].filter(id => !used.has(id)).sort();
+    if (outgoing.length <= 1 || outgoing.length !== incoming.length) continue;
+    const outgoingSet = new Set(outgoing);
+    const incomingSet = new Set(incoming);
+    const isClosed = outgoing.every(id => (candidates.get(id) ?? []).filter(other => !used.has(other)).every(other => incomingSet.has(other)))
+      && incoming.every(id => (candidates.get(id) ?? []).filter(other => !used.has(other)).every(other => outgoingSet.has(other)));
+    if (!isClosed) continue;
+    for (let index = 0; index < outgoing.length; index += 1) {
+      result.push({ outgoingId: outgoing[index], incomingId: incoming[index] });
+      used.add(outgoing[index]);
+      used.add(incoming[index]);
+    }
+  }
   return result;
 }
