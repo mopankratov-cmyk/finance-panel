@@ -19,7 +19,7 @@ import {
 const root = fileURLToPath(new URL("..", import.meta.url));
 const fixtures = join(root, "tests/fixtures/assortment-social");
 const fixture = (name: string) => readFileSync(join(fixtures, name), "utf8");
-const MIGRATION = "supabase/migrations/202610060006_assortment_social_reels.sql";
+const MIGRATION = "supabase/migrations/202610060011_assortment_social_reels.sql";
 const sql = readFileSync(join(root, MIGRATION), "utf8");
 const NOW = Date.parse("2026-10-06T16:00:00Z");
 const DAY = 24 * 3600 * 1000;
@@ -218,7 +218,7 @@ test("Без миграции: прогон тихо выходит с прич�
   const web = fakeWeb({});
   const out = await run(db, web);
   assert.equal(out.skippedBecause, "no_schema");
-  assert.match(String(out.skipped), /202610060006_assortment_social_reels\.sql/);
+  assert.match(String(out.skipped), /202610060011_assortment_social_reels\.sql/);
   assert.equal(web.calls.length, 0);
   assert.equal(await loadViralReels(db, { direction: "jackets", nowMs: NOW }), null);
 });

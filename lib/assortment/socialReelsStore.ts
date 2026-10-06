@@ -20,7 +20,7 @@ export { SEED_ACCOUNTS, SEED_TOPICS } from "./socialReels";
 
 /**
  * «Залетает в соцсетях»: база (аккаунты-источники и рилсы), прогон крона и чтение для ленты. Без миграции
- * 202610060006_assortment_social_reels.sql прогон и лента тихо выходят с причиной; без ключа Bright Data прогон не начинается.
+ * 202610060011_assortment_social_reels.sql прогон и лента тихо выходят с причиной; без ключа Bright Data прогон не начинается.
  *
  * Прогон: (а) поиск — раз в 6+ дней темы /popular/ и Google, профили наблюдаемых аккаунтов — когда им пора (раз в 6 дней);
  * (б) замер постов 2–21 дня (первый, на 3-й и 7-й день), база автора — по его прошлым постам, вердикт reels-v1;
@@ -28,7 +28,7 @@ export { SEED_ACCOUNTS, SEED_TOPICS } from "./socialReels";
  * Каждый запрос — в учёт `assortment_ai_usage` (kind brightdata_social), потолки на прогон и на неделю проверяются до запроса.
  */
 
-export const SOCIAL_MIGRATION = "202610060006_assortment_social_reels.sql";
+export const SOCIAL_MIGRATION = "202610060011_assortment_social_reels.sql";
 const ACCOUNTS = "assortment_social_account";
 const POSTS = "assortment_social_post";
 const USAGE = "assortment_ai_usage";

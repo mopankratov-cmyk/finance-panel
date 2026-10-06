@@ -23,7 +23,7 @@ const PHASES: readonly SocialPhase[] = ["discover", "measure", "match"];
  * Деньги: каждый запрос Bright Data — в учёт assortment_ai_usage (kind brightdata_social); потолки
  * ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN (150) и ASSORTMENT_SOCIAL_WEEKLY_REQUESTS (1 500 ≈ $2,25) проверяются до запроса.
  * Выключатель ASSORTMENT_SOCIAL=off. Ключ BRIGHTDATA_API_TOKEN, зона BRIGHTDATA_UNLOCKER_ZONE (по умолчанию mcp_unlocker).
- * Без миграции 202610060006 — тихо выходит с причиной; без ключа — строка-ошибка в журнале (сторож скажет через три дня).
+ * Без миграции 202610060011 — тихо выходит с причиной; без ключа — строка-ошибка в журнале (сторож скажет через три дня).
  * Деньги / ключ / зона Bright Data — остановка прогона одной причиной; сбой одной страницы прогон не роняет.
  *
  * `?dryRun=1` — посчитать, что пора делать, ничего не вызывая и не записывая. `?phase=discover|measure|match` — один шаг

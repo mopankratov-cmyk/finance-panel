@@ -169,7 +169,7 @@ test("Вкладка «Залетает»: вид из адреса, не лен
 });
 
 test("Счёт для вкладки: таблиц нет — available:false (вкладки нет); таблица пуста — collected 0 (вкладки нет); есть «залетевшие» — число", async () => {
-  assert.deepEqual(await countSocialFeed(fakeDb({ missing: ["assortment_social_post"] }).db, "jackets", NOW), { available: false, reason: "Сбор рилсов включится после обновления базы (миграция 202610060006_assortment_social_reels.sql)." });
+  assert.deepEqual(await countSocialFeed(fakeDb({ missing: ["assortment_social_post"] }).db, "jackets", NOW), { available: false, reason: "Сбор рилсов включится после обновления базы (миграция 202610060011_assortment_social_reels.sql)." });
   assert.deepEqual(await countSocialFeed(fakeDb().db, "jackets", NOW), { available: true, total: 0, collected: 0 });
   const { db } = fakeDb({ tables: {
     assortment_social_account: [account("jpnbrands")],
@@ -220,7 +220,7 @@ test("Лента: период, «только сильные», скрытый 
   assert.ok(noLog.available);
   assert.equal(noLog.run, null);
   assert.match(noLog.warnings.join(" "), /журнал сбора не загрузился: canceling statement/, "сбой назван, а не спрятан");
-  assert.deepEqual(await loadSocialFeed(fakeDb({ missing: ["assortment_social_post"] }).db, { direction: "jackets", days: 14, onlyStrong: false, nowMs: NOW }), { available: false, reason: "Сбор рилсов включится после обновления базы (миграция 202610060006_assortment_social_reels.sql)." });
+  assert.deepEqual(await loadSocialFeed(fakeDb({ missing: ["assortment_social_post"] }).db, { direction: "jackets", days: 14, onlyStrong: false, nowMs: NOW }), { available: false, reason: "Сбор рилсов включится после обновления базы (миграция 202610060011_assortment_social_reels.sql)." });
 });
 
 // ---------------------------------------------------------------------------
