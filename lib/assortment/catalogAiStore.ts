@@ -724,6 +724,8 @@ export interface PhotoSample {
   sourceName: string;
   title: string;
   imageUrl: string | null;
+  /** Строка каталога модели (источник + её номер у источника): по ним фото открывается через панель, когда сайт бренда его не отдаёт. */
+  itemId?: string;
   model: string | null;
   takenAt: string | null;
   attributes: Array<{ key: string; label: string; value: string | null; notVisible: boolean; confidence: number | null }>;
@@ -819,6 +821,7 @@ export async function loadPhotoSamples(
         sourceName: nameOf.get(row.source_id) || row.source_id,
         title: head.title,
         imageUrl: head.imageUrls[0] ?? null,
+        itemId: head.sourceItemId,
         model: row.model,
         takenAt: row.taken_at,
         modelKey: row.model_key,

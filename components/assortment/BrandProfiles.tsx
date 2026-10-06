@@ -287,8 +287,8 @@ export function ProfileCard({ profile, editable, numbers, own }: { profile: Bran
       </label>
 
       {editable && (
-        <label className="flex items-center gap-2 text-sm text-slate-800">
-          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="h-4 w-4" />
+        <label className="flex min-h-11 items-center gap-2 text-sm text-slate-800">
+          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} className="h-5 w-5" />
           Подтверждаю профиль как владелец
         </label>
       )}

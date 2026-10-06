@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AccuracySummary, SampleCards, TraitsSection } from "../components/assortment/PhotoTraits.tsx";
+import { AccuracySummary, SampleCards, SampleCardView, sampleImageSrc, samplePhotoState, TraitsSection, type SamplePhoto } from "../components/assortment/PhotoTraits.tsx";
 import {
   ACCURACY_LOWER_MIN, ACCURACY_MIN_JUDGED, accuracyLabel, fieldAccuracy, hiddenReason, summarizeVerdicts, wilsonLower, wilsonUpper,
 } from "../lib/assortment/attributeVerdicts.ts";
@@ -295,7 +295,7 @@ test("Разметка подряд: прежняя версия разбора 
 // --- экран ---
 
 const sample = (over: Partial<PhotoSample> = {}): PhotoSample => ({
-  sourceId: "S001", sourceName: "Zara", title: "Bag a", imageUrl: null, model: "polza:m", takenAt: "2026-10-06T08:00:00Z",
+  sourceId: "S001", sourceName: "Zara", title: "Bag a", imageUrl: "https://img/a.jpg", itemId: "a", model: "polza:m", takenAt: "2026-10-06T08:00:00Z",
   modelKey: "S001|a", promptVersion: PROMPT_VERSION, verdicts: {},
   attributes: [
     { key: "silhouette", label: "Силуэт", value: "тоут", notVisible: false, confidence: 0.9 },
@@ -303,39 +303,109 @@ const sample = (over: Partial<PhotoSample> = {}): PhotoSample => ({
   ], ...over,
 });
 const judging = { currentVersion: PROMPT_VERSION, busyKeys: new Set<string>(), errors: {} as Record<string, string>, onVerdict: () => undefined };
+/** Карточки в заданном состоянии фото. Через SampleCards (как в экране) первая отрисовка всегда «фото грузится» — кнопок тогда нет. */
+const cards = (samples: PhotoSample[], judgingProps: typeof judging | undefined, photo: SamplePhoto = "loaded") =>
+  renderToStaticMarkup(createElement("div", null, ...samples.map((s, i) => createElement(SampleCardView, { key: i, sample: s, judging: judgingProps, photo }))));
 
 test("Карточки в режиме разметки: кнопки «Верно / Неверно / Не понять» у написанного ИИ признака ≥40 px; у «не видно» и у прежней версии кнопок нет; без режима — как раньше", () => {
-  const html = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ verdicts: { silhouette: "wrong" } })], judging }));
+  const html = cards([sample({ verdicts: { silhouette: "wrong" } })], judging);
   assert.equal((html.match(/aria-pressed/g) ?? []).length, 3, "три кнопки, только у «Силуэта»");
   assert.match(html, /aria-label="Точность: Силуэт"/);
   assert.doesNotMatch(html, /aria-label="Точность: Способ ношения"/, "«не видно» отмечать нечего");
   assert.match(html, /aria-pressed="true"[^>]*>Неверно/, "текущая отметка подсвечена");
   assert.match(html, /h-10 min-w-10/);
-  const legacy = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ promptVersion: "catalog-v1" })], judging }));
+  const legacy = cards([sample({ promptVersion: "catalog-v1" })], judging);
   assert.doesNotMatch(legacy, /aria-pressed/, "прежняя версия вопроса — отметка в точность не войдёт, кнопок нет (прячем, не серим)");
   assert.doesNotMatch(legacy, /disabled/);
-  const free = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ attributes: [
+  const free = cards([sample({ attributes: [
     { key: "color", label: "Цвет", value: "бежевый", notVisible: false, confidence: 0.9 },
     { key: "texture", label: "Фактура", value: "гладкая", notVisible: false, confidence: 0.9 },
     { key: "silhouette", label: "Силуэт", value: "тоут", notVisible: false, confidence: 0.9 },
-  ] })], judging }));
+  ] })], judging);
   assert.equal((free.match(/aria-pressed/g) ?? []).length, 3, "кнопки только у «Силуэта»: цвет и фактура — свободный текст");
   assert.doesNotMatch(free, /aria-label="Точность: (Цвет|Фактура)"/);
-  const plain = renderToStaticMarkup(createElement(SampleCards, { samples: [sample()] }));
+  const plain = cards([sample()], undefined);
   assert.doesNotMatch(plain, /aria-pressed/);
-  const noKey = renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ modelKey: undefined })], judging }));
+  const noKey = cards([sample({ modelKey: undefined })], judging);
   assert.doesNotMatch(noKey, /aria-pressed/);
+});
+
+test("Фото примера: прямая ссылка, затем через панель по строке каталога; без фото кнопок «верно/неверно» нет (отмечать вслепую нельзя) — и это названо", () => {
+  const withPhoto = sample();
+  assert.equal(sampleImageSrc(withPhoto, "direct"), "https://img/a.jpg");
+  assert.equal(sampleImageSrc(withPhoto, "proxy"), "/api/assortment-development/catalog/photo?source=S001&item=a&n=0");
+  assert.equal(sampleImageSrc({ ...withPhoto, itemId: undefined }, "proxy"), "https://img/a.jpg", "строки каталога нет — прокси не из чего собрать");
+  const html = cards([withPhoto], judging);
+  assert.match(html, /<img src="https:\/\/img\/a\.jpg"/);
+  assert.equal((html.match(/aria-pressed/g) ?? []).length, 3);
+  assert.doesNotMatch(flat(html), /отметить признаки нечем/);
+  const noPhoto = cards([sample({ imageUrl: null })], judging, "none");
+  assert.doesNotMatch(noPhoto, /aria-pressed/, "картинки нет — кнопок нет (прячем, не серим)");
+  assert.match(flat(noPhoto), /Фото нет — отметить признаки нечем/);
+  assert.match(noPhoto, /нет фото/);
+  const plain = cards([sample({ imageUrl: null })], undefined, "none");
+  assert.doesNotMatch(flat(plain), /отметить признаки нечем/, "в обычном просмотре (без разметки) этого сообщения нет");
+});
+
+test("Ревью #1531/17: пока фото грузится — «Фото загружается…» и ни одной кнопки (в экране первая отрисовка именно такая); кнопки — только после того, как оно открылось", () => {
+  const fresh = renderToStaticMarkup(createElement(SampleCards, { samples: [sample()], judging }));
+  assert.doesNotMatch(fresh, /aria-pressed/, "фото ещё не открылось — отметка была бы вслепую");
+  assert.match(flat(fresh), /Фото загружается…/);
+  assert.doesNotMatch(flat(fresh), /Фото не открылось|Фото нет/);
+  assert.match(fresh, /<img src="https:\/\/img\/a\.jpg"/, "картинка в карточке есть и грузится");
+  assert.equal((cards([sample()], judging, "loaded").match(/aria-pressed/g) ?? []).length, 3, "открылось — три кнопки");
+  assert.doesNotMatch(flat(cards([sample()], judging, "loaded")), /Фото загружается/);
+  // Без режима разметки подсказки про фото нет вовсе, а у разбора прежней версии кнопок не будет никогда — обещать их нечего.
+  assert.doesNotMatch(flat(renderToStaticMarkup(createElement(SampleCards, { samples: [sample()] }))), /Фото загружается/);
+  assert.doesNotMatch(flat(renderToStaticMarkup(createElement(SampleCards, { samples: [sample({ promptVersion: "catalog-v1" })], judging }))), /Фото загружается/);
+});
+
+test("Ревью #1531/17: состояние фото — по адресу текущего этапа; после перехода на запасной путь прежнее «открылось» не переносится", () => {
+  const s = sample();
+  const direct = sampleImageSrc(s, "direct");
+  const proxy = sampleImageSrc(s, "proxy");
+  assert.equal(samplePhotoState(s, "direct", null), "loading");
+  assert.equal(samplePhotoState(s, "direct", direct), "loaded");
+  assert.equal(samplePhotoState(s, "proxy", direct), "loading", "открылась прямая, но этап уже запасной — это другая картинка");
+  assert.equal(samplePhotoState(s, "proxy", proxy), "loaded");
+  assert.equal(samplePhotoState(s, "failed", proxy), "failed", "после «не открылось» — только failed, что бы ни стояло в loadedSrc");
+  assert.equal(samplePhotoState(sample({ imageUrl: null }), "direct", null), "none");
+  const source = readFileSync(join(root, "components/assortment/PhotoTraits.tsx"), "utf8");
+  assert.match(source, /onLoad=\{onLoad\}/, "у картинки есть обработчик открытия");
+  assert.match(source, /onLoad=\{\(\) => setLoadedSrc\(src\)\}/, "открытие запоминается по адресу");
+});
+
+test("Ревью #1531/17: не открылось фото — уже поставленная отметка не пропадает: её видно («Отметка: верно») и можно снять; новых отметок нет", () => {
+  const marked = sample({ verdicts: { silhouette: "ok" } });
+  for (const photo of ["failed", "none"] as const) {
+    const html = cards([photo === "none" ? { ...marked, imageUrl: null } : marked], { ...judging }, photo);
+    assert.doesNotMatch(html, /aria-pressed/, "трёх кнопок «верно/неверно/не понять» нет: ставить отметку вслепую нельзя");
+    assert.match(flat(html), /Отметка: верно/, `${photo}: текущая отметка показана`);
+    assert.match(flat(html), /Снять отметку/, `${photo}: её можно снять`);
+    assert.match(flat(html), /отметить признаки нечем/);
+  }
+  // Грузится — отметка видна, но снять пока нельзя (фото может открыться, тогда будут обычные кнопки).
+  const loading = cards([marked], judging, "loading");
+  assert.match(flat(loading), /Отметка: верно/);
+  assert.doesNotMatch(flat(loading), /Снять отметку/);
+  assert.doesNotMatch(loading, /aria-pressed/);
+  // Нет отметки — нет и строки про неё.
+  assert.doesNotMatch(flat(cards([sample()], judging, "failed")), /Отметка:|Снять отметку/);
+  // Другая версия вопроса: отметка в точность не входит, как и раньше — не показывается.
+  assert.doesNotMatch(flat(cards([sample({ promptVersion: "catalog-v1", verdicts: { silhouette: "ok" } })], judging, "failed")), /Отметка:/);
+  // Сбой сохранения (например, снятия) виден, даже когда фото не открылось.
+  const key = "S001:S001|a:silhouette";
+  assert.match(cards([marked], { ...judging, errors: { [key]: "Нет связи" } }, "failed"), /role="alert"[^>]*>Не сохранилось: Нет связи/);
+  // «Снять» занята, пока отметка сохраняется.
+  assert.match(cards([marked], { ...judging, busyKeys: new Set([key]) }, "failed"), /disabled=""[^>]*>\s*Снять отметку/);
 });
 
 test("Сохранение отметки: кнопки именно этого признака недоступны, остальные рабочие; сбой показан под признаком, а не под всей сеткой", () => {
   const key = "S001:S001|a:silhouette";
-  const html = renderToStaticMarkup(createElement(SampleCards, {
-    samples: [sample({ attributes: [
+  const html = cards([sample({ attributes: [
       { key: "silhouette", label: "Силуэт", value: "тоут", notVisible: false, confidence: 0.9 },
       { key: "proportions", label: "Пропорции", value: "средняя", notVisible: false, confidence: 0.9 },
-    ] })],
-    judging: { ...judging, busyKeys: new Set([key]), errors: { "S001:S001|a:proportions": "Нет связи" } },
-  }));
+    ] })], { ...judging, busyKeys: new Set([key]), errors: { "S001:S001|a:proportions": "Нет связи" } });
   const groups = html.split('role="group"').slice(1);
   assert.equal(groups.length, 2);
   assert.equal((groups[0].split("</span>")[0].match(/disabled=""/g) ?? []).length, 3, "у «Силуэта» сохраняется отметка — три кнопки заняты");

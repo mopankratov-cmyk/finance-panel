@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, FileText, ImageOff, LoaderCircle, Plus, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import {
   BAGS_MAIN_SLOTS,
   COLLECTION_STATUS_LABEL,
+  draftPartialNotice,
   jacketGroups,
   MAX_DETAILS,
   MAX_RESERVES,
@@ -17,6 +18,7 @@ import {
 import type { CandidateCard, CollectionDetail, CollectionItemView, DraftView } from "@/lib/assortment/collectionsStore";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL } from "@/lib/assortment/constants";
 import { STATUS_LABEL } from "@/lib/assortment/decisions";
+import { afterReload } from "@/lib/assortment/reload";
 
 type State = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; collection: CollectionDetail };
 
@@ -36,16 +38,25 @@ export function CollectionEditor({ id }: { id: string }) {
   const [editing, setEditing] = useState<CollectionItemView | null>(null);
   const [removing, setRemoving] = useState<{ item: CollectionItemView; replace: boolean } | null>(null);
   const [drafting, setDrafting] = useState(false);
+  // Итог частично применённого черновика — на странице, а не в окне: окно к этому моменту закрыто. Не зависит от окон, поэтому
+  // его не стирает эффект ниже и порядок «закрыть окно / перечитать / показать» ни на что не влияет.
+  const [notice, setNotice] = useState<{ message: string; stale: boolean } | null>(null);
   const base = `/api/assortment-development/collections/${id}`;
 
-  const load = useCallback(async () => {
+  // soft — перечитывание после действия: сбой чтения не заменяет уже показанную подборку ошибкой (см. afterReload).
+  const load = useCallback(async (soft = false): Promise<boolean> => {
+    const fail = (message: string) => {
+      setState((prev) => afterReload<State>(prev, { kind: "error", message }, soft));
+      return false;
+    };
     try {
       const response = await fetch(base);
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) setState({ kind: "error", message: body?.error || `Подборка не загрузилась (${response.status})` });
-      else setState({ kind: "ready", collection: body.collection });
+      if (!response.ok) return fail(body?.error || `Подборка не загрузилась (${response.status})`);
+      setState({ kind: "ready", collection: body.collection });
+      return true;
     } catch {
-      setState({ kind: "error", message: "Нет связи с сервером" });
+      return fail("Нет связи с сервером");
     }
   }, [base]);
 
@@ -53,14 +64,24 @@ export function CollectionEditor({ id }: { id: string }) {
     void load();
   }, [load]);
 
+  // Ошибка действия принадлежит окну, из которого оно запущено: открытие/закрытие любого окна начинает с чистого листа
+  // (иначе сбой прошлого действия показывался бы в только что открытом окне).
+  useEffect(() => {
+    setError(null);
+  }, [picking, drafting, editing, removing]);
+
+  const lastFailure = useRef("");
+
   const run = async (label: string, request: () => Promise<CollectionDetail>) => {
     setBusy(label);
     setError(null);
+    setNotice(null);
     try {
       setState({ kind: "ready", collection: await request() });
       return true;
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Не получилось");
+      lastFailure.current = e instanceof Error ? e.message : "Не получилось";
+      setError(lastFailure.current);
       return false;
     } finally {
       setBusy(null);
@@ -116,7 +137,7 @@ export function CollectionEditor({ id }: { id: string }) {
               <button
                 type="button"
                 disabled={busy !== null}
-                onClick={() => setDrafting(true)}
+                onClick={() => { setNotice(null); setDrafting(true); }}
                 className="inline-flex h-11 items-center gap-2 rounded-xl border border-violet-300 bg-violet-50 px-4 text-sm font-medium text-violet-800 hover:bg-violet-100 disabled:opacity-60"
               >
                 <Sparkles className="h-4 w-4" /> Собрать черновик
@@ -159,6 +180,26 @@ export function CollectionEditor({ id }: { id: string }) {
           </div>
         )}
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
+        {notice && (
+          <div role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <span className="min-w-0 flex-1 basis-60">{notice.message}</span>
+            {notice.stale && (
+              <button
+                type="button"
+                disabled={busy !== null}
+                onClick={async () => {
+                  setBusy("reload");
+                  const ok = await load(true);
+                  setBusy(null);
+                  if (ok) setNotice(null);
+                }}
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 text-sm text-amber-900 disabled:opacity-60"
+              >
+                {busy === "reload" && <LoaderCircle className="h-4 w-4 animate-spin" />} Обновить подборку
+              </button>
+            )}
+          </div>
+        )}
 
         {c.briefSupported && (
           <ResponsibleField
@@ -257,22 +298,36 @@ export function CollectionEditor({ id }: { id: string }) {
             if (ok) setPicking(null);
           }}
           busy={busy}
+          error={error}
         />
       )}
       {drafting && (
         <DraftModal
           collectionId={c.id}
           busy={busy === "draft"}
+          error={error}
           onClose={() => setDrafting(false)}
           onApply={async (picks) => {
+            // Что уже легло — запоминаем вне run(): сбой на втором добавлении не должен стирать то, что первое добавилось.
+            const progress = { applied: 0, latest: null as CollectionDetail | null };
             const ok = await run("draft", async () => {
-              let latest: CollectionDetail | null = null;
               for (const pick of picks) {
-                latest = await call(base, { method: "POST", body: JSON.stringify({ referenceId: pick.id, asReserve: pick.place === "reserve" }) });
+                progress.latest = await call(base, { method: "POST", body: JSON.stringify({ referenceId: pick.id, asReserve: pick.place === "reserve" }) });
+                progress.applied += 1;
               }
-              return latest ?? (await call(base));
+              return progress.latest ?? (await call(base));
             });
             if (ok) setDrafting(false);
+            else if (progress.applied > 0) {
+              // Часть моделей уже в подборке, остальное не легло: черновик закрываем — он собран под прежнее состояние подборки и после
+              // частичного применения устарел. Подборку на странице обновляем ответом последнего удавшегося добавления (в нём уже лежат
+              // добавленные), затем перечитываем: сбой чтения экран не ломает — остаётся то, что известно, и кнопка «Обновить подборку».
+              const reason = lastFailure.current || "сбой";
+              if (progress.latest) setState({ kind: "ready", collection: progress.latest });
+              setDrafting(false);
+              const refreshed = await load(true);
+              setNotice({ message: draftPartialNotice({ applied: progress.applied, total: picks.length, reason, refreshed }), stale: !refreshed });
+            }
           }}
         />
       )}
@@ -281,6 +336,7 @@ export function CollectionEditor({ id }: { id: string }) {
           item={editing}
           briefSupported={c.briefSupported}
           busy={busy === "item"}
+          error={error}
           onClose={() => setEditing(null)}
           onSave={async (patch) => {
             const ok = await run("item", () => call(`${base}/items/${editing.id}`, { method: "PATCH", body: JSON.stringify(patch) }));
@@ -293,6 +349,7 @@ export function CollectionEditor({ id }: { id: string }) {
           item={removing.item}
           replace={removing.replace}
           busy={busy === "remove"}
+          error={error}
           onClose={() => setRemoving(null)}
           onConfirm={async (reason) => {
             const query = reason ? `?reason=${reason}` : "";
@@ -357,7 +414,7 @@ function ItemCard({
 }) {
   const href = `${ASSORTMENT_BASE_PATH}/${isBags ? "bags" : "jackets"}/${item.referenceId}`;
   const filled = Boolean(item.idea || item.details.length || item.brief.differences || item.brief.questions || item.nextStep);
-  const button = "h-9 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60";
+  const button = "h-10 rounded-lg border border-slate-200 px-2.5 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60";
   return (
     <li className="flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <Link href={href} className="relative block aspect-[4/5] bg-[#ece9e3]">
@@ -400,11 +457,12 @@ function ItemCard({
   );
 }
 
-function CandidatePicker({
+export function CandidatePicker({
   collectionId,
   asReserve,
   isBags,
   busy,
+  error,
   onClose,
   onAdd,
 }: {
@@ -412,6 +470,7 @@ function CandidatePicker({
   asReserve: boolean;
   isBags: boolean;
   busy: string | null;
+  error: string | null;
   onClose: () => void;
   onAdd: (referenceId: string, asReserve: boolean) => void;
 }) {
@@ -432,7 +491,7 @@ function CandidatePicker({
   }, [collectionId]);
 
   return (
-    <Modal open onClose={onClose} title={asReserve ? "Кандидат в резерв" : "Выбрать кандидата"} size="xl">
+    <Modal open onClose={onClose} title={asReserve ? "Кандидат в резерв" : "Выбрать кандидата"} error={error} size="xl">
       {state.kind === "loading" && <div className="text-sm text-slate-500">Загружаем кандидатов…</div>}
       {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
       {state.kind === "ready" && state.candidates.length === 0 && (
@@ -460,7 +519,7 @@ function CandidatePicker({
                   type="button"
                   disabled={busy !== null}
                   onClick={() => onAdd(candidate.id, asReserve)}
-                  className="mt-auto inline-flex h-9 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-2 text-xs font-medium text-white hover:bg-violet-800 disabled:opacity-60"
+                  className="mt-auto inline-flex h-10 items-center justify-center gap-1.5 rounded-lg bg-violet-700 px-2 text-xs font-medium text-white hover:bg-violet-800 disabled:opacity-60"
                 >
                   {busy === `add:${candidate.id}` && <LoaderCircle className="h-3.5 w-3.5 animate-spin" />}
                   {isBags && asReserve ? "В резерв" : "Добавить"}
@@ -474,14 +533,16 @@ function CandidatePicker({
   );
 }
 
-function DraftModal({
+export function DraftModal({
   collectionId,
   busy,
+  error,
   onClose,
   onApply,
 }: {
   collectionId: string;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onApply: (picks: DraftView["picks"]) => void;
 }) {
@@ -518,7 +579,7 @@ function DraftModal({
   );
 
   return (
-    <Modal open onClose={onClose} title="Черновик плана" footer={footer} size="lg">
+    <Modal open onClose={onClose} title="Черновик плана" footer={footer} error={error} size="lg">
       {state.kind === "loading" && <div className="text-sm text-slate-500">Подбираем разные конструкции…</div>}
       {state.kind === "error" && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
       {state.kind === "ready" && (
@@ -564,16 +625,18 @@ function DraftModal({
   );
 }
 
-function ItemEditor({
+export function ItemEditor({
   item,
   briefSupported,
   busy,
+  error,
   onClose,
   onSave,
 }: {
   item: CollectionItemView;
   briefSupported: boolean;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onSave: (patch: Record<string, unknown>) => void;
 }) {
@@ -602,7 +665,7 @@ function ItemEditor({
   );
 
   return (
-    <Modal open onClose={onClose} title={`Задание · ${item.title}`} footer={footer} size="lg">
+    <Modal open onClose={onClose} title={`Задание · ${item.title}`} footer={footer} error={error} size="lg">
       <div className="flex flex-col gap-4">
         <label className="flex flex-col gap-1.5 text-sm text-slate-600">
           Рабочее название идеи
@@ -639,16 +702,18 @@ function ItemEditor({
   );
 }
 
-function RemoveModal({
+export function RemoveModal({
   item,
   replace,
   busy,
+  error,
   onClose,
   onConfirm,
 }: {
   item: CollectionItemView;
   replace: boolean;
   busy: boolean;
+  error: string | null;
   onClose: () => void;
   onConfirm: (reason: ReplaceReason | null) => void;
 }) {
@@ -668,7 +733,7 @@ function RemoveModal({
     </div>
   );
   return (
-    <Modal open onClose={onClose} title={replace ? `Заменить «${item.title}»` : `Убрать «${item.title}»`} footer={footer} size="sm">
+    <Modal open onClose={onClose} title={replace ? `Заменить «${item.title}»` : `Убрать «${item.title}»`} footer={footer} error={error} size="sm">
       <div className="flex flex-col gap-3">
         <p className="text-sm text-slate-600">{replace ? "Почему меняем? По причинам учимся, что не предлагать." : "Причина необязательна, но помогает реже предлагать похожее."}</p>
         <div className="flex flex-col gap-1">

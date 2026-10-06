@@ -24,7 +24,9 @@ import { useAssortmentSources } from "./useAssortmentSources";
 type FeedState =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; cards: FeedCard[] };
+  // Лента помнит, чья она: при смене вкладки список прежней вкладки не показывается под новым названием (и «находок нет» прежней —
+  // как «находок нет» новой, пока запрос не вернулся).
+  | { kind: "ready"; cards: FeedCard[]; view: SectionView; direction: AssortmentDirection };
 
 /**
  * Показываем только те виды ленты, у которых уже есть данные. «Распространяется»
@@ -62,6 +64,8 @@ export function AssortmentSection({
   const [nav, setNav] = useState<CatalogNav>(() => initialNav(initialView, initialCatalogFilters, rejectedForm));
   const view = nav.view;
   const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
+  // Число не посчиталось (ошибка, нет миграции): «неизвестно» — не «моделей нет», вкладки остаются (без числа), а не исчезают молча.
+  const [catalogCountFailed, setCatalogCountFailed] = useState(false);
   const onCatalogFilters = useCallback((filters: CatalogFilters) => setNav((cur) => navSetFilters(cur, filters)), []);
   const onDismissRejected = useCallback(() => setNav((cur) => navDismissRejected(cur)), []);
 
@@ -80,9 +84,15 @@ export function AssortmentSection({
     fetch(`/api/assortment-development/catalog?direction=${direction}&count=1&photo=all`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body) => {
-        if (!cancelled && typeof body?.total === "number") setCatalogTotal(body.total);
+        if (cancelled) return;
+        if (typeof body?.total === "number") {
+          setCatalogTotal(body.total);
+          setCatalogCountFailed(false);
+        } else setCatalogCountFailed(true);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setCatalogCountFailed(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -137,7 +147,7 @@ export function AssortmentSection({
   useEffect(() => {
     if (view === "catalog" || view === "forms") return;
     let cancelled = false;
-    setFeed((prev) => (prev.kind === "ready" ? prev : { kind: "loading" }));
+    setFeed((prev) => (prev.kind === "ready" && prev.view === view && prev.direction === direction ? prev : { kind: "loading" }));
     fetch(`/api/assortment-development/references?direction=${direction}&view=${view}`)
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
@@ -146,7 +156,7 @@ export function AssortmentSection({
           setFeed({ kind: "error", message: body?.error || `Лента не загрузилась (${response.status})` });
           return;
         }
-        setFeed({ kind: "ready", cards: Array.isArray(body?.cards) ? body.cards : [] });
+        setFeed({ kind: "ready", cards: Array.isArray(body?.cards) ? body.cards : [], view, direction });
       })
       .catch(() => {
         if (!cancelled) setFeed({ kind: "error", message: "Нет связи с сервером" });
@@ -156,14 +166,16 @@ export function AssortmentSection({
     };
   }, [direction, view, reloadKey]);
 
+  // Лента другой вкладки — ещё не «готова» для этой.
+  const shownFeed: FeedState = feed.kind === "ready" && (feed.view !== view || feed.direction !== direction) ? { kind: "loading" } : feed;
   const coverage = sources.kind === "ready" ? summarizeCoverage(sources.sources) : null;
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0];
   // Вкладка каталога — в конце ряда: появляется после подсчёта и ничего не сдвигает под пальцем.
   const tabs: Array<{ id: SectionView; label: string }> = [
     ...VIEWS,
-    ...(catalogTotal || view === "catalog" ? [{ id: "catalog" as const, label: catalogTotal ? `Каталоги брендов · ${catalogTotal.toLocaleString("ru-RU")}` : "Каталоги брендов" }] : []),
+    ...(catalogTotal || catalogCountFailed || view === "catalog" ? [{ id: "catalog" as const, label: catalogTotal ? `Каталоги брендов · ${catalogTotal.toLocaleString("ru-RU")}` : "Каталоги брендов" }] : []),
     // «Формы» разбирают каталог — нет моделей, нет и вкладки (прячем, а не серим).
-    ...(catalogTotal || view === "forms" ? [{ id: "forms" as const, label: "Формы" }] : []),
+    ...(catalogTotal || catalogCountFailed || view === "forms" ? [{ id: "forms" as const, label: "Формы" }] : []),
   ];
 
   return (
@@ -213,9 +225,9 @@ export function AssortmentSection({
 
         {view === "catalog" && <CatalogView key={nav.key} direction={direction} initialFilters={nav.filters} onFiltersChange={onCatalogFilters} rejectedForm={nav.rejected} onDismissRejected={onDismissRejected} />}
         {view === "forms" && <FormsView direction={direction} onShowModels={showModels} />}
-        {view !== "catalog" && view !== "forms" && feed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
-        {view !== "catalog" && view !== "forms" && feed.kind === "error" && (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{feed.message}</div>
+        {view !== "catalog" && view !== "forms" && shownFeed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
+        {view !== "catalog" && view !== "forms" && shownFeed.kind === "error" && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{shownFeed.message}</div>
         )}
         {actionError && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{actionError}</div>
@@ -228,9 +240,9 @@ export function AssortmentSection({
             </button>
           </p>
         ) : null}
-        {view !== "catalog" && view !== "forms" && feed.kind === "ready" && feed.cards.length > 0 && (
+        {view !== "catalog" && view !== "forms" && shownFeed.kind === "ready" && shownFeed.cards.length > 0 && (
           <FeedGrid
-            cards={feed.cards}
+            cards={shownFeed.cards}
             direction={direction}
             selected={selected}
             selectionFull={selected.size >= MAX_COMPARE}
@@ -239,7 +251,7 @@ export function AssortmentSection({
             onQuickAction={quickAction}
           />
         )}
-        {view !== "catalog" && view !== "forms" && feed.kind === "ready" && feed.cards.length === 0 && (
+        {view !== "catalog" && view !== "forms" && shownFeed.kind === "ready" && shownFeed.cards.length === 0 && (
           <section className="flex min-h-[220px] flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
             <div className="text-base font-semibold text-slate-900">Находок пока нет</div>
             <p className="max-w-xl text-sm leading-6 text-slate-600">{current.empty}</p>

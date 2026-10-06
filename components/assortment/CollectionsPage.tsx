@@ -167,7 +167,7 @@ function CreateModal({ direction, onClose, onCreated }: { direction: AssortmentD
   );
 
   return (
-    <Modal open onClose={onClose} title={direction === "bags" ? "План сумок на месяц" : "Доска курток на сезон"} footer={footer} size="sm">
+    <Modal open onClose={onClose} title={direction === "bags" ? "План сумок на месяц" : "Доска курток на сезон"} footer={footer} error={error} size="sm">
       <div className="flex flex-col gap-3">
         <span className="text-sm text-slate-600">{direction === "bags" ? "Месяц" : "Сезон"}</span>
         <div className="flex flex-col gap-1">
@@ -179,7 +179,6 @@ function CreateModal({ direction, onClose, onCreated }: { direction: AssortmentD
           ))}
         </div>
         <p className="text-xs text-slate-500">Если подборка на этот период уже есть — откроется она, вторая не создаётся.</p>
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
       </div>
     </Modal>
   );

@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ExternalLink, ImageOff, ImagePlus, Layers, LoaderCircle, Sparkles } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
 import { REJECT_REASONS, type ActionId, type RejectReason } from "@/lib/assortment/decisions";
 import { GROUP_LABEL, ruDate, type EvidenceGroup } from "@/lib/assortment/evidence";
 import type { ModelDetail } from "@/lib/assortment/model";
+import { afterReload, conflictNotice } from "@/lib/assortment/reload";
 import { AddToCollectionModal } from "./AddToCollectionModal";
 import { SimilarModels } from "./SimilarModels";
 import { WbDemand } from "./WbDemand";
@@ -46,17 +47,20 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
   const [editing, setEditing] = useState<{ key: string; value: string } | null>(null);
   const base = `${ASSORTMENT_BASE_PATH}/${direction}`;
 
-  const load = useCallback(async () => {
+  // soft — перечитывание из открытого окна: сбой чтения не заменяет карточку ошибкой (окно с введённой причиной исчезло бы вместе с ней).
+  const load = useCallback(async (soft = false): Promise<boolean> => {
+    const fail = (message: string, status?: number) => {
+      setState((prev) => afterReload<State>(prev, { kind: "error", message, status }, soft));
+      return false;
+    };
     try {
       const response = await fetch(`/api/assortment-development/references/${id}`);
       const body = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        setState({ kind: "error", message: body?.error || `Карточка не загрузилась (${response.status})`, status: response.status });
-        return;
-      }
+      if (!response.ok) return fail(body?.error || `Карточка не загрузилась (${response.status})`, response.status);
       setState({ kind: "ready", model: body.model });
+      return true;
     } catch {
-      setState({ kind: "error", message: "Нет связи с сервером" });
+      return fail("Нет связи с сервером");
     }
   }, [id]);
 
@@ -71,15 +75,19 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
     if (model && model.direction !== direction) router.replace(`${ASSORTMENT_BASE_PATH}/${model.direction}/${model.id}`);
   }, [model, direction, router]);
 
+  const lastConflict = useRef(false);
+
   const run = async (label: string, request: () => Promise<ModelDetail>) => {
     setBusy(label);
     setError(null);
+    lastConflict.current = false;
     try {
       const next = await request();
       setState({ kind: "ready", model: next });
       return true;
     } catch (e) {
       const status = (e as { status?: number }).status;
+      lastConflict.current = status === 409;
       setError({ message: e instanceof Error ? e.message : "Не получилось", conflict: status === 409 });
       return false;
     } finally {
@@ -89,6 +97,16 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
 
   const decide = (action: ActionId, extra: Record<string, unknown> = {}) => model && run(action, () =>
     send(`/api/assortment-development/references/${model.id}`, { method: "PATCH", body: JSON.stringify({ action, version: model.version, ...extra }) }));
+
+  // Конфликт версии: карточку успели изменить. Повторное «Отклонить» с прежней version давало бы 409 бесконечно, а окно закрывает страницу
+  // затемнением — поэтому карточку перечитываем в окне (введённая причина остаётся: окно не закрывается), и следующая отправка уходит
+  // со свежей version.
+  const refreshForReject = async () => {
+    setBusy("rejected");
+    const fresh = await load(true);
+    setBusy(null);
+    setError(conflictNotice(fresh));
+  };
 
   const editAttribute = (key: string, edit: Record<string, unknown>) => model && run(`attr:${key}`, () =>
     send(`/api/assortment-development/references/${model.id}`, { method: "PATCH", body: JSON.stringify({ attribute: key, edit, version: model.version }) }))
@@ -195,7 +213,7 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
                   key={action.id}
                   type="button"
                   disabled={busy !== null}
-                  onClick={() => (action.needsReason ? setRejecting(true) : void decide(action.id))}
+                  onClick={() => { if (action.needsReason) { setError(null); setRejecting(true); } else void decide(action.id); }}
                   className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm text-slate-800 hover:bg-slate-50 disabled:opacity-60"
                 >
                   {busy === action.id && <LoaderCircle className="h-4 w-4 animate-spin" />}
@@ -208,7 +226,7 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
               <div className="flex flex-wrap items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
                 <span>{error.message}</span>
                 {error.conflict && (
-                  <button type="button" onClick={() => { setError(null); void load(); }} className="h-9 rounded-lg border border-red-300 bg-white px-3 text-xs">Обновить карточку</button>
+                  <button type="button" onClick={() => { setError(null); void load(); }} className="h-10 rounded-lg border border-red-300 bg-white px-3 text-xs">Обновить карточку</button>
                 )}
               </div>
             )}
@@ -384,24 +402,41 @@ export function ModelPage({ direction, id }: { direction: AssortmentDirection; i
       <RejectModal
         open={rejecting}
         busy={busy === "rejected"}
+        error={rejecting && error ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="min-w-0 flex-1 basis-48">{error.message}</span>
+            {error.conflict && (
+              <button type="button" disabled={busy !== null} onClick={() => void refreshForReject()} className="h-10 rounded-lg border border-red-300 bg-white px-3 text-xs disabled:opacity-60">Обновить карточку</button>
+            )}
+          </div>
+        ) : null}
         onClose={() => setRejecting(false)}
         onSubmit={async (reason, comment) => {
           const ok = await decide("rejected", { reason, comment });
-          if (ok) setRejecting(false);
+          if (ok) {
+            setRejecting(false);
+            return;
+          }
+          const conflict = lastConflict.current;
+          lastConflict.current = false;
+          if (conflict) await refreshForReject();
         }}
       />
     </div>
   );
 }
 
-function RejectModal({
+export function RejectModal({
   open,
   busy,
+  error,
   onClose,
   onSubmit,
 }: {
   open: boolean;
   busy: boolean;
+  /** Сбой отклонения — внутри окна: баннер страницы под затемнением не виден. */
+  error: ReactNode;
   onClose: () => void;
   onSubmit: (reason: RejectReason, comment: string) => void;
 }) {
@@ -423,7 +458,7 @@ function RejectModal({
     </div>
   );
   return (
-    <Modal open={open} onClose={onClose} title="Почему отклоняем" footer={footer} size="sm">
+    <Modal open={open} onClose={onClose} title="Почему отклоняем" footer={footer} error={error} size="sm">
       <div className="flex flex-col gap-3">
         <p className="text-sm text-slate-600">Причина нужна, чтобы дальше реже показывать похожее.</p>
         <div className="flex flex-col gap-1">

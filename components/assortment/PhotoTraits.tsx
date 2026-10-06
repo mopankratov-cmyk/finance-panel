@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
 import { ACCURACY_MIN_JUDGED, ACCURACY_UNCLEAR_MAX, accuracyLabel, hiddenReason, type FieldAccuracy, type Verdict } from "@/lib/assortment/attributeVerdicts";
 import { ATTRIBUTE_FIELDS } from "@/lib/assortment/attributes";
@@ -323,65 +323,157 @@ const VERDICT_BUTTONS: Array<{ verdict: Verdict; label: string; on: string }> = 
   { verdict: "unclear", label: "Не понять", on: "bg-slate-600 text-white" },
 ];
 
+export type SampleImageStage = "direct" | "proxy" | "failed";
+
+/** Адрес фото примера: сначала ссылка сайта бренда, затем (если известна строка каталога) — через панель. */
+export function sampleImageSrc(sample: Pick<PhotoSample, "sourceId" | "itemId" | "imageUrl">, stage: SampleImageStage): string {
+  if (stage === "proxy" && sample.itemId) {
+    return `/api/assortment-development/catalog/photo?source=${encodeURIComponent(sample.sourceId)}&item=${encodeURIComponent(sample.itemId)}&n=0`;
+  }
+  return sample.imageUrl ?? "";
+}
+
+/** Состояние фото карточки: кнопки «верно / неверно» работают только при «loaded» — отметка вслепую портит точность. */
+export type SamplePhoto = "loading" | "loaded" | "failed" | "none";
+
+/**
+ * Состояние фото по этапу и по тому, какой адрес открылся. «Открылось» сравнивается с адресом ТЕКУЩЕГО этапа: когда прямая ссылка
+ * не открылась и карточка перешла на запасной путь, картинка по нему снова считается загружающейся.
+ */
+export function samplePhotoState(sample: Pick<PhotoSample, "sourceId" | "itemId" | "imageUrl">, stage: SampleImageStage, loadedSrc: string | null): SamplePhoto {
+  if (!sample.imageUrl) return "none";
+  if (stage === "failed") return "failed";
+  return loadedSrc === sampleImageSrc(sample, stage) ? "loaded" : "loading";
+}
+
+const VERDICT_NAME: Record<Verdict, string> = { ok: "верно", wrong: "неверно", unclear: "не понять" };
+
+/**
+ * Одна карточка примера. Фото с сайта бренда не всегда открывается из России: сначала прямая ссылка, не открылась — один раз через панель
+ * (как в каталоге), потом «фото не открылось». Сверить ответ ИИ с картинкой, которой нет, нельзя: кнопок «верно/неверно» нет, пока фото
+ * не открылось (прячем, а не серим) — иначе отметки ставились бы вслепую и портили точность. Уже поставленная отметка не пропадает вместе
+ * с фото: её видно и можно снять.
+ */
+function SampleCard({ sample, judging }: { sample: PhotoSample; judging?: JudgingProps }) {
+  const [stage, setStage] = useState<SampleImageStage>("direct");
+  // «Открылось» помним по адресу, а не флагом: при переходе на запасной путь прежнее «открылось» не переносится на новую картинку.
+  const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+  const img = useRef<HTMLImageElement>(null);
+  const src = sampleImageSrc(sample, stage);
+  const photo = samplePhotoState(sample, stage, loadedSrc);
+  // Картинка из кэша могла открыться раньше, чем у неё появился обработчик: событие load уже прошло, а complete — истинно.
+  useEffect(() => {
+    const el = img.current;
+    if (el && el.complete && el.naturalWidth > 0) setLoadedSrc(src);
+  }, [src]);
+  return (
+    <SampleCardView
+      sample={sample}
+      judging={judging}
+      photo={photo}
+      src={src}
+      imageRef={img}
+      onLoad={() => setLoadedSrc(src)}
+      onError={() => setStage((cur) => (cur === "direct" && sample.itemId ? "proxy" : "failed"))}
+    />
+  );
+}
+
+/** Карточка по готовому состоянию фото — отдельно от загрузки, чтобы показывать её (и проверять) в любом состоянии. */
+export function SampleCardView({
+  sample,
+  judging,
+  photo,
+  src,
+  imageRef,
+  onLoad,
+  onError,
+}: {
+  sample: PhotoSample;
+  judging?: JudgingProps;
+  photo: SamplePhoto;
+  src?: string;
+  imageRef?: Ref<HTMLImageElement>;
+  onLoad?: () => void;
+  onError?: () => void;
+}) {
+  const judgeable = (key: string, notVisible: boolean) =>
+    Boolean(judging && sample.modelKey && sample.promptVersion === judging.currentVersion && !notVisible && isJudgeableField(key));
+  const anyJudgeable = sample.attributes.some((a) => judgeable(a.key, a.notVisible));
+  return (
+    <article className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
+      <div className="flex gap-3">
+        {photo === "loading" || photo === "loaded" ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img ref={imageRef} src={src ?? sample.imageUrl ?? ""} alt={sample.title} loading="lazy" referrerPolicy="no-referrer" onLoad={onLoad} onError={onError} className="h-32 w-24 shrink-0 rounded-lg bg-slate-100 object-cover" />
+        ) : (
+          <div className="grid h-32 w-24 shrink-0 place-items-center rounded-lg bg-slate-100 px-1 text-center text-xs text-slate-400">{photo === "failed" ? "фото не открылось" : "нет фото"}</div>
+        )}
+        <div className="min-w-0">
+          <div className="break-anywhere text-sm font-medium text-slate-900">{sample.title || "Без названия"}</div>
+          <div className="text-xs text-slate-500">{sample.sourceName}</div>
+          {sample.model && <div className="text-[11px] text-slate-400">{sample.model}</div>}
+        </div>
+      </div>
+      <dl className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-x-2 gap-y-0.5 text-xs">
+        {sample.attributes.map((a) => {
+          // Отметить можно признак, который ИИ действительно написал, у разбора по текущей версии вопроса; цвет, фактура и детали —
+          // свободный текст, сверять с ним нечего. Ставить отметку можно, только когда фото открылось.
+          const markable = judgeable(a.key, a.notVisible);
+          const canJudge = markable && photo === "loaded";
+          const key = verdictKey(sample, a.key);
+          const busy = Boolean(judging?.busyKeys.has(key));
+          const failure = judging?.errors[key];
+          const current = sample.verdicts?.[a.key] ?? null;
+          return (
+            <div key={a.key} className="contents">
+              <dt className="text-slate-500">{a.label}</dt>
+              <dd className={a.notVisible ? "text-slate-400" : "text-slate-800"}>
+                {a.notVisible ? "не видно" : a.value}
+                {!a.notVisible && a.confidence !== null && a.confidence < 0.6 && <span className="text-amber-700"> · неуверенно</span>}
+                {canJudge && judging && (
+                  <span role="group" aria-label={`Точность: ${a.label}`} className="mt-1 flex flex-wrap gap-1">
+                    {VERDICT_BUTTONS.map((b) => (
+                      <button
+                        key={b.verdict}
+                        type="button"
+                        aria-pressed={current === b.verdict}
+                        disabled={busy}
+                        onClick={() => judging.onVerdict(sample, a.key, current === b.verdict ? null : b.verdict)}
+                        className={`h-10 min-w-10 rounded-lg px-2 text-xs disabled:opacity-60 ${current === b.verdict ? b.on : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+                      >
+                        {b.label}
+                      </button>
+                    ))}
+                  </span>
+                )}
+                {markable && !canJudge && current && judging && (
+                  // Фото нет или оно ещё грузится, а отметка уже стоит: она не пропадает. Снять можно, когда фото не откроется (менять вслепую нельзя).
+                  <span className="mt-1 flex flex-wrap items-center gap-2 text-slate-700">
+                    <span>Отметка: {VERDICT_NAME[current]}</span>
+                    {photo !== "loading" && (
+                      <button type="button" disabled={busy} onClick={() => judging.onVerdict(sample, a.key, null)} className="h-10 rounded-lg border border-slate-300 bg-white px-2 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                        Снять отметку
+                      </button>
+                    )}
+                  </span>
+                )}
+                {markable && failure && <span role="alert" className="mt-1 block text-red-700">Не сохранилось: {failure}</span>}
+              </dd>
+            </div>
+          );
+        })}
+      </dl>
+      {judging && anyJudgeable && photo === "loading" && <p className="text-xs leading-5 text-slate-500">Фото загружается… Кнопки «верно / неверно» появятся, когда оно откроется: без картинки отметка была бы вслепую.</p>}
+      {judging && anyJudgeable && (photo === "failed" || photo === "none") && <p className="text-xs leading-5 text-amber-800">{photo === "failed" ? "Фото не открылось" : "Фото нет"} — отметить признаки нечем: без картинки отметка была бы вслепую.</p>}
+    </article>
+  );
+}
+
 export function SampleCards({ samples, judging }: { samples: PhotoSample[]; judging?: JudgingProps }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {samples.map((sample) => (
-        <article key={`${sample.sourceId}:${sample.title}:${sample.takenAt}`} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3">
-          <div className="flex gap-3">
-            {sample.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={sample.imageUrl} alt={sample.title} loading="lazy" referrerPolicy="no-referrer" className="h-32 w-24 shrink-0 rounded-lg bg-slate-100 object-cover" />
-            ) : (
-              <div className="grid h-32 w-24 shrink-0 place-items-center rounded-lg bg-slate-100 text-xs text-slate-400">нет фото</div>
-            )}
-            <div className="min-w-0">
-              <div className="break-anywhere text-sm font-medium text-slate-900">{sample.title || "Без названия"}</div>
-              <div className="text-xs text-slate-500">{sample.sourceName}</div>
-              {sample.model && <div className="text-[11px] text-slate-400">{sample.model}</div>}
-            </div>
-          </div>
-          <dl className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-x-2 gap-y-0.5 text-xs">
-            {sample.attributes.map((a) => {
-              // Отметить можно признак, который ИИ действительно написал, у разбора по текущей версии вопроса; цвет, фактура и детали —
-              // свободный текст, сверять с ним нечего.
-              const canJudge = Boolean(judging && sample.modelKey && sample.promptVersion === judging.currentVersion && !a.notVisible && isJudgeableField(a.key));
-              const key = verdictKey(sample, a.key);
-              const busy = Boolean(judging?.busyKeys.has(key));
-              const failure = judging?.errors[key];
-              const current = sample.verdicts?.[a.key] ?? null;
-              return (
-                <div key={a.key} className="contents">
-                  <dt className="text-slate-500">{a.label}</dt>
-                  <dd className={a.notVisible ? "text-slate-400" : "text-slate-800"}>
-                    {a.notVisible ? "не видно" : a.value}
-                    {!a.notVisible && a.confidence !== null && a.confidence < 0.6 && <span className="text-amber-700"> · неуверенно</span>}
-                    {canJudge && judging && (
-                      <>
-                      <span role="group" aria-label={`Точность: ${a.label}`} className="mt-1 flex flex-wrap gap-1">
-                        {VERDICT_BUTTONS.map((b) => (
-                          <button
-                            key={b.verdict}
-                            type="button"
-                            aria-pressed={current === b.verdict}
-                            disabled={busy}
-                            onClick={() => judging.onVerdict(sample, a.key, current === b.verdict ? null : b.verdict)}
-                            className={`h-10 min-w-10 rounded-lg px-2 text-xs disabled:opacity-60 ${current === b.verdict ? b.on : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
-                          >
-                            {b.label}
-                          </button>
-                        ))}
-                      </span>
-                      {failure && <span role="alert" className="mt-1 block text-red-700">Не сохранилось: {failure}</span>}
-                      </>
-                    )}
-                  </dd>
-                </div>
-              );
-            })}
-          </dl>
-        </article>
-      ))}
+      {samples.map((sample) => <SampleCard key={`${sample.sourceId}:${sample.title}:${sample.takenAt}`} sample={sample} judging={judging} />)}
     </div>
   );
 }

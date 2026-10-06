@@ -62,7 +62,7 @@ export function AddToCollectionModal({
 
   const button = "inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-sm disabled:opacity-60";
   return (
-    <Modal open onClose={onClose} title="В подборку" size="md">
+    <Modal open onClose={onClose} title="В подборку" error={error} size="md">
       <div className="flex flex-col gap-3">
         {added ? (
           <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900">
@@ -74,9 +74,9 @@ export function AddToCollectionModal({
           <p className="text-sm text-slate-600">
             Подборок раздела пока нет. <Link href={`${ASSORTMENT_BASE_PATH}/collections`} className="font-medium text-violet-700">Создайте план</Link> — и возвращайтесь.
           </p>
-        ) : (
+        ) : collections ? (
           <ul className="flex flex-col divide-y divide-slate-100 rounded-xl border border-slate-200">
-            {(collections ?? []).map((c) => {
+            {collections.map((c) => {
               const bags = c.kind === "bags_month";
               const mainFull = bags && c.progress.freeSlots.length === 0;
               const reserveFull = c.progress.reserves >= 3;
@@ -103,8 +103,7 @@ export function AddToCollectionModal({
               );
             })}
           </ul>
-        )}
-        {error && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{error}</div>}
+        ) : null}
       </div>
     </Modal>
   );
