@@ -19,6 +19,7 @@ import { withPaymentComment } from "@/lib/opiu/bankReviewMetadata";
 import { isLoanRepaymentCategory } from "@/components/payments/cashLoanScheduleLink";
 import { isTransferCategory } from "@/lib/finance/categories";
 import { bankNameFromWalletName } from "@/lib/finance/bankNames";
+import { submittedCategoryIsConfirmed } from "@/lib/opiu/bankImportConfirmation";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
 type SuggestionInput = {
@@ -406,12 +407,12 @@ export async function POST(request: Request) {
   if (error) return jsonError(error.message, 500);
   try {
     const matchedTransfers = await matchBankReviewTransfers();
-    // Обязательное правило уже является подтверждением статьи: пользователь
-    // видит её в форме до отправки и не должен повторно выбирать то же самое.
-    // Проверяем правило и на сервере, чтобы результат не зависел от версии
-    // открытой вкладки или локального состояния формы.
+    // В ручном импорте нажатие «Добавить операции» подтверждает все статьи,
+    // которые пользователь уже увидел в таблице. Пустые и структурно
+    // незавершённые строки ниже всё равно останутся в очереди. Для фонового
+    // почтового импорта подтверждением служат только обязательные правила.
     const explicitIds = new Set(body.suggestions
-      .filter(s => s.categoryConfirmed || (s.row && mandatoryBankCategory({
+      .filter(s => submittedCategoryIsConfirmed(s, !emailImport) || (s.row && mandatoryBankCategory({
         amount: Number(s.row.amount),
         counterparty: s.row.counterparty,
         counterpartyInn: s.row.counterpartyInn,
