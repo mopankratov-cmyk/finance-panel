@@ -89,7 +89,7 @@ test("Сторож подключён: имена задач совпадают 
   const root = join(import.meta.dirname, "..");
   const jobOf = (path: string) => /const JOB = "([^"]+)"/.exec(readFileSync(join(root, path), "utf8"))?.[1];
   // Роут признаков по фото может прийти в main позже сторожа: проверяем те роуты, что уже есть.
-  const routes = ["app/api/sync/assortment-wb-queries/route.ts", "app/api/sync/assortment-catalog-ai/route.ts"].filter((p) => existsSync(join(root, p)));
+  const routes = ["app/api/sync/assortment-wb-queries/route.ts", "app/api/sync/assortment-catalog-ai/route.ts", "app/api/sync/assortment-social/route.ts"].filter((p) => existsSync(join(root, p)));
   assert.ok(routes.length >= 1);
   for (const path of routes) assert.ok(WATCHED_JOB_NAMES.includes(jobOf(path) ?? ""), `${path}: имя задачи в журнале должно быть в списке сторожа`);
   const route = readFileSync(join(root, "app/api/sync/assortment-freshness/route.ts"), "utf8");

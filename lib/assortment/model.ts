@@ -6,6 +6,7 @@ import { buildEvidence, type EvidenceGroup, type EvidenceObservation, type Evide
 import { storeImages, uploadedImage, type ImageBytes } from "./importer";
 import { cardSignal, type CardSignal } from "./signals";
 import { loadSimilar, type SimilarResult } from "./similarStore";
+import { loadModelSocial } from "./socialFeedStore";
 import { ASSORTMENT_BUCKET, isUploadPath, signedUrls } from "./storage";
 
 export interface ModelMedia {
@@ -102,7 +103,8 @@ export async function loadModel(db: SupabaseClient, id: string): Promise<ModelDe
   ]);
   const failed = obsError ?? mediaError ?? decError;
   if (failed) throw new Error(failed.message);
-  const similar = await loadSimilar(db, id, ref.direction, ref.brand);
+  // Рилсы, привязанные к модели («Залетает в соцсетях») — параллельно с похожими; таблиц нет — в карточке прежняя заглушка.
+  const [similar, social] = await Promise.all([loadSimilar(db, id, ref.direction, ref.brand), loadModelSocial(db, { id, url: ref.url, brand: ref.brand })]);
   const otherBrands = similar.state === "ready" ? similar.items.filter((item) => !item.sameBrand).length : null;
 
   const obs = (observations ?? []) as EvidenceObservation[];
@@ -134,7 +136,7 @@ export async function loadModel(db: SupabaseClient, id: string): Promise<ModelDe
       isManual: Boolean(m.is_manual),
       originUrl: m.origin_url ? String(m.origin_url) : null,
     })),
-    evidence: buildEvidence(obs, otherBrands),
+    evidence: buildEvidence(obs, otherBrands, social),
     attributes: attributeRows(ref.direction, attributes),
     actions: availableActions(status).map((action) => ({ id: action, label: ACTIONS[action].label, needsReason: Boolean(ACTIONS[action].needsReason) })),
     decisions: (decisions ?? []).map((d) => ({

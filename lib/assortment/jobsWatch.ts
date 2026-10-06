@@ -33,6 +33,9 @@ export const WATCHED_JOBS: readonly JobRule[] = [
   // Крон каждые 2 часа, журнал — только когда была работа: 3 ошибки подряд. Ключ, деньги и настройка останавливают прогон сразу и дают
   // «error», но тревога всё равно после трёх; лимит запросов — «error» лишь без единой разобранной модели, неудачи при разобранных — «partial».
   { job: "assortment-catalog-ai", label: "Признаки каталога по фото (ИИ)", maxSilenceDays: null, maxConsecutiveErrors: 3 },
+  // «Залетает в соцсетях»: крон ежедневный и пишет журнал каждым прогоном (выключатель off — тоже, строкой «ok»), поэтому
+  // тишина 3 суток — пропавший крон; 3 ошибки подряд — три дня без ключа, денег или зоны Bright Data.
+  { job: "assortment-social", label: "Залетает в соцсетях: рилсы Instagram (Bright Data)", maxSilenceDays: 3, maxConsecutiveErrors: 3 },
 ];
 
 export const WATCHED_JOB_NAMES: string[] = WATCHED_JOBS.map((j) => j.job);
@@ -99,7 +102,7 @@ export function jobsAlertPlan(freshness: JobsFreshness, openKeys: string[]): Job
   return { send: ours.length ? "recovered" : null, openKey: null, resolveKeys: ours };
 }
 
-export const JOBS_STALL_ACTION = "Проверьте журнал синхронизаций (sync_log) по этим задачам. Спрос WB — квота и токен MPSTATS; признаки по фото — ключ и баланс ИИ-провайдера (Anthropic или Polza, см. текст ошибки выше; провайдер выбирает ASSORTMENT_CATALOG_AI_PROVIDER).";
+export const JOBS_STALL_ACTION = "Проверьте журнал синхронизаций (sync_log) по этим задачам. Спрос WB — квота и токен MPSTATS; признаки по фото — ключ и баланс ИИ-провайдера (Anthropic или Polza, см. текст ошибки выше; провайдер выбирает ASSORTMENT_CATALOG_AI_PROVIDER); рилсы — ключ, баланс и зона Bright Data (BRIGHTDATA_API_TOKEN, BRIGHTDATA_UNLOCKER_ZONE).";
 
 export function jobsStallMessage(freshness: JobsFreshness): string {
   return `Остановились задачи движка тенденций (${freshness.stalled.length}): ${freshness.stalled.map((j) => j.label).join("; ")}`;
@@ -114,5 +117,5 @@ export function jobsStallTelegram(freshness: JobsFreshness): string {
 }
 
 export function jobsRecoveredTelegram(): string {
-  return "✅ <b>Задачи движка тенденций снова работают</b>\nСпрос WB и признаки по фото идут по расписанию.";
+  return "✅ <b>Задачи движка тенденций снова работают</b>\nСпрос WB, признаки по фото и рилсы идут по расписанию.";
 }
