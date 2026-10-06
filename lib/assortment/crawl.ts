@@ -105,9 +105,10 @@ const JACKETS = /\b(jackets?|coats?|parka|puffer|anorak|trench|bomber|blazer|gil
  * цвет и размер без тире («Puffer Pants Black») его не прячут. Слова с цифрами
  * (размеры) пропускаем. Русский: слово из списка в начале названия и ни одного
  * слова куртки/сумки во фразе. Чехол — только для техники и очков: «Vanity Case»
- * (сумка-бокс) остаётся. Без \b для кириллицы — он её не видит.
+ * (сумка-бокс) остаётся. Без \b для кириллицы — он её не видит. «Blouson» и «Harrington» —
+ * куртки (коллаборации Uniqlo так и называются), а «Blouson Sleeve Top» — топ: решает самое правое слово.
  */
-const JACKET_NOUN = /^(?:jackets?|coats?|parkas?|puffers?|anoraks?|trench(?:es|coats?)?|bombers?|blazers?|gilets?|vests?|windbreakers?|overcoats?|raincoats?|capes?|ponchos?|overshirts?|shackets?)$/;
+const JACKET_NOUN = /^(?:jackets?|coats?|parkas?|puffers?|anoraks?|trench(?:es|coats?)?|bombers?|blazers?|gilets?|vests?|windbreakers?|overcoats?|raincoats?|capes?|ponchos?|overshirts?|shackets?|blousons?|harringtons?)$/;
 const BAG_NOUN = /^(?:bags?|handbags?|totes?|hobos?|clutch(?:es)?|cross-?body|backpacks?|rucksacks?|satchels?|purses?|pouch(?:es)?|baguettes?|duffel|duffle|weekender|shoppers?|bumbag|fanny|wristlets?|minaudieres?|bucket)$/;
 const NON_TARGET_EN = /^(?:pants?|trousers?|jeans|shorts|skirts?|dress(?:es)?|leggings?|jumpsuits?|overalls?|tumblers?|flasks?|bottles?|mugs?|cups?|plates?|bowls?|socks?|pyjamas?|pajamas?|sweaters?|jumpers?|t-?shirts?|shirts?|blouses?|bodysuits?|swimsuits?|bikinis?|towels?|blankets?|pillows?|candles?|hats?|caps?|beanies?|scarves|scarf|gloves?|belts?|shoes?|boots?|sneakers?|sandals?|loafers?|slippers?|suits?|tops?|tanks?|camis?|camisoles?|cardigans?|hoodies?|sweatshirts?|rompers?|playsuits?|gowns?|kaftans?|tunics?|joggers|sweatpants|tights|corsets?|bras?|bralettes?|necklaces?|earrings?|bracelets?|rings?|hangers?|covers?|sleeves?|organi[sz]ers?|inserts?|straps?|charms?|wallets?|holders?|keyrings?|keychains?|pads?|hooks?)$/;
 const NON_TARGET_CASE = /(?:laptop|phone|glasses|sunglasses|card|key|passport|tablet|airpods|ipad)\s+cases?$/;

@@ -7,7 +7,22 @@
  */
 
 import type { AssortmentDirection } from "./constants";
-import type { CatalogItem } from "./crawl";
+import { headKind, type CatalogItem } from "./crawl";
+
+/**
+ * Часть раздела — отдельная выборка того же набора в тот же раздел (решение
+ * владельца 06.10: модели из соцсетей не попадали в каталог). Своя база охвата
+ * и свой потолок: часть не вытесняет основную выборку из её 1 000 записей и,
+ * появившись, не кладёт базой весь раздел. Записи части проходят ещё и своё
+ * правило (keepPartRecord): фильтр набора — по названию на стороне Bright Data
+ * (платим за пришедшие записи), правило — окончательное, по названию и описанию.
+ */
+export type TargetPart = "zara_chaqueta" | "uniqlo_collab";
+
+export const PART_LABEL: Record<TargetPart, string> = {
+  zara_chaqueta: "Zara CHAQUETA без трикотажа",
+  uniqlo_collab: "коллаборации Uniqlo",
+};
 
 export interface CollectionTarget {
   sourceId: string;
@@ -32,13 +47,15 @@ export interface CollectionTarget {
   recordsLimit?: number;
   /** Запускать только в этот день недели (UTC, 0 — вс): наборы обновляются нечасто. */
   weekdayUtc?: number;
+  /** Часть раздела: своя выборка, свой охват, своё правило отбора записей. */
+  part?: TargetPart;
 }
 
 /**
  * Zara: свой сборщик Bright Data ломается на разборе карточки, а готовый набор
  * «Zara - Products» работает (проба 03.10). Семейства — внутренние коды Zara:
  * CAZADORA — куртки, ABRIGO — пальто, GABARDINA — тренчи, PLUMIFERO —
- * пуховики, BOLSO — сумки. CHAQUETA не берём: там кардиганы. Одна витрина
+ * пуховики, BOLSO — сумки. CHAQUETA — отдельной частью (ниже). Одна витрина
  * (США, английский): товар в наборе повторяется по странам, и раздел всех
  * витрин в выборку целиком не влезает. Записи — модель в цвете; набор хранит
  * и распроданное (`availability: false`): куртки одной витрины не влезли в 600
@@ -54,17 +71,43 @@ const zaraFilter = (families: string[], extra: unknown[] = []) => ({
 });
 
 /**
+ * CHAQUETA у Zara — общее семейство «жакетов»: кардиганы и вязаные жакеты, но
+ * и куртки (рилс 06.10: 5854/722 «CHAQUETA CUELLO SUBIDO BOLSILLOS» — куртка с
+ * воротником-стойкой и карманами). Отдельная выборка со своим потолком: куртки
+ * витрины уже занимают почти всю тысячу. Трикотаж отсекаем уже в фильтре —
+ * по английскому названию (`product_name`, у витрины США оно заглавными), —
+ * и ещё раз у себя (keepPartRecord): по названию и описанию, по-английски и
+ * по-испански. Блейзеры — не верхняя одежда (как у Uniqlo).
+ */
+const ZARA_CHAQUETA_NOT_IN_NAME = ["KNIT", "CARDIGAN", "CROCHET", "PUNTO", "TRICOT", "JERSEY", "SWEAT", "BLAZER"];
+
+/**
  * Uniqlo: готовый набор «Uniqlo Products» (проба 03.10) — запись на каждый
  * цвет и размер, номер модели в group_id, пол и раздел в product_category
  * («WOMEN > Outerwear > …»). Витрина одна — Испания, на английском. Куртки —
  * только размер S (item_id «…-003»), иначе одна модель — десяток записей;
  * жакеты-блейзеры не берём: это не верхняя одежда.
+ *
+ * Коллаборации (Uniqlo U, JW Anderson, UNIQLO : C, Comptoir des Cotonniers…)
+ * на витрине ES лежат в «WOMEN > Special Collaborations > …», а не в
+ * «Outerwear» (рилс 06.10: Uniqlo U Hybrid Down Short Jacket, 487882). Там всё
+ * подряд — брюки, топы, трикотаж, — поэтому отдельная часть: куртки — по
+ * названию верхней одежды, размер S, без блейзеров и трикотажа; сумки — по
+ * названию сумки (размер у них один). Слово ищем в обоих регистрах: учитывает
+ * ли его Bright Data, неизвестно, а лишняя запись дешевле пропущенной модели.
  */
 const UNIQLO_SPAIN = { name: "store_country", operator: "=", value: "ES" };
 const uniqloFilter = (category: string, extra: unknown[] = []) => ({
   operator: "and",
   filters: [UNIQLO_SPAIN, { name: "product_category", operator: "includes", value: category }, ...extra],
 });
+const UNIQLO_COLLABS = "WOMEN > Special Collaborations";
+const UNIQLO_NOT_BLAZERS = { name: "product_category", operator: "not_includes", value: "Blazers" };
+const UNIQLO_SIZE_S = { name: "item_id", operator: "includes", value: "-003" };
+const bothCases = (words: string[]) => words.flatMap((w) => [w, w.toLowerCase()]);
+const UNIQLO_OUTERWEAR_IN_TITLE = bothCases(["Jacket", "Coat", "Parka", "Blouson", "Down", "Puffer", "Gilet", "Vest", "Harrington", "Trench", "Windbreaker", "Anorak", "Poncho"]);
+const UNIQLO_KNIT_IN_TITLE = bothCases(["Knit", "Sweater", "Cardigan"]);
+const UNIQLO_BAG_IN_TITLE = bothCases(["Bag", "Tote", "Backpack", "Pouch", "Clutch"]);
 
 /**
  * ASOS — по запросам (раздел новинок с параметром в адресе сборщик не берёт),
@@ -110,6 +153,27 @@ export const BRIGHTDATA_TARGETS: CollectionTarget[] = [
     kind: "dataset", recordsLimit: 300, weekdayUtc: 3,
     filter: uniqloFilter("WOMEN > Accessories > Bags"),
   },
+  // Части разделов — после основных целей источника: сбой новой цели не мешает купить основные.
+  {
+    sourceId: "S001", datasetId: "gd_lct4vafw1tgx27d4o0", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_zara",
+    kind: "dataset", part: "zara_chaqueta", recordsLimit: 600, weekdayUtc: 3,
+    filter: zaraFilter(["CHAQUETA"], [ZARA_IN_STOCK, { name: "product_name", operator: "not_includes", value: ZARA_CHAQUETA_NOT_IN_NAME }]),
+  },
+  {
+    sourceId: "S003", datasetId: "gd_mosh3s7wdb7jafn85", direction: "jackets", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_uniqlo",
+    kind: "dataset", part: "uniqlo_collab", recordsLimit: 200, weekdayUtc: 3,
+    filter: uniqloFilter(UNIQLO_COLLABS, [
+      UNIQLO_NOT_BLAZERS,
+      UNIQLO_SIZE_S,
+      { name: "title", operator: "includes", value: UNIQLO_OUTERWEAR_IN_TITLE },
+      { name: "title", operator: "not_includes", value: UNIQLO_KNIT_IN_TITLE },
+    ]),
+  },
+  {
+    sourceId: "S003", datasetId: "gd_mosh3s7wdb7jafn85", direction: "bags", discoverBy: "category", inputs: [], limitPerInput: 0, method: "brightdata_uniqlo",
+    kind: "dataset", part: "uniqlo_collab", recordsLimit: 100, weekdayUtc: 3,
+    filter: uniqloFilter(UNIQLO_COLLABS, [{ name: "title", operator: "includes", value: UNIQLO_BAG_IN_TITLE }]),
+  },
   {
     sourceId: "S007", datasetId: "gd_lebec5ir293umvxh5g", direction: "bags", discoverBy: "category", limitPerInput: 40, method: "brightdata_hm",
     inputs: [{ category_url: "https://www2.hm.com/en_us/women/products/bags.html" }],
@@ -132,6 +196,8 @@ export interface PendingSnapshot {
   coverage?: string;
   /** Отпечаток цели (входы сборщика или фильтр набора): у одного источника несколько целей с одним набором и разделом (ASOS — две пробы на раздел). */
   targetKey?: string;
+  /** Часть раздела (CHAQUETA Zara, коллаборации Uniqlo): свой охват и своё правило отбора записей. */
+  part?: TargetPart;
 }
 
 /** Отпечаток цели запуска: по нему повторный платный запуск узнаёт, что по этой цели проба уже ждёт. */
@@ -154,9 +220,40 @@ export function writePending(capabilities: unknown, pending: PendingSnapshot[]):
   return base;
 }
 
-/** Раздел набора в capabilities: набор + раздел (у источника их бывает несколько). */
-export function coverageKey(target: { datasetId: string; direction: AssortmentDirection }): string {
-  return `${target.datasetId}|${target.direction}`;
+/** Раздел набора в capabilities: набор + раздел (у источника их бывает несколько) + часть раздела, если это часть. */
+export function coverageKey(target: { datasetId: string; direction: AssortmentDirection; part?: string }): string {
+  return target.part ? `${target.datasetId}|${target.direction}|${target.part}` : `${target.datasetId}|${target.direction}`;
+}
+
+/**
+ * Что считается одной покупкой. Готовый набор — раздел (или часть раздела)
+ * целиком, независимо от фильтра: сменили фильтр — тот же раздел в тот же день
+ * второй раз не покупаем, новый фильтр пойдёт в следующий плановый день (или
+ * `force=1`). У сборщика — ещё и входы: у ASOS две цели на раздел.
+ */
+export function purchaseKey(p: { datasetId: string; direction: AssortmentDirection; part?: string; kind?: "collect" | "dataset"; targetKey?: string }): string {
+  return p.kind === "dataset" ? coverageKey(p) : `${coverageKey(p)}|${p.targetKey ?? ""}`;
+}
+
+/**
+ * Когда что куплено (ключ покупки → время запуска). Очередь проб помнит покупку,
+ * только пока выборку не забрали; после сбора повторный запуск в тот же день
+ * купил бы раздел заново. Помним сутки — столько же, сколько живёт проба.
+ */
+export function readBought(capabilities: unknown): Record<string, string> {
+  const map = (capabilities as { brightdata_bought?: unknown } | null)?.brightdata_bought;
+  if (!map || typeof map !== "object" || Array.isArray(map)) return {};
+  return Object.fromEntries(Object.entries(map as Record<string, unknown>).filter((e): e is [string, string] => typeof e[1] === "string" && Number.isFinite(Date.parse(e[1]))));
+}
+
+/** Куплено меньше суток назад — повторно без `force=1` не покупаем. */
+export function boughtRecently(at: string | undefined, nowMs: number): boolean {
+  return at !== undefined && nowMs - Date.parse(at) < PENDING_TTL_MS;
+}
+
+/** Записать отметки покупок; отметки старше суток уже ничего не решают — не копим. */
+export function writeBought(capabilities: Record<string, unknown>, bought: Record<string, string>, nowMs: number): Record<string, unknown> {
+  return { ...capabilities, brightdata_bought: Object.fromEntries(Object.entries(bought).filter(([, at]) => boughtRecently(at, nowMs))) };
 }
 
 /** Отпечаток фильтра: сменился фильтр — сменился охват раздела. */
@@ -177,6 +274,13 @@ export function writeCoverage(capabilities: Record<string, unknown>, coverage: R
   return { ...capabilities, brightdata_coverage: coverage };
 }
 
+/** «раздел «куртки»» или «раздел «куртки» (часть: Zara CHAQUETA без трикотажа)» — для предупреждений в «Источниках». */
+export function sectionLabel(snapshot: { direction: AssortmentDirection; part?: TargetPart }): string {
+  const section = `раздел «${snapshot.direction === "bags" ? "сумки" : "куртки"}»`;
+  const part = snapshot.part ? PART_LABEL[snapshot.part] : undefined;
+  return part ? `${section} (часть: ${part})` : section;
+}
+
 export interface DatasetVerdict {
   /** Новинки из выборки не показываем: раздел обрезан или только что сменил охват. */
   quiet: boolean;
@@ -190,10 +294,10 @@ export interface DatasetVerdict {
  * раздел обрезан: новинки там случайные. Фильтр сменился (или охват ещё не
  * запомнен) — этот сбор становится базой раздела, новинки пойдут со следующего.
  */
-export function datasetVerdict(rows: number, snapshot: Pick<PendingSnapshot, "recordsLimit" | "coverage" | "direction">, stored: string | undefined): DatasetVerdict {
+export function datasetVerdict(rows: number, snapshot: Pick<PendingSnapshot, "recordsLimit" | "coverage" | "direction" | "part">, stored: string | undefined): DatasetVerdict {
   const truncated = snapshot.recordsLimit !== undefined && rows >= snapshot.recordsLimit;
   if (truncated) {
-    return { quiet: true, remember: false, warning: `раздел «${snapshot.direction === "bags" ? "сумки" : "куртки"}» больше потолка выборки (${rows}) — новинки не показываем, нужен фильтр уже или потолок выше` };
+    return { quiet: true, remember: false, warning: `${sectionLabel(snapshot)} больше потолка выборки (${rows}) — новинки не показываем, нужен фильтр уже или потолок выше` };
   }
   const changed = snapshot.coverage !== undefined && stored !== snapshot.coverage;
   return { quiet: changed, remember: snapshot.coverage !== undefined, warning: null };
@@ -305,6 +409,55 @@ export function mapRecord(raw: unknown): MappedRecord | null {
     reviews: num(first(record, ["review_count", "reviews_count", "rating_count"])),
     rating: num(first(record, ["star_rating", "rating"])),
   };
+}
+
+/**
+ * Трикотаж и не верхняя одежда в названии — по-английски и по-испански (у
+ * Zara семейство по-испански, название витрины США — по-английски). Вязаный
+ * жакет назван «jacket», и главное слово названия его не отсекает.
+ */
+const KNITWEAR_IN_NAME = /\b(?:knit|knits|knitted|knitwear|crochet|tricot|jersey|purl|sweat|sweaters?|sweatshirts?|hoodies?|punto|ganchillo|sudadera)\b|c[aá]rdigan|canal[eé]/i;
+/**
+ * В описании — только то, что однозначно о трикотаже: у бомбера в описании
+ * бывает «rib knit trims», и одно слово «knit» его бы выбросило.
+ */
+const KNITWEAR_IN_DESCRIPTION = /c[aá]rdigan|\bknitwear\b|\bknit(?:ted)? jackets?\b|\bchaqueta de punto\b/i;
+/** Блейзер — не верхняя одежда («Tailored Jacket» у Uniqlo — тоже он); «Tailored Coat» — пальто, остаётся. */
+const BLAZER_IN_NAME = /\bblazers?\b|\bamericana\b|\btailored jackets?\b/i;
+/** Верхняя одежда по названию — для коллабораций Uniqlo, где в разделе всё подряд. */
+const OUTERWEAR_IN_NAME = /\b(?:jackets?|coats?|overcoats?|raincoats?|parkas?|blousons?|down|puffers?|gilets?|vests?|harringtons?|trench(?:coats?)?|windbreakers?|anoraks?|ponchos?|capes?)\b/i;
+
+const recordName = (record: Record<string, unknown>) => str(first(record, ["product_name", "name", "title"])) ?? "";
+
+/**
+ * Окончательное правило части раздела — по сырой записи набора, до разбора.
+ * Только женское: раздел записи, если он есть, должен быть женским (фильтр
+ * набора это уже требует; здесь — на случай, если Bright Data его ослабит).
+ * Zara CHAQUETA — без трикотажа и блейзеров. Коллаборации Uniqlo — куртки
+ * только по названию верхней одежды и без трикотажа и блейзеров (брюки, топы
+ * отсекаются здесь и ещё раз главным словом названия); сумки — разбором раздела.
+ */
+export function keepPartRecord(part: TargetPart, direction: AssortmentDirection, raw: unknown): boolean {
+  if (!raw || typeof raw !== "object") return false;
+  const record = raw as Record<string, unknown>;
+  const name = recordName(record);
+  if (part === "zara_chaqueta") {
+    const section = str(record.section);
+    if (section && section.toUpperCase() !== "WOMAN") return false;
+    const subfamily = str(first(record, ["product_subfamily", "subfamily"])) ?? "";
+    const description = str(first(record, ["description", "product_description"])) ?? "";
+    return !KNITWEAR_IN_NAME.test(`${name} ${subfamily}`) && !KNITWEAR_IN_DESCRIPTION.test(description) && !BLAZER_IN_NAME.test(name);
+  }
+  const category = str(first(record, ["product_category", "category"]));
+  if (category && !/^WOMEN\b/i.test(category)) return false;
+  if (direction === "bags") return true;
+  return OUTERWEAR_IN_NAME.test(name) && headKind(name) !== "other" && !KNITWEAR_IN_NAME.test(name) && !BLAZER_IN_NAME.test(name);
+}
+
+/** Записи выборки, которые идут в раздел: у части — только прошедшие её правило; у основной выборки — все. */
+export function partRecords(snapshot: Pick<PendingSnapshot, "part" | "direction">, rows: unknown[]): unknown[] {
+  const part = snapshot.part;
+  return part && Object.hasOwn(PART_LABEL, part) ? rows.filter((row) => keepPartRecord(part, snapshot.direction, row)) : rows;
 }
 
 /**
