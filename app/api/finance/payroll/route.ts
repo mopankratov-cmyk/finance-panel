@@ -269,16 +269,20 @@ async function handlePayroll(request: NextRequest) {
   if (action === "delete_employee") {
     const employeeId = nullableId(body.employeeId);
     if (!employeeId) return NextResponse.json({ error: "Не выбран сотрудник" }, { status: 400 });
-    const [entries, debts, allocations] = await Promise.all([
+    const [entries, allocations] = await Promise.all([
       db.from("payroll_entries").select("id", { count: "exact", head: true }).eq("employee_id", employeeId),
-      db.from("payroll_debt_openings").select("id", { count: "exact", head: true }).eq("employee_id", employeeId),
       db.from("payroll_payment_allocations").select("id", { count: "exact", head: true }).eq("employee_id", employeeId),
     ]);
-    const historyError = entries.error ?? debts.error ?? allocations.error;
+    const historyError = entries.error ?? allocations.error;
     if (historyError) return NextResponse.json({ error: historyError.message }, { status: 500 });
-    if ((entries.count ?? 0) + (debts.count ?? 0) + (allocations.count ?? 0) > 0) {
-      return NextResponse.json({ error: "Сотрудника нельзя удалить: по нему уже есть начисления, долги или оплаты. Поставьте статус «Уволен», чтобы сохранить финансовую историю." }, { status: 409 });
+    if ((entries.count ?? 0) + (allocations.count ?? 0) > 0) {
+      return NextResponse.json({ error: "Сотрудника нельзя удалить: по нему уже есть начисления или подтверждённые оплаты. Поставьте статус «Уволен», чтобы сохранить финансовую историю." }, { status: 409 });
     }
+    // Начальный долг не является историей выплат: при удалении сотрудника он
+    // удаляется вместе с карточкой. Наличие начислений или оплат по-прежнему
+    // блокирует операцию выше, чтобы не терять финансовую историю.
+    const debts = await db.from("payroll_debt_openings").delete().eq("employee_id", employeeId);
+    if (debts.error) return NextResponse.json({ error: debts.error.message }, { status: 500 });
     const result = await db.from("payroll_employees").delete().eq("id", employeeId).select("id").maybeSingle();
     if (result.error) return NextResponse.json({ error: result.error.message }, { status: 500 });
     if (!result.data) return NextResponse.json({ error: "Сотрудник не найден" }, { status: 404 });

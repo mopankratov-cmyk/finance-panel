@@ -361,7 +361,7 @@ export function PayrollRegister({ accounts, companies, payments, scheduleRows, o
             } else {
               await deletePayrollEmployee(editingEmployee.id);
               await load();
-              setSuccess("Сотрудник удалён.");
+              setSuccess("Сотрудник и его начальный долг удалены.");
             }
             setEmployeeModalOpen(false);
           } finally {
