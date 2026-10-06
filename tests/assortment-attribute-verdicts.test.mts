@@ -7,10 +7,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AccuracySummary, SampleCards, SampleCardView, sampleImageSrc, samplePhotoState, TraitsSection, type SamplePhoto } from "../components/assortment/PhotoTraits.tsx";
 import {
-  ACCURACY_LOWER_MIN, ACCURACY_MIN_JUDGED, accuracyLabel, fieldAccuracy, hiddenReason, summarizeVerdicts, wilsonLower, wilsonUpper,
+  ACCURACY_LOWER_MIN, ACCURACY_MIN_JUDGED, accuracyFor, accuracyLabel, fieldAccuracy, hiddenReason, summarizeVerdicts, wilsonLower, wilsonUpper,
 } from "../lib/assortment/attributeVerdicts.ts";
 import { loadAccuracy, loadVerdicts, saveVerdict, VerdictInputError, VerdictTableMissingError } from "../lib/assortment/attributeVerdictsStore.ts";
-import { PROMPT_VERSION, type PhotoTraitsReport } from "../lib/assortment/catalogAi.ts";
+import { photoSkipKey, PROMPT_VERSION, type PhotoTraitsReport } from "../lib/assortment/catalogAi.ts";
 import { loadPhotoSamples, type PhotoSample } from "../lib/assortment/catalogAiStore.ts";
 
 const NOW = Date.parse("2026-10-06T10:00:00Z");
@@ -105,13 +105,14 @@ test("Округление верхней границы и доли «не по
 });
 
 test("Сводка отметок: по признакам, неизвестный вердикт игнорируется; подписи и причина скрытия доли", () => {
-  const s = summarizeVerdicts([
+  const s = accuracyFor(summarizeVerdicts([
     ...Array.from({ length: 21 }, () => ({ field_key: "silhouette", verdict: "ok" as const })),
     { field_key: "silhouette", verdict: "unclear" as const },
     ...Array.from({ length: 5 }, () => ({ field_key: "proportions", verdict: "ok" as const })),
     ...Array.from({ length: 5 }, () => ({ field_key: "proportions", verdict: "wrong" as const })),
     { field_key: "carry", verdict: "bogus" as never },
-  ]);
+  ]), null, null);
+  assert.equal(s.carry, undefined, "неизвестный вердикт не заводит признак");
   assert.equal(s.silhouette.status, "reliable");
   assert.equal(s.silhouette.unclear, 1);
   assert.equal(s.proportions.judged, 10);
@@ -136,11 +137,14 @@ function fakeDb(tables: Record<string, Row[]>, opts: { missing?: string[] } = {}
     from: (table: string) => {
       const eqs: Array<[string, unknown]> = [];
       let del = false;
-      const rows = () => (tables[table] ?? []).filter((r) => eqs.every(([c, v]) => r[c] === v));
+      // Как PostgREST: отдаются только выбранные колонки — код, забывший колонку в select, увидит её пустой.
+      let cols: string[] | null = null;
+      const project = (r: Row): Row => (cols ? Object.fromEntries(cols.filter((c) => c in r).map((c) => [c, r[c]])) : r);
+      const rows = () => (tables[table] ?? []).filter((r) => eqs.every(([c, v]) => r[c] === v)).map(project);
       const failure = opts.missing?.includes(table) ? { code: "42P01", message: `relation "${table}" does not exist` } : null;
       const result = () => (failure ? { data: null, error: failure } : { data: rows(), error: null });
       const q: Record<string, unknown> = {
-        select: () => q,
+        select: (c?: string) => { if (typeof c === "string" && c.trim() !== "*") cols = c.split(",").map((x) => x.trim()); return q; },
         eq: (c: string, v: unknown) => { eqs.push([c, v]); return q; },
         // Остальные фильтры вида голов подставной базе не нужны: все её строки им удовлетворяют.
         gte: () => q, is: () => q, not: () => q, or: () => q, in: () => q, neq: () => q,
@@ -213,13 +217,13 @@ test("Отметка по разбору прежней версии вопро�
 
 test("Чтение отметок: только раздел и текущая версия вопроса; нет таблицы — null (а не пустая точность)", async () => {
   const rows = [
-    { source_id: "S1", model_key: "a", direction: "bags", field_key: "silhouette", prompt_version: PROMPT_VERSION, verdict: "ok" },
-    { source_id: "S1", model_key: "b", direction: "bags", field_key: "silhouette", prompt_version: "catalog-v1", verdict: "wrong" },
-    { source_id: "S1", model_key: "c", direction: "jackets", field_key: "subtype", prompt_version: PROMPT_VERSION, verdict: "ok" },
+    { source_id: "S1", model_key: "a", direction: "bags", field_key: "silhouette", prompt_version: PROMPT_VERSION, ai_model: "polza:m", verdict: "ok" },
+    { source_id: "S1", model_key: "b", direction: "bags", field_key: "silhouette", prompt_version: "catalog-v1", ai_model: "polza:m", verdict: "wrong" },
+    { source_id: "S1", model_key: "c", direction: "jackets", field_key: "subtype", prompt_version: PROMPT_VERSION, ai_model: "polza:m", verdict: "ok" },
   ];
   const { db } = fakeDb({ assortment_attribute_verdict: rows });
   assert.deepEqual((await loadVerdicts(db, "bags"))!.map((r) => r.model_key), ["a"], "версия v1 и другой раздел не входят");
-  assert.equal((await loadAccuracy(db, "bags"))!.silhouette.ok, 1);
+  assert.equal((await loadAccuracy(db, "bags", "polza:m"))!.byField.silhouette.ok, 1);
   const none = fakeDb({}, { missing: ["assortment_attribute_verdict"] });
   assert.equal(await loadVerdicts(none.db, "bags"), null);
   assert.equal(await loadAccuracy(none.db, "bags"), null);
@@ -486,4 +490,95 @@ test("Миграция и роуты: таблица с ключом по вер
   assert.match(traits, /searchParams\.get\("unjudged"\) === "1"/);
   assert.doesNotMatch(traits, /loadAccuracy\(db, direction\)\.catch/, "сбой чтения точности не превращается в null («таблицы нет»)");
   assert.match(traits, /if \(onlyUnjudged\) return NextResponse\.json\(\{ error: `Отметки не загрузились/, "разметка без прочитанных отметок невозможна — это ошибка, а не «примените миграцию»");
+});
+
+// --- Ф1 (06.10): точность по паре «версия вопроса + модель ИИ», разметка без недоступных фото ---
+
+const read = (path: string) => readFileSync(join(root, path), "utf8");
+
+test("Ф1: смена модели ИИ без смены версии вопроса даёт две раздельные точности — отметки моделей не смешиваются", () => {
+  const rows = [
+    ...Array.from({ length: 20 }, () => ({ field_key: "silhouette", verdict: "ok" as const, prompt_version: PROMPT_VERSION, ai_model: "polza:old" })),
+    ...Array.from({ length: 20 }, () => ({ field_key: "silhouette", verdict: "wrong" as const, prompt_version: PROMPT_VERSION, ai_model: "polza:new" })),
+  ];
+  const groups = summarizeVerdicts(rows);
+  assert.equal(groups.length, 2, "две модели — две точности");
+  const old = accuracyFor(groups, PROMPT_VERSION, "polza:old").silhouette;
+  const fresh = accuracyFor(groups, PROMPT_VERSION, "polza:new").silhouette;
+  assert.deepEqual([old.ok, old.wrong, old.status], [20, 0, "reliable"], "у прежней модели 20 из 20");
+  assert.deepEqual([fresh.ok, fresh.wrong, fresh.status], [0, 20, "unreliable"], "у новой 0 из 20 — смешанная дала бы 50% на 40 отметках");
+  assert.deepEqual(accuracyFor(groups, PROMPT_VERSION, "polza:third"), {}, "у модели без отметок точность не измерена, а не чужая");
+  assert.equal(summarizeVerdicts([rows[0], { ...rows[0], prompt_version: "catalog-v1" }]).length, 2, "та же модель, другая версия вопроса — тоже отдельно");
+  assert.deepEqual(groups.map((g) => g.marks), [20, 20]);
+});
+
+test("Ф1: точность раздела — по модели ИИ, которая сейчас пишет разбор; отметки прежней модели — отдельной строкой; текущая модель по умолчанию — из настроек сборщика тем же именем, что в строке разбора", async () => {
+  const v = (model: string, key: string, verdict: string) => ({ source_id: "S1", model_key: key, direction: "bags", field_key: "silhouette", prompt_version: PROMPT_VERSION, ai_model: model, verdict });
+  const { db } = fakeDb({ assortment_attribute_verdict: [v("polza:old", "a", "ok"), v("polza:old", "b", "ok"), v("polza:old", "c", "ok"), v("polza:new", "d", "wrong"), v("polza:new", "e", "wrong")] });
+  const r = (await loadAccuracy(db, "bags", "polza:new"))!;
+  assert.equal(r.model, "polza:new");
+  assert.deepEqual([r.byField.silhouette.ok, r.byField.silhouette.wrong], [0, 2], "в точности текущей модели только её отметки");
+  assert.deepEqual(r.others.map((o) => [o.aiModel, o.marks, o.byField.silhouette.ok]), [["polza:old", 3, 3]], "прежняя модель — отдельно");
+  const saved = { key: process.env.POLZA_API_KEY, provider: process.env.ASSORTMENT_CATALOG_AI_PROVIDER, model: process.env.ASSORTMENT_CATALOG_AI_MODEL };
+  try {
+    process.env.POLZA_API_KEY = "test";
+    delete process.env.ASSORTMENT_CATALOG_AI_PROVIDER;
+    delete process.env.ASSORTMENT_CATALOG_AI_MODEL;
+    assert.equal((await loadAccuracy(db, "bags"))!.model, "polza:google/gemini-2.5-flash", "по умолчанию — модель из настроек, как её пишет сборщик");
+  } finally {
+    if (saved.key === undefined) delete process.env.POLZA_API_KEY; else process.env.POLZA_API_KEY = saved.key;
+    if (saved.provider !== undefined) process.env.ASSORTMENT_CATALOG_AI_PROVIDER = saved.provider;
+    if (saved.model !== undefined) process.env.ASSORTMENT_CATALOG_AI_MODEL = saved.model;
+  }
+  const route = read("app/api/assortment-development/photo-traits/route.ts");
+  assert.match(route, /accuracy: report\?\.byField \?\? null, accuracyModel: report\?\.model \?\? null, otherModels: report\?\.others \?\? \[\]/, "экран получает точность текущей модели и прежние отдельно");
+});
+
+test("Ф1: отметка про ответ другой модели ИИ к этому разбору не относится — модель снова в разметке; отметки той же модели — размечена", async () => {
+  const other = [{ ...mark("a", "silhouette"), ai_model: "polza:old" }, { ...mark("a", "proportions"), ai_model: "polza:old" }];
+  const { db } = pool({ a: { attributes: two, model: "polza:new" } });
+  const r = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts: other, onlyUnjudged: true, nowMs: NOW }))!;
+  assert.deepEqual(r.samples.map((x) => x.modelKey), ["S001|a"]);
+  assert.deepEqual(r.samples[0].verdicts, {}, "чужие отметки на карточке не подсвечиваются");
+  assert.equal(r.judgedModels, 0);
+  const same = other.map((x) => ({ ...x, ai_model: "polza:new" }));
+  const r2 = (await loadPhotoSamples(db, "bags", { limit: 12, verdicts: same, onlyUnjudged: true, nowMs: NOW }))!;
+  assert.deepEqual(r2.samples, [], "размечена целиком — не предлагается");
+  assert.equal(r2.judgedModels, 1);
+});
+
+test("Ф1: разметка не выдаёт модели с недоступным фото (ссылок нет, ИИ не смог скачать, у человека не открылось) — они не застревают в «следующих 12» и названы числом; отказ модерации — не про фото", async () => {
+  const head = (key: string, urls: string[]) => ({ source_id: "S001", source_item_id: key, model_key: `S001|${key}`, direction: "bags", title: `Bag ${key}`, image_urls: urls, model_first_seen_at: "2026-10-01T00:00:00Z", model_last_seen_at: "2026-10-05T00:00:00Z", model_hidden_at: null });
+  const keys = ["ok", "nolinks", "dead", "mine", "moderation"];
+  const { db } = fakeDb({
+    assortment_catalog_heads: keys.map((k) => head(k, k === "nolinks" ? [] : [`https://img/${k}.jpg`])),
+    assortment_sources: [{ source_id: "S001", name: "Zara" }],
+    assortment_model_attributes: [
+      result({ model_key: "S001|ok", attributes: two }),
+      result({ model_key: "S001|nolinks", attributes: two }),
+      result({ model_key: "S001|dead", attributes: two, last_error: "Polza 400: не удалось скачать картинку: request timed out" }),
+      result({ model_key: "S001|mine", attributes: two }),
+      result({ model_key: "S001|moderation", attributes: two, last_error: "Polza 403: Запрос отклонён модерацией" }),
+    ],
+  });
+  const skipPhotos = new Set([photoSkipKey("S001", "S001|mine")]);
+  const r = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts: [], onlyUnjudged: true, skipPhotos, nowMs: NOW }))!;
+  assert.deepEqual(r.samples.map((x) => x.modelKey).sort(), ["S001|moderation", "S001|ok"]);
+  assert.equal(r.unjudgedModels, 2, "«ещё с неотмеченными» — только те, что можно отметить: счётчик убывает");
+  assert.equal(r.photoUnavailable, 3, "нет ссылок, не скачалось у ИИ, не открылось у человека");
+  const plain = (await loadPhotoSamples(db, "bags", { limit: 24, verdicts: [], nowMs: NOW }))!;
+  assert.equal(plain.samples.length, 5, "просто посмотреть примеры — всё как раньше");
+  assert.match(photoSkipKey("S001", "S001|mine"), /^[0-9a-f]{8}$/, "короткий ключ: 8 знаков в адресе вместо ключа модели");
+  assert.equal(photoSkipKey("S001", "S001|mine"), photoSkipKey("S001", "S001|mine"));
+  assert.notEqual(photoSkipKey("S001", "S001|mine"), photoSkipKey("S001", "S001|ok"));
+});
+
+test("Ф1: экран разметки запоминает модели, чьё фото не открылось, и отдаёт их серверу; маршрут принимает только короткие ключи и не больше 500", () => {
+  const ui = read("components/assortment/PhotoTraits.tsx");
+  assert.match(ui, /if \(photo === "failed" \|\| photo === "none"\) onPhotoFailed\?\.\(sample\)/, "карточка сообщает, что фото не открылось");
+  assert.match(ui, /failedPhotos\.current\.add\(photoSkipKey\(sample\.sourceId, sample\.modelKey\)\)/);
+  assert.match(ui, /judging && failedPhotos\.current\.size > 0 \? `&skip=\$\{\[\.\.\.failedPhotos\.current\]\.slice\(-300\)\.join\(","\)\}`/, "только в разметке, не больше 300 ключей");
+  assert.match(ui, /onPhotoFailed=\{onPhotoFailed\}/);
+  const route = read("app/api/assortment-development/photo-traits/route.ts");
+  assert.match(route, /filter\(\(k\) => \/\^\[0-9a-f\]\{8\}\$\/\.test\(k\)\)\.slice\(0, 500\)/);
 });

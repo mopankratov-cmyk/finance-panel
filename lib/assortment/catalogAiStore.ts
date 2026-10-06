@@ -8,13 +8,13 @@ import type { StoredVerdict } from "./attributeVerdictsStore";
 import type { Verdict } from "./attributeVerdicts";
 import { CATALOG_SEEN_DAYS } from "./catalog";
 import {
-  allowance, buildPhotoTraits, catalogAiConfig, CATALOG_AI_KIND, costUsd, estimatedCallUsd, isEligibleHead, isJudgeableField, parseCatalogAnswer, pickCandidates, polzaKey, PROMPT_VERSION, resultKey,
-  type CatalogAiConfig, type CatalogProvider, type CatalogHead, type ExistingResult, type PhotoTraitsReport, type StoredAttributes, type TraitModel,
+  allowance, buildPhotoTraits, catalogAiConfig, catalogModelId, CATALOG_AI_KIND, costUsd, estimatedCallUsd, fnv1a, isEligibleHead, isJudgeableField, isPhotoUnavailableError, parseCatalogAnswer, photoSkipKey, pickCandidates,
+  polzaKey, PROMPT_VERSION, resultKey, sourceShares, summarizeQueue,
+  type CatalogAiConfig, type CatalogProvider, type CatalogHead, type CatalogStopReason, type ExistingResult, type PhotoTraitsReport, type QueueSummary, type StoredAttributes, type TraitModel,
 } from "./catalogAi";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import { modelKey } from "./modelKey";
-import { summarizeQueue, type QueueSummary } from "./catalogAi";
 
 /**
  * Разбор каталога по фото и отчёт по признакам. Без миграции 202610050005 (таблица
@@ -81,15 +81,19 @@ export async function loadCatalogHeads(db: SupabaseClient, direction: Assortment
   }
 }
 
-/** Что уже разобрано (ключ — источник и модель). null — таблицы признаков ещё нет. */
+/**
+ * Что уже разобрано (ключ — источник и модель), по всей таблице: так берёт очередь сборщик, и так же её считают отчёт и полоска
+ * (одно чтение, одно правило queueLanes). null — таблицы признаков ещё нет.
+ */
 export async function loadExisting(db: SupabaseClient): Promise<Map<string, ExistingResult> | null> {
+  type ExistingRow = { source_id: string; model_key: string; status: "ok" | "failed"; attempts: number; prompt_version: string; taken_at: string; last_error: string | null };
   try {
-    const rows = await loadAllSupabasePages<{ source_id: string; model_key: string; status: "ok" | "failed"; attempts: number; prompt_version: string; taken_at: string }>((from, to) => db.from(RESULTS)
-      .select("source_id,model_key,status,attempts,prompt_version,taken_at")
+    const rows = await loadAllSupabasePages<ExistingRow>((from, to) => db.from(RESULTS)
+      .select("source_id,model_key,status,attempts,prompt_version,taken_at,last_error")
       .order("source_id", { ascending: true })
       .order("model_key", { ascending: true })
-      .range(from, to) as unknown as PromiseLike<{ data: Array<{ source_id: string; model_key: string; status: "ok" | "failed"; attempts: number; prompt_version: string; taken_at: string }> | null; error: { message: string } | null }>, { label: "Признаки каталога", pageSize: 1000 });
-    return new Map(rows.map((r) => [resultKey(r.source_id, r.model_key), { status: r.status, attempts: Number(r.attempts) || 1, promptVersion: r.prompt_version, takenAt: r.taken_at }]));
+      .range(from, to) as unknown as PromiseLike<{ data: ExistingRow[] | null; error: { message: string } | null }>, { label: "Признаки каталога", pageSize: 1000 });
+    return new Map(rows.map((r) => [resultKey(r.source_id, r.model_key), { status: r.status, attempts: Number(r.attempts) || 1, promptVersion: r.prompt_version, takenAt: r.taken_at, lastError: r.last_error ?? null }]));
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;
@@ -219,6 +223,9 @@ export function aiKeyConfigured(provider: CatalogProvider = "anthropic", env: Re
 }
 
 const POLZA_URL = "https://polza.ai/api/v1/chat/completions";
+/** Наш таймаут вызова ИИ: Polza — 55 с, Anthropic — 45 с. Модель, на которой разбор каждый раз упирается в него, получает штраф в попытку. */
+const POLZA_TIMEOUT_MS = 55_000;
+const ANTHROPIC_TIMEOUT_MS = 45_000;
 
 /** Короткий кусок текста ошибки провайдера для сообщения владельцу: без переносов, не длиннее 160 знаков. */
 function snippet(text: unknown): string {
@@ -253,7 +260,7 @@ export function makePolzaVision(rubPerUsd: number, fetchImpl: typeof fetch = fet
           { role: "user", content: [{ type: "text", text: catalogUserText(title) }, ...imageUrls.slice(0, MAX_IMAGES).map((url) => ({ type: "image_url", image_url: { url } }))] },
         ],
       }),
-      signal: AbortSignal.timeout(55_000),
+      signal: AbortSignal.timeout(POLZA_TIMEOUT_MS),
     });
     const payload = (await response.json().catch(() => null)) as {
       choices?: Array<{ message?: { content?: unknown }; finish_reason?: string }>;
@@ -297,7 +304,7 @@ export function askFor(config: CatalogAiConfig): AskVision {
 
 /** Реальный вызов Anthropic: до двух фото модели по ссылкам с сайта бренда, ответ — JSON признаков. */
 export const askAnthropicVision: AskVision = async (direction, imageUrls, model, title) => {
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 45_000, maxRetries: 0 });
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: ANTHROPIC_TIMEOUT_MS, maxRetries: 0 });
   const content: Anthropic.MessageCreateParams["messages"][number]["content"] = imageUrls.slice(0, MAX_IMAGES).map((url) => ({ type: "image" as const, source: { type: "url" as const, url } }));
   content.push({ type: "text", text: catalogUserText(title) });
   try {
@@ -347,12 +354,39 @@ export interface RunSummary {
   failed: number;
   costUsd: number;
   stoppedBy: "budget" | "time" | "auth" | "billing" | "rate_limit" | "config" | "errors" | null;
+  /** При stoppedBy «budget» — во что именно упёрлись: бюджет недели или потолок суток (для метки причины в журнале). */
+  limitReason?: "budget" | "daily_limit";
   /** Временные сбои (перегрузка, сеть): попытка модели не потрачена, она в очереди снова. */
   transient: number;
+  /**
+   * Таймауты нашего вызова, за которые модель получила штраф в попытку (они же входят в failed): штраф ставится, только когда в том же
+   * прогоне другие модели разбираются — значит, медленна именно эта модель, а не провайдер. Без штрафа модель, на которой разбор каждый
+   * раз падает по времени, стояла бы в голове очереди каждый прогон.
+   */
+  penalized: number;
   /** Источники, пропущенные в этом прогоне: шесть моделей подряд без успеха (фото не скачиваются у Anthropic). */
   deadSources: string[];
   spend: Spend | null;
   stopMessage: string | null;
+}
+
+/**
+ * Причина остановки прогона — для метки в журнале (stopTag): по ней полоска «На чём стоят цифры» называет причину словами. null — прогон
+ * не останавливался (или упёрся во время / размер прогона — следующий продолжит, это не остановка).
+ */
+export function runStopReason(summary: Pick<RunSummary, "stoppedBy" | "limitReason">): CatalogStopReason | null {
+  switch (summary.stoppedBy) {
+    case "auth":
+    case "billing":
+    case "rate_limit":
+    case "config":
+    case "errors":
+      return summary.stoppedBy;
+    case "budget":
+      return summary.limitReason ?? "budget";
+    default:
+      return null;
+  }
 }
 
 export interface RunOptions {
@@ -381,7 +415,7 @@ export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Pro
   const startBudget = options.startBudgetMs ?? 150_000;
   const runCap = options.runCap ?? 120;
   const parallel = Math.max(1, options.parallel ?? 3);
-  const summary: RunSummary = { skipped: null, candidates: 0, allowed: 0, allowReason: "ok", done: 0, failed: 0, transient: 0, deadSources: [], costUsd: 0, stoppedBy: null, spend: null, stopMessage: null };
+  const summary: RunSummary = { skipped: null, candidates: 0, allowed: 0, allowReason: "ok", done: 0, failed: 0, transient: 0, penalized: 0, deadSources: [], costUsd: 0, stoppedBy: null, spend: null, stopMessage: null };
 
   if (!config.enabled) return { ...summary, skipped: "выключено (ASSORTMENT_CATALOG_AI=off)" };
   if (!config.price) {
@@ -399,7 +433,7 @@ export async function runCatalogAi(db: SupabaseClient, options: RunOptions): Pro
   summary.allowReason = first.reason;
   // Бюджет недели или потолок суток исчерпаны — каталог и таблицу результатов не читаем вовсе (за сутки таких прогонов
   // до десяти): ни тяжёлых выборок, ни замка, ни строки в журнале.
-  if (!options.dryRun && first.models === 0) return { ...summary, stoppedBy: first.reason === "run_cap" ? null : "budget" };
+  if (!options.dryRun && first.models === 0) return first.reason === "run_cap" ? summary : { ...summary, stoppedBy: "budget", limitReason: first.reason === "daily_limit" ? "daily_limit" : "budget" };
 
   // Замок берём до чтения очереди: иначе прогон, стартовавший в конце чужого, читает уже устаревший расход и результаты.
   const lease = options.dryRun ? "dry" : await acquireLease(db, startedAt);
@@ -434,6 +468,8 @@ async function processQueue(
   // Источник, у которого в этом прогоне шесть моделей подряд не разобрались (фото не скачиваются), пропускаем до конца
   // прогона: иначе он съедает пачки, а остальные источники ждут. Временные сбои (сеть, перегрузка) источник не «убивают».
   const lanes = new Map<string, { ok: number; failed: number }>();
+  // Модели, на которых вызов упёрся в наш таймаут: штраф в попытку ставится, как только в прогоне есть хоть одна разобранная модель.
+  const timedOut: CatalogHead[] = [];
   const isDead = (sourceId: string) => {
     const lane = lanes.get(sourceId);
     return Boolean(lane) && lane!.ok === 0 && lane!.failed >= SOURCE_DEAD_FAILS;
@@ -448,6 +484,7 @@ async function processQueue(
     if (left.models === 0) {
       // Упёрлись только в размер прогона — это не нехватка бюджета: следующий прогон продолжит.
       summary.stoppedBy = left.reason === "run_cap" ? null : "budget";
+      if (left.reason !== "run_cap") summary.limitReason = left.reason === "daily_limit" ? "daily_limit" : "budget";
       break;
     }
     const batch: CatalogHead[] = [];
@@ -464,6 +501,7 @@ async function processQueue(
       if (outcome.status === "ok") lane.ok += 1;
       else if (!outcome.transient && !outcome.stop) lane.failed += 1;
       lanes.set(head.sourceId, lane);
+      if (outcome.timedOut) timedOut.push(head);
     });
     let batchCost = 0;
     let batchTokens = { in: 0, out: 0 };
@@ -496,6 +534,20 @@ async function processQueue(
     summary.failed += failed;
     summary.transient += transient;
     summary.costUsd = Math.round((summary.costUsd + batchCost) * 100_000) / 100_000;
+    // Таймаут при живом провайдере (в прогоне модели разбираются) — беда этой модели: попытка засчитывается, следующая — не раньше
+    // чем через сутки, после трёх модель вне очереди. Если не разобралось ничего, таймауты — сбой провайдера, и попытку они не тратят.
+    if (summary.done > 0 && timedOut.length > 0) {
+      for (const head of timedOut.splice(0)) {
+        try {
+          await penalizeTimeout(db, head, existing, config, now());
+          summary.transient -= 1;
+          summary.failed += 1;
+          summary.penalized += 1;
+        } catch {
+          // Не записалось — модель вернётся в очередь, как при обычном временном сбое.
+        }
+      }
+    }
     if (usageError) {
       summary.stoppedBy = "errors";
       summary.stopMessage = `расход не записался в учёт (${usageError.slice(0, 120)}): остановлено, чтобы не платить вслепую`;
@@ -535,6 +587,8 @@ interface Outcome {
   forbidden?: boolean;
   /** Временный сбой: попытка модели не записана. */
   transient?: boolean;
+  /** Временный сбой — наш таймаут вызова (не ответ провайдера со статусом): кандидат на штраф в попытку. */
+  timedOut?: boolean;
   costUsd: number;
   inputTokens: number;
   outputTokens: number;
@@ -562,7 +616,13 @@ function isTimeoutError(error: unknown): boolean {
   return name === "TimeoutError" || name === "AbortError" || /timed out|timeout|aborted/i.test((error as Error | null)?.message ?? "");
 }
 
-async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<string, ExistingResult>, config: CatalogAiConfig, ask: AskVision, now: () => number): Promise<Outcome> {
+/** Таймаут на НАШЕЙ стороне (обрыв вызова), а не ответ провайдера со статусом (408 и 5xx остаются просто временными). */
+function isClientTimeout(error: unknown): boolean {
+  return typeof (error as { status?: unknown } | null)?.status !== "number" && isTimeoutError(error);
+}
+
+/** Строка разбора модели: общее для удачи и неудачи. Счётчик попыток копится у неудавшихся; удачный пересбор начинает его заново. */
+function resultBase(head: CatalogHead, existing: Map<string, ExistingResult>, config: CatalogAiConfig, nowMs: number) {
   const prev = existing.get(resultKey(head.sourceId, head.modelKey));
   const attempts = (prev?.status === "failed" ? prev.attempts : 0) + 1;
   const base = {
@@ -572,26 +632,46 @@ async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<s
     source_item_id: head.sourceItemId,
     image_count: Math.min(head.imageUrls.length, MAX_IMAGES),
     prompt_version: PROMPT_VERSION,
-    model: config.provider === "polza" ? `polza:${config.model}` : config.model,
+    model: catalogModelId(config),
     attempts,
-    taken_at: new Date(now()).toISOString(),
+    taken_at: new Date(nowMs).toISOString(),
   };
+  return { prev, base };
+}
+
+/**
+ * Неудача модели. Если у неё уже есть хороший результат (пересбор по новой версии вопроса), он не затирается:
+ * только отметка о попытке — срок следующей попытки считается от неё.
+ */
+async function recordFailure(db: SupabaseClient, head: CatalogHead, prev: ExistingResult | undefined, base: ReturnType<typeof resultBase>["base"], message: string, usage: Record<string, unknown>): Promise<void> {
+  if (prev?.status === "ok") {
+    const { error } = await db.from(RESULTS).update({ last_error: message.slice(0, 300), taken_at: base.taken_at, attempts: prev.attempts + 1 }).eq("source_id", head.sourceId).eq("model_key", head.modelKey);
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const { error } = await db.from(RESULTS).upsert({ ...base, status: "failed", attributes: null, last_error: message.slice(0, 300), ...usage }, { onConflict: "source_id,model_key" });
+  if (error) throw new Error(error.message);
+}
+
+/** Текст неудачи по нашему таймауту — в last_error модели и в причины полоски. */
+export function timeoutPenaltyMessage(config: Pick<CatalogAiConfig, "provider">): string {
+  const seconds = Math.round((config.provider === "polza" ? POLZA_TIMEOUT_MS : ANTHROPIC_TIMEOUT_MS) / 1000);
+  return `таймаут: ИИ не ответил за ${seconds} с, когда другие модели прогона разбирались — попытка засчитана, следующая не раньше чем через сутки`;
+}
+
+/** Штраф за таймаут: попытка записывается как неудача (расход вызова уже в учёте оценкой). */
+async function penalizeTimeout(db: SupabaseClient, head: CatalogHead, existing: Map<string, ExistingResult>, config: CatalogAiConfig, nowMs: number): Promise<void> {
+  const { prev, base } = resultBase(head, existing, config, nowMs);
+  await recordFailure(db, head, prev, base, timeoutPenaltyMessage(config), { input_tokens: null, output_tokens: null, cost_usd: 0 });
+}
+
+async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<string, ExistingResult>, config: CatalogAiConfig, ask: AskVision, now: () => number): Promise<Outcome> {
+  const { prev, base } = resultBase(head, existing, config, now());
   const save = async (row: Record<string, unknown>) => {
     const { error } = await db.from(RESULTS).upsert({ ...base, ...row }, { onConflict: "source_id,model_key" });
     if (error) throw new Error(error.message);
   };
-  /**
-   * Неудача модели. Если у неё уже есть хороший результат (пересбор по новой версии вопроса), он не затирается:
-   * только отметка о попытке — срок следующей попытки считается от неё.
-   */
-  const recordFailure = async (message: string, usage: Record<string, unknown>) => {
-    if (prev?.status === "ok") {
-      const { error } = await db.from(RESULTS).update({ last_error: message.slice(0, 300), taken_at: base.taken_at, attempts: prev.attempts + 1 }).eq("source_id", head.sourceId).eq("model_key", head.modelKey);
-      if (error) throw new Error(error.message);
-      return;
-    }
-    await save({ status: "failed", attributes: null, last_error: message.slice(0, 300), ...usage });
-  };
+  const fail = (message: string, usage: Record<string, unknown>) => recordFailure(db, head, prev, base, message, usage);
 
   let answer: VisionAnswer;
   try {
@@ -603,12 +683,12 @@ async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<s
       // а не ноль — иначе бюджет недели недосчитывает именно самые долгие вызовы. Остальные временные сбои (5xx,
       // перегрузка) провайдер не списывает.
       const estimate = isTimeoutError(error) && config.price ? estimatedCallUsd(config.price, config.provider === "polza" ? 1500 : 600) : 0;
-      return { status: "failed", transient: true, costUsd: estimate, inputTokens: 0, outputTokens: 0 };
+      return { status: "failed", transient: true, timedOut: isClientTimeout(error), costUsd: estimate, inputTokens: 0, outputTokens: 0 };
     }
     // Фото не скачалось, ответ не тот: запоминаем попытку, чтобы не биться в одну и ту же модель каждый прогон.
     const message = error instanceof Error ? error.message : "ошибка";
     try {
-      await recordFailure(message, { input_tokens: null, output_tokens: null, cost_usd: 0 });
+      await fail(message, { input_tokens: null, output_tokens: null, cost_usd: 0 });
     } catch {
       // Не записалось — модель просто попадёт в очередь снова.
     }
@@ -624,14 +704,14 @@ async function analyzeOne(db: SupabaseClient, head: CatalogHead, existing: Map<s
     if (!attributes) {
       // Ответ оборван по лимиту токенов — отдельная причина (у моделей с рассуждениями так бывает), а не «не разобрался».
       const why = answer.finishReason === "length" ? "ответ обрезан по лимиту токенов (finish_reason=length)" : "ответ ИИ не разобрался в признаки";
-      await recordFailure(why, usage);
+      await fail(why, usage);
       return { status: "failed", errorMessage: why, ...paid };
     }
     // Ни одного признака, кроме «не видно» (фото-заглушка, пустая карточка): это не разбор, а пустая строка, которая
     // навсегда выпала бы из очереди как «готово». Считаем неудачей с потолком попыток — вдруг другое фото сработает.
     if (Object.values(attributes).every((a) => a.nv || !a.v)) {
       const why = "ответ ИИ: все признаки «не видно»";
-      await recordFailure(why, usage);
+      await fail(why, usage);
       return { status: "failed", errorMessage: why, ...paid };
     }
     await save({ status: "ok", attributes, last_error: null, image_count: answer.images ?? base.image_count, ...usage });
@@ -652,9 +732,9 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
   const { data: names } = await db.from("assortment_sources").select("source_id,name");
   const nameOf = new Map((names ?? []).map((n) => [String((n as { source_id: string }).source_id), String((n as { name: string | null }).name ?? "")]));
   try {
-    type TraitRow = { source_id: string; model_key: string; attributes: StoredAttributes | null; prompt_version: string | null; attempts: number | null; taken_at: string | null };
+    type TraitRow = { source_id: string; model_key: string; attributes: StoredAttributes | null; prompt_version: string | null };
     const rows = await loadAllSupabasePages<TraitRow>((from, to) => db.from(RESULTS)
-      .select("source_id,model_key,attributes,prompt_version,attempts,taken_at")
+      .select("source_id,model_key,attributes,prompt_version")
       .eq("direction", direction)
       .eq("status", "ok")
       .order("source_id", { ascending: true })
@@ -668,27 +748,20 @@ export async function loadPhotoTraits(db: SupabaseClient, direction: AssortmentD
     const models: TraitModel[] = fresh.map((r) => ({ sourceId: r.source_id, sourceName: nameOf.get(r.source_id) || r.source_id, attributes: r.attributes as StoredAttributes }));
     // Знаменатель покрытия — модели, которые вообще можно разобрать: с фото и не «Рынок РФ».
     const eligible = heads.filter(isEligibleHead).length;
-    // Очередь сборщика по этому разделу — тем же правилом, по которому он сам берёт модели: неудавшиеся с тремя попытками и
-    // модели с нестабильным ключом в «осталось разобрать» не входят, их сборщик не возьмёт.
+    // Очередь сборщика по этому разделу — тем же чтением (loadExisting, вся таблица) и тем же правилом (queueLanes), по которым он сам
+    // берёт модели: неудавшиеся с тремя попытками и модели с нестабильным ключом в «осталось разобрать» не входят, их сборщик не возьмёт.
     // Вспомогательное чтение: его сбой не роняет основной отчёт (блок «Признаки по фото» живёт и без очереди), полоска «На чём стоят
     // цифры» в этом случае прочтёт очередь сама.
     let queue: QueueSummary | undefined;
     try {
-      const failedRows = await loadAllSupabasePages<{ source_id: string; model_key: string; attempts: number | null; taken_at: string }>((from, to) => db.from(RESULTS)
-        .select("source_id,model_key,attempts,taken_at")
-        .eq("direction", direction)
-        .eq("status", "failed")
-        .order("source_id", { ascending: true })
-        .order("model_key", { ascending: true })
-        .range(from, to) as unknown as PromiseLike<{ data: Array<{ source_id: string; model_key: string; attempts: number | null; taken_at: string }> | null; error: { message: string } | null }>, { label: "Неразобранные признаки", pageSize: 1000 });
-      const existing = new Map<string, ExistingResult>();
-      for (const r of rows) existing.set(resultKey(r.source_id, r.model_key), { status: "ok", attempts: Number(r.attempts) || 1, promptVersion: r.prompt_version ?? "", takenAt: r.taken_at ?? "" });
-      for (const r of failedRows) existing.set(resultKey(r.source_id, r.model_key), { status: "failed", attempts: Number(r.attempts) || 1, promptVersion: "", takenAt: r.taken_at });
-      queue = summarizeQueue(heads, existing);
+      const existing = await loadExisting(db);
+      queue = existing ? summarizeQueue(heads, existing) : undefined;
     } catch {
       queue = undefined;
     }
-    return { ...buildPhotoTraits(direction, models, Math.max(eligible, usable.length), usable.length - fresh.length), ...(queue ? { queue } : {}) };
+    // Каких источников в долях нет или мало: по всем моделям раздела, в том числе без фото и сайтам РФ (их в «из M» нет, но в долях их тоже нет).
+    const sources = sourceShares(heads, fresh.map((r) => ({ sourceId: r.source_id })), (id) => nameOf.get(id) ?? "");
+    return { ...buildPhotoTraits(direction, models, Math.max(eligible, usable.length), usable.length - fresh.length), ...(queue ? { queue } : {}), sources };
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;
@@ -711,7 +784,7 @@ export interface QueueFacts {
 export async function loadQueueDirect(db: SupabaseClient, direction: AssortmentDirection, nowMs = Date.now()): Promise<QueueFacts> {
   const heads = await loadCatalogHeads(db, direction, nowMs);
   // Вида каталога ещё нет (миграция): очередь неизвестна, а не пуста.
-  if (!heads) return { eligible: 0, queue: { queued: 0, exhausted: 0, unstable: 0 }, catalogMissing: true };
+  if (!heads) return { eligible: 0, queue: { queued: 0, exhausted: 0, unstable: 0, outside: [] }, catalogMissing: true };
   const existing = (await loadExisting(db)) ?? new Map();
   return { eligible: heads.filter(isEligibleHead).length, queue: summarizeQueue(heads, existing) };
 }
@@ -732,18 +805,32 @@ export interface PhotoSample {
   /** Ключ модели и версия вопроса, по которым получен разбор: по ним ставится отметка точности. Нет — отмечать нельзя. */
   modelKey?: string;
   promptVersion?: string | null;
-  /** Отметки человека по признакам этой модели (текущая версия вопроса): ключ признака → верно/неверно/не понять. */
+  /** Отметки человека по признакам этой модели (текущая версия вопроса и та модель ИИ, что дала этот разбор): ключ признака → верно/неверно/не понять. */
   verdicts?: Record<string, Verdict>;
 }
 
-/** Простой устойчивый хэш (FNV-1a, 32 бита): порядок «случайной» выборки зависит от зерна и ключа модели, а не от порядка строк в базе. */
-function fnv1a(text: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i += 1) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
-  }
-  return h >>> 0;
+export interface PhotoSamplesResult {
+  samples: PhotoSample[];
+  analyzed: number;
+  verdictsAvailable: boolean;
+  judgedModels: number;
+  /** Сколько моделей ещё можно размечать (есть неотмеченный признак и доступное фото). */
+  unjudgedModels: number;
+  /**
+   * Сколько моделей с неотмеченными признаками на разметку НЕ выдаётся: фото недоступно (ссылок на фото у модели больше нет, ИИ при
+   * последней попытке не смог его скачать или у этого человека оно не открылось). Отметить их нечем — иначе они вставали бы в каждую
+   * следующую выборку «без отметок».
+   */
+  photoUnavailable: number;
+}
+
+/**
+ * Фото модели известно как недоступное: у головы каталога больше нет ссылок на фото или последняя попытка разбора кончилась тем, что
+ * провайдер не смог его скачать. Такую модель не выдаём на разметку: кнопок «верно / неверно» без открывшегося фото нет, и она
+ * застревала бы в «Следующие 12 без отметок».
+ */
+export function photoKnownUnavailable(head: Pick<CatalogHead, "imageUrls">, lastError: string | null | undefined): boolean {
+  return head.imageUrls.length === 0 || isPhotoUnavailableError(lastError);
 }
 
 /**
@@ -761,42 +848,57 @@ export async function loadPhotoSamples(
     /**
      * Для разметки подряд: только модели по текущей версии вопроса (у прежней кнопок нет и отметка в точность не войдёт),
      * у которых остался хоть один признак, который можно отметить, — размеченная целиком модель не предлагается снова,
-     * а размеченная на один признак из пяти возвращается за остальными.
+     * а размеченная на один признак из пяти возвращается за остальными. Модели с недоступным фото не предлагаются.
      */
     onlyUnjudged?: boolean;
+    /** Короткие ключи моделей (photoSkipKey), чьё фото у этого человека не открылось: в разметку их больше не выдаём. */
+    skipPhotos?: ReadonlySet<string>;
   } = {},
-): Promise<{ samples: PhotoSample[]; analyzed: number; verdictsAvailable: boolean; judgedModels: number; unjudgedModels: number } | null> {
+): Promise<PhotoSamplesResult | null> {
   const limit = Math.max(1, Math.min(options.limit ?? 12, 24));
   const heads = await loadCatalogHeads(db, direction, options.nowMs ?? Date.now());
   if (!heads) return null;
   const current = new Map(heads.map((h) => [resultKey(h.sourceId, h.modelKey), h]));
   const { data: names } = await db.from("assortment_sources").select("source_id,name");
   const nameOf = new Map((names ?? []).map((n) => [String((n as { source_id: string }).source_id), String((n as { name: string | null }).name ?? "")]));
-  type Row = { source_id: string; model_key: string; attributes: StoredAttributes | null; model: string | null; taken_at: string | null; prompt_version: string | null };
+  type Row = { source_id: string; model_key: string; attributes: StoredAttributes | null; model: string | null; taken_at: string | null; prompt_version: string | null; last_error?: string | null };
   try {
     const rows = await loadAllSupabasePages<Row>((from, to) => db.from(RESULTS)
-      .select("source_id,model_key,attributes,model,taken_at,prompt_version")
+      .select("source_id,model_key,attributes,model,taken_at,prompt_version,last_error")
       .eq("direction", direction)
       .eq("status", "ok")
       .order("source_id", { ascending: true })
       .order("model_key", { ascending: true })
       .range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: { message: string } | null }>, { label: "Примеры разбора по фото", pageSize: 1000 });
     const allUsable = rows.filter((r) => r.attributes && Object.keys(r.attributes).length > 0 && current.has(resultKey(r.source_id, r.model_key)));
-    const byModel = new Map<string, Record<string, Verdict>>();
+    const byModel = new Map<string, StoredVerdict[]>();
     for (const v of options.verdicts ?? []) {
       const key = resultKey(v.source_id, v.model_key);
-      byModel.set(key, { ...(byModel.get(key) ?? {}), [v.field_key]: v.verdict });
+      byModel.set(key, [...(byModel.get(key) ?? []), v]);
     }
+    // Отметки этого разбора: та же модель ИИ, что дала ответ (отметка про ответ другой модели к нему не относится). Отметка без поля
+    // ai_model — из старого вызова, где модель не читали: считаем её отметкой этого разбора.
+    const verdictsOf = (r: Row): Record<string, Verdict> => {
+      const out: Record<string, Verdict> = {};
+      for (const v of byModel.get(resultKey(r.source_id, r.model_key)) ?? []) {
+        if (v.ai_model !== undefined && (v.ai_model ?? null) !== (r.model ?? null)) continue;
+        out[v.field_key] = v.verdict;
+      }
+      return out;
+    };
     // Признаки, которые у модели ещё предстоит отметить: написанные ИИ (не «не видно») и не свободный текст.
     const toJudge = (r: Row) => {
       if (r.prompt_version !== PROMPT_VERSION) return 0;
-      const marked = byModel.get(resultKey(r.source_id, r.model_key)) ?? {};
+      const marked = verdictsOf(r);
       return ATTRIBUTE_FIELDS[direction].filter((f) => {
         const a = r.attributes?.[f.key];
         return isJudgeableField(f.key) && a && !a.nv && a.v && !marked[f.key];
       }).length;
     };
-    const unjudgedPool = allUsable.filter((r) => toJudge(r) > 0);
+    const skip = options.skipPhotos ?? new Set<string>();
+    const unavailable = (r: Row) => photoKnownUnavailable(current.get(resultKey(r.source_id, r.model_key))!, r.last_error) || skip.has(photoSkipKey(r.source_id, r.model_key));
+    const withUnmarked = allUsable.filter((r) => toJudge(r) > 0);
+    const unjudgedPool = withUnmarked.filter((r) => !unavailable(r));
     const usable = options.onlyUnjudged ? unjudgedPool : allUsable;
     const seed = options.seed ?? "";
     const lanes = new Map<string, Row[]>();
@@ -826,7 +928,7 @@ export async function loadPhotoSamples(
         takenAt: row.taken_at,
         modelKey: row.model_key,
         promptVersion: row.prompt_version,
-        verdicts: row.prompt_version === PROMPT_VERSION ? byModel.get(resultKey(row.source_id, row.model_key)) ?? {} : {},
+        verdicts: row.prompt_version === PROMPT_VERSION ? verdictsOf(row) : {},
         attributes: ATTRIBUTE_FIELDS[direction].filter((f) => stored[f.key]).map((f) => ({
           key: f.key,
           label: f.label,
@@ -836,8 +938,15 @@ export async function loadPhotoSamples(
         })),
       };
     });
-    const judgedModels = allUsable.filter((r) => byModel.has(resultKey(r.source_id, r.model_key))).length;
-    return { samples, analyzed: allUsable.length, verdictsAvailable: Array.isArray(options.verdicts), judgedModels, unjudgedModels: unjudgedPool.length };
+    const judgedModels = allUsable.filter((r) => Object.keys(verdictsOf(r)).length > 0).length;
+    return {
+      samples,
+      analyzed: allUsable.length,
+      verdictsAvailable: Array.isArray(options.verdicts),
+      judgedModels,
+      unjudgedModels: unjudgedPool.length,
+      photoUnavailable: withUnmarked.length - unjudgedPool.length,
+    };
   } catch (error) {
     if (missing({ message: error instanceof Error ? error.message : "" })) return null;
     throw error;

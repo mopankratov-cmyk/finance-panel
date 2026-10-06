@@ -110,7 +110,9 @@ export function jobsStallMessage(freshness: JobsFreshness): string {
 
 export function jobsStallTelegram(freshness: JobsFreshness): string {
   const lines = freshness.stalled.map((j) => {
-    const why = [j.reason, j.lastError ? `ошибка: ${j.lastError.slice(0, 100)}` : null].filter(Boolean).join("; ");
+    // Метка причины `[stop:…]` в конце строки журнала — для полоски «На чём стоят цифры», в сообщении она лишняя.
+    const error = j.lastError ? j.lastError.replace(/\s*\[stop:[a-z_]+\]\s*$/, "") : null;
+    const why = [j.reason, error ? `ошибка: ${error.slice(0, 100)}` : null].filter(Boolean).join("; ");
     return `• ${escapeTelegramHtml(j.label)} — ${escapeTelegramHtml(why)}`;
   });
   return `🚨 <b>Движок тенденций: задачи остановились (${freshness.stalled.length})</b>\n${lines.join("\n")}\n${JOBS_STALL_ACTION}`;

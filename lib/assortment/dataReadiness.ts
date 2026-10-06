@@ -1,4 +1,5 @@
 import { plural } from "@/lib/warehouse/plural";
+import { STOP_REASON_WORDS, type CatalogStopReason, type OutsideBySource } from "./catalogAi";
 import { APPEARANCE_MIN_SPAN_DAYS, DYNAMICS_MIN_DAYS, DYNAMICS_MIN_SPAN_DAYS, partsCaveat, type HistoryStatus } from "./observationState";
 
 /**
@@ -75,7 +76,20 @@ export interface TraitsFacts {
   /** На сколько вызовов хватит остатка бюджета недели; null — цены нет. */
   budgetCallsLeft: number | null;
   lastErrors: Array<{ message: string; count: number }>;
+  /**
+   * Вне разбора по источникам раздела — тем же правилом, что очередь сборщика: без ссылок на фото и сайты РФ (в «из M» не входят), фото
+   * недоступно и исчерпанные три попытки (входят, но не разберутся). Нет — не узнали (отчёт прежней формы).
+   */
+  outside?: Array<OutsideBySource & { name: string }>;
+  /**
+   * Последний прогон крона разбора по журналу (sync_log): время, статус и причина остановки из метки `[stop:…]`. null — прогонов с работой
+   * в журнале нет («ещё не запускался»); не задано — журнал не читали или он не прочитался.
+   */
+  lastRun?: { at: string; status: "ok" | "partial" | "error"; reason: CatalogStopReason | null; message: string | null } | null;
 }
+
+/** Причины остановки, которые видны только по журналу крона (окружение их не показывает): ключ не принят, денег нет, лимит, модель, сбой. */
+const LOGGED_STOPS: ReadonlySet<CatalogStopReason> = new Set(["auth", "billing", "rate_limit", "config", "errors"]);
 
 export interface DemandFacts {
   subjectsTotal: number;
@@ -134,6 +148,38 @@ const laterOf = (a: string, b: string) => (a >= b ? a : b);
 const usd = (n: number) => `$${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** «около суток», «около 4 суток». */
 const aroundDays = (n: number) => (n <= 1 ? "около суток" : `около ${n} суток`);
+const mskTime = (iso: string) => {
+  const at = new Date(Date.parse(iso) + 3 * 3600 * 1000).toISOString();
+  return `${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК`;
+};
+/** Сколько источников называть в одной группе строки «вне разбора»; остальные — «и ещё N». */
+const OUTSIDE_LISTED = 4;
+
+/** Строка «вне разбора» по источникам: четыре группы, в каждой — число и источники по убыванию; пустые группы не называются. */
+function outsideLine(outside: Array<OutsideBySource & { name: string }>, eligible: number): ReadinessLine | null {
+  const groups: Array<{ pick: (o: OutsideBySource) => number; label: string; short: string; note: string; inDenominator: boolean }> = [
+    { pick: (o) => o.noPhoto, label: "без ссылок на фото", short: "модели без фото", note: "", inDenominator: false },
+    { pick: (o) => o.ru, label: "сайты РФ", short: "сайты РФ", note: ": ориентир, а не референс — ИИ их не разбирает", inDenominator: false },
+    { pick: (o) => o.photoUnavailable, label: "фото недоступно", short: "«фото недоступно»", note: ": ИИ три раза не смог его скачать", inDenominator: true },
+    { pick: (o) => o.exhausted, label: "исчерпаны 3 попытки по другим причинам", short: "исчерпавшие попытки", note: "", inDenominator: true },
+  ];
+  const present = groups.map((g) => {
+    const list = outside.filter((o) => g.pick(o) > 0).sort((x, y) => g.pick(y) - g.pick(x) || x.name.localeCompare(y.name));
+    if (list.length === 0) return null;
+    const total = list.reduce((sum, o) => sum + g.pick(o), 0);
+    const names = list.slice(0, OUTSIDE_LISTED).map((o) => `${o.name} ${num(g.pick(o))}`).join(", ");
+    const more = list.length > OUTSIDE_LISTED ? ` и ещё ${list.length - OUTSIDE_LISTED} ${plural(list.length - OUTSIDE_LISTED, "источник", "источника", "источников")}` : "";
+    return { ...g, text: `${g.label} — ${num(total)} (${names}${more})${g.note}` };
+  }).filter((g): g is NonNullable<typeof g> => g !== null);
+  if (present.length === 0) return null;
+  const outOf = present.filter((g) => !g.inDenominator).map((g) => g.short);
+  const inOf = present.filter((g) => g.inDenominator).map((g) => g.short);
+  const tail = [
+    outOf.length > 0 ? `${outOf.join(" и ")} в «из ${num(eligible)}» не входят` : null,
+    inOf.length > 0 ? `${inOf.join(" и ")} в «из ${num(eligible)}» входят, но не разберутся` : null,
+  ].filter(Boolean).join("; ");
+  return { kind: "факт", text: `Вне разбора по источникам: ${present.map((g) => g.text).join("; ")}. ${tail.charAt(0).toUpperCase()}${tail.slice(1)}.` };
+}
 
 function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
   const lines: ReadinessLine[] = [];
@@ -144,17 +190,32 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
   // Бюджет кончается раньше нуля: сборщик не делает вызов, на который остатка не хватает (резерв одного вызова).
   const budgetGone = t.weeklyBudgetUsd > 0 && (t.weekUsd >= t.weeklyBudgetUsd || (t.budgetCallsLeft !== null && t.budgetCallsLeft <= 0));
   const stops: string[] = [];
-  if (!t.enabled) stops.push("Разбор выключен (ASSORTMENT_CATALOG_AI=off): новые модели не разбираются.");
-  else if (!t.keyConfigured) stops.push("У разбора нет ключа ИИ: он ждёт, пока ключ будет задан.");
-  else if (!t.priced) stops.push(`Для модели «${t.model}» нет цены в таблице: сборщик не запускается (бюджет нечем считать).`);
+  if (!t.enabled) stops.push(`Сборщик стоит — ${STOP_REASON_WORDS.disabled}: новые модели не разбираются.`);
+  else if (!t.keyConfigured) stops.push(`Сборщик стоит — ${STOP_REASON_WORDS.no_key} ИИ: он ждёт, пока ключ будет задан.`);
+  else if (!t.priced) stops.push(`Сборщик стоит — ${STOP_REASON_WORDS.no_price}: для модели «${t.model}» нет цены в таблице, бюджет нечем считать.`);
   else if (t.dailyLimit <= 0) stops.push("Потолок суток 0: разбор остановлен.");
   else if (t.weeklyBudgetUsd <= 0) stops.push("Бюджет недели 0: разбор остановлен.");
-  else if (budgetGone) stops.push(`Бюджет недели исчерпан (потрачено ${usd(t.weekUsd)} из ${usd(t.weeklyBudgetUsd)}; остатка не хватает даже на один вызов) — разбор встанет до освобождения бюджета.`);
+  else if (budgetGone) stops.push(`Сборщик стоит — ${STOP_REASON_WORDS.budget}: потрачено ${usd(t.weekUsd)} из ${usd(t.weeklyBudgetUsd)}, остатка не хватает даже на один вызов — разбор встанет до освобождения бюджета.`);
   for (const text of stops) lines.push({ kind: "факт", text, problem: true });
   let problem = stops.length > 0;
   const running = stops.length === 0;
 
   lines.push({ kind: "факт", text: `Сегодня вызовов ${num(t.callsToday)} из ${num(t.dailyLimit)}; за 7 дней потрачено ${usd(t.weekUsd)} из ${usd(t.weeklyBudgetUsd)}.` });
+  // Потолок суток — норма (он сбрасывается в полночь), а не поломка: называем, но тревоги нет.
+  if (running && t.callsToday >= t.dailyLimit) {
+    lines.push({ kind: "факт", text: `Сборщик ${STOP_REASON_WORDS.daily_limit}: сегодня больше не разбирает, продолжит после 00:00 МСК.` });
+  }
+  // Остановка, которую видно только по журналу крона: ключ не принят, нет денег, лимит, модель недоступна, системный сбой. Без неё
+  // полоска говорила бы «не движется, проверьте журнал» — а причина уже известна.
+  const loggedStop = running && t.lastRun && t.lastRun.status === "error" && t.lastRun.reason && LOGGED_STOPS.has(t.lastRun.reason) ? t.lastRun : null;
+  if (loggedStop) {
+    lines.push({
+      kind: "факт",
+      text: `Последний прогон ${mskTime(loggedStop.at)} остановился — ${STOP_REASON_WORDS[loggedStop.reason as CatalogStopReason]}${loggedStop.message ? `. Ответ: ${loggedStop.message.slice(0, 160)}` : ""}.`,
+      problem: true,
+    });
+    problem = true;
+  }
 
   // Очередь — только то, что сборщик возьмёт: модели, исчерпавшие попытки, и модели с нестабильным ключом в неё не входят
   // (иначе срок «около суток» не наступал бы, а через сутки без новых моделей вылезала бы ложная тревога «не движется»).
@@ -192,6 +253,8 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
     ].filter(Boolean).join("; ");
     lines.push({ kind: "факт", text: `Ещё ${num(skipped)} ${plural(skipped, "модель", "модели", "моделей")} сборщик не возьмёт: ${parts}. В «осталось разобрать» они не входят.` });
   }
+  const outside = t.outside && !t.catalogMissing ? outsideLine(t.outside, t.eligible) : null;
+  if (outside) lines.push(outside);
 
   // «Не движется»: условия рабочие, очередь есть, а сборщик давно ничего не пробовал. Судим по последней ПОПЫТКЕ любого рода, а не
   // только по последней удаче: когда в очереди одни повторы внутри суточной паузы, он жив и брать ему сегодня нечего.
@@ -202,7 +265,7 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
       const at = new Date(lastOk + 3 * 3600 * 1000).toISOString();
       lines.push({ kind: "факт", text: `Последняя модель разобрана ${dm(at.slice(0, 10))} в ${at.slice(11, 16)} МСК.` });
     }
-    if (lastTry !== null) {
+    if (lastTry !== null && !loggedStop) {
       const stalled = nowMs - lastTry > STALL_HOURS * 3600 * 1000;
       if (stalled) {
         const at = new Date(lastTry + 3 * 3600 * 1000).toISOString();
@@ -214,15 +277,18 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
         problem = true;
       }
     }
-    if (lastOk === null && t.analyzed === 0 && t.legacy === 0 && !t.readFailed) {
-      // Ни одной удачи. Причина остановки сборщика (ключ не принят, нет средств) нигде не сохраняется — по базе видно только то,
-      // что он уже пробовал: вызовы, неудачи. Пробовал и ни разу не вышло — проблема; следов нет — «ещё не отработал».
+    if (lastOk === null && t.analyzed === 0 && t.legacy === 0 && !t.readFailed && !loggedStop) {
+      // Ни одной удачи, а причины остановки в журнале нет. Пробовал и ни разу не вышло — проблема; следов нет — по журналу видно,
+      // запускался ли он вообще («ещё не запускался» — не тревога: первые часы после выкладки).
       const tried = lastTry !== null || t.callsToday > 0 || t.weekUsd > 0 || t.failed > 0 || t.recentFailed > 0;
+      const quiet = t.lastRun === null
+        ? "Ни одна модель ещё не разобрана: сборщик ещё не запускался — в журнале крона нет ни одного прогона с работой. Срок выше — расчёт на случай, что он заработает."
+        : t.lastRun
+          ? `Ни одна модель ещё не разобрана и следов попыток нет; последний прогон крона — ${mskTime(t.lastRun.at)}${t.lastRun.message ? ` (${t.lastRun.message.slice(0, 120)})` : ""}. Срок выше — расчёт на случай, что он работает.`
+          : "Ни одна модель ещё не разобрана и следов попыток нет: сборщик ещё не запускался или журнал крона не прочитался. Срок выше — расчёт на случай, что он работает.";
       lines.push({
         kind: "факт",
-        text: tried
-          ? "Ни одна модель не разобрана, хотя вызовы или неудачи были — проверьте журнал крона, ключ и ответы ИИ."
-          : "Ни одна модель ещё не разобрана и следов попыток нет: сборщик ещё не отработал или у него не принят ключ (причина остановки нигде не сохраняется — смотрите ответ крона). Срок выше — расчёт на случай, что он работает.",
+        text: tried ? "Ни одна модель не разобрана, хотя вызовы или неудачи были — проверьте журнал крона, ключ и ответы ИИ." : quiet,
         problem: tried,
       });
       if (tried) problem = true;

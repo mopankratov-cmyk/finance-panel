@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { catalogAiConfig, PROVIDER_KEY_NAME, PROVIDER_LABEL } from "@/lib/assortment/catalogAi";
-import { aiKeyConfigured, askFor, runCatalogAi } from "@/lib/assortment/catalogAiStore";
+import { catalogAiConfig, PROVIDER_KEY_NAME, PROVIDER_LABEL, stopTag } from "@/lib/assortment/catalogAi";
+import { aiKeyConfigured, askFor, runCatalogAi, runStopReason } from "@/lib/assortment/catalogAiStore";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 // Один вызов с двумя фото — 3–6 с, пачка по три; новую пачку не начинаем позже 150-й секунды (таймаут вызова 45 с).
 export const maxDuration = 300;
 
+// То же имя, что CATALOG_AI_JOB (по нему полоска читает причину остановки): сверяет тест.
 const JOB = "assortment-catalog-ai";
 
 /**
@@ -22,6 +23,10 @@ const JOB = "assortment-catalog-ai";
  * ДО каждой пачки. Выключатель: ASSORTMENT_CATALOG_AI=off. Без ключа выбранного
  * провайдера (при непустой очереди — строка-ошибка в журнале), без миграции или
  * без цены модели — прогон пропускается.
+ *
+ * Причина остановки (нет ключа, нет цены, ключ не принят, нет денег, лимит, модель недоступна, системный сбой, бюджет недели, потолок
+ * суток) дописывается в конец строки журнала меткой `[stop:…]` (stopTag): полоска «На чём стоят цифры» читает последнюю строку и
+ * называет причину словами.
  *
  * `?dryRun=1` — посчитать очередь и разрешённый объём, ничего не вызывая.
  */
@@ -44,13 +49,13 @@ export async function GET(request: NextRequest) {
       // служебных задач скажет в Telegram через три прогона, а не «выложили, а признаков нет».
       const probe = await runCatalogAi(db, { ask, config, dryRun: true });
       if (!probe.skipped && probe.allowed > 0) {
-        await writeSyncLog(JOB, "error", null, `нет ключа ${keyName}: ${probe.candidates} моделей ждут разбора`, startedAt);
+        await writeSyncLog(JOB, "error", null, `нет ключа ${keyName}: ${probe.candidates} моделей ждут разбора ${stopTag("no_key")}`, startedAt);
       }
       return NextResponse.json({ ok: true, skipped: `нет ключа ${keyName}`, provider: config.provider, waiting: probe.candidates });
     }
     const summary = await runCatalogAi(db, { ask, config, dryRun });
     // Модель без цены — ошибка настройки: молча её не оставляем (строка в журнале, сторож скажет в Telegram через три прогона).
-    if (!dryRun && summary.skippedBecause === "no_price") await writeSyncLog(JOB, "error", null, summary.skipped, startedAt);
+    if (!dryRun && summary.skippedBecause === "no_price") await writeSyncLog(JOB, "error", null, `${summary.skipped} ${stopTag("no_price")}`, startedAt);
     if (dryRun || summary.skipped || summary.candidates === 0) {
       return NextResponse.json({ ok: true, dryRun, keyConfigured, config: { provider: config.provider, model: config.model, weeklyBudgetUsd: config.weeklyBudgetUsd, dailyLimit: config.dailyLimit, enabled: config.enabled, priced: Boolean(config.price) }, ...summary });
     }
@@ -70,12 +75,14 @@ export async function GET(request: NextRequest) {
       switchHint,
       summary.failed > 0 ? `не разобрано: ${summary.failed}` : null,
       summary.transient > 0 ? `временных сбоев (перегрузка, сеть): ${summary.transient}` : null,
+      summary.penalized > 0 ? `из неразобранных — таймаут ИИ при живом провайдере (попытка засчитана, модель отложена на сутки): ${summary.penalized}` : null,
       summary.deadSources.length > 0 ? `фото не скачиваются, источники пропущены: ${summary.deadSources.join(", ")}` : null,
-      summary.stoppedBy === "budget" ? "дошли до бюджета недели или потолка суток" : null,
+      summary.stoppedBy === "budget" ? (summary.limitReason === "daily_limit" ? "дошли до потолка суток" : "дошли до бюджета недели") : null,
     ].filter(Boolean).join(". ");
+    const reason = runStopReason(summary);
     // «error» — ИИ не принял ключ/нет денег/лимит или не вышло ничего; упёрлись во время или в бюджет — ожидаемо, «partial»/«ok».
     const status = hardStop || (summary.done === 0 && summary.failed + summary.transient > 0) ? "error" : summary.failed > 0 || summary.stoppedBy === "time" || rateLimited || summary.deadSources.length > 0 ? "partial" : "ok";
-    await writeSyncLog(JOB, status, summary.done, note || null, startedAt);
+    await writeSyncLog(JOB, status, summary.done, [note, reason ? stopTag(reason) : null].filter(Boolean).join(" ") || null, startedAt);
     return NextResponse.json({ ok: status !== "error", ...summary }, { status: status === "error" ? 502 : 200 });
   } catch (error) {
     const message = error instanceof Error ? error.message : "разбор не удался";

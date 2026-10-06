@@ -96,3 +96,10 @@ test("Сторож подключён: имена задач совпадают 
   assert.match(route, /async function watchJobs/);
   assert.match(route, /catch \(error\) \{\s*return \{ error:/, "ошибка сторожа задач возвращается значением, а не бросается");
 });
+
+test("Ф1: метка причины остановки (`[stop:…]`) из строки журнала в Telegram не попадает — текст ошибки остаётся", () => {
+  const runs = Array.from({ length: 3 }, (_, i) => ({ job: "assortment-catalog-ai", status: "error" as const, error: "Polza: на счёте нет средств [stop:billing]", started_at: `2026-10-06T0${i}:40:00Z` }));
+  const text = jobsStallTelegram(jobsFreshness(runs, Date.parse("2026-10-06T10:00:00Z")));
+  assert.match(text, /ошибка: Polza: на счёте нет средств/);
+  assert.doesNotMatch(text, /\[stop:/);
+});

@@ -5,7 +5,10 @@ import type { AssortmentDirection } from "@/lib/assortment/constants";
 import { ACCURACY_MIN_JUDGED, ACCURACY_UNCLEAR_MAX, accuracyLabel, hiddenReason, type FieldAccuracy, type Verdict } from "@/lib/assortment/attributeVerdicts";
 import { ATTRIBUTE_FIELDS } from "@/lib/assortment/attributes";
 import { MIN_SOURCE_MODELS } from "@/lib/assortment/forms";
-import { AVERAGE_MIN_COVERAGE, isJudgeableField, MIN_MODELS_FOR_TRAITS, MIN_SOURCE_VISIBLE, MIN_SOURCES_FOR_FIELD_AVERAGE, MIN_VISIBLE_FOR_SHARES, PRELIMINARY_COVERAGE, PROMPT_VERSION, type PhotoTraitsReport } from "@/lib/assortment/catalogAi";
+import {
+  AVERAGE_MIN_COVERAGE, isJudgeableField, MIN_MODELS_FOR_TRAITS, MIN_SOURCE_VISIBLE, MIN_SOURCES_FOR_FIELD_AVERAGE, MIN_VISIBLE_FOR_SHARES, photoSkipKey, PRELIMINARY_COVERAGE, PROMPT_VERSION, sourceGaps,
+  type PhotoTraitsReport, type SourceShare,
+} from "@/lib/assortment/catalogAi";
 import type { PhotoSample } from "@/lib/assortment/catalogAiStore";
 import { plural } from "@/lib/warehouse/plural";
 
@@ -36,10 +39,11 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
       .then(async (r) => {
         const body = await r.json().catch(() => null);
         if (!r.ok || !body || typeof body !== "object" || !("accuracy" in body)) throw new Error("accuracy");
-        return body.accuracy as Record<string, FieldAccuracy> | null;
+        return body as { accuracy: Record<string, FieldAccuracy> | null; accuracyModel?: string | null; otherModels?: OtherAccuracy[] };
       })
-      .then((byField) => {
-        if (directionRef.current === forDirection && accuracySeq.current === seq) setAccuracyState(byField ? { kind: "ready", byField } : { kind: "none" });
+      .then((body) => {
+        if (directionRef.current !== forDirection || accuracySeq.current !== seq) return;
+        setAccuracyState(body.accuracy ? { kind: "ready", byField: body.accuracy, model: body.accuracyModel ?? null, others: Array.isArray(body.otherModels) ? body.otherModels : [] } : { kind: "none" });
       })
       // Сбой обновления после отметки не стирает уже прочитанную точность: она устарела на одну отметку, но не пропала.
       .catch(() => {
@@ -76,30 +80,92 @@ export function PhotoTraits({ direction }: { direction: AssortmentDirection }) {
   if (!report) return null;
   const ready = report.analyzed >= MIN_MODELS_FOR_TRAITS && report.fields.length > 0;
   const accuracy = accuracyState.kind === "ready" ? accuracyState.byField : accuracyState.kind === "none" ? null : undefined;
+  const accuracyModel = accuracyState.kind === "ready" ? accuracyState.model : null;
+  const otherAccuracy = accuracyState.kind === "ready" ? accuracyState.others : [];
 
   return (
     <div className="flex flex-col gap-4">
       {ready ? (accuracyState.kind === "loading" ? (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm text-slate-600">Признаки по фото: проверяем, какие признаки разобраны достаточно точно…</p>
-      ) : <TraitsSection report={report} accuracy={accuracy} accuracyFailed={accuracyState.kind === "error"} />) : (
+      ) : <TraitsSection report={report} accuracy={accuracy} accuracyModel={accuracyModel} otherAccuracy={otherAccuracy} accuracyFailed={accuracyState.kind === "error"} />) : (
         <p className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm leading-6 text-slate-600">
           Признаки по фото: разобрано {num(report.analyzed)} из {num(report.catalog)} {plural(report.catalog, "модели", "моделей", "моделей")} с фото. Доли по признакам появятся, когда разобрано будет хотя бы {MIN_MODELS_FOR_TRAITS}; а как ИИ описывает фото, можно посмотреть уже сейчас — на примерах ниже.
           {(report.legacy ?? 0) > 0 && ` Ещё ${num(report.legacy)} ${plural(report.legacy, "модель разобрана", "модели разобраны", "моделей разобрано")} по прежнему вопросу: в долях они не участвуют и пересоберутся.`}
         </p>
       )}
-      <PhotoSamples direction={direction} accuracy={accuracy} accuracyFailed={accuracyState.kind === "error"} onJudged={loadAccuracy} />
+      <PhotoSamples direction={direction} accuracy={accuracy} accuracyModel={accuracyModel} otherAccuracy={otherAccuracy} accuracyFailed={accuracyState.kind === "error"} onJudged={loadAccuracy} />
     </div>
   );
 }
 
-type AccuracyState = { kind: "loading" } | { kind: "none" } | { kind: "error" } | { kind: "ready"; byField: Record<string, FieldAccuracy> };
+/** Точность разборов прежней моделью ИИ той же версии вопроса: отдельно, в точность текущей модели не входит. */
+export interface OtherAccuracy {
+  aiModel: string | null;
+  marks: number;
+  byField: Record<string, FieldAccuracy>;
+}
+
+type AccuracyState =
+  | { kind: "loading" }
+  | { kind: "none" }
+  | { kind: "error" }
+  | { kind: "ready"; byField: Record<string, FieldAccuracy>; model: string | null; others: OtherAccuracy[] };
+
+const modelName = (aiModel: string | null) => (aiModel ? `«${aiModel}»` : "без записанного имени");
+
+/**
+ * Причина спрятать доли признака: низкая точность у текущей модели ИИ — или у прежней модели той же версии вопроса: её разборы
+ * пересобираются только при смене вопроса, так что они ещё в долях, и низкая точность прежней модели портит доли так же.
+ */
+export function fieldHiddenReason(key: string, accuracy: Record<string, FieldAccuracy> | null | undefined, others: OtherAccuracy[] = []): string | null {
+  if (!accuracy || !isJudgeableField(key)) return null;
+  const own = hiddenReason(accuracy[key]);
+  if (own) return own;
+  for (const other of others) {
+    const reason = hiddenReason(other.byField[key]);
+    if (reason) return `у прежней модели ИИ ${modelName(other.aiModel)} (её разборы этой версии вопроса тоже в долях) ${reason}`;
+  }
+  return null;
+}
+
+const MAX_GAP_NAMES = 6;
+const listNames = (items: string[]) => `${items.slice(0, MAX_GAP_NAMES).join(", ")}${items.length > MAX_GAP_NAMES ? ` и ещё ${items.length - MAX_GAP_NAMES}` : ""}`;
+
+/**
+ * Подпись «каких источников в долях нет или мало»: охват считается от моделей с фото без сайтов РФ, и «90%» иначе прятал бы, что
+ * Zara (живые фото — у трети моделей) и сайты РФ в долях почти не представлены. null — все источники представлены.
+ */
+export function sourceGapsNote(sources: SourceShare[] | undefined): string | null {
+  if (!sources || sources.length === 0) return null;
+  const { absent, few } = sourceGaps(sources);
+  if (absent.length === 0 && few.length === 0) return null;
+  const why = (s: SourceShare) => (s.ru ? "сайт РФ — ориентир, ИИ его не разбирает" : s.eligible === 0 ? "нет ссылок на фото" : `ещё не разобран, с фото ${num(s.eligible)}`);
+  const parts: string[] = [];
+  if (absent.length > 0) parts.push(`нет — ${listNames(absent.map((s) => `${s.name} (${why(s)})`))}`);
+  if (few.length > 0) {
+    parts.push(`мало — ${listNames(few.map((s) => {
+      const noPhoto = s.models - s.eligible;
+      return `${s.name}: ${num(s.analyzed)} из ${num(s.models)}${noPhoto > 0 ? `, у ${num(noPhoto)} нет ссылок на фото` : ""}`;
+    }))}`);
+  }
+  return `Каких источников в долях нет или мало: ${parts.join("; ")}. Доли описывают остальные источники, а не весь рынок раздела.`;
+}
 
 /** Признаки по фото не загрузились — говорим об этом, а не молчим. */
 export function PhotoTraitsError({ message }: { message: string }) {
   return <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Признаки по фото не загрузились: {message}.</p>;
 }
 
-export function TraitsSection({ report, accuracy, accuracyFailed }: { report: PhotoTraitsReport; accuracy?: Record<string, FieldAccuracy> | null; accuracyFailed?: boolean }) {
+export function TraitsSection({ report, accuracy, accuracyModel, otherAccuracy = [], accuracyFailed }: {
+  report: PhotoTraitsReport;
+  accuracy?: Record<string, FieldAccuracy> | null;
+  /** Модель ИИ, чья точность показана (та, что сейчас пишет разбор). */
+  accuracyModel?: string | null;
+  /** Точность прежних моделей ИИ той же версии вопроса — отдельно. */
+  otherAccuracy?: OtherAccuracy[];
+  accuracyFailed?: boolean;
+}) {
+  const gaps = sourceGapsNote(report.sources);
   return (
     <section aria-label="Признаки по фото" className="flex flex-col gap-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -127,7 +193,7 @@ export function TraitsSection({ report, accuracy, accuracyFailed }: { report: Ph
           // Точность этого признака, измеренная человеком: строка про неё есть, только когда отметки вообще заведены (accuracy не null).
           const judgeable = isJudgeableField(field.key);
           const measured = accuracy && judgeable ? accuracy[field.key] : undefined;
-          const unreliable = accuracy && judgeable ? hiddenReason(measured) : null;
+          const unreliable = fieldHiddenReason(field.key, accuracy, otherAccuracy);
           const base = (v: (typeof shown)[number]) => v.avgSourceShare ?? v.share;
           return (
             <div key={field.key} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
@@ -161,13 +227,15 @@ export function TraitsSection({ report, accuracy, accuracyFailed }: { report: Ph
           );
         })}
       </div>
+      {gaps && <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-900">{gaps}</p>}
       <p className="text-xs leading-5 text-slate-500">
         Это оценка ИИ по фото модели (до двух), а не факт с сайта и не ручная проверка: что на фото не видно, ИИ не угадывает, и такие модели в долях признака не участвуют.
         Полоска — доля от 100%, а не от самого частого значения. {report.basis === "averaged"
           ? `Доля — средняя по источникам (учтено ${report.sourcesInAverage}, у каждого не меньше ${MIN_SOURCE_MODELS} разобранных моделей; вместе они дают ${Math.round(report.averageCoverage * 100)}% разобранного): большой каталог не решает за остальные.`
           : `Пока разобрано мало: источников с ${MIN_SOURCE_MODELS} и более разобранными моделями недостаточно, чтобы усреднять, поэтому доли — по всем разобранным моделям и зависят от того, какие источники успели разобраться; средняя по источникам включится, когда такие источники будут давать ${Math.round(AVERAGE_MIN_COVERAGE * 100)}% разобранного.`}
         {" "}Пока разобрана не вся витрина, картина может сместиться.
-        {accuracy && ` Точность каждого признака — расчёт по отметкам человека «верно / неверно» в блоке проверки ниже (нижняя граница 95% интервала Уилсона): пока по признаку размечено меньше ${ACCURACY_MIN_JUDGED}, она не считается измеренной; «не понять» в неё не входит, но если таких отметок больше ${Math.round(ACCURACY_UNCLEAR_MAX * 100)}% (при ${ACCURACY_MIN_JUDGED} и более отметках), признак по фото не проверить и доли прячутся.`}
+        {accuracy && ` Точность каждого признака — расчёт по отметкам человека «верно / неверно» в блоке проверки ниже (нижняя граница 95% интервала Уилсона)${accuracyModel ? ` по разборам модели ИИ ${modelName(accuracyModel)}, которая сейчас пишет разбор` : ""}: пока по признаку размечено меньше ${ACCURACY_MIN_JUDGED}, она не считается измеренной; «не понять» в неё не входит, но если таких отметок больше ${Math.round(ACCURACY_UNCLEAR_MAX * 100)}% (при ${ACCURACY_MIN_JUDGED} и более отметках), признак по фото не проверить и доли прячутся.`}
+        {accuracy && otherAccuracy.length > 0 && ` Отметки разборов прежней моделью ИИ (${otherAccuracy.map((o) => `${modelName(o.aiModel)} — ${num(o.marks)}`).join(", ")}) в эту точность не входят: у каждой модели своя.`}
         {(report.legacy ?? 0) > 0 && ` Ещё ${num(report.legacy)} ${plural(report.legacy, "модель разобрана", "модели разобраны", "моделей разобрано")} по прежнему вопросу: в долях они не участвуют и пересоберутся.`}
         {" "}Цен нет.
       </p>
@@ -179,7 +247,7 @@ type SamplesState =
   | { kind: "closed" }
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; samples: PhotoSample[]; analyzed: number; judging: boolean; verdictsAvailable: boolean; judgedModels: number; unjudgedModels: number };
+  | { kind: "ready"; samples: PhotoSample[]; analyzed: number; judging: boolean; verdictsAvailable: boolean; judgedModels: number; unjudgedModels: number; photoUnavailable: number };
 
 /** Ключ отметки в карточке: модель + признак. По нему кнопки блокируются на время сохранения и под ним показывается сбой. */
 export const verdictKey = (sample: Pick<PhotoSample, "sourceId" | "modelKey">, field: string) => `${sample.sourceId}:${sample.modelKey}:${field}`;
@@ -189,13 +257,29 @@ export const verdictKey = (sample: Pick<PhotoSample, "sourceId" | "modelKey">, f
  * следующие модели без отметок и кнопки «верно / неверно / не понять» по каждому признаку; из отметок складывается точность
  * (она видна в карточках признаков выше), и доли признака с низкой точностью прячутся.
  */
-function PhotoSamples({ direction, accuracy, accuracyFailed, onJudged }: { direction: AssortmentDirection; accuracy?: Record<string, FieldAccuracy> | null; accuracyFailed?: boolean; onJudged?: () => void }) {
+function PhotoSamples({ direction, accuracy, accuracyModel, otherAccuracy, accuracyFailed, onJudged }: {
+  direction: AssortmentDirection;
+  accuracy?: Record<string, FieldAccuracy> | null;
+  accuracyModel?: string | null;
+  otherAccuracy?: OtherAccuracy[];
+  accuracyFailed?: boolean;
+  onJudged?: () => void;
+}) {
   const [state, setState] = useState<SamplesState>({ kind: "closed" });
+  // Модели, чьё фото у этого человека не открылось (короткие ключи): следующая выборка «без отметок» их не предлагает — отметить нечем,
+  // а иначе они вставали бы в каждую следующую дюжину. Живут, пока открыт экран раздела.
+  const failedPhotos = useRef<Set<string>>(new Set());
   // Сохраняется каждая отметка отдельно: пока уходит одна, остальные кнопки рабочие (молча проглоченный клик = потерянная отметка).
   const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(new Set());
   const [verdictErrors, setVerdictErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => setState({ kind: "closed" }), [direction]);
+  useEffect(() => {
+    setState({ kind: "closed" });
+    failedPhotos.current = new Set();
+  }, [direction]);
+  const onPhotoFailed = useCallback((sample: PhotoSample) => {
+    if (sample.modelKey) failedPhotos.current.add(photoSkipKey(sample.sourceId, sample.modelKey));
+  }, []);
 
   const load = (judging: boolean) => {
     // Следующие карточки берутся по отметкам из базы: пока хоть одна не дошла, выборка могла бы вернуть уже размеченную модель.
@@ -203,11 +287,12 @@ function PhotoSamples({ direction, accuracy, accuracyFailed, onJudged }: { direc
     setState({ kind: "loading" });
     setVerdictErrors({});
     const seed = Math.random().toString(36).slice(2, 10);
-    fetch(`/api/assortment-development/photo-traits?direction=${direction}&samples=1&seed=${seed}&limit=12${judging ? "&unjudged=1" : ""}`)
+    const skip = judging && failedPhotos.current.size > 0 ? `&skip=${[...failedPhotos.current].slice(-300).join(",")}` : "";
+    fetch(`/api/assortment-development/photo-traits?direction=${direction}&samples=1&seed=${seed}&limit=12${judging ? "&unjudged=1" : ""}${skip}`)
       .then(async (r) => {
         const body = await r.json().catch(() => ({}));
         if (!r.ok || !body?.result) setState({ kind: "error", message: body?.error || `Примеры не загрузились (${r.status})` });
-        else setState({ kind: "ready", samples: body.result.samples as PhotoSample[], analyzed: Number(body.result.analyzed) || 0, judging, verdictsAvailable: Boolean(body.result.verdictsAvailable), judgedModels: Number(body.result.judgedModels) || 0, unjudgedModels: Number(body.result.unjudgedModels) || 0 });
+        else setState({ kind: "ready", samples: body.result.samples as PhotoSample[], analyzed: Number(body.result.analyzed) || 0, judging, verdictsAvailable: Boolean(body.result.verdictsAvailable), judgedModels: Number(body.result.judgedModels) || 0, unjudgedModels: Number(body.result.unjudgedModels) || 0, photoUnavailable: Number(body.result.photoUnavailable) || 0 });
       })
       .catch(() => setState({ kind: "error", message: "Нет связи с сервером" }));
   };
@@ -275,11 +360,16 @@ function PhotoSamples({ direction, accuracy, accuracyFailed, onJudged }: { direc
       {ready && ready.judging && !ready.verdictsAvailable && (
         <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Отметки точности заработают после применения миграции 202610050007_assortment_attribute_verdict.sql. Пока можно только смотреть примеры.</p>
       )}
-      {ready && ready.samples.length === 0 && <p className="text-sm text-slate-600">{ready.judging ? "Размечать больше нечего: у всех моделей, разобранных по текущему вопросу, отмечены все признаки (или таких моделей ещё нет — разбор по прежнему вопросу пересоберётся)." : "Пока нечего показывать: разобранных моделей из текущего каталога нет."}</p>}
+      {ready && ready.samples.length === 0 && (
+        <p className="text-sm text-slate-600">
+          {ready.judging ? "Размечать больше нечего: у всех моделей, разобранных по текущему вопросу, отмечены все признаки (или таких моделей ещё нет — разбор по прежнему вопросу пересоберётся)." : "Пока нечего показывать: разобранных моделей из текущего каталога нет."}
+          {ready.judging && ready.photoUnavailable > 0 && ` Ещё ${num(ready.photoUnavailable)} ${plural(ready.photoUnavailable, "модель", "модели", "моделей")} с неотмеченными признаками не выдаём: фото недоступно — отметить нечем.`}
+        </p>
+      )}
       {ready && ready.samples.length > 0 && (
         <>
-          {judging && <AccuracySummary direction={direction} accuracy={accuracy} accuracyFailed={accuracyFailed} judgedModels={ready.judgedModels} unjudgedModels={ready.unjudgedModels} />}
-          <SampleCards samples={ready.samples} judging={judging ? { currentVersion: PROMPT_VERSION, busyKeys, errors: verdictErrors, onVerdict: judge } : undefined} />
+          {judging && <AccuracySummary direction={direction} accuracy={accuracy} accuracyModel={accuracyModel} otherAccuracy={otherAccuracy} accuracyFailed={accuracyFailed} judgedModels={ready.judgedModels} unjudgedModels={ready.unjudgedModels} photoUnavailable={ready.photoUnavailable} />}
+          <SampleCards samples={ready.samples} judging={judging ? { currentVersion: PROMPT_VERSION, busyKeys, errors: verdictErrors, onVerdict: judge } : undefined} onPhotoFailed={onPhotoFailed} />
           <p className="text-xs leading-5 text-slate-500">Из {num(ready.analyzed)} разобранных. Это оценка ИИ по фото: она ошибается, «не видно» — честный ответ, а не пропуск. Если неверно слишком часто, скажите — поправим вопрос или модель.</p>
         </>
       )}
@@ -288,13 +378,25 @@ function PhotoSamples({ direction, accuracy, accuracyFailed, onJudged }: { direc
 }
 
 /** Точность по признакам одной строкой каждая — что уже размечено и сколько ещё нужно. */
-export function AccuracySummary({ direction, accuracy, accuracyFailed, judgedModels, unjudgedModels }: { direction: AssortmentDirection; accuracy?: Record<string, FieldAccuracy> | null; accuracyFailed?: boolean; judgedModels: number; unjudgedModels?: number }) {
+export function AccuracySummary({ direction, accuracy, accuracyModel, otherAccuracy = [], accuracyFailed, judgedModels, unjudgedModels, photoUnavailable = 0 }: {
+  direction: AssortmentDirection;
+  accuracy?: Record<string, FieldAccuracy> | null;
+  accuracyModel?: string | null;
+  otherAccuracy?: OtherAccuracy[];
+  accuracyFailed?: boolean;
+  judgedModels: number;
+  unjudgedModels?: number;
+  /** Модели с неотмеченными признаками, но недоступным фото: на разметку не выдаются. */
+  photoUnavailable?: number;
+}) {
   const fields = ATTRIBUTE_FIELDS[direction].filter((f) => isJudgeableField(f.key));
   return (
     <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-700">
       <div className="font-medium text-slate-800">
-        Размечено моделей: {num(judgedModels)}{unjudgedModels !== undefined && `, ещё с неотмеченными признаками: ${num(unjudgedModels)}`}. Точность по признакам (нужно {ACCURACY_MIN_JUDGED} отметок «верно / неверно» на признак):
+        Размечено моделей: {num(judgedModels)}{unjudgedModels !== undefined && `, ещё с неотмеченными признаками: ${num(unjudgedModels)}`}. Точность по признакам{accuracyModel ? ` у модели ИИ ${modelName(accuracyModel)}, которая сейчас пишет разбор` : ""} (нужно {ACCURACY_MIN_JUDGED} отметок «верно / неверно» на признак):
       </div>
+      {photoUnavailable > 0 && <p className="mt-1 text-slate-600">Ещё {num(photoUnavailable)} {plural(photoUnavailable, "модель", "модели", "моделей")} с неотмеченными признаками на разметку не выдаём: фото недоступно (ссылок на фото нет, ИИ не смог его скачать или у вас оно не открылось) — отметить нечем.</p>}
+      {otherAccuracy.length > 0 && <p className="mt-1 text-slate-600">Отметки по прежней модели ИИ — отдельно и в эту точность не входят: {otherAccuracy.map((o) => `${modelName(o.aiModel)} — ${num(o.marks)} ${plural(o.marks, "отметка", "отметки", "отметок")}`).join("; ")}.</p>}
       {accuracyFailed ? (
         <p className="mt-1 text-amber-800">Точность не загрузилась — размечайте дальше, отметки сохраняются; сводка появится после обновления страницы.</p>
       ) : (
@@ -354,7 +456,7 @@ const VERDICT_NAME: Record<Verdict, string> = { ok: "верно", wrong: "нев
  * не открылось (прячем, а не серим) — иначе отметки ставились бы вслепую и портили точность. Уже поставленная отметка не пропадает вместе
  * с фото: её видно и можно снять.
  */
-function SampleCard({ sample, judging }: { sample: PhotoSample; judging?: JudgingProps }) {
+function SampleCard({ sample, judging, onPhotoFailed }: { sample: PhotoSample; judging?: JudgingProps; onPhotoFailed?: (sample: PhotoSample) => void }) {
   const [stage, setStage] = useState<SampleImageStage>("direct");
   // «Открылось» помним по адресу, а не флагом: при переходе на запасной путь прежнее «открылось» не переносится на новую картинку.
   const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
@@ -366,6 +468,10 @@ function SampleCard({ sample, judging }: { sample: PhotoSample; judging?: Judgin
     const el = img.current;
     if (el && el.complete && el.naturalWidth > 0) setLoadedSrc(src);
   }, [src]);
+  // Фото так и не открылось (ни прямо, ни через панель) или его нет: следующая выборка разметки эту модель не предложит.
+  useEffect(() => {
+    if (photo === "failed" || photo === "none") onPhotoFailed?.(sample);
+  }, [photo, sample, onPhotoFailed]);
   return (
     <SampleCardView
       sample={sample}
@@ -470,10 +576,10 @@ export function SampleCardView({
   );
 }
 
-export function SampleCards({ samples, judging }: { samples: PhotoSample[]; judging?: JudgingProps }) {
+export function SampleCards({ samples, judging, onPhotoFailed }: { samples: PhotoSample[]; judging?: JudgingProps; onPhotoFailed?: (sample: PhotoSample) => void }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      {samples.map((sample) => <SampleCard key={`${sample.sourceId}:${sample.title}:${sample.takenAt}`} sample={sample} judging={judging} />)}
+      {samples.map((sample) => <SampleCard key={`${sample.sourceId}:${sample.title}:${sample.takenAt}`} sample={sample} judging={judging} onPhotoFailed={onPhotoFailed} />)}
     </div>
   );
 }
