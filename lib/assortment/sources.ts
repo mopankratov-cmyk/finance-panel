@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { parseAccessStatus, type AssortmentDirection } from "./constants";
 import { effectiveAccessStatus, sortSources, type AssortmentSource } from "./coverage";
 import { isMissingColumnError } from "./errors";
+import { STAGE6_CONNECTED } from "./stage6Sources";
 
 export type LoadSourcesResult =
   | { ok: true; sources: AssortmentSource[] }
@@ -32,6 +33,22 @@ function toSource(row: Record<string, unknown>): AssortmentSource {
   };
 }
 
+/**
+ * Последний удачный прогон крона подключённых источников Этапа 6 (по журналу sync_log): ok или partial. Сбой чтения — пусто: статус
+ * тогда «частично», а не ошибка всего экрана.
+ */
+async function stage6Pulses(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, sourceIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const sourceId of sourceIds) {
+    const connected = STAGE6_CONNECTED[sourceId];
+    if (!connected) continue;
+    const { data, error } = await db.from("sync_log").select("started_at").eq("job", connected.job).in("status", ["ok", "partial"]).order("started_at", { ascending: false }).limit(1);
+    const at = !error ? (data?.[0] as { started_at?: string } | undefined)?.started_at : undefined;
+    if (at) out.set(sourceId, at);
+  }
+  return out;
+}
+
 export async function loadAssortmentSources(direction: AssortmentDirection | null): Promise<LoadSourcesResult> {
   const db = getSupabaseAdmin();
   if (!db) return { ok: false, reason: "not_configured", message: "Supabase не настроен" };
@@ -50,11 +67,17 @@ export async function loadAssortmentSources(direction: AssortmentDirection | nul
     return { ok: false, reason: "error", message: error.message };
   }
   const now = Date.now();
+  const pulses = await stage6Pulses(db, ((data ?? []) as unknown as Array<{ source_id: string }>).map((r) => String(r.source_id)));
   const sources = (data ?? []).map((row) => {
-    const declared = toSource(row as unknown as Record<string, unknown>);
+    const parsed = toSource(row as unknown as Record<string, unknown>);
+    // Подключённый источник Этапа 6 (рилсы) пульс пишет в журнал своего крона, а не в паспорт: подпись и удачный прогон — оттуда.
+    const connected = STAGE6_CONNECTED[parsed.sourceId];
+    const declared = connected ? { ...parsed, accessNote: connected.note, lastSuccessAt: parsed.lastSuccessAt ?? pulses.get(parsed.sourceId) ?? null } : parsed;
     const shown = effectiveAccessStatus(declared, now);
-    // Показываем статус по факту работы сборщика; запись паспорта — рядом, если отличается.
-    return shown === declared.accessStatus ? declared : { ...declared, accessStatus: shown, declaredAccessStatus: declared.accessStatus };
+    // Показываем статус по факту работы сборщика; запись паспорта — рядом, если отличается. «Не подключено» Этапа 6 — решение, а не факт
+    // сборщика: запись паспорта («доступ не проверен») рядом не повторяем.
+    if (shown === declared.accessStatus || shown === "not_connected") return { ...declared, accessStatus: shown };
+    return { ...declared, accessStatus: shown, declaredAccessStatus: declared.accessStatus };
   });
   return { ok: true, sources: sortSources(sources) };
 }

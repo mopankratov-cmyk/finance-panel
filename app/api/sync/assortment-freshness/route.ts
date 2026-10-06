@@ -12,6 +12,7 @@ import {
   type SourceFact,
 } from "@/lib/assortment/freshness";
 import { isMissingColumnError } from "@/lib/assortment/errors";
+import { loadClipPulse } from "@/lib/assortment/freshnessStore";
 import {
   jobsAlertPlan, jobsFreshness, jobsRecoveredTelegram, jobsStallMessage, jobsStallTelegram, JOBS_ALERT_PREFIX, JOBS_STALL_ACTION, WATCHED_JOB_NAMES,
   type JobRun,
@@ -31,7 +32,9 @@ const JOB = "assortment-freshness";
  * экран краснеет не сразу, а в Telegram это приходит раз в неделю в воскресной
  * сводке. Здесь — молчание дольше порога по расписанию источника
  * (lib/assortment/collectorSchedule.ts), в том числе тихая поломка, когда
- * сборщик «работает», но ничего не приносит.
+ * сборщик «работает», но ничего не приносит. Отпечатки фото (CLIP на Mac mini)
+ * судятся по времени последнего отпечатка при ждущей очереди; всё, что приносит
+ * mini, — одна тревога за один простой, а не сообщение на каждый источник.
  *
  * Канал и учёт — как у сторожа «Полок»: финансовый Telegram-бот и
  * `finance_alerts`; новых секретов и таблиц нет. Сначала уходит сообщение, потом
@@ -47,7 +50,7 @@ const JOB = "assortment-freshness";
 async function watchJobs(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, now: Date, dryRun: boolean) {
   try {
     const since = new Date(now.getTime() - 30 * 24 * 3600 * 1000).toISOString();
-    const { data, error } = await db.from("sync_log").select("job,status,error,started_at").in("job", WATCHED_JOB_NAMES).gte("started_at", since).order("started_at", { ascending: false }).limit(600);
+    const { data, error } = await db.from("sync_log").select("job,status,error,started_at").in("job", WATCHED_JOB_NAMES).gte("started_at", since).order("started_at", { ascending: false }).limit(1000);
     if (error) throw new Error(error.message);
     const freshness = jobsFreshness((data ?? []) as JobRun[], now.getTime());
     const open = await db.from("finance_alerts").select("alert_key").like("alert_key", `${JOBS_ALERT_PREFIX}%`).eq("status", "open");
@@ -108,7 +111,7 @@ export async function GET(request: NextRequest) {
       accessStatus: typeof row.access_status === "string" ? row.access_status : null,
       accessNote: typeof row.access_note === "string" ? row.access_note : null,
     }));
-    freshness = assortmentFreshness(facts, startedAt.getTime());
+    freshness = assortmentFreshness(facts, startedAt.getTime(), await loadClipPulse(db));
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Свежесть сборщиков не прочиталась");
   }

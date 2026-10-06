@@ -1737,3 +1737,67 @@ test("Ф1: крон пишет причину остановки меткой в
   assert.equal(catalogModelId(catalogAiConfig({ POLZA_API_KEY: "p" })), "polza:google/gemini-2.5-flash");
   assert.equal(catalogModelId(catalogAiConfig({})), DEFAULT_CATALOG_MODEL);
 });
+
+// --- Ф2: общий потолок движка ($30 в неделю на всё), каталоги в приоритете ---
+
+test("Ф2, общий потолок: разбор по фото отказывает раньше каталогов — остаток после резерва под Zara, Uniqlo и прочие покупки кончился, свой бюджет ещё есть: ни одного вызова ИИ, причина engine_budget", async () => {
+  const heads = [headRow("S1", "a"), headRow("S1", "b")];
+  let calls = 0;
+  const ask: AskVision = async () => { calls += 1; return { text: GOOD, inputTokens: 4000, outputTokens: 300 }; };
+  // Потолок $15: за неделю разбор потратил $5,05, норма каталогов ($9,95) не выбрана — разбору остаётся 15 − 5,05 − 9,95 = 0.
+  const engine = { weeklyUsd: 15, socialWeeklyUsd: 3 };
+  const tight = fakeDb({ heads, usage: [{ day: "2026-10-05", kind: "catalog_attributes", calls: 900, cost_usd: 5.05 }] });
+  const out = await runCatalogAi(tight.db, { ask, config: cfg, now: clock, engine });
+  assert.equal(calls, 0, "ни одного платного вызова");
+  assert.deepEqual([out.stoppedBy, out.limitReason, out.allowReason], ["budget", "engine_budget", "engine_budget"]);
+  assert.equal(out.engineRoomUsd, 0);
+  assert.equal(runStopReason(out), "engine_budget");
+  assert.match(STOP_REASON_WORDS.engine_budget, /каталоги Zara и Uniqlo в приоритете/);
+  assert.equal(catalogRunStatus({ ...out, done: 0, failed: 0, transient: 0, repeatFailures: 0, deadSources: [] }), "ok", "упёрлись в потолок — ожидаемо, не поломка");
+  // Расход каталогов (Bright Data) и рилсов уменьшает остаток разбора по фото: при $30 и выбранных каталогах разбору остаётся 30 − 20 − 4 − 6 = 0.
+  const shared = fakeDb({ heads, usage: [
+    { day: "2026-10-06", kind: "catalog_attributes", calls: 100, cost_usd: 6 }, { day: "2026-10-06", kind: "brightdata_social", calls: 1000, cost_usd: 4 },
+    { day: "2026-10-01", kind: "brightdata:zara", calls: 4000, cost_usd: 10 }, { day: "2026-10-01", kind: "brightdata:uniqlo", calls: 2000, cost_usd: 5 },
+    { day: "2026-10-01", kind: "brightdata:zara_photos", calls: 2000, cost_usd: 5 },
+  ] });
+  const blocked = await runCatalogAi(shared.db, { ask, config: cfg, now: clock, engine: { weeklyUsd: 30, socialWeeklyUsd: 3 } });
+  assert.deepEqual([calls, blocked.limitReason], [0, "engine_budget"]);
+  // Без расхода каталогов и при обычном потолке — как раньше: свой бюджет $20 и работа.
+  const free = fakeDb({ heads });
+  const ok = await runCatalogAi(free.db, { ask, config: cfg, now: clock, engine: { weeklyUsd: 30, socialWeeklyUsd: 3 } });
+  assert.equal(ok.done, 2);
+  assert.ok((ok.engineRoomUsd ?? 0) > 19.9 && (ok.engineRoomUsd ?? 0) < 20.1, "разбору остаётся ≈ $20 из $30: столько же, сколько его собственный бюджет недели");
+});
+
+test("Ф2, общий потолок проверяется ДО каждой пачки: остаток тает вместе с расходом прогона, перерасхода больше пачки нет", async () => {
+  const heads = Array.from({ length: 10 }, (_, i) => headRow("S1", `m${i}`));
+  // Остаток общего потолка $0,02: запас на вызов $0,007 — две модели, затем по расходу ($0,0055 каждая) ещё одна, и стоп.
+  const { db } = fakeDb({ heads, usage: [{ day: "2026-10-05", kind: "catalog_attributes", calls: 900, cost_usd: 5.03 }] });
+  const out = await runCatalogAi(db, { ask: okAsk(), config: cfg, now: clock, parallel: 3, engine: { weeklyUsd: 15, socialWeeklyUsd: 3 } });
+  assert.equal(out.done, 3);
+  assert.equal(out.limitReason, "engine_budget");
+  assert.ok(out.costUsd <= 0.02 + 0.0055, "перерасход — не больше одного вызова пачки");
+  assert.equal(allowance(cfg, 0, 0, 120, 0).reason, "engine_budget");
+  assert.equal(allowance(cfg, 20, 0, 120, 0).reason, "budget", "свой бюджет кончился — называем его, а не общий потолок");
+  assert.equal(allowance(cfg, 0, 0, 120).models, 120, "без общего потолка (учёт не прочитан) — прежнее правило");
+});
+
+test("Ф2, «нет денег» у Polza (402): прогон останавливается одной причиной, в журнале — метка [stop:billing]; сторож задач шлёт тревогу по первому же такому прогону, один раз", async () => {
+  const { jobsAlertPlan, jobsFreshness, jobsStallTelegram } = await import("../lib/assortment/jobsWatch.ts");
+  const heads = [headRow("S1", "a"), headRow("S1", "b"), headRow("S1", "c")];
+  let calls = 0;
+  const ask: AskVision = async () => { calls += 1; throw new VisionStopError("Polza: на счёте нет средств или исчерпан лимит расходов ключа: Insufficient balance", "billing"); };
+  const { db } = fakeDb({ heads });
+  const out = await runCatalogAi(db, { ask, config: cfg, now: clock, parallel: 1 });
+  assert.equal(calls, 1, "после 402 — ни одного вызова");
+  assert.equal(out.stoppedBy, "billing");
+  const line = `${out.stopMessage} ${stopTag(runStopReason(out)!)}`;
+  assert.match(line, /\[stop:billing\]$/);
+  const runs = [{ job: CATALOG_AI_JOB, status: catalogRunStatus(out), error: line, started_at: new Date(NOW).toISOString() }];
+  const down = jobsFreshness(runs, NOW + 3600 * 1000);
+  assert.equal(down.stalled.length, 1, "тревога по первому прогону с 402, а не после трёх");
+  const plan = jobsAlertPlan(down, []);
+  assert.equal(plan.send, "stalled");
+  assert.equal(jobsAlertPlan(jobsFreshness([...runs, { ...runs[0], started_at: new Date(NOW + 2 * 3600 * 1000).toISOString() }], NOW + 3 * 3600 * 1000), [plan.openKey!]).send, null, "следующий прогон с 402 — без повтора");
+  assert.match(jobsStallTelegram(down), /ИИ-провайдер разбора по фото — нет денег у провайдера или аккаунт не активен \(402\)/);
+});

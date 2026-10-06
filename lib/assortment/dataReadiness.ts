@@ -1,5 +1,8 @@
 import { plural } from "@/lib/warehouse/plural";
-import { STOP_REASON_WORDS, type CatalogStopReason, type OutsideBySource } from "./catalogAi";
+import { CATALOG_AI_KIND, STOP_REASON_WORDS, type CatalogStopReason, type OutsideBySource } from "./catalogAi";
+import {
+  BRIGHTDATA_KIND_ORDER, ENGINE_KIND, ENGINE_KIND_LABEL, engineReserveUsd, engineRoomUsd, type EngineBudgetConfig, type EngineWeek,
+} from "./engineBudget";
 import { APPEARANCE_MIN_SPAN_DAYS, DYNAMICS_MIN_DAYS, DYNAMICS_MIN_SPAN_DAYS, partsCaveat, type HistoryStatus } from "./observationState";
 
 /**
@@ -21,7 +24,7 @@ export interface ReadinessLine {
 }
 
 export interface ReadinessGroup {
-  key: "traits" | "demand" | "history";
+  key: "traits" | "spend" | "demand" | "history";
   title: string;
   /** Одна фраза для свёрнутой полоски. */
   summary: string;
@@ -75,6 +78,11 @@ export interface TraitsFacts {
   weeklyBudgetUsd: number;
   /** На сколько вызовов хватит остатка бюджета недели; null — цены нет. */
   budgetCallsLeft: number | null;
+  /**
+   * На сколько вызовов хватит того, что разбору по фото оставляет общий потолок движка (с резервом под каталоги); null — учёт движка не
+   * прочитан или цены нет. Не задано — не считали.
+   */
+  engineCallsLeft?: number | null;
   lastErrors: Array<{ message: string; count: number }>;
   /**
    * Вне разбора по источникам раздела — тем же правилом, что очередь сборщика: без ссылок на фото и сайты РФ (в «из M» не входят), фото
@@ -117,10 +125,20 @@ export interface HistoryFacts {
   sources: HistorySource[];
 }
 
+/** Расход движка за 7 суток по статьям и потолок — для строки «Расход недели по статьям». */
+export interface SpendFacts {
+  week: EngineWeek;
+  config: EngineBudgetConfig;
+  /** Провайдер разбора по фото: у Polza расход — факт из ответа провайдера, у Anthropic — расчёт по токенам и цене. */
+  aiProvider: "polza" | "anthropic";
+}
+
 export interface ReadinessInput {
   today: string;
   nowMs: number;
   traits: TraitsFacts | null;
+  /** Расход движка; null — таблицы учёта нет или не прочиталась (тогда — строка в errors). */
+  spend?: SpendFacts | null;
   demand: DemandFacts | null;
   history: HistoryFacts | null;
   /** Части, что не прочитались: названия для строки «не загрузилось». */
@@ -196,6 +214,7 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
   else if (t.dailyLimit <= 0) stops.push("Потолок суток 0: разбор остановлен.");
   else if (t.weeklyBudgetUsd <= 0) stops.push("Бюджет недели 0: разбор остановлен.");
   else if (budgetGone) stops.push(`Сборщик стоит — ${STOP_REASON_WORDS.budget}: потрачено ${usd(t.weekUsd)} из ${usd(t.weeklyBudgetUsd)}, остатка не хватает даже на один вызов — разбор встанет до освобождения бюджета.`);
+  else if (t.engineCallsLeft != null && t.engineCallsLeft <= 0) stops.push(`Сборщик стоит — ${STOP_REASON_WORDS.engine_budget}: свой бюджет недели ещё есть, но общему потолку не хватает даже на один вызов — разбор подождёт освобождения недели (см. «Расход движка»).`);
   for (const text of stops) lines.push({ kind: "факт", text, problem: true });
   let problem = stops.length > 0;
   const running = stops.length === 0;
@@ -241,8 +260,11 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
       kind: "расчёт",
       text: `Осталось разобрать ${num(remaining)}${otherNote}; при потолке ${num(perDayMax)} в сутки (прогон — 75–120 моделей, 12 прогонов) на всё уйдёт ${span}.`,
     });
-    if (t.budgetCallsLeft !== null && t.budgetCallsLeft < total) {
-      lines.push({ kind: "расчёт", text: `Остатка бюджета недели хватит примерно на ${num(Math.max(0, t.budgetCallsLeft))} вызовов — меньше очереди (${num(total)}): разбор встанет раньше, чем она закончится.` });
+    // Остаток — меньшее из своего бюджета недели и того, что оставляет общий потолок движка.
+    const callsLeft = t.engineCallsLeft != null && (t.budgetCallsLeft === null || t.engineCallsLeft < t.budgetCallsLeft) ? t.engineCallsLeft : t.budgetCallsLeft;
+    if (callsLeft !== null && callsLeft < total) {
+      const byEngine = callsLeft === t.engineCallsLeft && t.engineCallsLeft !== t.budgetCallsLeft;
+      lines.push({ kind: "расчёт", text: `Остатка ${byEngine ? "общего потолка движка (после резерва под каталоги)" : "бюджета недели"} хватит примерно на ${num(Math.max(0, callsLeft))} вызовов — меньше очереди (${num(total)}): разбор встанет раньше, чем она закончится.` });
     }
   }
   const skipped = t.exhausted + t.unstable;
@@ -322,6 +344,39 @@ function traitsGroup(t: TraitsFacts, nowMs: number): ReadinessGroup {
   };
 }
 
+/**
+ * «Расход недели по статьям»: Polza — факт провайдера, Bright Data — оценка по записям и запросам, итог — против общего потолка. Строка
+ * про учёт расхода движка в $, а не про товары: цен товаров здесь нет. За 7 дней расхода нет — блока нет (прячем, а не рисуем нули).
+ */
+function spendGroup(f: SpendFacts): ReadinessGroup | null {
+  if (!(f.week.total > 0)) return null;
+  const { week, config } = f;
+  const spent = (kind: string) => week.byKind[kind] ?? 0;
+  const parts: string[] = [];
+  parts.push(`разбор по фото (${f.aiProvider === "polza" ? "Polza" : "Anthropic"}) ${usd(spent(CATALOG_AI_KIND))} — ${f.aiProvider === "polza" ? "факт провайдера" : "расчёт по токенам"}`);
+  if (spent(ENGINE_KIND.referenceAi) > 0) parts.push(`старый разбор находок ${usd(spent(ENGINE_KIND.referenceAi))} — факт Polza или расчёт по токенам`);
+  const brightKinds = Object.keys(week.byKind).filter((k) => k.startsWith("brightdata:") && spent(k) > 0)
+    .sort((a, b) => (BRIGHTDATA_KIND_ORDER.indexOf(a) + 1 || 99) - (BRIGHTDATA_KIND_ORDER.indexOf(b) + 1 || 99) || a.localeCompare(b));
+  parts.push(brightKinds.length > 0
+    ? `Bright Data: ${brightKinds.map((k) => `${ENGINE_KIND_LABEL[k] ?? k.slice("brightdata:".length)} ${usd(spent(k))}`).join(", ")} — оценка по записям`
+    : "выборок Bright Data не было");
+  if (spent(ENGINE_KIND.social) > 0) parts.push(`рилсы Instagram ${usd(spent(ENGINE_KIND.social))} — оценка по запросам (строка соцсетей ${usd(config.socialWeeklyUsd)})`);
+  const lines: ReadinessLine[] = [{ kind: "оценка", text: `Расход недели по статьям (7 дней): ${parts.join("; ")}. Итого ${usd(week.total)} из ${usd(config.weeklyUsd)}.` }];
+  const reserve = engineReserveUsd(week, 2);
+  const optional = engineRoomUsd(week, CATALOG_AI_KIND, config);
+  let problem = false;
+  if (week.total >= config.weeklyUsd) {
+    lines.push({ kind: "факт", text: `Потолок недели ${usd(config.weeklyUsd)} выбран: платные запуски ждут, пока освободится неделя (каталоги Zara и Uniqlo — первыми в очереди на деньги).`, problem: true });
+    problem = true;
+  } else if (reserve > 0) {
+    lines.push({
+      kind: "расчёт",
+      text: `Под каталоги до конца недели отложено ${usd(reserve)} (Zara и Uniqlo по средам отказывают последними): разбору по фото и рилсам доступно ещё ${usd(optional)}${optional <= 0 ? " — они ждут освобождения недели" : ""}.`,
+    });
+  }
+  return { key: "spend", title: "Расход движка", summary: `${usd(week.total)} из ${usd(config.weeklyUsd)} за 7 дней`, lines, problem };
+}
+
 function demandGroup(d: DemandFacts, today: string): ReadinessGroup | null {
   if (!d.latestTo) return null;
   const lines: ReadinessLine[] = [];
@@ -397,6 +452,7 @@ function historyGroup(h: HistoryFacts, today: string): ReadinessGroup | null {
 export function buildReadiness(input: ReadinessInput): ReadinessReport {
   const groups = [
     input.traits ? traitsGroup(input.traits, input.nowMs) : null,
+    input.spend ? spendGroup(input.spend) : null,
     input.demand ? demandGroup(input.demand, input.today) : null,
     input.history ? historyGroup(input.history, input.today) : null,
   ].filter((g): g is ReadinessGroup => g !== null);

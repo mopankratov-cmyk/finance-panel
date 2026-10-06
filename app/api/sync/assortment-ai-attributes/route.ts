@@ -15,7 +15,8 @@ const BUDGET_MS = 240_000;
  * Ежедневно в 12:00 МСК (после автообхода и сбора Bright Data): признаки по
  * фото для новых моделей — не больше 20 в день (ASSORTMENT_AI_DAILY_LIMIT),
  * чтобы расход на ИИ был предсказуемым. Ответ ИИ — «оценка ИИ», ручное и
- * опубликованное не перезаписывает.
+ * опубликованное не перезаписывает. Расход каждого ответа — в сквозной учёт
+ * движка (assortment_ai_usage, статья reference_ai); провайдер прежний.
  */
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
@@ -31,7 +32,7 @@ export async function GET(request: NextRequest) {
     for (const id of ids) {
       if (Date.now() - startedAt.getTime() > BUDGET_MS) break;
       try {
-        if (await estimateAttributes(db, id)) done += 1;
+        if (await estimateAttributes(db, id, { onUsageError: (message) => errors.push(`учёт расхода не записался: ${message.slice(0, 120)}`) })) done += 1;
       } catch (error) {
         errors.push(error instanceof Error ? error.message.slice(0, 160) : "ошибка");
         if (error instanceof AiAttributesUnavailableError) break; // оба провайдера лежат — дальше без толку

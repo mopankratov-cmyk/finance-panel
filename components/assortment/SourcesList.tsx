@@ -8,6 +8,7 @@ const STATUS_STYLE: Record<AccessStatus, string> = {
   partial: "bg-amber-100 text-amber-900",
   manual_only: "bg-slate-200 text-slate-700",
   untested: "bg-blue-100 text-blue-800",
+  not_connected: "bg-slate-100 text-slate-700",
   unavailable: "bg-red-50 text-red-800",
   disabled: "bg-slate-100 text-slate-600",
 };

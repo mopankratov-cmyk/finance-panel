@@ -1,5 +1,6 @@
 import { containsMoney } from "./attributes";
 import type { AssortmentDirection } from "./constants";
+import { BRIGHTDATA_USD_PER_1000 } from "./engineBudget";
 
 /**
  * «Залетает в соцсетях» (решение владельца 06.10.2026): рилсы Instagram про Zara и Uniqlo, только женское. Чистые функции без базы
@@ -40,8 +41,8 @@ export const RECHECK_AGES_DAYS = [3, 7] as const;
 export const MAX_CHECKS = 3;
 export const HISTORY_LIMIT = 10;
 export const CAPTION_EXCERPT_MAX = 500;
-/** Оценка Bright Data: $1,5 за 1 000 запросов Web Unlocker. */
-export const COST_PER_REQUEST_USD = 0.0015;
+/** Оценка Bright Data: $1,5 за 1 000 запросов Web Unlocker — та же цена, что в сквозном учёте движка (engineBudget). */
+export const COST_PER_REQUEST_USD = BRIGHTDATA_USD_PER_1000.unlocker / 1000;
 
 export type SocialBrand = "zara" | "uniqlo";
 export type SocialVerdict = "strong" | "viral" | "normal" | "too_fresh" | "too_old";

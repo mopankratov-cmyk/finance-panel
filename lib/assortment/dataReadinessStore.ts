@@ -1,10 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { moscowToday } from "@/lib/sync/moscowDay";
 import { partLabel } from "./brightdataCatalog";
-import { catalogAiConfig, CATALOG_AI_JOB, estimatedCallUsd, parseStopTag, type PhotoTraitsReport } from "./catalogAi";
+import { catalogAiConfig, CATALOG_AI_JOB, CATALOG_AI_KIND, estimatedCallUsd, parseStopTag, perCallReserveUsd, type PhotoTraitsReport } from "./catalogAi";
 import { aiKeyConfigured, loadPhotoTraits, loadQueueDirect, loadSpend, type QueueFacts } from "./catalogAiStore";
 import type { AssortmentDirection } from "./constants";
 import { buildReadiness, type DemandFacts, type HistoryFacts, type ReadinessInput, type ReadinessReport, type TraitsFacts } from "./dataReadiness";
+import { engineBudgetConfig, engineRoomUsd, type EngineBudgetConfig, type EngineWeek } from "./engineBudget";
+import { loadEngineWeek } from "./engineBudgetStore";
 import { isMissingAssortmentSchema } from "./errors";
 import { loadHistoryState } from "./observationStateStore";
 import { isRuSource } from "./ruMarket";
@@ -55,7 +57,10 @@ async function queueOf(db: SupabaseClient, direction: AssortmentDirection, repor
   return queue(db, direction);
 }
 
-async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, now: Date, traits: TraitsLoader, queue: QueueLoader, note: (message: string) => void): Promise<TraitsFacts | null> {
+async function loadTraits(
+  db: SupabaseClient, direction: AssortmentDirection, now: Date, traits: TraitsLoader, queue: QueueLoader, note: (message: string) => void,
+  engine: { week: EngineWeek | null; config: EngineBudgetConfig },
+): Promise<TraitsFacts | null> {
   // Есть ли таблица результатов вообще: нет — блока нет (прячем, а не рисуем нули).
   const failed = await count(db, (q) => q.select("model_key", { count: "exact" }).eq("direction", direction).eq("status", "failed").limit(1));
   if (failed === null) return null;
@@ -129,6 +134,9 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
   const budgetCallsLeft = config.price && config.weeklyBudgetUsd > 0
     ? Math.floor(Math.max(0, config.weeklyBudgetUsd - weekUsd) / estimatedCallUsd(config.price, config.provider === "polza" ? 1500 : 600))
     : null;
+  // Тем же правилом, что сборщик (allowance): остаток общего потолка движка после резерва под каталоги — на сколько вызовов.
+  const perCall = perCallReserveUsd(config);
+  const engineCallsLeft = engine.week && perCall ? Math.floor(engineRoomUsd(engine.week, CATALOG_AI_KIND, engine.config) / perCall) : null;
   return {
     enabled: config.enabled,
     keyConfigured: aiKeyConfigured(config.provider),
@@ -153,6 +161,7 @@ async function loadTraits(db: SupabaseClient, direction: AssortmentDirection, no
     weekUsd,
     weeklyBudgetUsd: config.weeklyBudgetUsd,
     budgetCallsLeft,
+    engineCallsLeft,
     lastErrors: [...errors.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([message, n]) => ({ message, count: n })),
     ...(outside ? { outside } : {}),
     ...(lastRun !== undefined ? { lastRun } : {}),
@@ -216,11 +225,15 @@ export async function loadReadiness(db: SupabaseClient, direction: AssortmentDir
       return null;
     }
   };
+  // Расход движка — одно чтение на полоску: строка «Расход недели по статьям» и остаток потолка у разбора по фото считаются по нему.
+  const engineConfig = engineBudgetConfig();
+  const week = await guard("расход движка", () => loadEngineWeek(db, now));
   const [traits, demand, history] = await Promise.all([
-    guard("признаки по фото", () => loadTraits(db, direction, now, traitsLoader, queueLoader, (message) => errors.push(message))),
+    guard("признаки по фото", () => loadTraits(db, direction, now, traitsLoader, queueLoader, (message) => errors.push(message), { week, config: engineConfig })),
     guard("спрос на WB", () => loadDemand(db, direction, now)),
     guard("история каталогов", () => loadHistory(db, direction, now)),
   ]);
-  const input: ReadinessInput = { today: moscowToday(now), nowMs: now.getTime(), traits, demand, history, errors };
+  const spend = week ? { week, config: engineConfig, aiProvider: catalogAiConfig().provider } : null;
+  const input: ReadinessInput = { today: moscowToday(now), nowMs: now.getTime(), traits, spend, demand, history, errors };
   return buildReadiness(input);
 }

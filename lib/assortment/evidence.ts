@@ -9,6 +9,7 @@
 import { plural } from "@/lib/warehouse/plural";
 import { cleanBadge, type ObservationLite } from "./signals";
 import { compactRu } from "./socialFeed";
+import { SOCIAL_OTHERS_NOTE } from "./stage6Sources";
 
 export type EvidenceGroup = "novelty" | "spread" | "retail";
 
@@ -127,7 +128,7 @@ const SOCIAL_LABEL = "Независимые публикации";
 /** Строка «Независимые публикации» по рилсам модели. */
 export function socialEvidenceRow(social: SocialEvidence): EvidenceRow {
   if (social.failed) return missing(SOCIAL_LABEL, "не загрузилось", `рилсы Instagram: ${social.failed}`);
-  if (social.outOfScope) return missing(SOCIAL_LABEL, "нет данных", "рилсы Instagram пока собираются только про Zara и Uniqlo");
+  if (social.outOfScope) return missing(SOCIAL_LABEL, "нет данных", `рилсы Instagram собираются только про Zara и Uniqlo; ${SOCIAL_OTHERS_NOTE}`);
   if (social.reels <= 0) return missing(SOCIAL_LABEL, "не найдено", "рилсов Instagram с номером этой модели не нашлось (Zara и Uniqlo, только женское)");
   const value = `${social.reels} ${plural(social.reels, "рилс", "рилса", "рилсов")} у ${social.authors} ${plural(social.authors, "автора", "авторов", "авторов")} · ${social.strong ? "сильный залёт" : "залетает"}${social.preliminaryOnly ? " (предварительно)" : ""}`;
   const detail = [
@@ -174,7 +175,7 @@ export function buildEvidence(observations: EvidenceObservation[], similarOtherB
   // прятать «нет данных» по соцсетям и сходству.
   {
     // Рилсы привязаны к модели — строка по ним; не передавали (снимок подборки) или таблиц нет — прежняя заглушка.
-    spread.push(social ? socialEvidenceRow(social) : missing(SOCIAL_LABEL, "нет данных", "соцсети пока не подключены"));
+    spread.push(social ? socialEvidenceRow(social) : missing(SOCIAL_LABEL, "нет данных", `рилсы Instagram сюда не подгружались; ${SOCIAL_OTHERS_NOTE}`));
     if (similarOtherBrands === null) {
       spread.push(missing("Похожие модели у других брендов", "не проверялось", "отпечаток фото ещё не посчитан"));
     } else if (similarOtherBrands === 0) {

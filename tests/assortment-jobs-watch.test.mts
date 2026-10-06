@@ -103,3 +103,37 @@ test("Ф1: метка причины остановки (`[stop:…]`) из ст
   assert.match(text, /ошибка: Polza: на счёте нет средств/);
   assert.doesNotMatch(text, /\[stop:/);
 });
+
+test("Ф2: «нет денег» у Bright Data — одна тревога на провайдера: запуск, сбор и рилсы с [stop:billing] дают один ключ и одну строку; новый 402 той же остановки — без повтора", () => {
+  const billing = "Bright Data: нет денег или аккаунт не активен (402): Customer is not active [stop:billing]";
+  const tuesday = [run("assortment-social", "error", 30, billing)];
+  const first = jobsAlertPlan(jobsFreshness(tuesday, NOW), []);
+  assert.equal(first.send, "stalled", "рилсы упёрлись в 402 — тревога сразу, не через три дня");
+  assert.equal(first.openKey, `${JOBS_ALERT_PREFIX}billing:brightdata`);
+  // Среда: запуск и сбор Bright Data — тоже 402. Остановка та же — сообщения нет.
+  const wednesday = [...tuesday, run("assortment-brightdata-trigger", "error", 7, billing), run("assortment-brightdata-collect", "error", 5, billing)];
+  const down = jobsFreshness(wednesday, NOW);
+  assert.deepEqual(down.stalled.map((j) => j.job).sort(), ["assortment-brightdata-collect", "assortment-brightdata-trigger", "assortment-social"]);
+  assert.equal(jobsAlertPlan(down, [first.openKey!]).send, null, "та же остановка провайдера — без потока сообщений");
+  const text = jobsStallTelegram(down);
+  assert.equal((text.match(/^• /gm) ?? []).length, 1, "одна строка на провайдера");
+  assert.match(text, /• Bright Data — нет денег у провайдера или аккаунт не активен \(402\) — платные запуски остановлены; задачи: /);
+  assert.doesNotMatch(text, /\[stop:/);
+  // Пополнили: следующий прогон без 402 — «снова работают».
+  const recovered = jobsFreshness([...wednesday, run("assortment-social", "ok", 1), run("assortment-brightdata-trigger", "ok", 1), run("assortment-brightdata-collect", "ok", 1)], NOW);
+  assert.equal(jobsAlertPlan(recovered, [first.openKey!]).send, "recovered");
+});
+
+test("Ф2: прочие сбои запуска и сбора Bright Data сторож задач не судит (за ними следит сторож источников) — только «нет денег»", () => {
+  const plain = Array.from({ length: 6 }, (_, i) => run("assortment-brightdata-collect", "error", i * 24, "S001: HTTP 500"));
+  assert.equal(jobsFreshness(plain, NOW).state, "ok");
+  const rule = WATCHED_JOBS.find((j) => j.job === "assortment-brightdata-trigger")!;
+  assert.deepEqual([rule.maxConsecutiveErrors, rule.maxSilenceDays, rule.billing], [null, null, "brightdata"]);
+  // Метка не в конце строки (часть текста ошибки) — не «нет денег».
+  assert.equal(jobsFreshness([run("assortment-brightdata-trigger", "error", 1, "[stop:billing] где-то в середине")], NOW).state, "ok");
+  // Имена задач — те, что пишет роут Bright Data в журнал.
+  const route = readFileSync(join(import.meta.dirname, "..", "app/api/sync/assortment-brightdata/route.ts"), "utf8");
+  assert.match(route, /const job = `assortment-brightdata-\$\{phase\}`;/);
+  for (const phase of ["trigger", "collect"]) assert.ok(WATCHED_JOB_NAMES.includes(`assortment-brightdata-${phase}`));
+  assert.match(route, /const \{ status, note \} = brightdataRunLog\(results\);/, "строка журнала — по правилу brightdataRunLog (метка [stop:billing])");
+});

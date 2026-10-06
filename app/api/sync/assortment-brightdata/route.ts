@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { hasBrightData } from "@/lib/assortment/brightdata";
-import { collectBrightData, requestZaraPhotos, triggerBrightData } from "@/lib/assortment/brightdataCrawl";
+import { brightdataRunLog, collectBrightData, requestZaraPhotos, triggerBrightData } from "@/lib/assortment/brightdataCrawl";
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
@@ -18,6 +18,11 @@ const BUDGET_MS = 240_000;
  * 11:30 МСК забирает готовые. Первый сбор — база, в ленту не пишет.
  * Ручной запуск одного источника вне его дня: `?phase=trigger&source=S001&force=1`.
  * Фото Zara из второго набора — сами после сбора Zara; вручную: `?phase=photos`.
+ *
+ * Деньги: перед каждой покупкой — общий потолок движка (ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD, $30 в неделю; Zara и Uniqlo по средам
+ * отказывают последними), расход пришедших записей — в assortment_ai_usage оценкой (записи × цена метода). «Нет денег» (402,
+ * «Customer is not active») — стоп одной причиной, оплаченные выборки ждут в очереди, в журнале метка `[stop:billing]`: по ней сторож
+ * задач шлёт одну тревогу.
  */
 export async function GET(request: NextRequest) {
   const authError = await checkCronAuth(request);
@@ -39,10 +44,9 @@ export async function GET(request: NextRequest) {
     const only = request.nextUrl.searchParams.get("source");
     const force = request.nextUrl.searchParams.get("force") === "1";
     const results = phase === "trigger" ? await triggerBrightData(db, { only, force }) : await collectBrightData(db, startedAt.getTime() + BUDGET_MS);
-    const failed = results.filter((r) => !r.ok);
+    const { status, note } = brightdataRunLog(results);
     const added = results.reduce((s, r) => s + (r.added ?? 0), 0);
-    const status = failed.length === 0 ? "ok" : failed.length < results.length ? "partial" : "error";
-    await writeSyncLog(job, status, phase === "collect" ? added : results.reduce((s, r) => s + (r.triggered ?? 0), 0), failed.length ? failed.map((r) => `${r.sourceId}: ${r.error}`).join("; ") : null, startedAt);
+    await writeSyncLog(job, status, phase === "collect" ? added : results.reduce((s, r) => s + (r.triggered ?? 0), 0), note, startedAt);
     return NextResponse.json({ ok: status !== "error", phase, results });
   } catch (error) {
     if (isMissingAssortmentSchema(error)) return NextResponse.json({ ok: true, skipped: "таблицы модуля не созданы" });

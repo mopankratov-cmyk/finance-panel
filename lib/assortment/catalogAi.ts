@@ -1,6 +1,7 @@
 import { ATTRIBUTE_FIELDS } from "./attributes";
 import { FIELD_HINTS, parseAiAttributes, type AiAttributeValue } from "./aiAttributes";
 import type { AssortmentDirection } from "./constants";
+import { ENGINE_KIND } from "./engineBudget";
 import { MIN_SOURCE_MODELS, normalizeTitle } from "./forms";
 import { isRuSource } from "./ruMarket";
 
@@ -17,7 +18,7 @@ import { isRuSource } from "./ruMarket";
  * ИИ пишет «не видно» и такие модели в долях не участвуют.
  */
 
-export const CATALOG_AI_KIND = "catalog_attributes";
+export const CATALOG_AI_KIND = ENGINE_KIND.catalogAi;
 /** Имя задачи крона разбора в журнале прогонов (sync_log): по нему полоска читает причину остановки, сторож — серию ошибок. */
 export const CATALOG_AI_JOB = "assortment-catalog-ai";
 /** Версия вопроса и словаря признаков: поменяли — модели можно разобрать заново. */
@@ -97,8 +98,9 @@ function nonNegative(value: string | undefined, fallback: number): number {
 /**
  * Настройки из окружения: модель, цена, недельный бюджет разбора каталога в $
  * (ASSORTMENT_CATALOG_AI_WEEKLY_BUDGET_USD, по умолчанию 20 из 30 на весь движок), потолок моделей
- * в сутки (1500 ≈ 12 прогонов крона по ≤ 120 моделей). Бюджет считает только этот сборщик; прочий расход на ИИ (признаки находок,
- * assortment-ai-attributes на основной модели панели) в учёт не входит.
+ * в сутки (1500 ≈ 12 прогонов крона по ≤ 120 моделей). Этот бюджет считает только сборщик каталога; весь расход движка (и старый
+ * разбор находок, и Bright Data, и рилсы) сведён в общий потолок ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD (engineBudget.ts), который
+ * проверяется вместе с ним — действует меньшее.
  */
 export function catalogAiConfig(env: Record<string, string | undefined> = process.env): CatalogAiConfig {
   const provider = pickProvider(env);
@@ -150,7 +152,7 @@ export function catalogModelId(config: Pick<CatalogAiConfig, "provider" | "model
  * Почему прогон разбора остановился или не начался. Крон дописывает метку `[stop:<причина>]` в конец строки журнала (sync_log.error —
  * единственное текстовое поле строки; новой колонки не заводим), полоска читает последнюю строку и называет причину словами.
  */
-export type CatalogStopReason = "no_key" | "no_price" | "disabled" | "auth" | "billing" | "rate_limit" | "config" | "errors" | "budget" | "daily_limit";
+export type CatalogStopReason = "no_key" | "no_price" | "disabled" | "auth" | "billing" | "rate_limit" | "config" | "errors" | "budget" | "daily_limit" | "engine_budget";
 
 export const STOP_REASON_WORDS: Record<CatalogStopReason, string> = {
   no_key: "нет ключа",
@@ -163,6 +165,7 @@ export const STOP_REASON_WORDS: Record<CatalogStopReason, string> = {
   errors: "системный сбой (не записался учёт расхода или четыре пачки подряд без единого разобранного фото)",
   budget: "упёрся в бюджет недели",
   daily_limit: "упёрся в потолок суток",
+  engine_budget: "упёрся в общий потолок движка (ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD): каталоги Zara и Uniqlo в приоритете, разбор по фото отказывает раньше них",
 };
 
 const STOP_TAG = /\s*\[stop:([a-z_]+)\]\s*$/;
@@ -180,11 +183,17 @@ export function parseStopTag(text: string | null | undefined): { reason: Catalog
 }
 
 /**
- * Текст ошибки строки журнала для экрана «Синхронизация» (`/api/sync-log`): у крона разбора — без метки `[stop:…]`. Метка нужна полоске
- * «На чём стоят цифры» (она читает журнал сама), человеку в журнале она лишняя — как и в Telegram (jobsWatch её тоже вырезает).
+ * Задачи, что дописывают метку `[stop:…]` в строку журнала: разбор по фото (причина остановки для полоски) и платные сборщики Bright Data
+ * и рилсов (`[stop:billing]` — нет денег, по ней сторож задач шлёт одну тревогу сразу). Имена — как в sync_log.
+ */
+export const STOP_TAGGED_JOBS: readonly string[] = [CATALOG_AI_JOB, "assortment-social", "assortment-brightdata-trigger", "assortment-brightdata-collect"];
+
+/**
+ * Текст ошибки строки журнала для экрана «Синхронизация» (`/api/sync-log`): у задач с меткой — без `[stop:…]`. Метка нужна полоске
+ * «На чём стоят цифры» и сторожу задач (они читают журнал сами), человеку в журнале она лишняя — как и в Telegram (jobsWatch её вырезает).
  */
 export function syncLogErrorText(job: string, error: string | null): string | null {
-  return job === CATALOG_AI_JOB ? parseStopTag(error).message : error;
+  return STOP_TAGGED_JOBS.includes(job) ? parseStopTag(error).message : error;
 }
 
 export function costUsd(usage: { inputTokens: number; outputTokens: number }, price: { in: number; out: number }): number {
@@ -200,24 +209,36 @@ export function estimatedCallUsd(price: { in: number; out: number }, outputToken
 }
 
 export interface Allowance {
-  /** Сколько моделей можно разобрать в этом прогоне — по бюджету недели, потолку суток и размеру прогона. */
+  /** Сколько моделей можно разобрать в этом прогоне — по бюджету недели, общему потолку движка, потолку суток и размеру прогона. */
   models: number;
-  /** run_cap — упёрлись только в размер одного прогона: следующий продолжит, это не нехватка бюджета. */
-  reason: "ok" | "budget" | "daily_limit" | "run_cap";
+  /**
+   * run_cap — упёрлись только в размер одного прогона: следующий продолжит, это не нехватка бюджета. engine_budget — свой бюджет
+   * недели ещё есть, но общий потолок движка (с резервом под каталоги) — нет.
+   */
+  reason: "ok" | "budget" | "daily_limit" | "run_cap" | "engine_budget";
+}
+
+/** Запас на один вызов для проверки остатка до ответа: у Polza ответ длиннее (рассуждения Gemini). */
+export function perCallReserveUsd(config: Pick<CatalogAiConfig, "price" | "provider">): number | null {
+  return config.price ? estimatedCallUsd(config.price, config.provider === "polza" ? 1500 : 600) : null;
 }
 
 /**
  * Сколько вызовов разрешено сейчас. Бюджет — по записанному расходу недели с
- * запасом на один вызов; суточный потолок — по числу вызовов за сегодня.
+ * запасом на один вызов; общий потолок движка — по остатку, который статье «разбор
+ * по фото» оставляют каталоги (engineRoomUsd, Infinity — не проверяем); суточный
+ * потолок — по числу вызовов за сегодня.
  */
-export function allowance(config: CatalogAiConfig, spentWeekUsd: number, callsToday: number, runCap: number): Allowance {
-  if (!config.price) return { models: 0, reason: "budget" };
-  const perCall = estimatedCallUsd(config.price, config.provider === "polza" ? 1500 : 600);
+export function allowance(config: CatalogAiConfig, spentWeekUsd: number, callsToday: number, runCap: number, engineRoomUsd = Number.POSITIVE_INFINITY): Allowance {
+  const perCall = perCallReserveUsd(config);
+  if (!perCall) return { models: 0, reason: "budget" };
   const byBudget = Math.floor(Math.max(0, config.weeklyBudgetUsd - spentWeekUsd) / perCall);
+  const byEngine = Number.isFinite(engineRoomUsd) ? Math.floor(Math.max(0, engineRoomUsd) / perCall) : Number.MAX_SAFE_INTEGER;
   const byDay = Math.max(0, config.dailyLimit - callsToday);
-  const models = Math.min(runCap, byBudget, byDay);
+  const models = Math.min(runCap, byBudget, byEngine, byDay);
   if (models > 0) return { models, reason: "ok" };
   if (byBudget <= 0) return { models: 0, reason: "budget" };
+  if (byEngine <= 0) return { models: 0, reason: "engine_budget" };
   if (byDay <= 0) return { models: 0, reason: "daily_limit" };
   return { models: 0, reason: "run_cap" };
 }
