@@ -59,7 +59,7 @@ async function queueOf(db: SupabaseClient, direction: AssortmentDirection, repor
 
 async function loadTraits(
   db: SupabaseClient, direction: AssortmentDirection, now: Date, traits: TraitsLoader, queue: QueueLoader, note: (message: string) => void,
-  engine: { week: EngineWeek | null; config: EngineBudgetConfig },
+  engine: { week: Promise<EngineWeek | null>; config: EngineBudgetConfig },
 ): Promise<TraitsFacts | null> {
   // Есть ли таблица результатов вообще: нет — блока нет (прячем, а не рисуем нули).
   const failed = await count(db, (q) => q.select("model_key", { count: "exact" }).eq("direction", direction).eq("status", "failed").limit(1));
@@ -136,7 +136,8 @@ async function loadTraits(
     : null;
   // Тем же правилом, что сборщик (allowance): остаток общего потолка движка после резерва под каталоги — на сколько вызовов.
   const perCall = perCallReserveUsd(config);
-  const engineCallsLeft = engine.week && perCall ? Math.floor(engineRoomUsd(engine.week, CATALOG_AI_KIND, engine.config) / perCall) : null;
+  const week = await engine.week;
+  const engineCallsLeft = week && perCall ? Math.floor(engineRoomUsd(week, CATALOG_AI_KIND, engine.config) / perCall) : null;
   return {
     enabled: config.enabled,
     keyConfigured: aiKeyConfigured(config.provider),
@@ -225,11 +226,13 @@ export async function loadReadiness(db: SupabaseClient, direction: AssortmentDir
       return null;
     }
   };
-  // Расход движка — одно чтение на полоску: строка «Расход недели по статьям» и остаток потолка у разбора по фото считаются по нему.
+  // Расход движка — одно чтение на полоску, параллельно с остальными (не лишний круг к базе перед ними): строка «Расход недели по
+  // статьям» и остаток потолка у разбора по фото считаются по нему. Сбой чтения — строка «не загрузилось», а не тихий ноль.
   const engineConfig = engineBudgetConfig();
-  const week = await guard("расход движка", () => loadEngineWeek(db, now));
-  const [traits, demand, history] = await Promise.all([
-    guard("признаки по фото", () => loadTraits(db, direction, now, traitsLoader, queueLoader, (message) => errors.push(message), { week, config: engineConfig })),
+  const weekRead = guard("расход движка", () => loadEngineWeek(db, now));
+  const [week, traits, demand, history] = await Promise.all([
+    weekRead,
+    guard("признаки по фото", () => loadTraits(db, direction, now, traitsLoader, queueLoader, (message) => errors.push(message), { week: weekRead, config: engineConfig })),
     guard("спрос на WB", () => loadDemand(db, direction, now)),
     guard("история каталогов", () => loadHistory(db, direction, now)),
   ]);

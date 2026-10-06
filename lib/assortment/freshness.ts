@@ -13,6 +13,7 @@
  * «один простой — одно сообщение, восстановление — второе» проверяется тестом.
  */
 
+import { BRIGHTDATA_BILLING_WORDS } from "./brightdata";
 import { hasScheduledCollector, staleAfterMs } from "./collectorSchedule";
 import { RU_SHOPS } from "./ruShops";
 import { ZALANDO_SOURCES } from "./zalando";
@@ -51,6 +52,11 @@ export interface AssortmentFreshness {
   state: "ok" | "stalled";
   stalled: SourceFreshness[];
   sources: SourceFreshness[];
+  /**
+   * Молчат из-за денег Bright Data (402), о чём уже говорит одна тревога сторожа задач (`billing:brightdata`): в свою тревогу их не
+   * берём — иначе одна остановка по деньгам дала бы второе сообщение через двое суток, когда истекут пороги источников.
+   */
+  billingCovered?: SourceFreshness[];
 }
 
 const DAY_MS = 24 * 3600 * 1000;
@@ -109,26 +115,47 @@ export function clipFreshness(pulse: ClipPulse, nowMs = Date.now()): SourceFresh
     : { ...base, state: "ok", lastError: null };
 }
 
-export function assortmentFreshness(facts: SourceFact[], nowMs = Date.now(), clip: ClipPulse | null = null): AssortmentFreshness {
+/** Источник молчит из-за денег Bright Data: в его last_error — слова остановки «нет денег» (запуск, сбор или покупка фото). */
+export function isBrightDataBillingSilence(lastError: string | null): boolean {
+  return Boolean(lastError && lastError.includes(BRIGHTDATA_BILLING_WORDS));
+}
+
+/**
+ * `brightdataBillingAlarmed` — сторож задач уже держит тревогу «нет денег» Bright Data: источники, молчащие по этой причине, в свою
+ * тревогу не берём (см. billingCovered). Без неё (тревоги задач нет или сторож задач не прочитался) — судим их как всех.
+ */
+export function assortmentFreshness(facts: SourceFact[], nowMs = Date.now(), clip: ClipPulse | null = null, options: { brightdataBillingAlarmed?: boolean } = {}): AssortmentFreshness {
   const sources = [
     ...facts.filter((f) => isWatched(f.sourceId, f)).map((f) => sourceFreshness(f, nowMs)),
     ...(clip ? [clipFreshness(clip, nowMs)] : []),
   ].sort((a, b) => a.sourceId.localeCompare(b.sourceId));
-  const stalled = sources.filter((s) => s.state === "stalled");
-  return { state: stalled.length ? "stalled" : "ok", stalled, sources };
+  const silent = sources.filter((s) => s.state === "stalled");
+  const covered = options.brightdataBillingAlarmed ? silent.filter((s) => isBrightDataBillingSilence(s.lastError)) : [];
+  const stalled = silent.filter((s) => !covered.includes(s));
+  return { state: stalled.length ? "stalled" : "ok", stalled, sources, ...(covered.length ? { billingCovered: covered } : {}) };
 }
 
-/** Чем молчание отличается для ключа тревоги: всё, что приносит mini, — одна причина («mini»), остальное — источником. */
-export function alertIdentity(sourceId: string): string {
-  return MINI_SOURCE_IDS.has(sourceId) ? "mini" : sourceId;
+/**
+ * Простой самой Mac mini, а не поломка одного сайта: молчат отпечатки фото (CLIP) или не меньше двух источников mini. Один сайт «через
+ * mini» (сменил разметку) — его собственная поломка: иначе его долгая тревога «mini» заглушила бы сообщение о настоящем простое машины.
+ */
+export function miniDown(stalled: ReadonlyArray<Pick<SourceFreshness, "sourceId">>): boolean {
+  const mini = stalled.filter((s) => MINI_SOURCE_IDS.has(s.sourceId));
+  return mini.some((s) => s.sourceId === CLIP_SOURCE_ID) || mini.length >= 2;
+}
+
+/** Чем молчание отличается для ключа тревоги: при простое mini всё, что она приносит, — одна причина («mini»), остальное — источником. */
+export function alertIdentity(sourceId: string, machineDown: boolean): string {
+  return machineDown && MINI_SOURCE_IDS.has(sourceId) ? "mini" : sourceId;
 }
 
 /**
  * Ключ тревоги = префикс + набор молчаний. Пока набор тот же —
  * повторов нет; замолчал ещё один (или заговорил один из них) — новый ключ и
- * новое сообщение. Всё, что приносит Mac mini, — одно молчание: при простое mini
+ * новое сообщение. При простое Mac mini всё, что она приносит, — одно молчание:
  * магазины РФ, Zalando и отпечатки замолкают по очереди (у каждого свой порог),
  * и раньше каждый новый молчун давал новое сообщение — за один простой поток.
+ * Один молчащий сайт «через mini» — своя причина (его sourceId), не «mini».
  */
 export const ASSORTMENT_ALERT_PREFIX = "assortment-collectors-stalled:";
 
@@ -141,7 +168,8 @@ export interface AssortmentAlertPlan {
 export function assortmentAlertPlan(freshness: AssortmentFreshness, openKeys: string[]): AssortmentAlertPlan {
   const ours = openKeys.filter((key) => key.startsWith(ASSORTMENT_ALERT_PREFIX));
   if (freshness.state === "stalled") {
-    const openKey = `${ASSORTMENT_ALERT_PREFIX}${[...new Set(freshness.stalled.map((s) => alertIdentity(s.sourceId)))].sort().join(",")}`;
+    const down = miniDown(freshness.stalled);
+    const openKey = `${ASSORTMENT_ALERT_PREFIX}${[...new Set(freshness.stalled.map((s) => alertIdentity(s.sourceId, down)))].sort().join(",")}`;
     return {
       send: ours.includes(openKey) ? null : "stalled",
       openKey,
@@ -187,8 +215,9 @@ function miniLine(list: SourceFreshness[]): string {
 }
 
 export function assortmentStallTelegram(freshness: AssortmentFreshness): string {
-  const mini = freshness.stalled.filter((s) => MINI_SOURCE_IDS.has(s.sourceId));
-  const lines = [...(mini.length ? [miniLine(mini)] : []), ...freshness.stalled.filter((s) => !MINI_SOURCE_IDS.has(s.sourceId)).map(line)];
+  // Одной строкой «Mac mini» — только при простое машины; один молчащий сайт через mini — своей строкой, как облачный.
+  const mini = miniDown(freshness.stalled) ? freshness.stalled.filter((s) => MINI_SOURCE_IDS.has(s.sourceId)) : [];
+  const lines = [...(mini.length ? [miniLine(mini)] : []), ...freshness.stalled.filter((s) => !mini.includes(s)).map(line)];
   const listed = lines.slice(0, MAX_LISTED).join("\n");
   const more = lines.length > MAX_LISTED ? `\n…и ещё ${lines.length - MAX_LISTED}` : "";
   return `🚨 <b>Сбор ассортимента: молчат источники (${freshness.stalled.length})</b>\n${listed}${more}\n${ASSORTMENT_STALL_ACTION}`;

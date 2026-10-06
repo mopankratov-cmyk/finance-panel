@@ -30,6 +30,29 @@ export async function loadEngineWeek(db: SupabaseClient, now: Date | number = ne
   return engineWeek((data ?? []) as Array<{ kind: string; cost_usd: number | string | null }>);
 }
 
+/** Сколько раз платный запуск перечитывает учёт, прежде чем отложить покупку: один таймаут в среду стоил бы недели Zara и Uniqlo. */
+export const ENGINE_READ_ATTEMPTS = 3;
+
+/**
+ * Неделя учёта для решения о платном запуске: сбой чтения (таймаут) повторяется ENGINE_READ_ATTEMPTS раз с паузой; не прочиталось и
+ * так — исключение с числом попыток (платить вслепую нельзя). Нет таблицы — null сразу, как у loadEngineWeek.
+ */
+export async function loadEngineWeekForSpend(db: SupabaseClient, now: Date | number = new Date(), options: { attempts?: number; delayMs?: number } = {}): Promise<EngineWeek | null> {
+  const attempts = Math.max(1, options.attempts ?? ENGINE_READ_ATTEMPTS);
+  const delayMs = Math.max(0, options.delayMs ?? 1000);
+  let last: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0 && delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs * attempt));
+    try {
+      return await loadEngineWeek(db, now);
+    } catch (error) {
+      last = error;
+    }
+  }
+  const message = last instanceof Error ? last.message : "учёт расхода движка не прочитался";
+  throw new Error(`${message} (попыток: ${attempts})`);
+}
+
 export interface EngineUsageAdd {
   /** Единицы оплаты: вызовы ИИ, записи выборки, запросы анлокера. */
   calls: number;

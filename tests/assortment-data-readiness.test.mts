@@ -726,3 +726,39 @@ test("Ф2: чтение базы — расход движка за 7 дней (
   const rc = await loadReadiness(capped.db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => report({ analyzed: 1, queue: { queued: 5, exhausted: 0, unstable: 0 } })) as never });
   assert.match(lines(rc, "traits"), /Сборщик стоит — упёрся в общий потолок движка/, "остаток потолка у полоски — тем же правилом, что у сборщика");
 });
+
+// --- Ф2 по ревью ---
+
+test("Ф2 по ревью: расход движка не прочитался — строка «не загрузилось» на полоске, блока расхода нет (не тихий ноль); остальные части читаются", async () => {
+  // Падает только чтение недели движка (без фильтра по статье); свой бюджет разбора по фото читается.
+  const { db } = fakeDb({ assortment_model_attributes: [attr("ok")], assortment_ai_usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 40, cost_usd: 0.07 }] }, {
+    failIf: (table, filters) => table === "assortment_ai_usage" && !filters.some((f) => f.startsWith("eq:kind")),
+  });
+  const r = await loadReadiness(db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => report({ analyzed: 1, queue: { queued: 5, exhausted: 0, unstable: 0 } })) as never });
+  assert.ok(r.errors.some((e) => /^расход движка \(учёт расхода движка не прочитался: таймаут запроса\)$/.test(e)), r.errors.join("; "));
+  assert.equal(r.groups.some((g) => g.key === "spend"), false);
+  assert.ok(r.groups.some((g) => g.key === "traits"), "признаки по фото — на месте");
+});
+
+test("Ф2 по ревью: расход движка читается параллельно с остальными частями полоски, а не до них (лишний круг к базе)", async () => {
+  const inner = fakeDb({ assortment_model_attributes: [attr("ok")], assortment_ai_usage: [{ day: "2026-10-06", kind: "catalog_attributes", calls: 40, cost_usd: 0.07 }] });
+  const order: string[] = [];
+  let release: () => void = () => undefined;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const db = {
+    from: (table: string) => {
+      order.push(table);
+      const q = (inner.db as unknown as { from: (t: string) => Record<string, unknown> }).from(table);
+      if (table !== "assortment_ai_usage") return q;
+      const then = q.then as (a: unknown, b?: unknown) => Promise<unknown>;
+      q.then = (resolve: unknown, reject: unknown) => gate.then(() => then(resolve, reject));
+      return q;
+    },
+  } as never;
+  const pending = loadReadiness(db, "bags", new Date("2026-10-06T10:00:00Z"), { traits: (async () => report({ analyzed: 1, queue: { queued: 5, exhausted: 0, unstable: 0 } })) as never });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(order.includes("assortment_model_attributes"), "признаки читаются, пока учёт расхода ещё не ответил");
+  release();
+  const r = await pending;
+  assert.match(lines(r, "spend"), /Итого \$0,07 из \$30,00/);
+});

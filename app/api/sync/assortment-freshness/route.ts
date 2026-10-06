@@ -14,8 +14,8 @@ import {
 import { isMissingColumnError } from "@/lib/assortment/errors";
 import { loadClipPulse } from "@/lib/assortment/freshnessStore";
 import {
-  jobsAlertPlan, jobsFreshness, jobsRecoveredTelegram, jobsStallMessage, jobsStallTelegram, JOBS_ALERT_PREFIX, JOBS_STALL_ACTION, WATCHED_JOB_NAMES,
-  type JobRun,
+  brightdataBillingAlarm, jobsAlertPlan, jobsFreshness, jobsRecoveredTelegram, jobsStallMessage, jobsStallTelegram, JOBS_ALERT_PREFIX, JOBS_STALL_ACTION, WATCHED_JOB_NAMES,
+  type JobRun, type JobsFreshness,
 } from "@/lib/assortment/jobsWatch";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
@@ -44,15 +44,27 @@ const JOB = "assortment-freshness";
  */
 /**
  * Второй сторож — служебные задачи движка (недельные срезы спроса WB, признаки по
- * фото): они пишут в свои таблицы, а об отказах — только в sync_log. Свои тревоги и
- * свой ключ; сбой этого сторожа основной (по источникам) не ломает.
+ * фото, рилсы, покупка и сбор Bright Data): они пишут в свои таблицы, а об отказах —
+ * только в sync_log. Свои тревоги и свой ключ; сбой этого сторожа основной (по
+ * источникам) не ломает. Журнал читается до сторожа источников: источники, молчащие
+ * из-за денег Bright Data, уже названы тревогой задач — второе сообщение о той же
+ * остановке не нужно.
  */
-async function watchJobs(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, now: Date, dryRun: boolean) {
+async function readJobs(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, now: Date): Promise<{ freshness: JobsFreshness } | { error: string }> {
   try {
     const since = new Date(now.getTime() - 30 * 24 * 3600 * 1000).toISOString();
-    const { data, error } = await db.from("sync_log").select("job,status,error,started_at").in("job", WATCHED_JOB_NAMES).gte("started_at", since).order("started_at", { ascending: false }).limit(1000);
+    const { data, error } = await db.from("sync_log").select("job,status,error,started_at,rows_affected").in("job", WATCHED_JOB_NAMES).gte("started_at", since).order("started_at", { ascending: false }).limit(1000);
     if (error) throw new Error(error.message);
-    const freshness = jobsFreshness((data ?? []) as JobRun[], now.getTime());
+    return { freshness: jobsFreshness((data ?? []) as JobRun[], now.getTime()) };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "журнал задач не прочитался" };
+  }
+}
+
+async function watchJobs(db: NonNullable<ReturnType<typeof getSupabaseAdmin>>, now: Date, dryRun: boolean, read: Awaited<ReturnType<typeof readJobs>>) {
+  try {
+    if ("error" in read) throw new Error(read.error);
+    const { freshness } = read;
     const open = await db.from("finance_alerts").select("alert_key").like("alert_key", `${JOBS_ALERT_PREFIX}%`).eq("status", "open");
     if (open.error) throw new Error(open.error.message);
     const plan = jobsAlertPlan(freshness, (open.data ?? []).map((row) => String(row.alert_key)));
@@ -95,6 +107,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error }, { status: 502 });
   };
 
+  const jobs = await readJobs(db, startedAt);
+  // Сторож задач держит тревогу «нет денег» Bright Data — источники, молчащие по ней, второй тревогой не дублируем.
+  const brightdataBillingAlarmed = "freshness" in jobs && brightdataBillingAlarm(jobs.freshness);
   let freshness: AssortmentFreshness;
   try {
     const run = (columns: string) => db.from("assortment_sources").select(columns);
@@ -111,7 +126,7 @@ export async function GET(request: NextRequest) {
       accessStatus: typeof row.access_status === "string" ? row.access_status : null,
       accessNote: typeof row.access_note === "string" ? row.access_note : null,
     }));
-    freshness = assortmentFreshness(facts, startedAt.getTime(), await loadClipPulse(db));
+    freshness = assortmentFreshness(facts, startedAt.getTime(), await loadClipPulse(db), { brightdataBillingAlarmed });
   } catch (error) {
     return fail(error instanceof Error ? error.message : "Свежесть сборщиков не прочиталась");
   }
@@ -119,7 +134,7 @@ export async function GET(request: NextRequest) {
   const openResult = await db.from("finance_alerts").select("alert_key").like("alert_key", `${ASSORTMENT_ALERT_PREFIX}%`).eq("status", "open");
   if (openResult.error) return fail(`Не прочитались открытые тревоги: ${openResult.error.message}`);
   const plan = assortmentAlertPlan(freshness, (openResult.data ?? []).map((row) => String(row.alert_key)));
-  if (dryRun) return NextResponse.json({ ok: true, dryRun: true, freshness, plan, jobs: await watchJobs(db, startedAt, true) });
+  if (dryRun) return NextResponse.json({ ok: true, dryRun: true, freshness, plan, jobs: await watchJobs(db, startedAt, true, jobs) });
 
   try {
     if (plan.send === "stalled") await sendTelegramMessage(assortmentStallTelegram(freshness));
@@ -148,6 +163,6 @@ export async function GET(request: NextRequest) {
   // Молчание — ещё и красная строка в журнале синхронизаций.
   const stalled = freshness.state === "stalled";
   await writeSyncLog(JOB, stalled ? "error" : "ok", freshness.stalled.length, stalled ? assortmentStallMessage(freshness) : null, startedAt);
-  const jobs = await watchJobs(db, startedAt, false);
-  return NextResponse.json({ ok: true, freshness, sent: plan.send, jobs });
+  const jobsResult = await watchJobs(db, startedAt, false, jobs);
+  return NextResponse.json({ ok: true, freshness, sent: plan.send, jobs: jobsResult });
 }

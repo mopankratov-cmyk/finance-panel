@@ -72,7 +72,7 @@ test("Docs §14, «Сторож в Telegram»: статусы крона раз�
 test("Docs §14: PR #1528 и #1530 влиты — утверждения стоят без пометок «действует после слияния», а код, о котором они, в ветке есть", () => {
   const has = (path: string, probe: RegExp) => existsSync(join(root, path)) && probe.test(read(path));
   const claims: Array<{ fragment: string; present: boolean }> = [
-    { fragment: "платный запуск не заказывает пробу", present: has("lib/assortment/brightdataCrawl.ts", /pending\.some\(\(p\) => purchaseKey\(p\) === key\)/) },
+    { fragment: "платный запуск не заказывает пробу", present: has("lib/assortment/brightdataCrawl.ts", /pending\.some\(\(p\) => purchaseKey\(p\) === key && boughtRecently\(p\.triggeredAt, nowMs\)\)/) },
     { fragment: "разбор HTML линейный (`scanDocument`)", present: has("lib/assortment/extract.ts", /scanDocument/) },
     { fragment: "ячейки CSV с `= + - @` получают апостроф", present: has("lib/assortment/collections.ts", /\[=\+\\-@/) },
     { fragment: "ключи проверяются `hasOwnKey`", present: has("lib/assortment/own.ts", /hasOwnKey/) },

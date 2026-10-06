@@ -118,8 +118,9 @@ test("Сообщение: названия с & экранируются, спи
   assert.match(text, /^🚨 <b>Сбор ассортимента: молчат источники \(2\)<\/b>/);
   assert.ok(text.includes("H&amp;M — последний успешный сбор"), "& экранирован");
   assert.ok(text.includes("12 сут назад"));
-  // Zalando приносит Mac mini: строкой mini (Ф2), ошибка и название по-прежнему экранированы.
-  assert.ok(text.includes("Mac mini — молчат 1: Pull&amp;Bear (Zalando) (успешных не было; HTTP 403 &lt;captcha&gt;)"), "ошибка экранирована");
+  // Zalando приносит Mac mini, но молчит один он — это его поломка, а не простой mini: своей строкой; ошибка и название экранированы.
+  assert.ok(text.includes("• Pull&amp;Bear (Zalando) — успешных сборов не было; ошибка: HTTP 403 &lt;captcha&gt;"), "ошибка экранирована");
+  assert.doesNotMatch(text, /Mac mini — молчат/, "один сайт через mini — не «Mac mini молчит»");
   assert.match(text, /Откройте «Разработка ассортимента → Источники»/);
   assert.ok(!/<(?!\/?b>)/.test(text), "в тексте нет посторонней разметки");
 

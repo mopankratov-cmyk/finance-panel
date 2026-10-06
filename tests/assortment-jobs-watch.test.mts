@@ -119,8 +119,9 @@ test("Ф2: «нет денег» у Bright Data — одна тревога на
   assert.equal((text.match(/^• /gm) ?? []).length, 1, "одна строка на провайдера");
   assert.match(text, /• Bright Data — нет денег у провайдера или аккаунт не активен \(402\) — платные запуски остановлены; задачи: /);
   assert.doesNotMatch(text, /\[stop:/);
-  // Пополнили: следующий прогон без 402 — «снова работают».
-  const recovered = jobsFreshness([...wednesday, run("assortment-social", "ok", 1), run("assortment-brightdata-trigger", "ok", 1), run("assortment-brightdata-collect", "ok", 1)], NOW);
+  // Пополнили: покупка прошла (запуск купил выборки, рилсы сделали замеры) — «снова работают».
+  const paid = (job: string, rows: number) => ({ ...run(job, "ok", 1), rows_affected: rows });
+  const recovered = jobsFreshness([...wednesday, paid("assortment-social", 12), paid("assortment-brightdata-trigger", 4), run("assortment-brightdata-collect", "ok", 1)], NOW);
   assert.equal(jobsAlertPlan(recovered, [first.openKey!]).send, "recovered");
 });
 
@@ -136,4 +137,15 @@ test("Ф2: прочие сбои запуска и сбора Bright Data сто
   assert.match(route, /const job = `assortment-brightdata-\$\{phase\}`;/);
   for (const phase of ["trigger", "collect"]) assert.ok(WATCHED_JOB_NAMES.includes(`assortment-brightdata-${phase}`));
   assert.match(route, /const \{ status, note \} = brightdataRunLog\(results\);/, "строка журнала — по правилу brightdataRunLog (метка [stop:billing])");
+});
+
+test("Ф2 по ревью: тревога «нет денег» держится до удачной платной покупки — прогон без работы (рилсы выключены, покупать было нечего) и сбор, забравший оплаченное, её не снимают", () => {
+  const billing = "Bright Data: нет денег или аккаунт не активен (402) — платные покупки остановлены (S001) [stop:billing]";
+  const stop: JobRun = { ...run("assortment-brightdata-trigger", "error", 30, billing), rows_affected: 0 };
+  const state = (later: JobRun[]) => jobsFreshness([stop, ...later], NOW).state;
+  assert.equal(state([{ ...run("assortment-social", "ok", 20, "выключено (ASSORTMENT_SOCIAL=off)"), rows_affected: 0 }]), "stalled", "рилсы выключены — ни одного платного запроса");
+  assert.equal(state([{ ...run("assortment-brightdata-trigger", "ok", 20), rows_affected: 0 }]), "stalled", "запуск без покупок (всё уже куплено) — деньги не доказаны");
+  assert.equal(state([{ ...run("assortment-brightdata-collect", "ok", 20), rows_affected: 12 }]), "stalled", "сбор скачивает уже оплаченное — это проходит и без баланса");
+  assert.equal(state([{ ...run("assortment-social", "partial", 20), rows_affected: 8 }]), "ok", "рилсы сделали платные запросы — деньги есть");
+  assert.equal(state([{ ...run("assortment-catalog-ai", "ok", 20), rows_affected: 50 }]), "stalled", "деньги другого провайдера (ИИ) Bright Data не доказывают");
 });

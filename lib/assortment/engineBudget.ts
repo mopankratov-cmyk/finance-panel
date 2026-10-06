@@ -12,8 +12,9 @@ import { COLLECTION_WEEKDAYS } from "./collectorSchedule";
  * Потолок проверяется ДО платного запуска. Каталоги в приоритете: у каждой статьи свой «ярус», и ярус может тратить только то, что
  * осталось после невыбранной за неделю нормы ярусов выше. Ярус 0 — готовые наборы Zara и Uniqlo по средам (отказывают последними),
  * ярус 1 — остальные покупки Bright Data (части разделов, ASOS, H&M, фото Zara), ярус 2 — рилсы и разбор по фото (отказывают первыми).
- * У соцсетей ещё и своя строка в потолке (ASSORTMENT_SOCIAL_WEEKLY_USD). Это учёт расхода движка в $, а не товарная экономика: цен
- * товаров здесь нет.
+ * У соцсетей ещё и своя строка в потолке (ASSORTMENT_SOCIAL_WEEKLY_USD) — единственный недельный потолок рилсов: потолок запросов недели
+ * (ASSORTMENT_SOCIAL_WEEKLY_REQUESTS) — только явное ограничение сверху, переведённое в ту же строку. Это учёт расхода движка в $, а не
+ * товарная экономика: цен товаров здесь нет.
  */
 
 export const ENGINE_WEEKLY_BUDGET_DEFAULT_USD = 30;
@@ -110,7 +111,10 @@ export function catalogWeeklyNeedUsd(targets: readonly CollectionTarget[] = BRIG
 export interface EngineBudgetConfig {
   /** Общий потолок движка, $ за 7 суток (ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD, по умолчанию 30). */
   weeklyUsd: number;
-  /** Строка соцсетей в потолке (ASSORTMENT_SOCIAL_WEEKLY_USD, по умолчанию 3); потолок запросов рилсов действует вместе с ней — меньшее. */
+  /**
+   * Действующая строка соцсетей, $ за 7 суток: ASSORTMENT_SOCIAL_WEEKLY_USD (по умолчанию 3 ≈ 2 000 запросов), а если владелец явно
+   * задал ASSORTMENT_SOCIAL_WEEKLY_REQUESTS и он строже — он, переведённый в $ по цене запроса. Один потолок, а не два.
+   */
   socialWeeklyUsd: number;
 }
 
@@ -122,10 +126,19 @@ function nonNegative(value: string | undefined, fallback: number): number {
 }
 
 export function engineBudgetConfig(env: Record<string, string | undefined> = process.env): EngineBudgetConfig {
+  const socialUsd = nonNegative(env.ASSORTMENT_SOCIAL_WEEKLY_USD, SOCIAL_WEEKLY_DEFAULT_USD);
+  // Потолок запросов недели — только явный: не задан — строка соцсетей в $ решает одна.
+  const requests = nonNegative(env.ASSORTMENT_SOCIAL_WEEKLY_REQUESTS, Number.POSITIVE_INFINITY);
+  const byRequests = Number.isFinite(requests) ? round5((Math.floor(requests) * BRIGHTDATA_USD_PER_1000.unlocker) / 1000) : Number.POSITIVE_INFINITY;
   return {
     weeklyUsd: nonNegative(env.ASSORTMENT_ENGINE_WEEKLY_BUDGET_USD, ENGINE_WEEKLY_BUDGET_DEFAULT_USD),
-    socialWeeklyUsd: nonNegative(env.ASSORTMENT_SOCIAL_WEEKLY_USD, SOCIAL_WEEKLY_DEFAULT_USD),
+    socialWeeklyUsd: Math.min(socialUsd, byRequests),
   };
+}
+
+/** Сколько запросов Web Unlocker в неделю даёт строка соцсетей (оценка по цене запроса). */
+export function socialWeeklyRequests(config: Pick<EngineBudgetConfig, "socialWeeklyUsd">): number {
+  return Math.floor((config.socialWeeklyUsd * 1000) / BRIGHTDATA_USD_PER_1000.unlocker + 1e-6);
 }
 
 /** Расход движка за 7 суток по статьям. */
@@ -170,6 +183,13 @@ export function engineRoomUsd(week: EngineWeek, kind: string, config: EngineBudg
   let room = config.weeklyUsd - week.total - engineReserveUsd(week, kindTier(kind), need);
   if (kind === ENGINE_KIND.social) room = Math.min(room, config.socialWeeklyUsd - (week.byKind[kind] ?? 0));
   return Math.max(0, round5(room));
+}
+
+/** Остаток рилсов и во что он упирается: в строку соцсетей (своя недельная норма) или в общий потолок (резерв под каталоги). */
+export function socialRoomUsd(week: EngineWeek, config: EngineBudgetConfig, need: Record<string, number> = catalogWeeklyNeedUsd()): { usd: number; by: "social_line" | "engine" } {
+  const general = Math.max(0, round5(config.weeklyUsd - week.total - engineReserveUsd(week, kindTier(ENGINE_KIND.social), need)));
+  const line = Math.max(0, round5(config.socialWeeklyUsd - (week.byKind[ENGINE_KIND.social] ?? 0)));
+  return line <= general ? { usd: line, by: "social_line" } : { usd: general, by: "engine" };
 }
 
 const usd = (n: number) => `$${n.toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;

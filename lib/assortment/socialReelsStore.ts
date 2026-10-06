@@ -6,7 +6,7 @@ import { googleSearchUrl, isUnlockerStop, type UnlockerFormat, type UnlockerResu
 import { rowsByIds } from "./byIds";
 import { thumbUrl } from "./catalog";
 import type { AssortmentDirection } from "./constants";
-import { ENGINE_KIND, engineBudgetConfig, engineRoomUsd, type EngineBudgetConfig } from "./engineBudget";
+import { ENGINE_KIND, engineBudgetConfig, socialRoomUsd, type EngineBudgetConfig } from "./engineBudget";
 import { loadEngineWeek } from "./engineBudgetStore";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
 import {
@@ -733,10 +733,11 @@ export interface SocialRunSummary {
   weekRequestsBefore: number | null;
   allowed: number;
   /**
-   * Во что упирается разрешённое число запросов: run — потолок прогона, week_requests — потолок запросов недели, engine — общий
-   * потолок движка (рилсы отказывают первыми — резерв под каталоги) или строка соцсетей ASSORTMENT_SOCIAL_WEEKLY_USD.
+   * Во что упирается разрешённое число запросов: run — потолок прогона, social_line — недельная строка соцсетей
+   * (ASSORTMENT_SOCIAL_WEEKLY_USD; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS сведён в неё же), engine — общий потолок движка (рилсы
+   * отказывают первыми — резерв под каталоги).
    */
-  capBy: "run" | "week_requests" | "engine" | null;
+  capBy: "run" | "social_line" | "engine" | null;
   /** Остаток общего потолка движка для рилсов на старте, $ (оценка); null — учёт движка не прочитан. */
   engineRoomUsd: number | null;
   /** Запросов, отложенных под замер и базу авторов: поиск их не трогает. */
@@ -868,15 +869,14 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
   const week = await loadWeekRequests(db, nowMs);
   if (week == null) return { ...summary, skipped: "нет таблицы учёта расхода assortment_ai_usage (миграция 202610050005) — платные запросы не начинаем", skippedBecause: "no_usage" };
   summary.weekRequestsBefore = week;
-  // Общий потолок движка: рилсы отказывают первыми (им остаётся то, что не отложено под каталоги), и у соцсетей своя строка
-  // ASSORTMENT_SOCIAL_WEEKLY_USD. Потолок запросов недели — тот же счётчик учёта; действует меньшее. Учёт не прочитался — не платим вслепую.
+  // Недельный потолок рилсов один — строка соцсетей в общем потолке движка (ASSORTMENT_SOCIAL_WEEKLY_USD; явный потолок запросов недели
+  // сведён в неё же), и рилсы отказывают первыми: им остаётся то, что не отложено под каталоги. Учёт не прочитался — не платим вслепую.
   const engineWeekNow = await loadEngineWeek(db, nowMs);
-  const engineRoom = engineWeekNow ? engineRoomUsd(engineWeekNow, SOCIAL_USAGE_KIND, options.engine ?? engineBudgetConfig()) : null;
-  summary.engineRoomUsd = engineRoom;
+  const room = engineWeekNow ? socialRoomUsd(engineWeekNow, options.engine ?? engineBudgetConfig()) : null;
+  summary.engineRoomUsd = room?.usd ?? null;
   const caps: Array<[NonNullable<SocialRunSummary["capBy"]>, number]> = [
     ["run", config.maxRequestsPerRun],
-    ["week_requests", config.weeklyRequests - week],
-    ...(engineRoom != null ? [["engine", Math.floor(engineRoom / COST_PER_REQUEST_USD + 1e-6)] as [NonNullable<SocialRunSummary["capBy"]>, number]] : []),
+    ...(room ? [[room.by, Math.floor(room.usd / COST_PER_REQUEST_USD + 1e-6)] as [NonNullable<SocialRunSummary["capBy"]>, number]] : []),
   ];
   const binding = caps.reduce((a, b) => (b[1] < a[1] ? b : a));
   summary.allowed = Math.max(0, binding[1]);
@@ -937,7 +937,9 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       summary.stoppedBy = "budget";
       summary.stopMessage = summary.capBy === "engine"
         ? `упёрлись в общий потолок движка (остаток для рилсов ≈$${(summary.engineRoomUsd ?? 0).toFixed(2)}, оценка): соцсети отказывают первыми, каталоги Zara и Uniqlo в приоритете`
-        : summary.allowed === 0 ? "исчерпан потолок запросов недели" : "достигнут потолок запросов прогона или недели";
+        : summary.capBy === "social_line"
+          ? `${summary.allowed === 0 ? "строка соцсетей недели выбрана" : "упёрлись в строку соцсетей недели"} (ASSORTMENT_SOCIAL_WEEKLY_USD, остаток ≈$${(summary.engineRoomUsd ?? 0).toFixed(2)}, оценка)`
+          : "достигнут потолок запросов прогона";
       return null;
     }
     if (summary.requests >= stepCap) {

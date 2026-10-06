@@ -27,6 +27,12 @@ export function isBrightDataBilling(error: unknown): boolean {
   return BILLING_TEXT.test(error instanceof Error ? error.message : String(error ?? ""));
 }
 
+/**
+ * Слова остановки «нет денег» в last_error источника и строке журнала: по ним сторож источников узнаёт, что источник молчит из-за денег
+ * Bright Data (об этом уже сказал сторож задач одной тревогой), а не из-за поломки сборщика.
+ */
+export const BRIGHTDATA_BILLING_WORDS = "нет денег или аккаунт не активен (402)";
+
 export function hasBrightData(): boolean {
   return Boolean(process.env.BRIGHTDATA_API_TOKEN);
 }

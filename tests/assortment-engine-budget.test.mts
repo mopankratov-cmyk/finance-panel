@@ -21,7 +21,9 @@ import {
 import { loadClipPulse } from "../lib/assortment/freshnessStore.ts";
 import { loadFormModelsInfo } from "../lib/assortment/formsStore.ts";
 import { COST_PER_REQUEST_USD } from "../lib/assortment/socialReels.ts";
-import { STAGE6_AWAITING_OWNER, STAGE6_CONNECTED } from "../lib/assortment/stage6Sources.ts";
+import { brightdataBillingAlarm, jobsAlertPlan, jobsFreshness, type JobRun } from "../lib/assortment/jobsWatch.ts";
+import { loadAssortmentSources } from "../lib/assortment/sources.ts";
+import { STAGE6_AWAITING_NOTE, STAGE6_AWAITING_OWNER, STAGE6_CONNECTED, STAGE6_SWITCHED_OFF_NOTE } from "../lib/assortment/stage6Sources.ts";
 import { SourcesList } from "../components/assortment/SourcesList.tsx";
 
 /**
@@ -132,6 +134,8 @@ function memoryDb(tables: Record<string, Row[]>, opts: { missing?: string[]; fai
         select: () => { if (op === "update") returning = true; return q; },
         eq: (c: string, v: unknown) => { filters.push((r) => r[c] === v); return q; },
         gte: (c: string, v: unknown) => { filters.push((r) => r[c] != null && String(r[c]) >= String(v)); return q; },
+        gt: (c: string, v: unknown) => { filters.push((r) => r[c] != null && Number(r[c]) > Number(v)); return q; },
+        contains: (c: string, vs: unknown[]) => { filters.push((r) => Array.isArray(r[c]) && vs.every((v) => (r[c] as unknown[]).includes(v))); return q; },
         in: (c: string, vs: unknown[]) => { filters.push((r) => vs.includes(r[c])); return q; },
         is: (c: string, v: unknown) => { filters.push((r) => (r[c] ?? null) === v); return q; },
         not: (c: string, operator: string, v: unknown) => { assert.equal(`${operator} ${v}`, "is null"); filters.push((r) => r[c] != null); return q; },
@@ -211,7 +215,6 @@ test("Этап 6: S067, S069–S083 — «Не подключено: ждёт р
   assert.match(html, /Не подключено: ждёт решения владельца/);
   const sources = read("lib/assortment/sources.ts");
   assert.doesNotMatch(sources, /\.update\(|\.upsert\(|\.insert\(/, "загрузчик паспорта только читает");
-  assert.match(sources, /shown === "not_connected"\) return \{ \.\.\.declared, accessStatus: shown \}/, "«в паспорте записано: доступ не проверен» рядом не повторяем");
   assert.equal(parseAccessStatus("untested"), "untested");
 });
 
@@ -222,7 +225,8 @@ const fact = (sourceId: string, over: Partial<SourceFact> = {}): SourceFact => (
 test("Сторож mini: всё, что приносит Mac mini (магазины РФ через mini, Zalando, отпечатки CLIP), — одна тревога за один простой: источники замолкают по очереди, сообщение одно", () => {
   for (const id of ["S131", "S132", "S133", "S134", "S136", "S137", "S138", "S139", "S140", CLIP_SOURCE_ID]) assert.ok(MINI_SOURCE_IDS.has(id), id);
   for (const id of ["S130", "S135", "S001", "S014"]) assert.equal(MINI_SOURCE_IDS.has(id), false, `${id} — не mini (облако)`);
-  assert.equal(alertIdentity("S131"), "mini");
+  assert.equal(alertIdentity("S131", true), "mini", "простой mini — одна причина");
+  assert.equal(alertIdentity("S131", false), "S131", "один сайт через mini — своя причина");
   // День 1: молчит Zalando (порог 5,5 сут) и CLIP; день 3: ещё befree и Sela — набор молчунов другой, а тревога та же.
   const clipDown = { lastEmbeddingAt: ago(3 * DAY), oldestWaitingAt: ago(2 * DAY) };
   const day1 = assortmentFreshness([fact("S138", { lastSuccessAt: ago(6 * DAY) }), fact("S014")], NOW, clipDown);
@@ -262,7 +266,7 @@ test("Пульс CLIP из базы: последний отпечаток (и �
   assert.deepEqual(await loadClipPulse(memoryDb({ assortment_media_embeddings: [], assortment_embedding_queue: [] })), { lastEmbeddingAt: null, oldestWaitingAt: null });
   assert.equal(await loadClipPulse(memoryDb({}, { missing: ["assortment_embedding_queue"] })), null);
   const route = read("app/api/sync/assortment-freshness/route.ts");
-  assert.match(route, /assortmentFreshness\(facts, startedAt\.getTime\(\), await loadClipPulse\(db\)\)/);
+  assert.match(route, /assortmentFreshness\(facts, startedAt\.getTime\(\), await loadClipPulse\(db\), \{ brightdataBillingAlarmed \}\)/);
 });
 
 // --- хвосты аудита ---
@@ -304,4 +308,168 @@ test("Документация §14 называет Ф2: переменные �
     /`brightdata:zara \| zara_chaqueta \| zara_photos \| uniqlo \| uniqlo_collab \| asos \| hm`/, /`reference_ai` — старый разбор находок/,
     /один ключ `billing:brightdata`, без потока сообщений/, /ключ тревоги у них общий \(`mini`\)/, /S067 и S069–S083 — «Не подключено: ждёт решения владельца»/,
   ]) assert.match(docs, probe);
+});
+
+// --- Ф2 по ревью ---
+
+/** Паспорт Этапа 6, как его засеяла миграция этапа 0 (подписи — дословно из seed). */
+const seedRow = (source_id: string, name: string, access_note: string, over: Row = {}): Row => ({
+  source_id, name, source_group: "Соцсети и образы", categories: ["jackets", "bags"], region: null, priority: "P0", adapter_type: "C2 Social", access_status: "untested", access_note,
+  last_success_at: null, last_attempt_at: null, last_error: null, ...over,
+});
+const STAGE6_SEED = [
+  seedRow("S067", "Pinterest Pins", "Кандидат; доступ не проверен"),
+  seedRow("S068", "Instagram Reels", "Официальная коллекция найдена; операции требуют пилота"),
+  seedRow("S069", "TikTok", "Документация проверена; ключ не тестировался"),
+  seedRow("S078", "LTK", "Кандидат; доступ не проверен"),
+  seedRow("S083", "Яндекс Wordstat", "Документация проверена; ключ не тестировался"),
+  seedRow("S082", "Baidu Index", "Кандидат; доступ не проверен", { access_status: "disabled", access_note: "Отключён владельцем" }),
+];
+const socialRun = (status: string, rows: number | null, hoursAgo: number, error: string | null = null): Row => ({ job: "assortment-social", status, rows_affected: rows, error, started_at: ago(hoursAgo * HOUR) });
+const loadSources = (syncLog: Row[], over: { socialEnabled?: boolean } = {}) =>
+  loadAssortmentSources(null, { db: memoryDb({ assortment_sources: STAGE6_SEED.map((r) => ({ ...r })), sync_log: syncLog }), now: NOW, socialEnabled: over.socialEnabled ?? true });
+
+test("Ф2 по ревью: Этап 6 через загрузчик паспорта — у S067, S069–S083 вместо записи паспорта («Кандидат; доступ не проверен») подпись «ждёт решения владельца»; у S068 нет «В паспорте записано: доступ не проверен»", async () => {
+  const result = await loadSources([socialRun("ok", 14, 20)]);
+  assert.ok(result.ok);
+  const byId = Object.fromEntries(result.sources.map((src) => [src.sourceId, src]));
+  for (const id of ["S067", "S069", "S078", "S083"]) {
+    assert.deepEqual([byId[id].accessStatus, byId[id].accessNote, byId[id].declaredAccessStatus], ["not_connected", STAGE6_AWAITING_NOTE, undefined], id);
+  }
+  assert.deepEqual([byId.S082.accessStatus, byId.S082.accessNote], ["disabled", "Отключён владельцем"], "отключённый владельцем — как записано");
+  assert.deepEqual([byId.S068.accessStatus, byId.S068.declaredAccessStatus, byId.S068.accessNote], ["auto_verified", undefined, STAGE6_CONNECTED.S068.note]);
+  const html = renderToStaticMarkup(createElement(SourcesList, { sources: result.sources }));
+  assert.doesNotMatch(html, /доступ не проверен|ключ не тестировался|В паспорте записано/i, "doneWhen: ни у одной соцстроки нет «Доступ не проверен»");
+  assert.match(html, /Не подключено: ждёт решения владельца/);
+});
+
+test("Ф2 по ревью: пульс S068 — только прогон крона рилсов, который действительно собирал: выключенный крон (ASSORTMENT_SOCIAL=off пишет «ok» с нулём), прогон без запросов и прогон с ошибкой — не «Автосбор проверен»; выключен — «Отключён»", async () => {
+  const status = async (log: Row[], over: { socialEnabled?: boolean } = {}) => {
+    const result = await loadSources(log, over);
+    assert.ok(result.ok);
+    return result.sources.find((src) => src.sourceId === "S068")!;
+  };
+  assert.equal((await status([socialRun("ok", 0, 2, "выключено (ASSORTMENT_SOCIAL=off)")])).accessStatus, "partial", "строка выключенного крона — не пульс");
+  assert.equal((await status([socialRun("partial", 0, 2, "упёрлись в общий потолок движка")])).accessStatus, "partial", "потолок не дал ни одного запроса — не пульс");
+  assert.equal((await status([socialRun("error", 7, 2, "вёрстка Instagram изменилась")])).accessStatus, "partial", "прогон с ошибкой — не пульс");
+  assert.equal((await status([socialRun("ok", 0, 2), socialRun("partial", 5, 30)])).accessStatus, "auto_verified", "последний прогон с работой — 30 часов назад");
+  assert.equal((await status([socialRun("ok", 5, 70)])).accessStatus, "partial", "крон молчит дольше двух с половиной суток");
+  const off = await status([socialRun("ok", 12, 2)], { socialEnabled: false });
+  assert.deepEqual([off.accessStatus, off.accessNote], ["disabled", STAGE6_SWITCHED_OFF_NOTE]);
+});
+
+test("Ф2 по ревью: пульс Этапа 6 читается вместе с паспортом, а не после него (лишний круг к базе)", async () => {
+  const order: string[] = [];
+  const inner = memoryDb({ assortment_sources: STAGE6_SEED.map((r) => ({ ...r })), sync_log: [socialRun("ok", 3, 2)] }) as unknown as { from: (t: string) => Record<string, unknown> };
+  let releasePassport: () => void = () => undefined;
+  const passportGate = new Promise<void>((resolve) => { releasePassport = resolve; });
+  const db = {
+    from: (table: string) => {
+      order.push(`from:${table}`);
+      const q = inner.from(table);
+      if (table !== "assortment_sources") return q;
+      const thenable: Record<string, unknown> = { ...q };
+      thenable.select = () => thenable;
+      thenable.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => passportGate.then(() => (q.then as (a: unknown, b: unknown) => Promise<unknown>)(resolve, reject));
+      return thenable;
+    },
+  } as never;
+  const pending = loadAssortmentSources(null, { db, now: NOW, socialEnabled: true });
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.ok(order.includes("from:sync_log"), "журнал рилсов запрошен, пока паспорт ещё читается");
+  releasePassport();
+  const result = await pending;
+  assert.ok(result.ok);
+  assert.equal(result.sources.find((src) => src.sourceId === "S068")!.accessStatus, "auto_verified");
+});
+
+test("Ф2 по ревью: сторож mini — долгая поломка одного сайта «через mini» не глушит тревогу о следующем простое самой mini", () => {
+  const MINI = ["S131", "S132", "S133", "S134", "S136", "S137", "S138", "S139", "S140"];
+  // befree (S136) сменил разметку: mini жива, молчит один сайт — тревога по его коду, строкой сайта, а не «Mac mini».
+  const one = assortmentFreshness([...MINI.map((id) => fact(id, id === "S136" ? { lastSuccessAt: ago(6 * DAY), lastError: "0 карточек" } : {})), fact("S014")], NOW, { lastEmbeddingAt: ago(HOUR), oldestWaitingAt: null });
+  const first = assortmentAlertPlan(one, []);
+  assert.deepEqual([first.send, first.openKey], ["stalled", `${ASSORTMENT_ALERT_PREFIX}S136`]);
+  assert.doesNotMatch(assortmentStallTelegram(one), /Mac mini — молчат/);
+  // Через неделю mini выключилась: молчат все магазины РФ, Zalando и отпечатки — это новая причина и новое сообщение.
+  const down = assortmentFreshness([...MINI.map((id) => fact(id, { lastSuccessAt: ago(7 * DAY) })), fact("S014")], NOW, { lastEmbeddingAt: ago(6 * DAY), oldestWaitingAt: ago(5 * DAY) });
+  const second = assortmentAlertPlan(down, [first.openKey!]);
+  assert.deepEqual([second.send, second.openKey, second.resolveKeys], ["stalled", `${ASSORTMENT_ALERT_PREFIX}mini`, [first.openKey]]);
+  assert.match(assortmentStallTelegram(down), /• Mac mini — молчат 10:/);
+  // Два сайта mini без CLIP (очередь пуста) — тоже простой машины.
+  const two = assortmentFreshness([fact("S131", { lastSuccessAt: ago(6 * DAY) }), fact("S132", { lastSuccessAt: ago(6 * DAY) })], NOW, { lastEmbeddingAt: ago(DAY), oldestWaitingAt: null });
+  assert.equal(assortmentAlertPlan(two, []).openKey, `${ASSORTMENT_ALERT_PREFIX}mini`);
+});
+
+test("Ф2 по ревью: одна остановка Bright Data по деньгам — одно сообщение: источники, молчащие из-за неё, сторож источников не называет, пока держится тревога задач", () => {
+  const why = "Bright Data: не куплено: Bright Data — нет денег или аккаунт не активен (402): Customer is not active";
+  const facts = (day: string): SourceFact[] => [
+    { sourceId: "S001", name: "Zara", lastAttemptAt: `${day}T05:00:00Z`, lastSuccessAt: "2026-10-07T06:30:00Z", lastError: why },
+    { sourceId: "S003", name: "Uniqlo", lastAttemptAt: `${day}T05:00:00Z`, lastSuccessAt: "2026-10-07T06:30:00Z", lastError: why },
+    { sourceId: "S046", name: "ASOS", lastAttemptAt: `${day}T05:00:00Z`, lastSuccessAt: "2026-10-10T06:30:00Z", lastError: why },
+    { sourceId: "S007", name: "H&M", lastAttemptAt: `${day}T05:00:00Z`, lastSuccessAt: "2026-10-10T06:30:00Z", lastError: why },
+  ];
+  const runs: JobRun[] = [{ job: "assortment-brightdata-trigger", status: "error", error: `${why} — платные покупки остановлены (S046, S001, S003, S007) [stop:billing]`, started_at: "2026-10-14T05:00:00Z", rows_affected: 0 }];
+  const messages: string[] = [];
+  let jobsOpen: string[] = [];
+  let sourcesOpen: string[] = [];
+  // Как роут сторожа: журнал задач — до сторожа источников.
+  const day = (iso: string, log: JobRun[]) => {
+    const now = Date.parse(`${iso}T09:30:00Z`);
+    const jobs = jobsFreshness(log, now);
+    const sources = assortmentFreshness(facts(iso), now, null, { brightdataBillingAlarmed: brightdataBillingAlarm(jobs) });
+    const sp = assortmentAlertPlan(sources, sourcesOpen);
+    if (sp.send) messages.push(`${iso} sources:${sp.send}`);
+    sourcesOpen = sp.openKey ? [sp.openKey] : [];
+    const jp = jobsAlertPlan(jobs, jobsOpen);
+    if (jp.send) messages.push(`${iso} jobs:${jp.send}`);
+    jobsOpen = jp.openKey ? [jp.openKey] : [];
+    return sources;
+  };
+  for (const iso of ["2026-10-14", "2026-10-15", "2026-10-16", "2026-10-17"]) {
+    const sources = day(iso, runs);
+    if (iso === "2026-10-17") assert.deepEqual((sources.billingCovered ?? []).map((s) => s.sourceId), ["S001", "S003", "S007", "S046"], "молчат по деньгам — названы тревогой задач");
+  }
+  assert.deepEqual(messages, ["2026-10-14 jobs:stalled"], "одна причина — одно сообщение");
+  // Тревогу задач сняла удачная покупка, а источники всё ещё молчат с той же записью — судим их как всех: сообщение будет.
+  const paidAgain: JobRun = { job: "assortment-social", status: "ok", error: null, started_at: "2026-10-18T06:20:00Z", rows_affected: 9 };
+  day("2026-10-18", [...runs, paidAgain]);
+  assert.deepEqual(messages.slice(1), ["2026-10-18 sources:stalled", "2026-10-18 jobs:recovered"]);
+});
+
+test("Ф2 по ревью: метка [stop:billing] — остановка, только когда прогон закончился ошибкой: в тексте удачного прогона она ничего не значит", () => {
+  const run = (status: JobRun["status"]): JobRun => ({ job: "assortment-brightdata-collect", status, error: "Bright Data: нет денег или аккаунт не активен (402) [stop:billing]", started_at: ago(HOUR), rows_affected: 0 });
+  assert.equal(jobsFreshness([run("error")], NOW).state, "stalled");
+  assert.equal(jobsFreshness([run("partial")], NOW).state, "ok");
+  assert.equal(jobsFreshness([run("ok")], NOW).state, "ok");
+});
+
+test("Ф2 по ревью: недельный потолок рилсов один — строка соцсетей; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS сводится в неё же, и полоска показывает действующую строку", () => {
+  assert.equal(engineBudgetConfig({}).socialWeeklyUsd, 3);
+  assert.equal(engineBudgetConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "1000" }).socialWeeklyUsd, 1.5, "1 000 запросов строже $3");
+  assert.equal(engineBudgetConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "4000", ASSORTMENT_SOCIAL_WEEKLY_USD: "4" }).socialWeeklyUsd, 4, "4 000 запросов ($6) шире строки $4 — строка");
+  assert.equal(engineBudgetConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "" }).socialWeeklyUsd, 3, "пусто — не задан");
+  assert.equal(engineRoomUsd(engineWeek([{ kind: "brightdata_social", cost_usd: 1 }]), ENGINE_KIND.social, engineBudgetConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "1000" })), 0.5);
+});
+
+test("Ф2 по ревью: запись расхода — сравнение-и-замена: параллельный писатель между чтением и записью не затирается", async () => {
+  const tables: Record<string, Row[]> = { assortment_ai_usage: [{ day: "2026-10-07", kind: "brightdata:zara", calls: 100, failed_calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0.25, updated_at: "2026-10-07T05:00:00.000Z" }] };
+  const inner = memoryDb(tables) as unknown as { from: (t: string) => Record<string, (...a: unknown[]) => unknown> };
+  let raced = false;
+  const db = {
+    from: (table: string) => {
+      const q = inner.from(table);
+      const update = q.update;
+      q.update = (values: unknown) => {
+        // Другой прогон успел прибавить свои 40 записей между нашим чтением и записью.
+        if (!raced) {
+          raced = true;
+          Object.assign(tables.assortment_ai_usage[0], { calls: 140, cost_usd: 0.35, updated_at: "2026-10-07T05:00:01.000Z" });
+        }
+        return update(values);
+      };
+      return q;
+    },
+  } as never;
+  await addEngineUsage(db, NOW, "brightdata:zara", { calls: 20, costUsd: 0.05 });
+  assert.deepEqual([tables.assortment_ai_usage[0].calls, tables.assortment_ai_usage[0].cost_usd], [160, 0.4], "100 + 40 (соседний прогон) + 20 (наш)");
 });
