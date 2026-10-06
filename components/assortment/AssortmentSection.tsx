@@ -15,8 +15,10 @@ import { plural } from "@/lib/warehouse/plural";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
 import { AddFindingModal } from "./AddFindingModal";
 import { DEFAULT_CATALOG_FILTERS, isFeedView, type CatalogFilters, type SectionView } from "@/lib/assortment/catalog";
-import { initialNav, navDismissRejected, navOpenWholeCatalog, navSetFilters, navSetView, navShowModels, urlForView, type CatalogNav } from "@/lib/assortment/catalogNav";
+import { initialNav, navAfterMenu, navDismissRejected, navOpenWholeCatalog, navSetFilters, navSetView, navShowModels, urlForView, type CatalogNav } from "@/lib/assortment/catalogNav";
+import { isSectionMenuTarget, onMenuNavigate } from "@/lib/assortment/menuSignal";
 import { CatalogView } from "./CatalogView";
+import { ChangesView } from "./ChangesView";
 import { FormsView } from "./FormsView";
 import { FeedGrid } from "./FeedGrid";
 import { SocialView } from "./SocialView";
@@ -122,6 +124,27 @@ export function AssortmentSection({
       cancelled = true;
     };
   }, [direction]);
+  // «Изменения» (появилось / пропало): вкладка — когда хотя бы у одного полного источника «появилось/пропало» уже наблюдение.
+  const [changesVisible, setChangesVisible] = useState(false);
+  const [changesCountFailed, setChangesCountFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/assortment-development/changes?direction=${direction}&count=1`)
+      .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => null) }))
+      .then(({ ok, body }) => {
+        if (cancelled) return;
+        if (ok && typeof body?.visible === "boolean") {
+          setChangesVisible(body.visible);
+          setChangesCountFailed(false);
+        } else setChangesCountFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setChangesCountFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [direction]);
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -129,6 +152,15 @@ export function AssortmentSection({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const reload = useCallback(() => setReloadKey((k) => k + 1), []);
+  // Пункт меню своего раздела: начать заново — «Новинки», фильтры по умолчанию, без выбранного для сравнения. Адрес чистым сделает
+  // сам переход по ссылке меню (сигнал приходит до него).
+  const sectionHref = `${ASSORTMENT_BASE_PATH}/${direction}`;
+  useEffect(() => onMenuNavigate(window, (href) => {
+    if (!isSectionMenuTarget(href, sectionHref)) return;
+    setNav((cur) => navAfterMenu(cur, href, sectionHref));
+    setSelected(new Set());
+    setActionError(null);
+  }), [sectionHref]);
 
   const toggle = (id: string) => setSelected((prev) => {
     const next = new Set(prev);
@@ -203,6 +235,8 @@ export function AssortmentSection({
     ...(catalogTotal || catalogCountFailed || view === "forms" ? [{ id: "forms" as const, label: "Формы" }] : []),
     // «Залетает» — когда сбор рилсов уже что-то записал; число не посчиталось — вкладка без числа (сбой назовёт сама вкладка).
     ...(social?.collected || socialCountFailed || view === "social" ? [{ id: "social" as const, label: social?.total ? `Залетает · ${social.total.toLocaleString("ru-RU")}` : "Залетает" }] : []),
+    // «Изменения» — когда «появилось/пропало» где-то уже наблюдение (и после 28 дней, при «динамике», тоже); журнала нет — вкладки нет.
+    ...(changesVisible || changesCountFailed || view === "changes" ? [{ id: "changes" as const, label: "Изменения" }] : []),
   ];
 
   return (
@@ -253,6 +287,7 @@ export function AssortmentSection({
         {view === "catalog" && <CatalogView key={nav.key} direction={direction} initialFilters={nav.filters} onFiltersChange={onCatalogFilters} rejectedForm={nav.rejected} onDismissRejected={onDismissRejected} />}
         {view === "forms" && <FormsView direction={direction} onShowModels={showModels} />}
         {view === "social" && <SocialView key={direction} direction={direction} />}
+        {view === "changes" && <ChangesView key={direction} direction={direction} />}
         {isFeedView(view) && shownFeed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
         {isFeedView(view) && shownFeed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{shownFeed.message}</div>

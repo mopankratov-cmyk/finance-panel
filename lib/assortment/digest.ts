@@ -7,6 +7,8 @@
  * молча. Цен нет (граница ТЗ).
  */
 
+import { dm } from "./appearance";
+import type { DigestChanges, DigestChangesBlock } from "./appearanceStore";
 import type { AssortmentDirection } from "./constants";
 import { DIRECTION_LABEL } from "./constants";
 import { partsCaveat, type HistoryStatus } from "./observationState";
@@ -41,6 +43,8 @@ export interface DigestFacts {
   history?: Array<{ name: string; status: HistoryStatus; parts?: string[] }> | null;
   /** «Залетает в соцсетях»: новые «залёты» недели (до пяти); null или нет — раздела нет (таблиц нет или ничего не залетело). */
   social?: SocialDigest | null;
+  /** «Появилось / пропало» по полным прогонам: за неделю, в первое воскресенье месяца — и за месяц; null или нет — ни один источник не готов. */
+  changes?: DigestChanges | null;
   baseUrl: string;
 }
 
@@ -104,6 +108,54 @@ function socialLines(social: DigestFacts["social"], base: string): string[] {
   return lines;
 }
 
+const MAX_CHANGE_SOURCES = 6;
+
+/** Строки одного периода раздела «Появилось / пропало»: по разделам — итог, источники с датами прогонов, примеры появившегося. */
+function changesBlockLines(block: DigestChangesBlock, base: string): string[] {
+  const lines: string[] = [];
+  for (const direction of ["bags", "jackets"] as const) {
+    const d = block.directions[direction];
+    if (!d) {
+      lines.push(`${DIRECTION_LABEL[direction]}: сравнивать пока не по чему — история полных прогонов копится или за период не было полного прогона.`);
+      continue;
+    }
+    const appeared = d.sources.reduce((n, s) => n + s.appeared, 0);
+    const disappeared = d.sources.reduce((n, s) => n + s.disappeared, 0);
+    const first = d.sources.reduce((n, s) => n + s.firstInWindow, 0);
+    if (appeared + disappeared + first === 0) {
+      lines.push(`${DIRECTION_LABEL[direction]}: ничего не появилось и не пропало (${telegramEscape(d.quiet.join(", "))}).`);
+      continue;
+    }
+    const totals = [`появилось ${appeared}`, `пропало ${disappeared}`, first > 0 ? `впервые в верху выдачи ${first}` : null].filter(Boolean).join(", ");
+    lines.push(`${DIRECTION_LABEL[direction]}: ${totals}.`);
+    for (const s of d.sources.slice(0, MAX_CHANGE_SOURCES)) {
+      const parts = [s.appeared ? `+${s.appeared}` : null, s.disappeared ? `−${s.disappeared}` : null, s.firstInWindow ? `впервые в верху выдачи ${s.firstInWindow}` : null].filter(Boolean).join(" / ");
+      const runs = s.fromOn && s.toOn ? ` (прогоны ${dm(s.fromOn)} → ${dm(s.toOn)})` : "";
+      lines.push(`• ${telegramEscape(s.name)}: ${parts}${runs}${s.mass ? " — массовая смена, похоже на смену обхода" : ""}`);
+    }
+    if (d.sources.length > MAX_CHANGE_SOURCES) lines.push(`• и ещё ${d.sources.length - MAX_CHANGE_SOURCES}`);
+    if (d.examples.length > 0) lines.push(`Новое: ${telegramEscape(d.examples.join("; "))}.`);
+  }
+  lines.push(`Смотреть: ${(["bags", "jackets"] as const).map((d) => `<a href="${base}/assortment-development/${d}?view=changes">${DIRECTION_LABEL[d]}</a>`).join(" · ")}`);
+  return lines;
+}
+
+/**
+ * Раздел «Появилось / пропало» (по полным прогонам): за неделю; в первое воскресенье месяца — ещё и выжимка за месяц. Даты прогонов
+ * — у каждого источника. Не посчитался — строка «не загрузилось», а не молчание.
+ */
+function changesLines(changes: DigestFacts["changes"], base: string): string[] {
+  if (!changes) return [];
+  if (changes.error || !changes.week) return ["", "<b>Появилось / пропало</b>", `⚠️ Не загрузилось: ${telegramEscape(changes.error ?? "нет данных")}`];
+  const lines = ["", "<b>Появилось / пропало за неделю</b>", `По полным прогонам обхода. «Пропало» — модели нет в ${changes.disappearRuns} полных прогонах подряд, а до них была.`];
+  if (changes.season) lines.push(telegramEscape(changes.season));
+  lines.push(...changesBlockLines(changes.week, base));
+  if (changes.month) {
+    lines.push("", `<b>За месяц: ${dm(changes.month.periodStart)}–${dm(changes.month.today)}</b>`, ...changesBlockLines(changes.month, base).slice(0, -1));
+  }
+  return lines;
+}
+
 export function digestMessage(facts: DigestFacts): string {
   const base = facts.baseUrl.replace(/\/+$/, "");
   const lines = [`🧵 <b>Разработка ассортимента — неделя ${day(facts.from)}–${day(facts.to)}</b>`];
@@ -138,6 +190,8 @@ export function digestMessage(facts: DigestFacts): string {
       lines.push(`• <a href="${base}/assortment-development/collections/${c.id}">${telegramEscape(c.title)}</a> — ${telegramEscape(c.progress)}, ${telegramEscape(c.status)}${c.status === "сохранена" ? ` v${c.version}` : ""}`);
     }
   }
+  lines.push(...changesLines(facts.changes, base));
+  if (facts.changes?.week && Object.values(facts.changes.week.directions).some((d) => d && d.sources.length > 0)) anything = true;
   lines.push(...socialLines(facts.social, base));
   if (facts.social?.items.length) anything = true;
   if (facts.crawl && (facts.crawl.ok.length > 0 || facts.crawl.failing.length > 0)) {

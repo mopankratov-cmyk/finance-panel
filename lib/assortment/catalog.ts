@@ -279,20 +279,20 @@ export function rejectedFormFrom(params: PageParams, direction: AssortmentDirect
   return /^[a-z0-9_-]{1,40}$/i.test(raw) ? raw : "";
 }
 
-/** Вид раздела: лента находок, «Каталоги брендов», «Формы» (разбор каталога по формам) или «Залетает» (рилсы Instagram). */
-export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms" | "social";
+/** Вид раздела: лента находок, «Каталоги брендов», «Формы» (разбор каталога по формам), «Залетает» (рилсы Instagram) или «Изменения» (появилось / пропало). */
+export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms" | "social" | "changes";
 
 export function sectionViewFrom(params: PageParams): SectionView {
   const view = one(params, "view");
-  return view === "catalog" || view === "forms" || view === "social" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
+  return view === "catalog" || view === "forms" || view === "social" || view === "changes" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
 }
 
 /**
- * Вкладка — лента находок (грузит /references?view=…). Каталог, «Формы» и «Залетает» — свои экраны: запрос ленты для них роут молча
- * превратил бы в «Новинки», и под чужим названием показалось бы «Находок пока нет».
+ * Вкладка — лента находок (грузит /references?view=…). Каталог, «Формы», «Залетает» и «Изменения» — свои экраны: запрос ленты для них
+ * роут молча превратил бы в «Новинки», и под чужим названием показалось бы «Находок пока нет».
  */
 export function isFeedView(view: SectionView): boolean {
-  return view !== "catalog" && view !== "forms" && view !== "social";
+  return view !== "catalog" && view !== "forms" && view !== "social" && view !== "changes";
 }
 
 /**

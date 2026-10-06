@@ -3,6 +3,7 @@
 import { Home, Database, Layers, Shirt, ShoppingBag, UserRound } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { announceMenuNavigate } from "@/lib/assortment/menuSignal";
 import { ASSORTMENT_BASE_PATH } from "@/lib/assortment/constants";
 
 type IconComponent = React.ComponentType<{ className?: string }>;
@@ -32,6 +33,7 @@ function isActive(pathname: string, href: string) {
  * Как у WB, Ozon и «Склада»: слева светлое меню только этого модуля вместо
  * навигации всей панели (решение владельца 01.10.2026). Вход в модуль —
  * плитка на главной. На телефоне меню — строка вкладок под шапкой.
+ * Пункт меню уже открытого раздела начинает его заново («Новинки», фильтры по умолчанию) — сигналом разделу (menuSignal).
  */
 export function AssortmentShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname() ?? "";
@@ -50,6 +52,8 @@ export function AssortmentShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                // Нажатие пункта уже открытого раздела сбрасывает его вкладку и фильтры (сервер этого не видит: вкладка — в replaceState).
+                onNavigate={() => announceMenuNavigate(window, item.href)}
                 aria-current={active ? "page" : undefined}
                 className={`relative mx-2 flex h-9 items-center gap-3 rounded-[9px] px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
                   active ? "bg-violet-50 text-violet-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"
@@ -84,6 +88,8 @@ export function AssortmentShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={item.href}
                 href={item.href}
+                // Нажатие пункта уже открытого раздела сбрасывает его вкладку и фильтры (сервер этого не видит: вкладка — в replaceState).
+                onNavigate={() => announceMenuNavigate(window, item.href)}
                 aria-current={active ? "page" : undefined}
                 className={`flex h-11 shrink-0 items-center rounded-full px-4 text-sm ${
                   active ? "bg-violet-700 font-medium text-white" : "bg-slate-100 text-slate-600"

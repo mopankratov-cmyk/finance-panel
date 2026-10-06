@@ -1,5 +1,6 @@
 import { plural } from "@/lib/warehouse/plural";
 import { STOP_REASON_WORDS, type CatalogStopReason, type OutsideBySource } from "./catalogAi";
+import { changesReadiness } from "./appearance";
 import { APPEARANCE_MIN_SPAN_DAYS, DYNAMICS_MIN_DAYS, DYNAMICS_MIN_SPAN_DAYS, partsCaveat, type HistoryStatus } from "./observationState";
 
 /**
@@ -109,6 +110,8 @@ export interface HistorySource {
   /** Первый день с прогоном любого покрытия и первый с ПОЛНЫМ прогоном (от него считается «появилось/пропало»). */
   firstDay: string | null;
   firstFullDay: string | null;
+  /** Дней с полными прогонами: «пропало» на вкладке «Изменения» — от DISAPPEAR_FULL_RUNS + 1. */
+  fullDays?: number;
   /** Части разделов источника (Zara CHAQUETA, коллаборации Uniqlo): их модели в полный прогон не входят. */
   parts?: string[];
 }
@@ -363,6 +366,8 @@ function historyGroup(h: HistoryFacts, today: string): ReadinessGroup | null {
   const withFull = building.filter((s) => s.firstFullDay);
   const stuck = withFull.filter((s) => daysBetween(s.firstFullDay as string, today) > APPEARANCE_MIN_SPAN_DAYS + STUCK_GRACE_DAYS);
   const waiting = building.filter((s) => !s.firstFullDay).map((s) => s.name);
+  // Вкладка «Изменения»: по каким источникам «появилось» и «пропало» уже честные, где пока только «появилось», где копится — с датой.
+  lines.push(...changesReadiness(sources, today, new Set(stuck.map((s) => s.name))));
   if (building.length > 0) {
     lines.push({ kind: "факт", text: `История копится: ${building.map((s) => s.name).join(", ")}.` });
     // Сроки — по каждому источнику от ЕГО первого полного прогона; прошедшая дата значит «после ближайшего полного прогона», а не «давно».
