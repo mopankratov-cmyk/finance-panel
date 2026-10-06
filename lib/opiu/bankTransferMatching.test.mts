@@ -29,6 +29,14 @@ test("does not link equal amounts without account or INN evidence", () => {
   assert.deepEqual(pairs, []);
 });
 
+test("links two accounts of the same owner by owner INN", () => {
+  const pairs = findCertainTransferPairs([
+    row({ id: "out", ownerInn: "280888215133", counterpartyAccount: "", counterpartyInn: "" }),
+    row({ id: "in", amount: 1000, bankAccountNumber: "333", ownerInn: "280888215133", counterpartyAccount: "", counterpartyInn: "" }),
+  ]);
+  assert.deepEqual(pairs, [{ outgoingId: "out", incomingId: "in" }]);
+});
+
 test("does not choose when two incoming operations are equally suitable", () => {
   const pairs = findCertainTransferPairs([
     row({ id: "out" }),

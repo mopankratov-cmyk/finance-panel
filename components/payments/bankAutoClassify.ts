@@ -46,7 +46,7 @@ const OWNER_NAME_STOP_WORDS = new Set(["индивидуальный", "пред
 
 function ownerNamedAsTransferRecipient(statement: BankStatement, row: BankStatementRow): boolean {
   const purpose = normalize(row.purpose);
-  if (!/(?:^| )(перевод по номеру телефона|перевод собственных средств|перевод между своими счетами)(?: |$)/.test(purpose)) return false;
+  if (!/(?:^| )(перевод по номеру телефона|перевод собственных средств|перевод между своими счетами|перевод с карты|перевод на карту)(?: |$)/.test(purpose)) return false;
   const ownerTokens = [...words(statement.owner)].filter((word) => !OWNER_NAME_STOP_WORDS.has(word));
   if (ownerTokens.length < 2) return false;
   const operationTokens = words(`${row.counterparty} ${row.purpose}`);
@@ -55,6 +55,13 @@ function ownerNamedAsTransferRecipient(statement: BankStatement, row: BankStatem
 
 function keywordCategory(row: BankStatementRow): { category: string; confidence: number; reason: string } | null {
   const text = normalize(`${row.counterparty} ${row.purpose}`);
+  if (row.amount < 0 && /(?:^| )(?:yandex|отдых и развлечения(?: |$)|супермаркет[а-я]*(?: |$)|ресторан[а-я]* и кафе(?: |$))/.test(text)) {
+    return { category: "Дивиденды", confidence: 0.98, reason: "Личные расходы владельца относятся к дивидендам" };
+  }
+  // «Перевод с карты … в сумму включена комиссия» — сумма перевода вместе с
+  // комиссией, а не отдельная банковская услуга. Не относим весь платёж к РКО.
+  const transferWithIncludedCommission = /(?:^| )перевод(?: |$)/.test(text)
+    && /в сумму операции включен[а-я]* комисси[а-я]*/.test(text);
   // JavaScript `\b` считает буквами слова только ASCII-символы, поэтому
   // границы вокруг русских слов никогда не срабатывали. После normalize
   // проверяем начало слова и устойчивые основы, чтобы учитывать падежи.
@@ -73,6 +80,7 @@ function keywordCategory(row: BankStatementRow): { category: string; confidence:
     [/(?:^| )(доставк[а-я]*|транспортн[а-я]*.*услуг[а-я]*)/, "Доставка до маркеплейса", 0.72],
   ];
   for (const [pattern, category, confidence] of rules) {
+    if (category === "РКО" && transferWithIncludedCommission) continue;
     if (pattern.test(text)) return { category, confidence, reason: `Ключевые слова в назначении: «${category}»` };
   }
   return null;
