@@ -22,6 +22,52 @@ test("текстовое описание займа распознаётся н
   assert.equal(result.exchangeRate, 1);
 });
 
+test("Word-график по месяцам не теряет июль и август и применяет курс каждой даты", async () => {
+  const requestedDates: string[] = [];
+  const result = await recognizeLoanDocument({ description: `
+    ДОГОВОР целевого процентного займа г. Москва 30.10.2019 г.
+    Заимодавец Новиков Валерий Михайлович. Сумма займа 22 000 долларов США, 35 процентов годовых.
+    Срок займа по договору: 30.10.2019 – 30.10.2020
+    Период начисления процентов: 31.10.2019 – 30.10.2020
+    2020 (366 дней) период дней сумма займа $ проценты $
+    июль 31 22 000,00 653,97 по курсу ЦБ РФ на день платежа
+    август 31 22 000,00 653,97 по курсу ЦБ РФ на день платежа
+    сентябрь 30 22 000,00 632,88 по курсу ЦБ РФ на день платежа
+    октябрь 30 22 000,00 632,88 по курсу ЦБ РФ на день платежа
+  ` }, {
+    ...deps,
+    rate: async (_currency, date) => {
+      if (date) requestedDates.push(date);
+      const month = Number(date?.slice(5, 7) ?? 1);
+      return { rate: 70 + month, date: date ?? "2026-10-06" };
+    },
+  });
+  assert.deepEqual(result.schedule.map((row) => row.date), ["2020-07-31", "2020-08-31", "2020-09-30", "2020-10-30"]);
+  assert.equal(result.schedule[0].interest, 653.97 * 77);
+  assert.equal(result.schedule[1].interest, 653.97 * 78);
+  assert.notEqual(result.schedule[0].interest, result.schedule[1].interest);
+  assert.deepEqual(requestedDates.sort(), ["2020-07-31", "2020-08-31", "2020-09-30", "2020-10-30"]);
+});
+
+test("DOCX с разорванными датами и фиксированным валютным процентом даёт полный год", async () => {
+  const result = await recognizeLoanDocument({ description: `
+    ДОГОВОР ЗАЙМА № 1 г. Москва 25 .0 9 .2025 г.
+    Гражданин РФ, Новиков Валерий Михайлович, именуемый Заимодавец.
+    Заимодавец передает заем в размере 36 000 (тридцать шесть тысяч) долларов США.
+    Заемщик возвращает сумму не позднее " 2 5 " сентября 202 6 г.
+    Размер процентов составляет 35 процентов годовых.
+    Размер процентов к ежемесячной уплате Заемщиком составляет 1050 долларов США.
+  ` }, deps);
+  assert.equal(result.recognized.startDate, "2025-09-25");
+  assert.equal(result.recognized.dueDate, "2026-09-25");
+  assert.equal(result.recognized.principalAmount, 36_000);
+  assert.equal(result.recognized.currency, "USD");
+  assert.equal(result.schedule.length, 12);
+  assert.equal(result.schedule.find((row) => row.date === "2026-07-25")?.interestOriginal, 1050);
+  assert.equal(result.schedule.find((row) => row.date === "2026-08-25")?.interestOriginal, 1050);
+  assert.equal(result.schedule.at(-1)?.principalOriginal, 36_000);
+});
+
 test("XLSX-график банка читается по ячейкам сервером, ИИ его не подменяет", async () => {
   const bytes = readFileSync(new URL("../../tests/fixtures/loan-schedule-mini.xlsx", import.meta.url));
   const ai = async () => ({ schedule: [{ date: "2099-01-01", principal: 1, interest: 1 }], creditorName: "Кто-то другой", companyHint: "ромашка" });
