@@ -130,6 +130,13 @@ export interface PendingSnapshot {
   /** Для выборки набора: потолок и отпечаток фильтра — проверить полноту и смену охвата. */
   recordsLimit?: number;
   coverage?: string;
+  /** Отпечаток цели (входы сборщика или фильтр набора): у одного источника несколько целей с одним набором и разделом (ASOS — две пробы на раздел). */
+  targetKey?: string;
+}
+
+/** Отпечаток цели запуска: по нему повторный платный запуск узнаёт, что по этой цели проба уже ждёт. */
+export function targetSignature(target: { kind?: "collect" | "dataset"; inputs?: unknown; filter?: unknown; discoverBy?: string | null }): string {
+  return filterSignature(target.kind === "dataset" ? { filter: target.filter } : { inputs: target.inputs, discoverBy: target.discoverBy ?? null });
 }
 
 /** Запущенные пробы хранятся в capabilities источника — отдельной таблицы не заводим. */

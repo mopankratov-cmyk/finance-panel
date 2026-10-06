@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { brandTopItems, hasMpstats, itemSubject, subjectTopItems, type MarketItem } from "@/lib/mpstats/client";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { getWbCardImage } from "@/lib/wb/cardImage";
 import { closedMoscowDates } from "@/lib/wb/sklejki";
 import type { AssortmentDirection } from "./constants";
@@ -7,16 +8,21 @@ import { dedupKey } from "./extract";
 import { remoteImage, storeImages } from "./importer";
 import { closestRuMatch, isRuSource, shapeStems, LIME_BRANDS, RU_LIME_PER_DIRECTION, RU_SOURCE_IDS, RU_SOURCES, RU_TOP_PER_SUBJECT, ruDirection, wbProductUrl, type RuSimilarCandidate } from "./ruMarket";
 import { formatValue, type Attributes } from "./attributes";
+import { IDS_CHUNK, rowsByIds } from "./byIds";
 import { MAX_DISTANCE, similarityPercent } from "./similar";
 import { ownSubjects } from "./wbDemand";
 
 const NEW_PER_RUN = 120;
 
 export interface RuMarketResult {
+  /** Источник паспорта (S128, S129); «archive» — шаг архивации позиций без продаж, у него нет своего источника. */
   sourceId: string;
+  /** Сколько позиций отобрано для записи. */
   items: number;
   added: number;
   updated: number;
+  /** Сколько позиций не записалось (исключение при записи) — раньше они терялись молча. */
+  failed?: number;
   error?: string;
 }
 
@@ -99,19 +105,32 @@ export function sellingOnly<T extends { item: MarketItem }>(picks: T[]): T[] {
 }
 
 /** Позиции рынка, у которых последний замер — ноль продаж, прячем из вкладки. */
-async function archiveNotSelling(db: SupabaseClient) {
-  const { data: refs } = await db.from("assortment_references").select("id").in("source_id", RU_SOURCE_IDS).neq("status", "archived");
-  const ids = (refs ?? []).map((r) => String(r.id));
+export async function archiveNotSelling(db: SupabaseClient) {
+  // Листанием, а не одним запросом: PostgREST режет ответ до 1000 строк, а набор активных RU-позиций только растёт (каждую неделю
+  // до +120, уходят лишь позиции с нулём продаж) — иначе архивация перестала бы видеть часть позиций.
+  const refs = await loadAllSupabasePages<{ id: string }>((from, to) => db.from("assortment_references")
+    .select("id")
+    .in("source_id", RU_SOURCE_IDS)
+    .neq("status", "archived")
+    .order("id", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: Array<{ id: string }> | null; error: { message: string } | null }>, { label: "Позиции «Рынка РФ»", pageSize: 1000, maxPages: 60 });
+  const ids = refs.map((r) => String(r.id));
   if (ids.length === 0) return 0;
+  // latestSales при сбое чтения бросает: иначе «продаж нет» у всех позиций и в архив ушёл бы весь замер.
   const sales = await latestSales(db, ids);
   const dead = ids.filter((id) => (sales.get(id) ?? 0) <= 0);
-  if (dead.length) await db.from("assortment_references").update({ status: "archived", updated_at: new Date().toISOString() }).in("id", dead);
+  // Пачками: тысячи uuid в одном `.in()` — это адрес запроса в сотни килобайт.
+  for (let i = 0; i < dead.length; i += IDS_CHUNK) {
+    const { error } = await db.from("assortment_references").update({ status: "archived", updated_at: new Date().toISOString() }).in("id", dead.slice(i, i + IDS_CHUNK));
+    if (error) throw new Error(error.message);
+  }
   return dead.length;
 }
 
-async function storeAll(db: SupabaseClient, sourceId: string, allPicks: Array<{ direction: AssortmentDirection; item: MarketItem }>, method: string, deadline: number, budget: { added: number }): Promise<RuMarketResult> {
+export async function storeAll(db: SupabaseClient, sourceId: string, allPicks: Array<{ direction: AssortmentDirection; item: MarketItem }>, method: string, deadline: number, budget: { added: number }): Promise<RuMarketResult> {
   const picks = sellingOnly(allPicks);
-  const result: RuMarketResult = { sourceId, items: picks.length, added: 0, updated: 0 };
+  const result: RuMarketResult = { sourceId, items: picks.length, added: 0, updated: 0, failed: 0 };
+  let firstError: string | null = null;
   for (const { direction, item } of picks) {
     if (Date.now() > deadline) break;
     try {
@@ -120,10 +139,14 @@ async function storeAll(db: SupabaseClient, sourceId: string, allPicks: Array<{ 
         result.added += 1;
         budget.added += 1;
       } else result.updated += 1;
-    } catch {
-      // одна позиция не легла — остальные идут
+    } catch (error) {
+      // Одна позиция не легла — остальные идут, но счёт и причина остаются: «замер собран», когда не записалась ни одна, — ложь.
+      result.failed = (result.failed ?? 0) + 1;
+      firstError ??= error instanceof Error ? error.message.slice(0, 160) : "позиция не записалась";
     }
   }
+  if ((result.failed ?? 0) > 0 && result.added + result.updated === 0) result.error = `не записалась ни одна из ${picks.length} позиций: ${firstError}`;
+  else if ((result.failed ?? 0) > 0) result.error = `не записалось ${result.failed} из ${picks.length} позиций: ${firstError}`;
   return result;
 }
 
@@ -138,9 +161,12 @@ export async function collectRuMarket(db: SupabaseClient, deadline: number): Pro
 
   // Топ предметов своих товаров: сумки CLÉRIN, куртки NORVIA/HEATON.
   try {
-    const { data, error } = await db.from("wb_cards").select("nm_id,brand,subject").not("subject", "is", null).limit(5000);
-    if (error) throw new Error(error.message);
-    const rows = (data ?? []) as Array<{ subject: string | null; nm_id: number; brand: string | null }>;
+    // Все карточки, а не произвольная тысяча: PostgREST режет `.limit(5000)` до 1000 строк, и без порядка своих карточек в ней могло не быть.
+    const rows = await loadAllSupabasePages<{ subject: string | null; nm_id: number; brand: string | null }>((from, to) => db.from("wb_cards")
+      .select("nm_id,brand,subject")
+      .not("subject", "is", null)
+      .order("nm_id", { ascending: true })
+      .range(from, to) as unknown as PromiseLike<{ data: Array<{ subject: string | null; nm_id: number; brand: string | null }> | null; error: { message: string } | null }>, { label: "Карточки WB для «Рынка РФ»", pageSize: 1000, maxPages: 60 });
     const picks: Array<{ direction: AssortmentDirection; item: MarketItem }> = [];
     for (const direction of ["bags", "jackets"] as const) {
       for (const subject of ownSubjects(rows, direction)) {
@@ -152,10 +178,10 @@ export async function collectRuMarket(db: SupabaseClient, deadline: number): Pro
     }
     const stored = await storeAll(db, RU_SOURCES.wb.source_id, picks, "mpstats_top", deadline, budget);
     results.push(stored);
-    // Успех — только если что-то собрано: пустой замер (MPSTATS отдал ноль позиций) не должен
+    // Успех — только если что-то ЗАПИСАНО: пустой замер (MPSTATS отдал ноль позиций) и замер, где не легла ни одна позиция, не должны
     // обновлять «последний успешный сбор», иначе сторож не заметит тишину.
-    if (stored.items > 0) await mark(db, RU_SOURCES.wb.source_id, true, null);
-    else await mark(db, RU_SOURCES.wb.source_id, false, "MPSTATS: замер пуст — ни одной позиции");
+    if (stored.added + stored.updated > 0) await mark(db, RU_SOURCES.wb.source_id, true, stored.error ? `частично: ${stored.error}` : null);
+    else await mark(db, RU_SOURCES.wb.source_id, false, stored.error ? `MPSTATS: ${stored.error}` : "MPSTATS: замер пуст — ни одной позиции");
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 200) : "ошибка";
     await mark(db, RU_SOURCES.wb.source_id, false, `MPSTATS: ${message}`);
@@ -176,30 +202,55 @@ export async function collectRuMarket(db: SupabaseClient, deadline: number): Pro
     }
     if (items.length === 0) throw new Error("бренд Lime в MPSTATS не найден");
     if (picks.length === 0) throw new Error("у Lime на WB нет продаж сумок и верхней одежды за 30 дней — похоже, официального магазина Lime на WB нет");
-    results.push(await storeAll(db, RU_SOURCES.lime.source_id, picks, "mpstats_brand", deadline, budget));
-    await mark(db, RU_SOURCES.lime.source_id, true, null);
+    const stored = await storeAll(db, RU_SOURCES.lime.source_id, picks, "mpstats_brand", deadline, budget);
+    results.push(stored);
+    if (stored.added + stored.updated > 0) await mark(db, RU_SOURCES.lime.source_id, true, stored.error ? `частично: ${stored.error}` : null);
+    else await mark(db, RU_SOURCES.lime.source_id, false, `MPSTATS: ${stored.error ?? "ни одна позиция не записалась"}`);
   } catch (error) {
     const message = error instanceof Error ? error.message.slice(0, 200) : "ошибка";
     await mark(db, RU_SOURCES.lime.source_id, false, `MPSTATS: ${message}`);
     results.push({ sourceId: RU_SOURCES.lime.source_id, items: 0, added: 0, updated: 0, error: message });
   }
-  await archiveNotSelling(db);
+  // Архивация — уборка после замера: её сбой не отменяет ни «учимся» следом, ни ответ о записанном замере. Причина идёт в итог.
+  try {
+    await archiveNotSelling(db);
+  } catch (error) {
+    results.push({ sourceId: "archive", items: 0, added: 0, updated: 0, error: `архивация позиций без продаж не удалась: ${error instanceof Error ? error.message.slice(0, 160) : "ошибка"}` });
+  }
   return results;
 }
 
-async function latestSales(db: SupabaseClient, ids: string[]): Promise<Map<string, number>> {
+export async function latestSales(db: SupabaseClient, ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
-  const { data } = await db.from("assortment_observations")
+  const rows = await rowsByIds<{ reference_id: string; value_num: number | null; observed_at: string }>(ids, "Продажи «Рынка РФ»", (part, from, to) => db.from("assortment_observations")
     .select("reference_id,value_num,observed_at")
     .eq("metric", "wb_sales_30d")
-    .in("reference_id", ids)
-    .order("observed_at", { ascending: false });
-  for (const row of data ?? []) {
+    .in("reference_id", part)
+    .order("observed_at", { ascending: false })
+    .order("id", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: Array<{ reference_id: string; value_num: number | null; observed_at: string }> | null; error: { message: string } | null }>);
+  for (const row of rows.slice().sort((a, b) => b.observed_at.localeCompare(a.observed_at))) {
     const id = String(row.reference_id);
     if (!out.has(id) && typeof row.value_num === "number") out.set(id, row.value_num);
   }
   return out;
+}
+
+/** На сколько находок сдвигается старт «учимся» за неделю: с запасом меньше того, что успевает один прогон, — окна смыкаются без пропусков. */
+const LEARN_STRIDE = 250;
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+
+/** Откуда начинать обход находок на этой неделе: детерминированно от номера недели, при любом размере списка. */
+export function learnStartOffset(nowMs: number, size: number): number {
+  return size > 0 ? (Math.floor(nowMs / WEEK_MS) * LEARN_STRIDE) % size : 0;
+}
+
+/** Итог недельного прогона для журнала синхронизации: сбой источника, архивации или чтения при обучении делает его «частичным», а не «ok». */
+export function ruMarketSyncSummary(collected: RuMarketResult[], learned: { checked: number; failed?: number }): { status: "ok" | "partial"; added: number; message: string | null } {
+  const problems = collected.filter((r) => r.error).map((r) => `${r.sourceId}: ${r.error}`);
+  if (learned.failed) problems.push(`учимся: не проверено ${learned.failed} из ${learned.checked} находок (сбой чтения)`);
+  return { status: problems.length ? "partial" : "ok", added: collected.reduce((sum, r) => sum + r.added, 0), message: problems.length ? problems.join("; ") : null };
 }
 
 /**
@@ -207,16 +258,30 @@ async function latestSales(db: SupabaseClient, ids: string[]): Promise<Map<strin
  * по фото на WB. Пишется наблюдением ru_similar_sales (прошлое заменяется:
  * это вывод, а не замер).
  */
-export async function learnFromRuMarket(db: SupabaseClient, deadline: number): Promise<{ checked: number; matched: number }> {
-  const { data: embedded } = await db.from("assortment_media_embeddings").select("reference_id").not("embedding", "is", null).limit(5000);
-  const ids = [...new Set((embedded ?? []).map((r) => String(r.reference_id)))];
+export async function learnFromRuMarket(db: SupabaseClient, deadline: number): Promise<{ checked: number; matched: number; failed?: number }> {
+  // Все эмбеддинги, а не первая тысяча: на каждое фото — строка, и зарубежные находки за пределом 1000 молча выпадали из «учимся у рынка».
+  const embedded = await loadAllSupabasePages<{ reference_id: string }>((from, to) => db.from("assortment_media_embeddings")
+    .select("reference_id")
+    .not("embedding", "is", null)
+    .order("media_id", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: Array<{ reference_id: string }> | null; error: { message: string } | null }>, { label: "Эмбеддинги фото", pageSize: 1000, maxPages: 60 });
+  const ids = [...new Set(embedded.map((r) => String(r.reference_id)))];
   if (ids.length === 0) return { checked: 0, matched: 0 };
-  const { data: refs } = await db.from("assortment_references").select("id,source_id,title,brand,url,direction,status,attributes").in("id", ids);
-  const all = new Map((refs ?? []).map((r) => [String(r.id), r]));
-  const foreign = (refs ?? []).filter((r) => !isRuSource(r.source_id) && r.status !== "archived");
+  type RefRow = { id: string; source_id: string | null; title: string | null; brand: string | null; url: string | null; direction: string; status: string; attributes: unknown };
+  const refs = await rowsByIds<RefRow>(ids, "Находки с эмбеддингами", (part, from, to) => db.from("assortment_references")
+    .select("id,source_id,title,brand,url,direction,status,attributes")
+    .in("id", part)
+    .order("id", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: RefRow[] | null; error: { message: string } | null }>);
+  const all = new Map(refs.map((r) => [String(r.id), r]));
+  const foreign = refs.filter((r) => !isRuSource(r.source_id) && r.status !== "archived");
+  // Курсора нет, а за бюджет проверяется не вся очередь: старт сдвигается каждую неделю, иначе хвост списка не проверялся бы никогда.
+  const start = learnStartOffset(Date.now(), foreign.length);
+  const order = [...foreign.slice(start), ...foreign.slice(0, start)];
   let matched = 0;
   let checked = 0;
-  for (const ref of foreign) {
+  let failed = 0;
+  for (const ref of order) {
     if (Date.now() > deadline) break;
     checked += 1;
     const plain = Object.fromEntries(Object.entries((ref.attributes ?? {}) as Attributes).map(([k, v]) => [k, formatValue(v)]));
@@ -227,12 +292,24 @@ export async function learnFromRuMarket(db: SupabaseClient, deadline: number): P
       continue;
     }
     // Ближайших берём с запасом: среди них много зарубежных, а нужна та же форма на WB.
-    const { data: similar } = await db.rpc("assortment_similar_models", { p_reference_id: ref.id, p_limit: 50 });
+    const { data: similar, error: similarError } = await db.rpc("assortment_similar_models", { p_reference_id: ref.id, p_limit: 50 });
+    // Сбой поиска похожих — не «похожих нет»: прежний вывод не стираем, находку считаем непроверенной.
+    if (similarError) {
+      failed += 1;
+      continue;
+    }
     const ru = ((similar ?? []) as Array<{ reference_id: string; distance: number }>)
       .filter((s) => s.distance <= MAX_DISTANCE)
       .map((s) => ({ s, r: all.get(String(s.reference_id)) }))
       .filter((x) => x.r && isRuSource(x.r.source_id) && x.r.direction === ref.direction);
-    const sales = await latestSales(db, ru.map((x) => String(x.r!.id)));
+    // Сбой чтения продаж — как сбой поиска похожих: находка непроверена (прежний вывод цел), а недельный прогон идёт дальше.
+    let sales: Map<string, number>;
+    try {
+      sales = await latestSales(db, ru.map((x) => String(x.r!.id)));
+    } catch {
+      failed += 1;
+      continue;
+    }
     const best = closestRuMatch(ru.map((x): RuSimilarCandidate => ({
       referenceId: String(x.r!.id), distance: x.s.distance, sales: sales.get(String(x.r!.id)) ?? null,
       title: String(x.r!.title ?? ""), brand: x.r!.brand ? String(x.r!.brand) : null, url: String(x.r!.url ?? ""),
@@ -247,7 +324,7 @@ export async function learnFromRuMarket(db: SupabaseClient, deadline: number): P
       method: "mpstats_similar", status: "provider_estimate", source_url: best.url, observed_at: now, created_by: "crawler",
     });
   }
-  return { checked, matched };
+  return { checked, matched, ...(failed > 0 ? { failed } : {}) };
 }
 
 export { RU_SOURCE_IDS };

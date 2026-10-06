@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
-import { collectRuMarket, learnFromRuMarket } from "@/lib/assortment/ruMarketStore";
+import { collectRuMarket, learnFromRuMarket, ruMarketSyncSummary } from "@/lib/assortment/ruMarketStore";
 import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -26,8 +26,8 @@ export async function GET(request: NextRequest) {
   try {
     const collected = learnOnly ? [] : await collectRuMarket(db, deadline - 60_000);
     const learned = await learnFromRuMarket(db, deadline);
-    const failed = collected.filter((r) => r.error);
-    await writeSyncLog(JOB, failed.length ? "partial" : "ok", collected.reduce((s, r) => s + r.added, 0), failed.length ? failed.map((r) => `${r.sourceId}: ${r.error}`).join("; ") : null, startedAt);
+    const summary = ruMarketSyncSummary(collected, learned);
+    await writeSyncLog(JOB, summary.status, summary.added, summary.message, startedAt);
     return NextResponse.json({ ok: true, collected, learned });
   } catch (error) {
     if (isMissingAssortmentSchema(error)) return NextResponse.json({ ok: true, skipped: "таблицы модуля не созданы" });

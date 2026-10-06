@@ -1,12 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { BrightDataError, filterDataset, snapshotProgress, stripMoney, triggerCollection } from "./brightdata";
 import {
-  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, PENDING_TTL_MS, readCoverage, readPending,
+  asCatalogItem, BRIGHTDATA_TARGETS, coverageKey, datasetVerdict, filterSignature, looksLikeChurn, mapRecord, novelCandidates, PENDING_TTL_MS, readCoverage, readPending, targetSignature,
   isDeadImageUrl, readPhotoPending, uniqueRecords, writeCoverage, writePending, writePhotoPending, ZARA_PHOTOS, zaraModelCode, zaraPhotoFilter, zaraPhotosByCode,
   type MappedRecord, type PendingSnapshot, type PhotoPending,
 } from "./brightdataCatalog";
 import type { AssortmentDirection } from "./constants";
 import { classifyItem, crawlPlan } from "./crawl";
+import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { isMissingColumnError } from "./errors";
 import { dedupKey, normalizeProductUrl, regionFromUrl } from "./extract";
 import { remoteImage, storeImages, type ImageBytes } from "./importer";
@@ -46,6 +47,15 @@ async function mark(db: SupabaseClient, sourceId: string, patch: Record<string, 
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Окончательный отказ Bright Data по выборке (4xx, кроме 408 и 429): повторять бессмысленно, пробу снимаем. Сбой связи, таймаут,
+ * 5xx и 429 — временные: оплаченная выборка остаётся в очереди до суток, а не выбрасывается после первого же сбоя скачивания.
+ */
+function isPermanentDownloadError(error: unknown): boolean {
+  const status = error instanceof BrightDataError ? error.status : undefined;
+  return status !== undefined && status >= 400 && status < 500 && status !== 408 && status !== 429;
+}
+
 /** Запуск проб по всем целям (ср и сб утром). Номера проб — в capabilities источника. */
 export async function triggerBrightData(db: SupabaseClient, options: { only?: string | null; force?: boolean } = {}): Promise<BrightDataRunResult[]> {
   const bySource = new Map<string, typeof BRIGHTDATA_TARGETS>();
@@ -56,28 +66,39 @@ export async function triggerBrightData(db: SupabaseClient, options: { only?: st
   const results: BrightDataRunResult[] = [];
   for (const [sourceId, targets] of bySource) {
     const now = new Date().toISOString();
+    let source: Awaited<ReturnType<typeof readSource>> | null = null;
+    const pending: PendingSnapshot[] = [];
+    let started = 0;
     try {
-      const source = await readSource(db, sourceId);
-      const pending = readPending(source.capabilities).filter((p) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS);
-      let started = 0;
+      source = await readSource(db, sourceId);
+      pending.push(...readPending(source.capabilities).filter((p) => Date.now() - Date.parse(p.triggeredAt) < PENDING_TTL_MS));
       for (const target of targets) {
         if (!options.force && target.weekdayUtc !== undefined && new Date().getUTCDay() !== target.weekdayUtc) continue;
+        // Платный запуск не идемпотентен: повторная доставка крона (или второй вызов) купила бы те же выборки ещё раз ($2,5 за 1 000
+        // записей). Пока по цели ждёт неснятая проба — новую не заказываем; осознанный повтор — `force=1`.
+        const signature = targetSignature(target);
+        if (!options.force && pending.some((p) => p.targetKey === signature && p.datasetId === target.datasetId && p.direction === target.direction)) continue;
         const snapshotId = target.kind === "dataset"
           ? await filterDataset(target.datasetId, target.filter, target.recordsLimit ?? 50)
           : await triggerCollection({ datasetId: target.datasetId, discoverBy: target.discoverBy, inputs: target.inputs, limitPerInput: target.limitPerInput });
         pending.push({
-          snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind,
+          snapshotId, datasetId: target.datasetId, direction: target.direction, method: target.method, triggeredAt: now, kind: target.kind, targetKey: signature,
           ...(target.kind === "dataset" ? { recordsLimit: target.recordsLimit ?? 50, coverage: filterSignature(target.filter) } : {}),
         });
         started += 1;
+        // Номер оплаченной пробы пишем СРАЗУ, а не после цикла: сбой следующей цели (429, таймаут 30 с, 5xx) иначе терял бы уже купленные
+        // выборки — их номеров нигде не осталось бы, и повторный запуск купил бы всё заново.
+        await mark(db, sourceId, { capabilities: writePending(source.capabilities, pending), last_attempt_at: now, last_error: null });
       }
       if (started === 0) continue;
-      await mark(db, sourceId, { capabilities: writePending(source.capabilities, pending), last_attempt_at: now, last_error: null });
       results.push({ sourceId, phase: "trigger", ok: true, triggered: started, pending: pending.length });
     } catch (error) {
       const message = error instanceof Error ? error.message.slice(0, 200) : "ошибка запуска";
-      await mark(db, sourceId, { last_attempt_at: now, last_error: `Bright Data: ${message}` }).catch(() => undefined);
-      results.push({ sourceId, phase: "trigger", ok: false, error: message });
+      // Если сбой пришёл при самой записи уже оплаченной пробы — ещё одна попытка сохранить очередь вместе с причиной одним обращением.
+      const patch: Record<string, unknown> = { last_attempt_at: now, last_error: `Bright Data: ${message}${started > 0 ? ` (оплачено и сохранено проб: ${started})` : ""}` };
+      if (source && started > 0) patch.capabilities = writePending(source.capabilities, pending);
+      await mark(db, sourceId, patch).catch(() => undefined);
+      results.push({ sourceId, phase: "trigger", ok: false, error: message, ...(started > 0 ? { triggered: started, pending: pending.length } : {}) });
     }
   }
   return results;
@@ -360,16 +381,19 @@ const ZARA_ROW_COLUMNS = "source_item_id,handle,reference_id,image_urls";
  */
 async function zaraRowsWithoutPhotos(db: SupabaseClient): Promise<Array<{ source_item_id: string; handle: string | null; reference_id: string | null }>> {
   const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-  // Устойчивый порядок: модели за пределами 400 за выборку получат фото в следующие недели.
-  const { data, error } = await db.from("assortment_source_items").select(ZARA_ROW_COLUMNS)
-    .eq("source_id", ZARA_PHOTOS.sourceId).not("direction", "is", null).gte("last_seen_at", since)
-    .order("source_item_id", { ascending: true })
-    .limit(1000);
-  if (error) {
-    if (isMissingColumnError(error)) return [];
-    throw new Error(error.message);
+  // Все строки окна, а не первая тысяча по id: после первой волны фото вся первая тысяча — строки с фото, и модели дальше нее
+  // не получали фото никогда (комментарий «в следующие недели» не выполнялся).
+  let data: Array<{ source_item_id: string; handle: string | null; reference_id: string | null; image_urls: unknown }>;
+  try {
+    data = await loadAllSupabasePages((from, to) => db.from("assortment_source_items").select(ZARA_ROW_COLUMNS)
+      .eq("source_id", ZARA_PHOTOS.sourceId).not("direction", "is", null).gte("last_seen_at", since)
+      .order("source_item_id", { ascending: true })
+      .range(from, to) as unknown as PromiseLike<{ data: typeof data | null; error: { message: string } | null }>, { label: "Строки Zara без фото", pageSize: 1000 });
+  } catch (error) {
+    if (isMissingColumnError(error instanceof Error ? error : new Error(String(error)))) return [];
+    throw error;
   }
-  return ((data ?? []) as Array<{ source_item_id: string; handle: string | null; reference_id: string | null; image_urls: unknown }>)
+  return data
     .filter((r) => !Array.isArray(r.image_urls) || r.image_urls.every((u) => typeof u !== "string" || isDeadImageUrl(u)));
 }
 
@@ -379,14 +403,17 @@ async function zaraRowsWithoutPhotos(db: SupabaseClient): Promise<Array<{ source
  */
 export async function clearDeadZaraPhotos(db: SupabaseClient): Promise<number> {
   const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-  const { data, error } = await db.from("assortment_source_items").select("source_item_id,image_urls")
-    .eq("source_id", ZARA_PHOTOS.sourceId).not("image_urls", "is", null).gte("last_seen_at", since)
-    .order("source_item_id", { ascending: true }).limit(1000);
-  if (error) {
-    if (isMissingColumnError(error)) return 0;
-    throw new Error(error.message);
+  let data: Array<{ source_item_id: string; image_urls: unknown }>;
+  try {
+    data = await loadAllSupabasePages((from, to) => db.from("assortment_source_items").select("source_item_id,image_urls")
+      .eq("source_id", ZARA_PHOTOS.sourceId).not("image_urls", "is", null).gte("last_seen_at", since)
+      .order("source_item_id", { ascending: true })
+      .range(from, to) as unknown as PromiseLike<{ data: typeof data | null; error: { message: string } | null }>, { label: "Мёртвые фото Zara", pageSize: 1000 });
+  } catch (error) {
+    if (isMissingColumnError(error instanceof Error ? error : new Error(String(error)))) return 0;
+    throw error;
   }
-  const dead = ((data ?? []) as Array<{ source_item_id: string; image_urls: unknown }>)
+  const dead = data
     .filter((r) => Array.isArray(r.image_urls) && r.image_urls.length > 0 && r.image_urls.every((u) => typeof u !== "string" || isDeadImageUrl(u)))
     .map((r) => ({ source_id: ZARA_PHOTOS.sourceId, source_item_id: r.source_item_id, image_urls: null }));
   await upsertSourceItems(db, dead);
@@ -452,7 +479,12 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
           continue;
         }
         if (snapshot.kind === "dataset") {
-          const rows = await downloadDatasetRecords(snapshot.snapshotId).catch((e) => { errors.push(String(e?.message ?? e).slice(0, 160)); return undefined; });
+          const rows = await downloadDatasetRecords(snapshot.snapshotId).catch((e) => {
+            errors.push(String(e?.message ?? e).slice(0, 160));
+            // Оплаченная выборка не теряется на временном сбое скачивания (таймаут 60 с, 429, 5xx): остаётся в очереди до суток.
+            if (!isPermanentDownloadError(e) && Date.now() - Date.parse(snapshot.triggeredAt) < PENDING_TTL_MS) left.push(snapshot);
+            return undefined;
+          });
           if (rows === undefined) continue;
           if (rows === null) {
             if (Date.now() - Date.parse(snapshot.triggeredAt) < PENDING_TTL_MS) left.push(snapshot);
@@ -487,7 +519,11 @@ export async function collectBrightData(db: SupabaseClient, deadline: number): P
       let photoLeft: PhotoPending[] = [];
       if (sourceId === ZARA_PHOTOS.sourceId) {
         for (const pending of readPhotoPending(source.capabilities)) {
-          const rows = Date.now() > deadline ? null : await downloadDatasetRecords(pending.snapshotId).catch((e) => { errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`); return undefined; });
+          const rows = Date.now() > deadline ? null : await downloadDatasetRecords(pending.snapshotId).catch((e) => {
+            errors.push(`фото Zara: ${String(e?.message ?? e).slice(0, 120)}`);
+            if (!isPermanentDownloadError(e) && Date.now() - Date.parse(pending.triggeredAt) < PENDING_TTL_MS) photoLeft.push(pending);
+            return undefined;
+          });
           if (rows === undefined) continue;
           if (rows === null) {
             if (Date.now() - Date.parse(pending.triggeredAt) < PENDING_TTL_MS) photoLeft.push(pending);
@@ -544,11 +580,12 @@ export async function requestZaraPhotos(db: SupabaseClient, deadline: number): P
     try {
       rows = await downloadDatasetRecords(pending.snapshotId);
     } catch (e) {
-      // Выборка не удалась у Bright Data — снимаем (иначе висела бы вечно и не давала заказать новую); сбой связи — ждём до суток.
+      // Окончательный отказ Bright Data (4xx, кроме 408 и 429) — снимаем: иначе выборка висела бы вечно и не давала заказать новую.
+      // Сбой связи, таймаут, 5xx, 408 и 429 — временные: оплаченная выборка ждёт до суток, как и в плановом сборе (одно правило на оба пути).
       const message = String((e as Error)?.message ?? e).slice(0, 200);
-      const failed = e instanceof BrightDataError && e.status !== undefined && e.status < 500;
-      if (!failed && fresh(pending)) left.push(pending);
-      result.detail.push(`${pending.snapshotId}: ${failed ? "снята" : "ждём"} — ${message}`);
+      const keep = !isPermanentDownloadError(e) && fresh(pending);
+      if (keep) left.push(pending);
+      result.detail.push(`${pending.snapshotId}: ${keep ? "ждём" : "снята"} — ${message}`);
       continue;
     }
     if (rows === null) {

@@ -1,13 +1,25 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after } from "node:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildEvidence, type EvidenceObservation } from "../lib/assortment/evidence.ts";
 import { closestRuMatch, isRuSource, matchesShape, RU_SOURCE_IDS, ruDirection, shapeStems, wbProductUrl } from "../lib/assortment/ruMarket.ts";
 import { cardSignal } from "../lib/assortment/signals.ts";
+import { IDS_CONCURRENCY, rowsByIds } from "../lib/assortment/byIds.ts";
+import { archiveNotSelling, collectRuMarket, latestSales, learnFromRuMarket, learnStartOffset, ruMarketSyncSummary, storeAll } from "../lib/assortment/ruMarketStore.ts";
 
 /** «Рынок РФ»: топ WB и Lime на WB по MPSTATS, без цен; учимся по похожему. */
+
+// Юнит-тесты не ходят в сеть: любой вызов fetch записывается и падает (код под тестом чаще всего глотает такую ошибку — сеть выдаёт
+// только последний тест файла, где список обращений должен быть пуст). Раньше «Запись замера» сама шла за обложками на basket-NN.wbbasket.ru.
+const networkCalls: string[] = [];
+const realFetch = globalThis.fetch;
+globalThis.fetch = (async (input: RequestInfo | URL) => {
+  networkCalls.push(String(input));
+  throw new TypeError("fetch заглушён в юнит-тесте");
+}) as typeof fetch;
+after(() => { globalThis.fetch = realFetch; });
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 const obs = (p: Partial<EvidenceObservation>): EvidenceObservation => ({
@@ -93,4 +105,294 @@ test("Еженедельные замеры в доказательствах �
   assert.equal(rows.length, 1);
   assert.equal(rows[0].value, "1 234 шт");
   assert.match(rows[0].detail, /было 800 \(05\.10\.2026\)/);
+});
+
+// --- чтения без потолка 1000 и без проглоченных ошибок (аудит 05.10) ---
+
+type Row = Record<string, unknown>;
+interface ReadContext { table: string; ins: Array<{ col: string; vals: unknown[] }> }
+interface PagedOptions {
+  /** Таблица, чтение которой падает всегда (временный сбой: страница повторяется). */
+  failTable?: string;
+  /** Точечный сбой чтения: текст ошибки или null. Не «временный» — без повторов. */
+  fail?: (ctx: ReadContext) => string | null;
+  rpcError?: boolean;
+  /** Ответ rpc «похожие» по находке. */
+  rpcRows?: (referenceId: string) => unknown[];
+  onRpc?: (referenceId: string) => void;
+}
+/**
+ * Fake-БД: фильтры (eq / in / neq / not is null) применяются по-настоящему; ответ без `.range()` режется до 1000 строк, как у PostgREST;
+ * update меняет строки таблицы; delete и insert записываются.
+ */
+function pagedDb(tables: Record<string, Row[]>, opts: PagedOptions = {}) {
+  const calls = { deleted: 0, deletedFor: [] as string[], inSizes: [] as number[], inserted: [] as Row[], updates: [] as Array<{ patch: Row; ids: string[] }> };
+  const db = {
+    from: (table: string) => {
+      const preds: Array<(r: Row) => boolean> = [];
+      const ins: Array<{ col: string; vals: unknown[] }> = [];
+      let del = false;
+      let patch: Row | null = null;
+      let deleteRef = "";
+      const rows = () => (tables[table] ?? []).filter((r) => preds.every((p) => p(r)));
+      const failure = () => {
+        if (opts.failTable === table) return { message: "statement timeout" };
+        const message = opts.fail?.({ table, ins });
+        return message ? { message } : null;
+      };
+      const q: Record<string, unknown> = {
+        select: () => q, order: () => q,
+        not: (c: string, op: string, v: unknown) => { if (op === "is" && v === null) preds.push((r) => r[c] != null); return q; },
+        neq: (c: string, v: unknown) => { preds.push((r) => r[c] !== v); return q; },
+        eq: (c: string, v: unknown) => { if (c === "reference_id") deleteRef = String(v); preds.push((r) => r[c] === v); return q; },
+        in: (c: string, v: unknown[]) => { if (c === "id" || c === "reference_id") calls.inSizes.push(v.length); ins.push({ col: c, vals: v }); preds.push((r) => v.includes(r[c])); return q; },
+        delete: () => { del = true; return q; },
+        update: (p: Row) => { patch = p; return q; },
+        insert: (row: Row | Row[]) => { calls.inserted.push(...(Array.isArray(row) ? row : [row])); return q; },
+        upsert: () => Promise.resolve({ data: null, error: null }),
+        range: (from: number, to: number) => Promise.resolve(failure() ? { data: null, error: failure() } : { data: rows().slice(from, Math.min(to, from + 999) + 1), error: null }),
+        then: (resolve: (v: unknown) => unknown) => {
+          if (del) {
+            calls.deleted += 1;
+            calls.deletedFor.push(deleteRef);
+          }
+          if (patch) {
+            const matched = rows();
+            for (const row of matched) Object.assign(row, patch);
+            calls.updates.push({ patch, ids: matched.map((r) => String(r.id)) });
+          }
+          return Promise.resolve(failure() ? { data: null, error: failure() } : { data: rows().slice(0, 1000), error: null }).then(resolve);
+        },
+      };
+      return q;
+    },
+    rpc: (_name: string, args: { p_reference_id: string }) => {
+      opts.onRpc?.(args.p_reference_id);
+      return Promise.resolve(opts.rpcError ? { data: null, error: { message: "rpc timeout" } } : { data: opts.rpcRows?.(args.p_reference_id) ?? [], error: null });
+    },
+  };
+  return { db: db as never, calls };
+}
+
+test("«Учимся у рынка»: эмбеддинги читаются ВСЕ (а не первая тысяча), находки — пачками по 100 с проверкой ошибки; сбой поиска похожих не стирает прежний вывод", async () => {
+  const refs = Array.from({ length: 1500 }, (_, i) => ({ id: `r${String(i).padStart(5, "0")}`, source_id: "S001", title: `Bag ${i}`, brand: null, url: `https://x/${i}`, direction: "bags", status: "new", attributes: {} }));
+  const embeddings = refs.map((r, i) => ({ media_id: `m${String(i).padStart(5, "0")}`, reference_id: r.id, embedding: "[]" }));
+  const { db, calls } = pagedDb({ assortment_media_embeddings: embeddings, assortment_references: refs, assortment_observations: [] });
+  const out = await learnFromRuMarket(db, Date.now() + 60_000);
+  assert.equal(out.checked, 1500, "проверены все зарубежные находки, а не 1000");
+  assert.ok(calls.inSizes.length >= 15 && Math.max(...calls.inSizes) <= 100, `находки читались пачками (${calls.inSizes.length} запросов, максимум ${Math.max(...calls.inSizes)} id)`);
+  // Сбой чтения находок — исключение, а не «0 проверено».
+  await assert.rejects(() => learnFromRuMarket(pagedDb({ assortment_media_embeddings: embeddings, assortment_references: refs }, { failTable: "assortment_references" }).db, Date.now() + 60_000), /statement timeout/);
+  // Сбой rpc «похожие»: находка непроверена (failed), прежний вывод ru_similar_sales НЕ удаляется.
+  const shaped = [{ ...refs[0], attributes: { silhouette: { value: "тоут", origin: "ai_estimate" } } }];
+  const flaky = pagedDb({ assortment_media_embeddings: [embeddings[0]], assortment_references: shaped, assortment_observations: [] }, { rpcError: true });
+  const result = await learnFromRuMarket(flaky.db, Date.now() + 60_000);
+  assert.deepEqual(result, { checked: 1, matched: 0, failed: 1 });
+  assert.equal(flaky.calls.deleted, 0, "прежний сигнал на месте");
+});
+
+test("Продажи позиций рынка: сбой чтения — исключение (иначе «продаж нет» у всех и в архив уходит весь замер); читается пачками и дальше тысячи строк", async () => {
+  const ids = Array.from({ length: 250 }, (_, i) => `r${String(i).padStart(4, "0")}`);
+  const observations = ids.flatMap((id, i) => Array.from({ length: 6 }, (_, k) => ({ id: `o${i}-${k}`, reference_id: id, metric: "wb_sales_30d", value_num: (i + 1) * 10 + k, observed_at: `2026-09-${String(10 + k).padStart(2, "0")}T00:00:00Z` })));
+  const { db, calls } = pagedDb({ assortment_observations: observations });
+  const sales = await latestSales(db, ids);
+  assert.equal(sales.size, 250, "продажи прочитаны у всех 250 позиций (1500 строк > предела 1000)");
+  assert.equal(sales.get("r0000"), 15, "берётся последний замер");
+  assert.ok(Math.max(...calls.inSizes) <= 100);
+  await assert.rejects(() => latestSales(pagedDb({ assortment_observations: observations }, { failTable: "assortment_observations" }).db, ids), /statement timeout/);
+});
+
+test("Запись замера: не записалась ни одна позиция — это ошибка с причиной, а не «собрано 30»; частичный сбой назван с числом", async () => {
+  const item = (id: number) => ({ id, name: `Куртка ${id}`, brand: "X", subject: "Куртки", color: null, sales: 100, comments: 5, rating: 4.5, firstDate: null });
+  const picks = Array.from({ length: 3 }, (_, i) => ({ direction: "jackets" as const, item: item(i + 1) }));
+  const fakeDb = (failInsertFor: number[]) => ({
+    from: (table: string) => {
+      let dedup = "";
+      const q: Record<string, unknown> = {
+        select: () => q, update: () => q, eq: (c: string, v: string) => { if (c === "dedup_key") dedup = v; return q; },
+        maybeSingle: () => Promise.resolve({ data: null, error: null }),
+        insert: (row: Record<string, unknown>) => {
+          if (table === "assortment_references") {
+            const n = Number(row.article);
+            q.single = () => Promise.resolve(failInsertFor.includes(n) ? { data: null, error: { message: "duplicate key value" } } : { data: { id: `ref${n}` }, error: null });
+          }
+          return q;
+        },
+        then: (resolve: (v: unknown) => unknown) => Promise.resolve({ data: [], error: null }).then(resolve),
+      };
+      void dedup;
+      return q;
+    },
+  }) as never;
+  // Бюджет новых находок выбран: обложки не заказываются (иначе storeItem шёл бы за фото на basket-NN.wbbasket.ru ~57 HEAD-запросами на позицию).
+  const noPhotos = () => ({ added: 10_000 });
+  const none = await storeAll(fakeDb([1, 2, 3]), "S128", picks, "mpstats_top", Date.now() + 60_000, noPhotos());
+  assert.equal(none.added + none.updated, 0);
+  assert.equal(none.failed, 3);
+  assert.match(none.error ?? "", /не записалась ни одна из 3 позиций: duplicate key value/);
+  const some = await storeAll(fakeDb([2]), "S128", picks, "mpstats_top", Date.now() + 60_000, noPhotos());
+  assert.equal(some.added, 2);
+  assert.equal(some.failed, 1);
+  assert.match(some.error ?? "", /не записалось 1 из 3 позиций/);
+  const clean = await storeAll(fakeDb([]), "S128", picks, "mpstats_top", Date.now() + 60_000, noPhotos());
+  assert.equal(clean.error, undefined, "без сбоев ошибки нет");
+});
+
+// --- ревью #1530: сбой одной находки не роняет недельный прогон; архивация листает и не отменяет «учимся»; пачки не все разом ---
+
+const attrsTote = { silhouette: { value: "тоут", origin: "ai_estimate" } };
+const bagRef = (id: string, source: string, title: string, extra: Row = {}) => ({ id, source_id: source, title, brand: null, url: `https://x/${id}`, direction: "bags", status: "new", attributes: {}, ...extra });
+
+test("«Учимся у рынка»: сбой чтения продаж по одной находке — она считается непроверенной (failed), прежний вывод цел, прогон идёт дальше", async () => {
+  const refs = [
+    bagRef("F1", "S001", "Foreign bag 1", { attributes: attrsTote }),
+    bagRef("F2", "S001", "Foreign bag 2", { attributes: attrsTote }),
+    bagRef("R1", "S128", "Сумка шоппер большая"),
+    bagRef("R2", "S128", "Сумка шоппер средняя"),
+  ];
+  const embeddings = refs.map((r, i) => ({ media_id: `m${i}`, reference_id: r.id, embedding: "[]" }));
+  const observations = [{ id: "o2", reference_id: "R2", metric: "wb_sales_30d", value_num: 500, observed_at: "2026-10-05T04:00:00Z" }];
+  const { db, calls } = pagedDb({ assortment_media_embeddings: embeddings, assortment_references: refs, assortment_observations: observations }, {
+    // чтение продаж R1 падает, не «временно» — без повторов
+    fail: ({ table, ins }) => (table === "assortment_observations" && ins.some((i) => i.col === "reference_id" && i.vals.includes("R1")) ? "permission denied" : null),
+    rpcRows: (id) => [{ reference_id: id === "F1" ? "R1" : "R2", distance: 0.1 }],
+  });
+  const result = await learnFromRuMarket(db, Date.now() + 60_000);
+  assert.deepEqual(result, { checked: 2, matched: 1, failed: 1 }, "одна непроверена, вторая записана — прогон не оборвался");
+  assert.ok(!calls.deletedFor.includes("F1"), "прежний сигнал непроверенной находки не стёрт");
+  assert.deepEqual(calls.inserted.filter((r) => r.metric === "ru_similar_sales").map((r) => [r.reference_id, r.value_num]), [["F2", 500]]);
+});
+
+test("Начало обхода «учимся» сдвигается каждую неделю: за несколько недель проверяется весь список, а не одна и та же голова", async () => {
+  assert.equal(learnStartOffset(Date.now(), 0), 0);
+  for (const size of [1, 7, 250, 1500, 1750]) assert.ok(learnStartOffset(Date.now(), size) >= 0 && learnStartOffset(Date.now(), size) < size);
+  const WEEK = 7 * 24 * 3600 * 1000;
+  assert.notEqual(learnStartOffset(2900 * WEEK, 1500), learnStartOffset(2901 * WEEK, 1500), "соседние недели — разные точки старта");
+  assert.equal(learnStartOffset(2900 * WEEK + 123_456, 1500), learnStartOffset(2900 * WEEK + 99, 1500), "внутри недели — детерминированно");
+
+  const refs = Array.from({ length: 1500 }, (_, i) => bagRef(`r${String(i).padStart(5, "0")}`, "S001", `Bag ${i}`, { attributes: attrsTote }));
+  const embeddings = refs.map((r, i) => ({ media_id: `m${String(i).padStart(5, "0")}`, reference_id: r.id, embedding: "[]" }));
+  const realNow = Date.now;
+  const seen = new Set<string>();
+  const firstChecked: string[] = [];
+  try {
+    for (let week = 0; week < 6; week++) {
+      // поддельные часы: каждое обращение к «похожим» тратит 1 мс, дедлайн даёт ~300 находок на прогон из 1500 (как в боевой очереди)
+      let now = (2900 + week) * WEEK + 4 * 3600 * 1000;
+      Date.now = () => now;
+      const checkedNow: string[] = [];
+      const { db } = pagedDb({ assortment_media_embeddings: embeddings, assortment_references: refs, assortment_observations: [] }, { onRpc: (id) => { now += 1; checkedNow.push(id); } });
+      const out = await learnFromRuMarket(db, now + 300);
+      assert.ok(out.checked >= 290 && out.checked < 400, `за прогон проверено ${out.checked}, а не весь список`);
+      firstChecked.push(checkedNow[0]);
+      for (const id of checkedNow) seen.add(id);
+    }
+  } finally {
+    Date.now = realNow;
+  }
+  assert.equal(new Set(firstChecked).size, 6, "каждую из шести недель обход начинается с другой находки");
+  assert.equal(seen.size, 1500, "за 6 недель проверены все 1500 находок, а не первые ~300");
+});
+
+test("Итог недельного прогона для журнала: сбой источника, архивации или чтения при обучении — «partial», а не «ok»", () => {
+  const good = { items: 3, added: 2, updated: 1 };
+  assert.deepEqual(ruMarketSyncSummary([{ sourceId: "S128", ...good }, { sourceId: "S129", ...good }], { checked: 10 }), { status: "ok", added: 4, message: null });
+  const learnFailed = ruMarketSyncSummary([{ sourceId: "S128", ...good }], { checked: 10, failed: 3 });
+  assert.equal(learnFailed.status, "partial");
+  assert.match(learnFailed.message ?? "", /не проверено 3 из 10/);
+  const archiveFailed = ruMarketSyncSummary([{ sourceId: "S128", ...good }, { sourceId: "archive", items: 0, added: 0, updated: 0, error: "архивация не удалась: timeout" }], { checked: 0 });
+  assert.equal(archiveFailed.status, "partial");
+  assert.match(archiveFailed.message ?? "", /archive: архивация не удалась/);
+  assert.equal(archiveFailed.added, 2);
+  // роут пишет в журнал именно этот итог
+  const route = readFileSync(join(root, "app/api/sync/assortment-ru-market/route.ts"), "utf8");
+  assert.match(route, /const summary = ruMarketSyncSummary\(collected, learned\);\s*await writeSyncLog\(JOB, summary\.status, summary\.added, summary\.message, startedAt\);/);
+});
+
+test("Архивация позиций без продаж читает ВСЕ позиции рынка листанием (дальше тысячи тоже), пачками обновляет и не трогает чужие и уже заархивированные", async () => {
+  const ru = Array.from({ length: 1500 }, (_, i) => ({ id: `r${String(i).padStart(5, "0")}`, source_id: i % 2 ? "S128" : "S129", status: "new" }));
+  // продажи есть у первых 1200, у последних 300 (за пределом первой тысячи) — ноль
+  const observations = ru.map((r, i) => ({ id: `o${i}`, reference_id: r.id, metric: "wb_sales_30d", value_num: i < 1200 ? 10 : 0, observed_at: "2026-10-05T04:00:00Z" }));
+  const foreign = [{ id: "f1", source_id: "S001", status: "new" }];
+  const already = [{ id: "a1", source_id: "S128", status: "archived" }];
+  const { db, calls } = pagedDb({ assortment_references: [...ru, ...foreign, ...already], assortment_observations: [...observations, { id: "of", reference_id: "f1", metric: "wb_sales_30d", value_num: 0, observed_at: "2026-10-05T04:00:00Z" }] });
+  const archived = await archiveNotSelling(db);
+  assert.equal(archived, 300, "заархивированы все 300 позиций без продаж, включая те, что за первой тысячей");
+  const status = (id: string) => [...ru, ...foreign, ...already].find((r) => r.id === id)?.status;
+  assert.equal(ru.filter((r) => r.status === "archived").length, 300);
+  assert.equal(status("r01499"), "archived");
+  assert.equal(status("r00000"), "new", "продающиеся на месте");
+  assert.equal(status("f1"), "new", "чужой источник не трогаем");
+  assert.equal(status("a1"), "archived");
+  assert.ok(calls.updates.length >= 3 && calls.updates.every((u) => u.ids.length <= 100), `обновление пачками по 100 (${calls.updates.map((u) => u.ids.length).join(",")})`);
+  assert.equal(await archiveNotSelling(pagedDb({ assortment_references: [], assortment_observations: [] }).db), 0, "пусто — ничего не делаем");
+  // сбой записи в архив — исключение (а не молчаливый «заархивировано»)
+  await assert.rejects(() => archiveNotSelling(pagedDb({ assortment_references: ru.map((r) => ({ ...r })), assortment_observations: [] }, { fail: ({ table, ins }) => (table === "assortment_references" && ins.some((i) => i.col === "id") ? "permission denied" : null) }).db), /permission denied/);
+});
+
+test("Недельный замер: сбой архивации не роняет сбор (иначе 502 после записанного замера и без «учимся») — причина идёт в итог", async () => {
+  const token = process.env.MPSTATS_TOKEN;
+  process.env.MPSTATS_TOKEN = "test-token";
+  const requested: string[] = [];
+  const stub = globalThis.fetch;
+  // MPSTATS отвечает пустыми списками: до архивации доходим без своих товаров и без позиций Lime
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    requested.push(url);
+    if (!url.startsWith("https://mpstats.io/")) throw new TypeError(`чужой адрес в тесте: ${url}`);
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const { db } = pagedDb({ assortment_sources: [], wb_cards: [], assortment_references: [{ id: "r1", source_id: "S128", status: "new" }], assortment_observations: [], assortment_media_embeddings: [] }, {
+      // падает только чтение позиций рынка для архивации (по source_id)
+      fail: ({ table, ins }) => (table === "assortment_references" && ins.some((i) => i.col === "source_id") ? "permission denied" : null),
+    });
+    const collected = await collectRuMarket(db, Date.now() + 60_000);
+    assert.ok(requested.length > 0 && requested.every((u) => u.startsWith("https://mpstats.io/")), "ходили только к подставному MPSTATS");
+    const archive = collected.find((r) => r.sourceId === "archive");
+    assert.match(archive?.error ?? "", /архивация позиций без продаж не удалась: .*permission denied/);
+    assert.ok(collected.some((r) => r.sourceId === "S129"), "результаты замера на месте");
+    // «учимся» после сбора идёт как обычно и в итог попадает сбой архивации
+    const learned = await learnFromRuMarket(db, Date.now() + 60_000);
+    assert.deepEqual(learned, { checked: 0, matched: 0 });
+    const summary = ruMarketSyncSummary(collected, learned);
+    assert.equal(summary.status, "partial");
+    assert.match(summary.message ?? "", /archive: архивация/);
+  } finally {
+    globalThis.fetch = stub;
+    if (token === undefined) delete process.env.MPSTATS_TOKEN;
+    else process.env.MPSTATS_TOKEN = token;
+  }
+});
+
+test("Чтение по спискам id: одновременно не больше IDS_CONCURRENCY пачек, порядок результата сохранён, после сбоя новые пачки не берутся", async () => {
+  const ids = Array.from({ length: 10_000 }, (_, i) => `id${String(i).padStart(5, "0")}`);
+  let inFlight = 0;
+  let peak = 0;
+  let calls = 0;
+  const rows = await rowsByIds<{ id: string }>(ids, "Тест", async (part, from) => {
+    calls += 1;
+    inFlight += 1;
+    peak = Math.max(peak, inFlight);
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    inFlight -= 1;
+    return { data: from === 0 ? part.map((id) => ({ id })) : [], error: null };
+  });
+  assert.equal(calls, 100);
+  assert.ok(peak <= IDS_CONCURRENCY, `одновременно читалось ${peak} пачек из 100`);
+  assert.ok(peak > 1, "параллелизм не потерян");
+  assert.deepEqual(rows.map((r) => r.id), ids, "порядок — как у списка id");
+  assert.deepEqual(await rowsByIds<{ id: string }>([], "Тест", async () => ({ data: [], error: null })), []);
+  let failedCalls = 0;
+  await assert.rejects(() => rowsByIds<{ id: string }>(ids, "Тест", async (part) => {
+    failedCalls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    return part[0] === "id00500" ? { data: null, error: { message: "permission denied" } } : { data: [], error: null };
+  }), /Тест: permission denied/);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.ok(failedCalls < 30, `после сбоя новые пачки не берутся (${failedCalls} из 100 запрошено)`);
+});
+
+test("Файл не ходил в сеть: все обращения к fetch — только подставные, внутри тестов с явной подменой", () => {
+  assert.deepEqual(networkCalls, []);
 });

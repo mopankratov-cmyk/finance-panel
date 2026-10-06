@@ -325,7 +325,10 @@ export const askAnthropicVision: AskVision = async (direction, imageUrls, model,
  */
 export function isTransientVisionError(error: unknown): boolean {
   const status = (error as { status?: number } | null)?.status;
-  if (typeof status === "number" && [408, 409, 500, 502, 503, 504, 529].includes(status)) return true;
+  // Ответ с HTTP-статусом решает статус: любой 5xx (в том числе 520–524 Cloudflare перед агрегатором), 408, 409, 529 — временные;
+  // остальные 4xx — отказ по этому запросу. Текст ошибки у ответа со статусом не смотрим: «400 — не удалось скачать картинку: request
+  // timed out» — это беда конкретной картинки, а не сети, и считать её временной значило бы вечно гонять одну и ту же модель.
+  if (typeof status === "number") return status === 408 || status === 409 || status === 529 || status >= 500;
   const text = `${(error as Error | null)?.name ?? ""} ${(error as Error | null)?.message ?? ""}`;
   return /APIConnection|timeout|timed out|ECONNRESET|ETIMEDOUT|fetch failed|overloaded/i.test(text);
 }

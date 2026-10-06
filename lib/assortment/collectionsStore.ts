@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fieldsFor, formatValue, SERVICE_KEYS, type Attributes } from "./attributes";
+import { rowsByIds } from "./byIds";
 import {
   CollectionInputError,
   cleanPeriod,
@@ -141,9 +142,15 @@ async function readRefs(db: SupabaseClient, ids: string[]): Promise<Map<string, 
 
 async function covers(db: SupabaseClient, ids: string[], perRef = 1): Promise<Map<string, string[]>> {
   if (ids.length === 0) return new Map();
-  const { data } = await db.from("assortment_media").select("reference_id,storage_path,position").in("reference_id", ids).order("position", { ascending: true });
+  const data = await rowsByIds<{ reference_id: string; storage_path: string | null; position: number | null }>(ids, "Фото кандидатов", (part, from, to) => db.from("assortment_media")
+    .select("reference_id,storage_path,position")
+    .in("reference_id", part)
+    .order("reference_id", { ascending: true })
+    .order("position", { ascending: true })
+    .order("id", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: Array<{ reference_id: string; storage_path: string | null; position: number | null }> | null; error: { message: string } | null }>);
   const paths = new Map<string, string[]>();
-  for (const m of data ?? []) {
+  for (const m of data) {
     const list = paths.get(String(m.reference_id)) ?? [];
     if (list.length < perRef && m.storage_path) list.push(String(m.storage_path));
     paths.set(String(m.reference_id), list);
@@ -411,12 +418,14 @@ export async function updateCollectionMeta(db: SupabaseClient, id: string, patch
 
 async function evidenceFor(db: SupabaseClient, ids: string[]) {
   if (ids.length === 0) return new Map<string, EvidenceObservation[]>();
-  const { data, error } = await db.from("assortment_observations")
+  const data = await rowsByIds<EvidenceObservation & { reference_id: string }>(ids, "Наблюдения кандидатов", (part, from, to) => db.from("assortment_observations")
     .select("reference_id,group_kind,metric,value_text,value_num,null_reason,status,method,region,source_url,observed_at")
-    .in("reference_id", ids);
-  if (error) throw new Error(error.message);
+    .in("reference_id", part)
+    .order("reference_id", { ascending: true })
+    .order("id", { ascending: true })
+    .range(from, to) as unknown as PromiseLike<{ data: Array<EvidenceObservation & { reference_id: string }> | null; error: { message: string } | null }>);
   const map = new Map<string, EvidenceObservation[]>();
-  for (const o of (data ?? []) as Array<EvidenceObservation & { reference_id: string }>) {
+  for (const o of data) {
     map.set(o.reference_id, [...(map.get(o.reference_id) ?? []), o]);
   }
   return map;
@@ -518,14 +527,20 @@ export async function loadCandidates(db: SupabaseClient, collectionId: string): 
   const inside = new Set(items.map((i) => i.reference_id));
   const itemRefs = await readRefs(db, [...inside]);
   const lites = items.map((i) => lite(i, itemRefs.get(i.reference_id)));
-  const { data, error } = await db.from("assortment_references")
-    .select("id,title,brand,status,attributes,source_id")
-    .eq("direction", collection.direction)
-    .not("status", "in", "(rejected,archived)")
-    .order("first_seen_at", { ascending: false })
-    .limit(200);
-  if (error) throw new Error(error.message);
-  const refs = (data ?? []).filter((r) => !inside.has(String(r.id)));
+  const columns = "id,title,brand,status,attributes,source_id";
+  // Пул — не только 200 самых новых находок: отобранное и ждущее образца человек выбрал сам, и оно не должно выпадать из списка и из
+  // черновика только потому, что новее набежало больше двухсот (плюс за статус у старых моделей иначе никогда бы не сработал).
+  const [recent, chosen] = await Promise.all([
+    db.from("assortment_references").select(columns).eq("direction", collection.direction).not("status", "in", "(rejected,archived)")
+      .order("first_seen_at", { ascending: false }).limit(200),
+    db.from("assortment_references").select(columns).eq("direction", collection.direction).in("status", ["selected", "sample_needed", "watching"])
+      .order("updated_at", { ascending: false }).limit(200),
+  ]);
+  if (recent.error) throw new Error(recent.error.message);
+  if (chosen.error) throw new Error(chosen.error.message);
+  const pool = new Map<string, NonNullable<typeof recent.data>[number]>();
+  for (const row of [...(chosen.data ?? []), ...(recent.data ?? [])]) pool.set(String(row.id), row);
+  const refs = [...pool.values()].filter((r) => !inside.has(String(r.id)));
   const ids = refs.map((r) => String(r.id));
   const [photos, evidence, learning] = await Promise.all([covers(db, ids), evidenceFor(db, ids), loadLearning(db, collection.direction)]);
   return refs.map((r) => {

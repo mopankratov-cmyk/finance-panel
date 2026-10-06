@@ -90,18 +90,29 @@ export async function estimateAttributes(db: SupabaseClient, referenceId: string
 
 /** Модели с фото, которые ИИ ещё не разбирал: свежие сначала. */
 export async function pendingForAi(db: SupabaseClient, limit: number): Promise<string[]> {
-  const { data, error } = await db.from("assortment_references")
-    .select("id")
-    .is(`attributes->${AI_META_KEY}`, null)
-    .not("status", "in", "(rejected,archived)")
-    // Топ WB и Lime — ориентир рынка, а не референс: ИИ на них не тратим.
-    .or(`source_id.is.null,source_id.not.in.(${RU_SOURCE_IDS.join(",")})`)
-    .order("first_seen_at", { ascending: false })
-    .limit(limit * 3);
-  if (error) throw new Error(error.message);
-  const ids = (data ?? []).map((r) => String(r.id));
-  if (ids.length === 0) return [];
-  const { data: media } = await db.from("assortment_media").select("reference_id").in("reference_id", ids);
-  const withPhotos = new Set((media ?? []).map((m) => String(m.reference_id)));
-  return ids.filter((id) => withPhotos.has(id)).slice(0, limit);
+  // Находка без фото ИИ-отметку не получает (оценивать нечего) и остаётся в голове очереди каждый день: берём не одну страницу
+  // «60 самых новых», а листаем дальше, пока не наберётся limit находок с фото, — иначе фото-less новички выедали бы лимит впустую.
+  const PAGE = Math.max(limit * 3, 30);
+  const MAX_PAGES = 8;
+  const picked: string[] = [];
+  for (let page = 0; page < MAX_PAGES && picked.length < limit; page += 1) {
+    const { data, error } = await db.from("assortment_references")
+      .select("id")
+      .is(`attributes->${AI_META_KEY}`, null)
+      .not("status", "in", "(rejected,archived)")
+      // Топ WB и Lime — ориентир рынка, а не референс: ИИ на них не тратим.
+      .or(`source_id.is.null,source_id.not.in.(${RU_SOURCE_IDS.join(",")})`)
+      .order("first_seen_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(page * PAGE, (page + 1) * PAGE - 1);
+    if (error) throw new Error(error.message);
+    const ids = (data ?? []).map((r) => String(r.id));
+    if (ids.length === 0) break;
+    const { data: media, error: mediaError } = await db.from("assortment_media").select("reference_id").in("reference_id", ids);
+    if (mediaError) throw new Error(mediaError.message);
+    const withPhotos = new Set((media ?? []).map((m) => String(m.reference_id)));
+    for (const id of ids) if (withPhotos.has(id) && picked.length < limit) picked.push(id);
+    if (ids.length < PAGE) break;
+  }
+  return picked;
 }
