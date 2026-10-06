@@ -20,7 +20,7 @@ import { loadFinanceState, persistFinanceAction } from "@/lib/db";
 import { financeReducer } from "@/lib/reducer";
 import { useDialogBehavior } from "@/hooks/useDialogBehavior";
 import { scheduleDraftFromRows, type ScheduleRowRecord } from "@/lib/loans/scheduleRows";
-import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalanceAt, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
+import { actualLoanBalance, buildMonthlyLoanSummary, projectedLoanBalances } from "@/lib/loans/portfolioSummary";
 import { loanPaymentCandidates, requiresLoanAmountConfirmation } from "./manualLoanPayment";
 
 type SummaryKey = "outstanding" | "interest" | "next30" | "overdue" | "active";
@@ -346,10 +346,10 @@ export function LoansPage() {
   const periodEnd = periodMode === "year"
     ? `${safePeriodYear}-12-31`
     : `${safeMonthTo}-${String(new Date(Number(safeMonthTo.slice(0, 4)), Number(safeMonthTo.slice(5, 7)), 0).getDate()).padStart(2, "0")}`;
-  // В выбранном периоде показываем договорный остаток именно на его конец.
-  // Фактический остаток остаётся доступен в карточке подробностей и не
-  // подменяется прогнозом исполнения графика.
-  const loanBalances = new Map(filteredLoans.map((loan) => [loan.id, projectedLoanBalanceAt(loan.principalAmount, schedules.get(loan.id) ?? [], periodEnd)]));
+  // Карточка договора отвечает на вопрос «сколько должны», поэтому плановое
+  // погашение, включая финальный платёж тела, не уменьшает долг до оплаты.
+  // Договорный прогноз по-прежнему остаётся в помесячном своде ниже.
+  const loanBalances = new Map(filteredLoans.map((loan) => [loan.id, actualLoanBalance(loan.principalAmount, schedules.get(loan.id) ?? [], periodEnd)]));
   const outstanding = [...loanBalances.values()].reduce((sum, value) => sum + value, 0);
   const next30 = filteredLoans.flatMap((loan) => (schedules.get(loan.id) ?? []).map((row) => ({ loan, row })))
     .filter(({ row }) => row.status === "planned" && row.date >= today && row.date <= next30Date);
@@ -882,7 +882,7 @@ export function LoansPage() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <Metric label="Сумма договора" value={formatMoney(loan.principalAmount)} />
-              <Metric label="Остаток тела на конец периода" value={formatMoney(balance)} strong />
+              <Metric label="Фактический остаток тела" value={formatMoney(balance)} strong />
               <Metric label="Проценты по графику" value={formatMoney(schedule.reduce((sum, row) => sum + row.interest, 0))} />
               <Metric label="Следующий платёж" value={next ? `${formatDate(next.date)} · ${formatMoney(next.principal + next.interest + next.penalty + next.fine)}` : "Нет"} />
             </div>
