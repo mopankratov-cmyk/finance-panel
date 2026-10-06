@@ -195,7 +195,7 @@ async function loadHistory(db: SupabaseClient, direction: AssortmentDirection, n
   const mine = sources.filter((s) => inSection.get(s.sourceId) !== false);
   if (mine.length === 0) return null;
   return { sources: mine.map((s) => ({
-    name: nameOf.get(s.sourceId) || s.sourceId, status: s.status, firstDay: s.firstDay, firstFullDay: s.firstFullDay,
+    name: nameOf.get(s.sourceId) || s.sourceId, status: s.status, firstDay: s.firstDay, firstFullDay: s.firstFullDay, fullDays: s.fullDays,
     ...(s.partNames.length ? { parts: s.partNames.map(partLabel) } : {}),
   })) };
 }

@@ -1,5 +1,6 @@
 import { plural } from "@/lib/warehouse/plural";
 import { STOP_REASON_WORDS, type CatalogStopReason, type OutsideBySource } from "./catalogAi";
+import { changesReadiness } from "./appearance";
 import { APPEARANCE_MIN_SPAN_DAYS, DYNAMICS_MIN_DAYS, DYNAMICS_MIN_SPAN_DAYS, partsCaveat, type HistoryStatus } from "./observationState";
 
 /**
@@ -109,6 +110,8 @@ export interface HistorySource {
   /** Первый день с прогоном любого покрытия и первый с ПОЛНЫМ прогоном (от него считается «появилось/пропало»). */
   firstDay: string | null;
   firstFullDay: string | null;
+  /** Дней с полными прогонами: «пропало» на вкладке «Изменения» — от DISAPPEAR_FULL_RUNS + 1. */
+  fullDays?: number;
   /** Части разделов источника (Zara CHAQUETA, коллаборации Uniqlo): их модели в полный прогон не входят. */
   parts?: string[];
 }
@@ -348,37 +351,31 @@ function historyGroup(h: HistoryFacts, today: string): ReadinessGroup | null {
   const lines: ReadinessLine[] = [];
   let problem = false;
   const dynamics = names(["dynamics"]);
-  const appearance = names(["appearance"]);
   const building = sources.filter((s) => s.status === "building" || s.status === "none");
-  const windowOnly = names(["window_only"]);
   const listed = (parts: string[]) => `${parts.slice(0, MAX_LISTED).join("; ")}${parts.length > MAX_LISTED ? ` и ещё ${parts.length - MAX_LISTED}` : ""}`;
   if (dynamics.length > 0) lines.push({ kind: "факт", text: `Можно смотреть динамику: ${dynamics.join(", ")}.` });
-  if (appearance.length > 0) lines.push({ kind: "факт", text: `«Появилось» и «пропало» — наблюдение: ${appearance.join(", ")}.` });
-  // Часть раздела — отдельная выборка, её прогон окно, а не полный раздел: по её моделям «появилось» и «пропало» не наблюдение, даже
-  // когда по источнику оно уже есть.
-  const caveat = partsCaveat(sources);
-  if (caveat) lines.push({ kind: "факт", text: caveat });
   // Источник с первым полным прогоном давно, а второго всё нет, — застрял: обходы не доходят до конца. Дата для него «не раньше
   // сегодня» печаталась бы каждый день и ничем не отличалась от источника, который будет готов завтра.
   const withFull = building.filter((s) => s.firstFullDay);
   const stuck = withFull.filter((s) => daysBetween(s.firstFullDay as string, today) > APPEARANCE_MIN_SPAN_DAYS + STUCK_GRACE_DAYS);
   const waiting = building.filter((s) => !s.firstFullDay).map((s) => s.name);
-  if (building.length > 0) {
-    lines.push({ kind: "факт", text: `История копится: ${building.map((s) => s.name).join(", ")}.` });
-    // Сроки — по каждому источнику от ЕГО первого полного прогона; прошедшая дата значит «после ближайшего полного прогона», а не «давно».
-    const dated = withFull.filter((s) => !stuck.includes(s)).sort((a, b) => (a.firstFullDay as string).localeCompare(b.firstFullDay as string));
-    const parts = dated.map((s) => `${s.name} — не раньше ${dm(laterOf(addDays(s.firstFullDay as string, APPEARANCE_MIN_SPAN_DAYS), today))}`);
-    if (parts.length > 0) lines.push({ kind: "оценка", text: `«Появилось» и «пропало» (два полных прогона с разрывом ${APPEARANCE_MIN_SPAN_DAYS} дней): ${listed(parts)}.` });
-    if (stuck.length > 0) {
-      const stuckParts = stuck.map((s) => {
-        const days = daysBetween(s.firstFullDay as string, today);
-        return `${s.name} (первый ${dm(s.firstFullDay as string)}, уже ${days} ${plural(days, "день", "дня", "дней")})`;
-      });
-      lines.push({ kind: "факт", text: `Второй полный прогон не приходит: ${listed(stuckParts)}. Пока обходы не доходят до конца, «появилось» и «пропало» по этим источникам не станут наблюдением — проверьте журнал обходов.`, problem: true });
-      problem = true;
-    }
-    if (waiting.length > 0) lines.push({ kind: "оценка", text: `Ждут первого полного прогона: ${listed(waiting.slice())} — для них даты пока нет.` });
+  // «Появилось / пропало» — одна пара строк про вкладку «Изменения» (факт и срок копящихся), каждый источник в ней один раз: где уже
+  // наблюдение, где пока только «появилось», где только верх выдачи, что копится и с какого дня. Застрявшие и ждущие первого полного
+  // прогона названы своими строками ниже — в паре их нет.
+  lines.push(...changesReadiness(sources, today, new Set(stuck.map((s) => s.name))));
+  // Часть раздела — отдельная выборка, её прогон окно, а не полный раздел: по её моделям «появилось» и «пропало» не наблюдение, даже
+  // когда по источнику оно уже есть.
+  const caveat = partsCaveat(sources);
+  if (caveat) lines.push({ kind: "факт", text: caveat });
+  if (stuck.length > 0) {
+    const stuckParts = stuck.map((s) => {
+      const days = daysBetween(s.firstFullDay as string, today);
+      return `${s.name} (первый ${dm(s.firstFullDay as string)}, уже ${days} ${plural(days, "день", "дня", "дней")})`;
+    });
+    lines.push({ kind: "факт", text: `Второй полный прогон не приходит: ${listed(stuckParts)}. Пока обходы не доходят до конца, «появилось» и «пропало» по этим источникам не станут наблюдением — проверьте журнал обходов.`, problem: true });
+    problem = true;
   }
+  if (waiting.length > 0) lines.push({ kind: "оценка", text: `Ждут первого полного прогона: ${listed(waiting.slice())} — для них даты пока нет.` });
   // Динамика — только по источникам, которым её ещё ждать: готовые к ней и застрявшие в дату не входят. Нужно и 28 дней наблюдений
   // от первого прогона, и наблюдение «появилось/пропало» (первый полный +7).
   const pendingDynamics = sources
@@ -388,7 +385,6 @@ function historyGroup(h: HistoryFacts, today: string): ReadinessGroup | null {
   if (pendingDynamics.length > 0) {
     lines.push({ kind: "оценка", text: `Динамика (${DYNAMICS_MIN_SPAN_DAYS} дней наблюдений и не меньше ${DYNAMICS_MIN_DAYS} дней с прогонами): ${listed(pendingDynamics.map((p) => `${p.name} — не раньше ${dm(p.at)}`))}. До этого по ним на экране только срез на сегодня.` });
   }
-  if (windowOnly.length > 0) lines.push({ kind: "факт", text: `Только верх выдачи, «пропало» не определить: ${windowOnly.join(", ")}.` });
   if (lines.length === 0) return null;
   const firstDays = sources.map((s) => s.firstDay).filter((d): d is string => Boolean(d)).sort();
   return { key: "history", title: "История каталогов", summary: firstDays[0] ? `история с ${dm(firstDays[0])}` : "история копится", lines, problem };

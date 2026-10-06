@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { digestMessage } from "@/lib/assortment/digest";
+import { digestMessages } from "@/lib/assortment/digest";
 import { loadDigestFacts } from "@/lib/assortment/digestFacts";
 import { isMissingAssortmentSchema } from "@/lib/assortment/errors";
 import { sendTelegramMessage } from "@/lib/opiu/telegramBot";
@@ -41,19 +41,21 @@ export async function GET(request: NextRequest) {
     if (done && done.length > 0) return NextResponse.json({ ok: true, skipped: "уже отправлена сегодня" });
   }
 
-  let text: string;
+  let texts: string[];
   try {
     const from = new Date(startedAt.getTime() - 7 * 24 * 3600 * 1000);
     const facts = await loadDigestFacts(db, from, startedAt, process.env.FINANCE_PANEL_URL || DEFAULT_PANEL_URL);
-    text = digestMessage(facts);
+    // Не влезает в предел Telegram (4 096 символов; первое воскресенье месяца с месячной выжимкой) — уходит несколькими сообщениями,
+    // а не отказом 400 на всю сводку.
+    texts = digestMessages(facts);
   } catch (error) {
     if (isMissingAssortmentSchema(error)) return NextResponse.json({ ok: true, skipped: "таблицы модуля не созданы" });
     return fail(error instanceof Error ? error.message : "Факты недели не собрались");
   }
-  if (dryRun) return NextResponse.json({ ok: true, dryRun: true, text });
+  if (dryRun) return NextResponse.json({ ok: true, dryRun: true, text: texts.join("\n\n"), parts: texts.length });
 
   try {
-    await sendTelegramMessage(text);
+    for (const text of texts) await sendTelegramMessage(text);
   } catch (error) {
     return fail(`Telegram: ${error instanceof Error ? error.message : "не ответил"}`);
   }
