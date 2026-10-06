@@ -213,6 +213,34 @@ export function recognizeLoanDocumentSchedule(text: string): RecognizedScheduleR
  * Берём только явно напечатанные суммы, ничего не достраиваем.
  */
 export function recognizeLoanPdfSchedule(text: string): RecognizedScheduleRow[] {
+  // В выгрузке JetLend нет номера строки: после даты идут 8 сумм — общий
+  // платёж, тело, начисленные проценты, пени, штрафы, погашаемые проценты,
+  // НДФЛ и остаток тела. НДФЛ входит в фактический платёж, поэтому для
+  // денежного графика процентная часть равна всему платежу за вычетом тела,
+  // пеней и штрафов. Так сумма строки остаётся ровно как в исходном PDF.
+  const jetLendRows: RecognizedScheduleRow[] = [];
+  const jetLendPattern = /(\d{1,2}[./-]\d{1,2}[./-]\d{4})([\s\S]*?)(?=\d{1,2}[./-]\d{1,2}[./-]\d{4}|$)/g;
+  const decimalAmountPattern = /\d+(?:[\s\u00a0\u202f]\d{3})*[.,]\d{2}/g;
+  for (const match of text.matchAll(jetLendPattern)) {
+    const amounts = [...match[2].matchAll(decimalAmountPattern)].map((item) => normalizeAmount(item[0]));
+    if (amounts.length < 8) continue;
+    const [total, principal, , penalty, fine, , , balanceAfter] = amounts;
+    const interest = total - principal - penalty - fine;
+    const date = isoDate(match[1], new Date().getFullYear());
+    if (!date || total <= 0 || principal < 0 || interest < 0 || penalty < 0 || fine < 0 || balanceAfter < 0) continue;
+    jetLendRows.push({
+      date,
+      principal,
+      interest,
+      penalty,
+      fine,
+      status: "planned",
+      balanceBefore: balanceAfter + principal,
+      balanceAfter,
+    });
+  }
+  if (jetLendRows.length >= 3) return aggregateRecognizedSchedule(jetLendRows);
+
   const rows: RecognizedScheduleRow[] = [];
   const rowPattern = /(\d{1,4})\s+(\d{1,2}[./-]\d{1,2}[./-]\d{4})([\s\S]*?)(?=(?:\d{1,4}\s+\d{1,2}[./-]\d{1,2}[./-]\d{4})|$)/g;
   // Сначала дробные суммы: это не даёт комиссии «0» склеиться с остатком
