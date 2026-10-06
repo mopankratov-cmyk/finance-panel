@@ -9,6 +9,7 @@
  */
 
 import { containsMoney } from "./attributes";
+import { hasOwnKey } from "./own";
 import type { AssortmentDirection } from "./constants";
 
 export type CollectionKind = "bags_month" | "jackets_season" | "custom";
@@ -39,11 +40,11 @@ export const REPLACE_REASONS: Record<ReplaceReason, string> = {
 };
 
 export function isReplaceReason(value: unknown): value is ReplaceReason {
-  return typeof value === "string" && value in REPLACE_REASONS;
+  return typeof value === "string" && hasOwnKey(REPLACE_REASONS, value);
 }
 
 export function isCollectionKind(value: unknown): value is CollectionKind {
-  return typeof value === "string" && value in KIND_LABEL;
+  return typeof value === "string" && hasOwnKey(KIND_LABEL, value);
 }
 
 export function kindForDirection(direction: AssortmentDirection): CollectionKind {
@@ -230,6 +231,11 @@ export function cleanResponsible(value: unknown): string | null {
   return clean(value, 120, "Ответственный") || null;
 }
 
+/** Свободный период своей подборки («Осень 2026», «к весне») — тот же запрет денег и пробелов, что у названия; пустой период допустим. */
+export function cleanPeriod(value: string): string {
+  return clean(value, 40, "Период");
+}
+
 export function cleanTitle(value: unknown): string {
   const title = clean(value, 120, "Название");
   if (!title) throw new CollectionInputError("Название подборки не может быть пустым.");
@@ -263,7 +269,21 @@ export function itemPosition(slot: number | null, isReserve: boolean, index: num
   return slot ? `Модель ${slot}` : `Модель ${index}`;
 }
 
-const csvCell = (value: string) => `"${value.replace(/"/g, '""')}"`;
+/**
+ * Ячейка CSV для Excel. Текст, начинающийся с = + - @ (а также табуляцией или возвратом каретки), Excel исполняет как формулу, а в
+ * ячейки попадают чужие строки — названия и артикулы с сайтов, ссылки, тексты людей: «=HYPERLINK(…)» открылась бы у закупщика
+ * формулой. Перед таким текстом ставим апостроф — Excel показывает его как текст.
+ */
+export const csvCell = (value: string) => {
+  const safe = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return `"${safe.replace(/"/g, '""')}"`;
+};
+
+/** Имя файла выгрузки: только ASCII без кавычек и переводов строк (период своей подборки — любой текст, кириллица в заголовке роняла ответ). */
+export function exportFileName(period: string | null, version: number): string {
+  const safe = String(period ?? "podborka").normalize("NFKD").replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "podborka";
+  return `zadanie-${safe}-v${version}`;
+}
 
 /** CSV для Excel: разделитель «;», BOM — чтобы кириллица открылась без мусора. */
 export function briefCsv(snapshot: BriefSnapshot): string {

@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { fieldsFor, formatValue, SERVICE_KEYS, type Attributes } from "./attributes";
 import {
   CollectionInputError,
+  cleanPeriod,
+  cleanTitle,
   defaultTitle,
   EMPTY_BRIEF,
   isValidPeriod,
@@ -191,18 +193,21 @@ export async function createCollection(
   actor: string,
 ): Promise<{ id: string; created: boolean }> {
   if (!isValidPeriod(input.kind, input.period)) throw new CollectionInputError("Период подборки указан неверно.");
+  // Свободный период и название — текст от человека, как при PATCH: цены и деньги в нём тоже не принимаем (раньше через POST они проходили).
+  const period = input.kind === "custom" ? cleanPeriod(input.period) : input.period;
+  const customTitle = input.title?.trim() ? cleanTitle(input.title) : null;
   if (input.kind === "bags_month" && input.direction !== "bags") throw new CollectionInputError("План на месяц — для сумок.");
   if (input.kind === "jackets_season" && input.direction !== "jackets") throw new CollectionInputError("Сезонная доска — для курток.");
   if (input.kind !== "custom") {
     const { data: existing } = await db.from("assortment_collections").select("id")
-      .eq("direction", input.direction).eq("kind", input.kind).eq("period", input.period).neq("status", "archived").limit(1);
+      .eq("direction", input.direction).eq("kind", input.kind).eq("period", period).neq("status", "archived").limit(1);
     if (existing && existing.length > 0) return { id: String(existing[0].id), created: false };
   }
   const row: Record<string, unknown> = {
     direction: input.direction,
     kind: input.kind,
-    period: input.period,
-    title: input.title?.trim() || defaultTitle(input.direction, input.period),
+    period,
+    title: customTitle ?? defaultTitle(input.direction, period),
     created_by: actor,
   };
   if (input.responsible) row.responsible = input.responsible;

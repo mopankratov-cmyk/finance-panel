@@ -6,6 +6,9 @@
  * что не показывать (улучшение 7 от 01.10).
  */
 
+import { containsMoney } from "./attributes";
+import { hasOwnKey } from "./own";
+
 export type ReferenceStatus = "new" | "watching" | "in_collection" | "selected" | "sample_needed" | "rejected" | "archived";
 export type DecisionKind = "to_collection" | "selected" | "sample_needed" | "postponed" | "rejected" | "archived";
 export type ActionId = "selected" | "sample_needed" | "postponed" | "rejected" | "archived" | "restore";
@@ -48,11 +51,11 @@ export const ACTIONS: Record<ActionId, ActionSpec> = {
 };
 
 export function isReferenceStatus(value: unknown): value is ReferenceStatus {
-  return typeof value === "string" && value in STATUS_LABEL;
+  return typeof value === "string" && hasOwnKey(STATUS_LABEL, value);
 }
 
 export function isActionId(value: unknown): value is ActionId {
-  return typeof value === "string" && value in ACTIONS;
+  return typeof value === "string" && hasOwnKey(ACTIONS, value);
 }
 
 /** Какие действия показывать: недоступные не рисуем вовсе. */
@@ -90,9 +93,11 @@ export class DecisionInputError extends Error {}
 /** Причина в том виде, как её пишем в assortment_decisions.reason. */
 export function decisionReason(action: ActionId, reason: unknown, comment: unknown): string | null {
   const text = typeof comment === "string" ? comment.replace(/\s+/g, " ").trim().slice(0, 300) : "";
+  // Граница ТЗ — в модуле нет цен и денег: комментарий решения попадает в историю решений и в сводку, как и заметка, и признаки.
+  if (text && containsMoney(text)) throw new DecisionInputError("Цены и деньги в модуле не храним — напишите причину словами.");
   if (action === "restore") return "возвращена в ленту";
   if (!ACTIONS[action].needsReason) return text || null;
-  if (typeof reason !== "string" || !(reason in REJECT_REASONS)) throw new DecisionInputError("Укажите причину отказа.");
+  if (typeof reason !== "string" || !hasOwnKey(REJECT_REASONS, reason)) throw new DecisionInputError("Укажите причину отказа.");
   if (reason === "other") {
     if (!text) throw new DecisionInputError("Для «Другое» напишите причину словами.");
     return `other:${text}`;
@@ -104,7 +109,7 @@ export function reasonLabel(stored: string | null): string | null {
   if (!stored) return null;
   const [key, ...rest] = stored.split(":");
   const comment = rest.join(":").trim();
-  if (key in REJECT_REASONS) {
+  if (hasOwnKey(REJECT_REASONS, key)) {
     const label = REJECT_REASONS[key as RejectReason];
     if (key === "other") return comment || label;
     return comment ? `${label} — ${comment}` : label;

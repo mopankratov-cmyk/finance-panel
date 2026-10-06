@@ -51,13 +51,91 @@ export function dedupKey(sourceId: string | null, region: string, sourceItemId: 
   return [sourceId ?? "manual", region, sourceItemId ?? normalizedUrl].join("|");
 }
 
-const SECOND_LEVEL = new Set(["co.uk", "com.au", "co.jp", "com.cn", "com.tr", "co.kr", "com.hk", "com.br"]);
+/**
+ * Ключ находки при импорте по ссылке. Артикул однозначен только внутри сайта: у источника вне паспорта (`sourceId` пуст) ключ был бы
+ * «manual||<sku>» без хоста, и товары двух разных сайтов с одним sku склеивались бы в одну находку (фото второго подмешивались к первому).
+ * `pageUrl` — адрес самой страницы после редиректов, а не вставленная ссылка: короткая (bit.ly) и партнёрская ссылка принадлежат
+ * сокращателю, а не магазину.
+ */
+export function importDedupKey(sourceId: string | null, region: string, sourceItemId: string | null, normalizedUrl: string, pageUrl: string): string {
+  const scoped = sourceItemId && !sourceId ? `${baseDomain(new URL(pageUrl).hostname)}:${sourceItemId}` : sourceItemId;
+  return dedupKey(sourceId, region, scoped, normalizedUrl);
+}
+
+/**
+ * Прежний ключ той же находки (до того, как артикул стал привязан к сайту): «manual|<регион>|<sku>». Нужен, чтобы повторный импорт нашёл
+ * карточку, созданную раньше, а не завёл рядом вторую. Null — у этой находки ключ не менялся.
+ */
+export function legacyImportDedupKey(sourceId: string | null, region: string, sourceItemId: string | null, normalizedUrl: string): string | null {
+  return sourceItemId && !sourceId ? dedupKey(sourceId, region, sourceItemId, normalizedUrl) : null;
+}
+
+/** Два адреса — один сайт (по базовому домену); мусор вместо адреса — «нет». */
+export function sameSite(a: string, b: string): boolean {
+  try {
+    return baseDomain(new URL(a).hostname) === baseDomain(new URL(b).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Зоны вида «имя.co.uk»: сайт регистрируется на третьем уровне, а «co.uk» — общий суффикс (его нельзя считать «сайтом»: иначе любой
+ * чужой .com.ua сошёл бы за «тот же сайт»). Список — по публичным суффиксам, которые встречаются у интернет-магазинов.
+ */
+const SECOND_LEVEL = new Set([
+  "co.uk", "org.uk", "me.uk", "ltd.uk", "plc.uk", "net.uk",
+  "com.au", "net.au", "org.au", "id.au",
+  "co.nz", "net.nz", "org.nz",
+  "co.jp", "ne.jp", "or.jp",
+  "co.kr", "ne.kr", "or.kr",
+  "com.cn", "net.cn", "org.cn",
+  "com.hk", "net.hk", "org.hk",
+  "com.tw", "net.tw", "org.tw", "idv.tw",
+  "com.sg", "net.sg", "org.sg",
+  "com.my", "net.my", "org.my",
+  "com.ph", "net.ph", "org.ph",
+  "com.vn", "net.vn",
+  "co.id", "or.id", "web.id",
+  "co.in", "net.in", "org.in",
+  "co.th", "or.th", "in.th",
+  "co.il", "org.il", "net.il",
+  "com.tr", "net.tr", "org.tr",
+  "com.sa", "com.eg", "com.pk", "com.bd", "com.lk",
+  "co.za", "org.za", "net.za", "web.za",
+  "com.ng", "co.ke",
+  "com.br", "net.br", "org.br",
+  "com.ar", "net.ar", "org.ar",
+  "com.mx", "net.mx", "org.mx",
+  "com.co", "net.co", "org.co",
+  "com.pe", "com.uy", "com.ve", "com.ec",
+  "com.ua", "net.ua", "org.ua", "kiev.ua",
+  "com.pl", "net.pl", "org.pl",
+  "com.ru", "net.ru", "org.ru", "pp.ru", "msk.ru", "spb.ru",
+  "com.kz", "org.kz", "com.by", "com.ge", "com.az", "co.uz", "com.uz",
+  "co.at", "or.at", "com.pt", "com.gr", "com.ro", "com.cy", "com.mt",
+]);
+
+/**
+ * Общие хостинги и конструкторы: «one.myshopify.com» и «two.myshopify.com» — два разных магазина, а не витрины одного, поэтому базовым
+ * доменом считается целый поддомен («one.myshopify.com»), как у зоны «co.uk».
+ */
+const SHARED_HOSTS = new Set([
+  "myshopify.com", "wixsite.com", "wordpress.com", "blogspot.com", "weebly.com", "bigcartel.com", "tilda.ws", "tilda.cc",
+  "webflow.io", "myinsales.ru", "nethouse.ru", "ucoz.ru", "ucoz.com", "jimdofree.com",
+  "vercel.app", "netlify.app", "github.io", "gitlab.io", "pages.dev", "workers.dev", "herokuapp.com", "onrender.com", "fly.dev",
+  "railway.app", "web.app", "firebaseapp.com", "appspot.com", "azurewebsites.net", "cloudfront.net",
+  "ngrok.io", "ngrok.app", "ngrok-free.app",
+]);
 
 /** Домен бренда без поддомена витрины: eng.polene-paris.com и eu.polene-paris.com — один сайт. */
 export function baseDomain(host: string): string {
-  const labels = host.toLowerCase().replace(/^www\./, "").split(".").filter(Boolean);
+  const name = host.toLowerCase().replace(/^www\./, "");
+  // IP-адрес у «домена» не режем: «8.8» из «8.8.8.8» склеило бы разные серверы.
+  if (name.startsWith("[") || /^\d+(?:\.\d+){3}$/.test(name)) return name;
+  const labels = name.split(".").filter(Boolean);
   const tail = labels.slice(-2).join(".");
-  return SECOND_LEVEL.has(tail) ? labels.slice(-3).join(".") : tail;
+  return SECOND_LEVEL.has(tail) || SHARED_HOSTS.has(tail) ? labels.slice(-3).join(".") : tail;
 }
 
 /** Источник по домену: сравниваем с сайтами из паспорта (seed_urls). */
@@ -131,16 +209,6 @@ export function parseShopifyProduct(json: unknown): ExtractedProduct | null {
   };
 }
 
-function metaContent(html: string, key: string): string[] {
-  const out: string[] = [];
-  const re = new RegExp(`<meta[^>]+(?:property|name)=["']${key}["'][^>]*>`, "gi");
-  for (const tag of html.match(re) ?? []) {
-    const content = tag.match(/content=["']([^"']*)["']/i)?.[1];
-    if (content) out.push(decodeEntities(content));
-  }
-  return out;
-}
-
 function decodeEntities(value: string): string {
   return value
     .replace(/&amp;/g, "&")
@@ -150,9 +218,97 @@ function decodeEntities(value: string): string {
     .replace(/&gt;/g, ">");
 }
 
-function jsonLdProducts(html: string): Array<Record<string, unknown>> {
+/**
+ * Страница чужого сайта — недоверенный ввод до 3 МБ. Регулярки вида `<meta[^>]+…` на каждое «<meta» без «>» проходили текст до конца
+ * и откатывались: время росло квадратом (59 КБ — секунда, 234 КБ — 17 с), и одна страница из повторяющегося «<meta » держала функцию до
+ * её таймаута. Поэтому — один линейный проход: теги находятся по «<имя», конец тега ищется монотонным указателем, длинный «тег» (больше
+ * MAX_TAG) тегом не считается, содержимое script пропускается целиком.
+ */
+const MAX_TAG = 4096;
+/** Документ режем: JSON-LD и og:-теги лежат в начале страницы. */
+const MAX_DOCUMENT = 1_500_000;
+
+interface HtmlDocument {
+  metas: string[];
+  links: string[];
+  ldBlocks: string[];
+  title: string | null;
+}
+
+function scanDocument(source: string): HtmlDocument {
+  const html = source.length > MAX_DOCUMENT ? source.slice(0, MAX_DOCUMENT) : source;
+  const doc: HtmlDocument = { metas: [], links: [], ldBlocks: [], title: null };
+  const re = /<(meta|link|script|title)(?=[\s/>])/gi;
+  let gt = -2; // ближайшее «>» не левее текущего тега; -1 — «>» больше нет
+  let closeAt = -2; // ближайшее «</script» не левее конца текущего тега; -1 — больше нет
+  for (let match = re.exec(html); match; match = re.exec(html)) {
+    if (gt === -1) break;
+    if (gt < match.index) {
+      gt = html.indexOf(">", match.index);
+      if (gt < 0) {
+        gt = -1;
+        break;
+      }
+    }
+    if (gt - match.index > MAX_TAG) continue;
+    const name = match[1].toLowerCase();
+    const tag = html.slice(match.index, gt + 1);
+    re.lastIndex = gt + 1;
+    if (name === "meta") doc.metas.push(tag);
+    else if (name === "link") doc.links.push(tag);
+    else if (name === "title") {
+      if (doc.title === null) {
+        const stop = html.indexOf("<", gt + 1);
+        doc.title = html.slice(gt + 1, stop < 0 ? Math.min(html.length, gt + 1 + 500) : Math.min(stop, gt + 1 + 500));
+      }
+    } else {
+      // script: тело пропускаем целиком (в нём бывают строки «<meta»), JSON-LD сохраняем.
+      if (closeAt !== -1 && closeAt < gt + 1) {
+        const found = indexOfIgnoreCase(html, "</script", gt + 1);
+        closeAt = found < 0 ? -1 : found;
+      }
+      if (closeAt === -1) break;
+      if (/type\s*=\s*["']application\/ld\+json["']/i.test(tag)) doc.ldBlocks.push(html.slice(gt + 1, closeAt));
+      re.lastIndex = closeAt + 8;
+    }
+  }
+  return doc;
+}
+
+/** Поиск без учёта регистра без копии всего текста в нижнем регистре (его длина может не совпасть с исходной). */
+function indexOfIgnoreCase(haystack: string, needle: string, from: number): number {
+  const first = needle[0];
+  const upper = first.toUpperCase();
+  let pos = from;
+  while (pos < haystack.length) {
+    const a = haystack.indexOf(first, pos);
+    const b = upper === first ? -1 : haystack.indexOf(upper, pos);
+    const at = a < 0 ? b : b < 0 ? a : Math.min(a, b);
+    if (at < 0) return -1;
+    if (haystack.substr(at, needle.length).toLowerCase() === needle) return at;
+    pos = at + 1;
+  }
+  return -1;
+}
+
+function attribute(tag: string, name: string): string | null {
+  const match = new RegExp(`(?:^|[\\s"'/])${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i").exec(tag);
+  return match ? match[1] ?? match[2] ?? "" : null;
+}
+
+function metaContent(doc: HtmlDocument, key: string): string[] {
+  const out: string[] = [];
+  for (const tag of doc.metas) {
+    const names = [attribute(tag, "property"), attribute(tag, "name")];
+    if (!names.some((value) => value !== null && value.toLowerCase() === key.toLowerCase())) continue;
+    const content = attribute(tag, "content");
+    if (content) out.push(decodeEntities(content));
+  }
+  return out;
+}
+
+function jsonLdProducts(doc: HtmlDocument): Array<Record<string, unknown>> {
   const out: Array<Record<string, unknown>> = [];
-  const blocks = html.match(/<script[^>]+type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) ?? [];
   const visit = (node: unknown) => {
     if (!node || typeof node !== "object") return;
     if (Array.isArray(node)) return node.forEach(visit);
@@ -161,8 +317,7 @@ function jsonLdProducts(html: string): Array<Record<string, unknown>> {
     if (type === "Product" || (Array.isArray(type) && type.includes("Product"))) out.push(record);
     if (record["@graph"]) visit(record["@graph"]);
   };
-  for (const block of blocks) {
-    const body = block.replace(/^<script[^>]*>/i, "").replace(/<\/script>$/i, "");
+  for (const body of doc.ldBlocks) {
     try {
       visit(JSON.parse(body));
     } catch {
@@ -172,19 +327,38 @@ function jsonLdProducts(html: string): Array<Record<string, unknown>> {
   return out;
 }
 
+/**
+ * Каноническая ссылка страницы — поле чужого сайта и становится адресом находки (<a href> на карточке, ключ дедупликации): берём её, только
+ * если это http(s) и тот же сайт, что у самой страницы. «javascript:…» и чужой домен (канонический адрес «на фишинг») отбрасываются —
+ * находка остаётся с адресом страницы.
+ */
+export function trustedCanonical(href: string, pageUrl: string): string | null {
+  try {
+    const page = new URL(pageUrl);
+    const canonical = new URL(href, page);
+    if (canonical.protocol !== "https:" && canonical.protocol !== "http:") return null;
+    if (baseDomain(canonical.hostname) !== baseDomain(page.hostname)) return null;
+    return canonical.toString();
+  } catch {
+    return null;
+  }
+}
+
 /** Обычная HTML-страница товара: JSON-LD Product, затем og:-теги. */
 export function extractHtmlProduct(html: string, pageUrl: string): ExtractedProduct {
-  const ld = jsonLdProducts(html)[0];
+  const doc = scanDocument(html);
+  const ld = jsonLdProducts(doc)[0];
   const ldImages = ld ? (Array.isArray(ld.image) ? ld.image : [ld.image]).map((i) => (typeof i === "string" ? i : (i as { url?: string })?.url ?? null)) : [];
   const brand = ld?.brand;
-  const canonical = html.match(/<link[^>]+rel=["']canonical["'][^>]*>/i)?.[0]?.match(/href=["']([^"']+)["']/i)?.[1] ?? null;
+  const canonicalTag = doc.links.find((tag) => (attribute(tag, "rel") ?? "").toLowerCase() === "canonical");
+  const canonical = canonicalTag ? attribute(canonicalTag, "href") : null;
   return {
     sourceItemId: text(ld?.productID) ?? text(ld?.sku) ?? null,
-    title: text(ld?.name) ?? text(metaContent(html, "og:title")[0]) ?? text(html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1]),
+    title: text(ld?.name) ?? text(metaContent(doc, "og:title")[0]) ?? text(doc.title),
     brand: text(typeof brand === "string" ? brand : (brand as { name?: string })?.name),
     article: text(ld?.sku) ?? text(ld?.mpn),
-    canonicalUrl: canonical ? new URL(decodeEntities(canonical), pageUrl).toString() : null,
-    images: uniqueUrls([...ldImages, ...metaContent(html, "og:image"), ...metaContent(html, "twitter:image")], pageUrl),
+    canonicalUrl: canonical ? trustedCanonical(decodeEntities(canonical), pageUrl) : null,
+    images: uniqueUrls([...ldImages, ...metaContent(doc, "og:image"), ...metaContent(doc, "twitter:image")], pageUrl),
     publishedAt: null,
     productType: text(ld?.category),
     colors: text(ld?.color) ? [text(ld?.color) as string] : [],

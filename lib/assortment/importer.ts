@@ -1,15 +1,18 @@
 import { createHash } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { sniffImageMime } from "@/lib/ctrtest/pinImage";
+import { containsMoney } from "./attributes";
 import type { AssortmentDirection } from "./constants";
 import {
-  dedupKey,
   detectSourceId,
   extractHtmlProduct,
   fallbackTitle,
+  importDedupKey,
+  legacyImportDedupKey,
   normalizeProductUrl,
   parseShopifyProduct,
   regionFromUrl,
+  sameSite,
   shopifyProductJsonUrl,
   type ExtractedProduct,
 } from "./extract";
@@ -52,13 +55,19 @@ async function loadSourcesForDetection(db: SupabaseClient) {
   }));
 }
 
-async function readProduct(url: string, warnings: string[]): Promise<ExtractedProduct | null> {
+interface ProductRead {
+  product: ExtractedProduct | null;
+  /** Адрес страницы после редиректов (у bit.ly и партнёрских ссылок это не то, что вставил человек); null — страницу не прочитали. */
+  finalUrl: string | null;
+}
+
+async function readProduct(url: string, warnings: string[]): Promise<ProductRead> {
   const shopifyJson = shopifyProductJsonUrl(url);
   if (shopifyJson) {
     try {
       const response = await safeFetch(shopifyJson, { ...PAGE_LIMIT, accept: "application/json" });
       const parsed = parseShopifyProduct(JSON.parse(response.body.toString("utf8")));
-      if (parsed) return parsed;
+      if (parsed) return { product: parsed, finalUrl: response.url };
     } catch (error) {
       if (error instanceof SafeFetchError && error.code === "blocked_host") throw error;
       // не Shopify или карточка закрыта — пробуем обычную страницу
@@ -68,9 +77,9 @@ async function readProduct(url: string, warnings: string[]): Promise<ExtractedPr
     const page = await safeFetch(url, { ...PAGE_LIMIT, accept: "text/html,application/xhtml+xml" });
     if (!/html/i.test(page.contentType)) {
       warnings.push("По ссылке не страница товара: сохранили ссылку как есть.");
-      return null;
+      return { product: null, finalUrl: page.url };
     }
-    return extractHtmlProduct(page.body.toString("utf8"), page.url);
+    return { product: extractHtmlProduct(page.body.toString("utf8"), page.url), finalUrl: page.url };
   } catch (error) {
     if (error instanceof SafeFetchError) {
       if (error.code === "blocked_host" || error.code === "bad_url") throw error;
@@ -79,7 +88,7 @@ async function readProduct(url: string, warnings: string[]): Promise<ExtractedPr
       } else {
         warnings.push(`Страницу прочитать не удалось: ${error.message}. Ссылка сохранена, приложите фото.`);
       }
-      return null;
+      return { product: null, finalUrl: null };
     }
     throw error;
   }
@@ -145,11 +154,16 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
   const uploads = (input.uploads ?? []).filter(isUploadPath).slice(0, MAX_IMAGES);
   const rawUrl = (input.url ?? "").trim();
   if (!rawUrl && uploads.length === 0) throw new ImportInputError("Нужна ссылка или хотя бы одно фото.");
+  // Граница ТЗ: в модуле нет цен и денег. Заметка и название — то, что человек пишет сам (название сайта не проверяем: там бренды вроде
+  // «Cost»); тот же запрет стоит у правки признаков и у задания на образец, обходить его через форму импорта нельзя.
+  if (input.note && containsMoney(input.note)) throw new ImportInputError("Цены и деньги в модуле не храним — перепишите заметку словами.");
+  if (input.title && containsMoney(input.title)) throw new ImportInputError("Цены и деньги в модуле не храним — перепишите название словами.");
   await ensureAssortmentBucket(db);
 
   const warnings: string[] = [];
   let url = "";
   let product: ExtractedProduct | null = null;
+  let finalUrl: string | null = null;
   let sourceId: string | null = null;
   let sourceName: string | null = null;
   let region = "";
@@ -164,7 +178,7 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
     sourceName = sources.find((s) => s.sourceId === sourceId)?.name ?? null;
     region = regionFromUrl(url);
     try {
-      product = await readProduct(url, warnings);
+      ({ product, finalUrl } = await readProduct(url, warnings));
     } catch (error) {
       if (error instanceof SafeFetchError) throw new ImportInputError(error.message);
       throw error;
@@ -183,12 +197,24 @@ export async function importReference(db: SupabaseClient, input: ImportInput, ac
   }
 
   const normalizedUrl = url ? normalizeProductUrl(product?.canonicalUrl ?? url) : "";
+  // Домен в ключе — у самой страницы после редиректов: у короткой ссылки домен принадлежит сокращателю, а не магазину. Не прочиталась —
+  // остаётся вставленная ссылка. Источник и регион — по вставленной ссылке, как раньше: на них завязаны ключи уже сохранённых находок.
+  const pageUrl = finalUrl ?? url;
   const key = url
-    ? dedupKey(sourceId, region, product?.sourceItemId ?? null, normalizedUrl)
+    ? importDedupKey(sourceId, region, product?.sourceItemId ?? null, normalizedUrl, pageUrl)
     : uploaded[0] ? `manual||photo:${sha256(uploaded[0].bytes)}` : null;
   if (!key) throw new ImportInputError("Фото не прочиталось: нужен JPEG, PNG или WebP до 10 МБ.");
 
-  const { data: existing } = await db.from("assortment_references").select("id,title").eq("dedup_key", key).maybeSingle();
+  let { data: existing } = await db.from("assortment_references").select("id,title").eq("dedup_key", key).maybeSingle();
+  if (!existing && url) {
+    // Находки, заведённые до привязки артикула к сайту, лежат под прежним ключом «manual|<регион>|<sku>»: узнаём их, но только если это тот же
+    // сайт, иначе вернётся исходный дефект — одинаковый sku у двух магазинов склеивает их находки.
+    const legacyKey = legacyImportDedupKey(sourceId, region, product?.sourceItemId ?? null, normalizedUrl);
+    if (legacyKey && legacyKey !== key) {
+      const { data: legacy } = await db.from("assortment_references").select("id,title,url").eq("dedup_key", legacyKey).maybeSingle();
+      if (legacy && typeof legacy.url === "string" && sameSite(legacy.url, pageUrl)) existing = legacy;
+    }
+  }
   let referenceId: string;
   let created = false;
   let title: string;
