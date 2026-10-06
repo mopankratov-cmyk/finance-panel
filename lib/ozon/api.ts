@@ -612,6 +612,9 @@ export async function collectOzonAccrualPages(
   return { accruals, truncated: true };
 }
 
+/** Начисления за день у Ozon отдаются медленно (кабинет Космосшоп стабильно упирался в 20с) — даём больше времени, а не пропускаем дату. */
+const ACCRUAL_BY_DAY_TIMEOUT_MS = 50_000;
+
 /** Построчные начисления за один календарный день. */
 export async function ozonAccrualByDay(c: OzonCreds, date: string): Promise<OzonAccrualByDayResult> {
   try {
@@ -622,7 +625,7 @@ export async function ozonAccrualByDay(c: OzonCreds, date: string): Promise<Ozon
         headers: headers(c),
         body: JSON.stringify(body),
         cache: "no-store",
-      });
+      }, ACCRUAL_BY_DAY_TIMEOUT_MS);
       if (!res.ok) throw new Error(`Ozon ${res.status}: ${(await res.text()).slice(0, 120)}`);
       const json = (await res.json()) as { accruals?: unknown[]; last_id?: string };
       return { accruals: json.accruals ?? [], lastId: json.last_id };
