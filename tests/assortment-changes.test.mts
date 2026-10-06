@@ -8,13 +8,13 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ChangeCardView, ChangesBody, ChangesEmpty, ChangesUnavailable, datesText, runsLine } from "../components/assortment/ChangesView.tsx";
 import {
   changesReadiness, changesTabVisible, computeChanges, DISAPPEAR_FULL_RUNS, isFirstSundayOfMonth, parseChangesPeriod, planChanges, runsToRead, seasonCaption,
-  type ChangeRun, type SnapshotLite,
+  STALE_BASE_DAYS, type ChangeRun, type ChangesOptions, type SnapshotLite,
 } from "../lib/assortment/appearance.ts";
 import { loadChanges, loadChangesTab, loadDigestChanges, type ChangeCard, type ChangesResult, type DigestChanges } from "../lib/assortment/appearanceStore.ts";
 import { isFeedView, sectionViewFrom, DEFAULT_CATALOG_FILTERS } from "../lib/assortment/catalog.ts";
 import { initialNav, navAfterMenu, navSetFilters, navSetView } from "../lib/assortment/catalogNav.ts";
 import { buildReadiness, type ReadinessInput } from "../lib/assortment/dataReadiness.ts";
-import { digestMessage, type DigestDirection, type DigestFacts } from "../lib/assortment/digest.ts";
+import { digestMessage, digestMessages, splitTelegramMessage, TELEGRAM_TEXT_LIMIT, telegramVisibleLength, type DigestDirection, type DigestFacts } from "../lib/assortment/digest.ts";
 import { loadDigestFacts } from "../lib/assortment/digestFacts.ts";
 import { announceMenuNavigate, isSectionMenuTarget, onMenuNavigate } from "../lib/assortment/menuSignal.ts";
 import { summarizeHistory } from "../lib/assortment/observationState.ts";
@@ -40,10 +40,10 @@ const R = (day: string, coverage: Cov = "full", over: Partial<ChangeRun> = {}): 
 });
 const lite = (ids: string[], title = (id: string) => `Модель ${id}`): SnapshotLite[] => ids.map((id) => ({ sourceItemId: id, title: title(id) }));
 
-function changes(runs: Array<[ChangeRun, string[] | SnapshotLite[]]>, today = TODAY, period = 7) {
+function changes(runs: Array<[ChangeRun, string[] | SnapshotLite[]]>, today = TODAY, period = 7, options: ChangesOptions = {}) {
   const plan = planChanges(runs.map(([r]) => r), today, period);
   const snaps = new Map(runs.map(([r, rows]) => [r.runId, typeof rows[0] === "string" || rows.length === 0 ? lite(rows as string[]) : (rows as SnapshotLite[])]));
-  const computed = computeChanges(plan, snaps);
+  const computed = computeChanges(plan, snaps, options);
   const ids = (kind: string) => computed.items.filter((i) => i.kind === kind).map((i) => i.itemId).sort();
   return { plan, ...computed, appeared: ids("appeared"), disappeared: ids("disappeared"), first: ids("first_window") };
 }
@@ -401,7 +401,7 @@ test("Вкладка (счёт): журнал без полных прогоно
 const card = (over: Partial<ChangeCard> = {}): ChangeCard => ({
   key: "appeared:S300|zz-new", kind: "appeared", sourceId: "S300", sourceName: "Askent", part: null, itemId: "zz-new", title: "Пуховик oversize", brand: "ASKENT",
   image: "https://askent.ru/upload/zz-new.jpg", productUrl: "https://askent.ru/catalog/zz-new/", referenceId: null, referenceStatus: null, findingHref: null, inCatalog: true,
-  seenOn: "2026-10-20", absentOn: ["2026-10-14", "2026-10-07"], mass: false, ...over,
+  seenOn: "2026-10-20", absentOn: ["2026-10-14", "2026-10-07"], mass: false, staleSpanDays: null, ...over,
 });
 
 function result(over: Partial<Extract<ChangesResult, { available: true }>> = {}): Extract<ChangesResult, { available: true }> {
@@ -409,7 +409,7 @@ function result(over: Partial<Extract<ChangesResult, { available: true }>> = {})
     available: true, direction: "jackets", today: "2026-10-21", periodDays: 7, periodStart: "2026-10-14", disappearRuns: 2, season: null,
     groups: { appeared: [card()], disappeared: [card({ key: "disappeared:S300|g", kind: "disappeared", itemId: "g", title: "Парка", seenOn: "2026-10-14", absentOn: ["2026-10-20", "2026-10-17"] })], firstInWindow: [] },
     totals: { appeared: 1, disappeared: 1, firstInWindow: 0, hidden: 0 },
-    sources: [{ sourceId: "S300", name: "Askent", kind: "full", part: null, status: "ready", historyStatus: "appearance", readyOn: null, disappearReady: true, disappearRunsMissing: 0, latestOn: "2026-10-20", baseOn: ["2026-10-14", "2026-10-07"], recentOn: ["2026-10-20", "2026-10-17"], appeared: 1, disappeared: 1, firstInWindow: 0, mass: false }],
+    sources: [{ sourceId: "S300", name: "Askent", kind: "full", part: null, status: "ready", historyStatus: "appearance", readyOn: null, disappearReady: true, disappearRunsMissing: 0, latestOn: "2026-10-20", baseOn: ["2026-10-14", "2026-10-07"], recentOn: ["2026-10-20", "2026-10-17"], appeared: 1, disappeared: 1, firstInWindow: 0, mass: false, spanDays: 13, baseStale: false }],
     tabVisible: true,
     ...over,
   };
@@ -422,14 +422,16 @@ test("Экран: группы «Появилось» и «Пропало» с �
   assert.match(text, /Пропало · 1/);
   assert.match(text, /«Пропало» — модели нет в 2 полных прогонах подряд \(в разные дни\), а до них была; один пропуск — не «пропало»\./);
   assert.match(text, /Есть в полном прогоне 20\.10; не было в прогонах 07\.10 и 14\.10/);
-  assert.match(text, /Последний раз — в полном прогоне 14\.10; нет в 2 полных прогонах подряд: 17\.10 и 20\.10/);
+  assert.match(text, /Была в полном прогоне 14\.10 \(на начало периода\); нет в 2 полных прогонах подряд: 17\.10 и 20\.10/);
+  assert.doesNotMatch(text, /Последний раз/, "прогоны между базой и последними не читаются — «последний раз» был бы непроверенной датой");
   assert.match(text, /ASKENT · Askent/);
   assert.match(text, /Пуховик oversize/);
   assert.match(text, /Где купить образец/);
   assert.match(html, /href="https:\/\/www\.vinted\.com\/catalog\?search_text=ASKENT%20%D0%9F%D1%83%D1%85%D0%BE%D0%B2%D0%B8%D0%BA%20oversize"/);
   assert.match(text, /Отобрать/);
   assert.match(text, /Не интересно/);
-  assert.match(html, /grid grid-cols-1 gap-3 md:grid-cols-2/, "телефон — одна колонка");
+  assert.match(html, /grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3/, "телефон и iPad в портрете — одна колонка (ТЗ Ф3), две — с 1024 px");
+  assert.doesNotMatch(html, /md:grid-cols-2/, "на iPad в портрете (768–1023 px) не две колонки");
   for (const button of html.match(/<button[^>]*>/g) ?? []) assert.match(button, /h-11|h-10 w-10|min-h-/, `цель нажатия ≥ 44 px: ${button}`);
   assert.match(text, /Источники и даты прогонов · 1/);
   assert.match(text, /Askent — прогоны 14\.10 → 20\.10: появилось — 1, пропало — 1/);
@@ -444,7 +446,7 @@ test("Экран: подпись сезона в январе видимым т�
     totals: { appeared: 1, disappeared: 0, firstInWindow: 1, hidden: 3 },
     sources: [
       { ...result().sources[0], disappearReady: false, disappearRunsMissing: 1, disappeared: 0 },
-      { sourceId: "S046", name: "ASOS", kind: "window", part: null, status: "ready", historyStatus: "window_only", readyOn: null, disappearReady: false, disappearRunsMissing: 0, latestOn: "2026-10-20", baseOn: ["2026-10-14"], recentOn: ["2026-10-20"], appeared: 0, disappeared: 0, firstInWindow: 1, mass: false },
+      { sourceId: "S046", name: "ASOS", kind: "window", part: null, status: "ready", historyStatus: "window_only", readyOn: null, disappearReady: false, disappearRunsMissing: 0, latestOn: "2026-10-20", baseOn: ["2026-10-14"], recentOn: ["2026-10-20"], appeared: 0, disappeared: 0, firstInWindow: 1, mass: false, spanDays: 6, baseStale: false },
     ],
   }) })));
   assert.doesNotMatch(pending, /Пропало ·/, "группы «Пропало» нет, пока правило не может сработать");
@@ -609,12 +611,13 @@ test("Полоска: по каким источникам «Изменения�
     { name: "ASOS", status: "window_only", firstDay: "2026-10-17", firstFullDay: null, fullDays: 0 },
   ] } });
   const text = report.groups.find((g) => g.key === "history")!.lines.map((l) => `${l.kind}: ${l.text}`).join(" | ");
-  assert.match(text, /факт: Вкладка «Изменения»: «появилось» и «пропало» честные — Askent\./);
-  assert.match(text, /факт: Вкладка «Изменения»: пока только «появилось», «пропало» \(2 полных прогона подряд без модели\): Zara — после ещё 1 полного прогона\./);
-  assert.match(text, /оценка: Вкладка «Изменения» копится: Sela — не раньше 25\.10; Pompa — ждёт первого полного прогона\./);
-  assert.match(text, /Только верх выдачи — в «Изменениях» список «впервые в верху выдачи», «пропало» у них не бывает: ASOS — с 24\.10\./);
-  // Застрявший источник — без даты «не раньше сегодня».
-  assert.deepEqual(changesReadiness([{ name: "Sela", status: "building", firstDay: "2026-09-01", firstFullDay: "2026-09-01" }], "2026-10-21", new Set(["Sela"])).map((l) => l.text), ["Вкладка «Изменения» копится: Sela — второй полный прогон не приходит."]);
+  assert.match(text, /факт: Вкладка «Изменения»: «появилось» и «пропало» — наблюдение: Askent; пока только «появилось», «пропало» — после 2 полных прогонов подряд без модели: Zara — после ещё 1 полного прогона\./);
+  assert.match(text, /оценка: Вкладка «Изменения» копится: ASOS \(только верх выдачи\) — не раньше 24\.10; Sela — не раньше 25\.10\./);
+  assert.match(text, /оценка: Ждут первого полного прогона: Pompa — для них даты пока нет\./, "ждущий первого полного — своей строкой, а не в «копится»");
+  // Застрявший источник — не в «копится» (его дата «не раньше сегодня» ничего бы не значила): у него своя строка-проблема.
+  assert.deepEqual(changesReadiness([{ name: "Sela", status: "building", firstDay: "2026-09-01", firstFullDay: "2026-09-01" }], "2026-10-21", new Set(["Sela"])), []);
+  // Верх выдачи с историей от 7 дней — в строке факта, без даты.
+  assert.deepEqual(changesReadiness([{ name: "ASOS", status: "window_only", firstDay: "2026-10-01", firstFullDay: null }], "2026-10-21").map((l) => l.text), ["Вкладка «Изменения»: только верх выдачи — список «впервые в верху выдачи», «пропало» у них не бывает: ASOS."]);
   // Число полных дней приходит в полоску из журнала.
   assert.match(read("lib/assortment/dataReadinessStore.ts"), /fullDays: s\.fullDays/);
   const [h] = summarizeHistory([
@@ -623,4 +626,210 @@ test("Полоска: по каким источникам «Изменения�
     { source_id: "S1", direction: "jackets", observed_on: "2026-10-14", coverage: "full", seen: 1, added: 0, error: null, started_at: "2026-10-14T03:00:00Z" },
   ], "2026-10-21");
   assert.equal(h.fullDays, 2, "повтор в тот же день — один день");
+});
+
+// ---------------------------------------------------------------------------
+// Ф3 по ревью
+
+test("Ревью: у верха выдачи выборки одного дня складываются — у ASOS на раздел две цели (общие слова и Mango), читаются обе при любом порядке сбора", () => {
+  const generic = Array.from({ length: 40 }, (_, i) => `g${i}`);
+  const mango = Array.from({ length: 10 }, (_, i) => `m${i}`);
+  const A = (day: string, hhmm: string) => R(day, "window", { sourceId: "S046", direction: "bags", startedAt: `${day}T${hhmm}:00Z` });
+  const days = ["2026-10-07", "2026-10-10", "2026-10-14", "2026-10-17", "2026-10-21"];
+  // Обычный порядок: общие слова собраны раньше, Mango — позже; новая модель g40 — только в общей выдаче 21.10.
+  const stable = changes(days.flatMap((d) => [[A(d, "06:31"), d === "2026-10-21" ? [...generic, "g40"] : generic], [A(d, "06:32"), mango]]) as Array<[ChangeRun, string[]]>);
+  assert.deepEqual(stable.first, ["g40"], "общая выдача не теряется оттого, что Mango записан позже");
+  assert.equal(stable.streams[0].models, 51, "в последнем дне — модели обеих выборок");
+  assert.equal(runsToRead(stable.plan).filter((r) => r.observedOn === "2026-10-21").length, 2, "снимки читаются у обеих выборок дня");
+  // Порядок сменился в последний день: общая выдача не становится «впервые в верху выдачи» разом.
+  const flipped = changes(days.flatMap((d) => (d === "2026-10-21"
+    ? [[A(d, "06:31"), mango], [A(d, "08:30"), generic]]
+    : [[A(d, "06:31"), generic], [A(d, "06:32"), mango]])) as Array<[ChangeRun, string[]]>);
+  assert.deepEqual([flipped.first, flipped.streams[0].mass], [[], false]);
+  // Полный поток — по-прежнему один прогон на день: повтор полного обхода не другая выборка, и его снимок не читается.
+  const full = changes([
+    [R("2026-10-07"), ["a"]], [R("2026-10-14"), ["a"]],
+    [R("2026-10-20", "full", { startedAt: "2026-10-20T03:30:00Z" }), ["a", "early"]], [R("2026-10-20", "full", { startedAt: "2026-10-20T09:00:00Z" }), ["a", "late"]],
+  ]);
+  assert.deepEqual(full.appeared, ["late"]);
+  assert.equal(runsToRead(full.plan).filter((r) => r.observedOn === "2026-10-20").length, 1);
+});
+
+test("Ревью: переименованный товар (тот же номер Shopify, ключ модели по названию) — не «появилось» и не «пропало»; новая модель — «появилось»", () => {
+  const P = (day: string) => R(day, "full", { sourceId: "S024", direction: null });
+  const rows = (pairs: Array<[string, string]>): SnapshotLite[] => pairs.map(([id, title]) => ({ sourceItemId: id, title }));
+  const before = rows([["100", "Numéro Un - Textured Black"], ["200", "Cyme - Smooth Camel"]]);
+  const renamed = rows([["100", "Numéro Un Nano - Textured Black"], ["200", "Cyme - Smooth Camel"]]);
+  const r = changes([[P("2026-10-07"), before], [P("2026-10-14"), before], [P("2026-10-17"), renamed], [P("2026-10-20"), [...renamed, ...rows([["300", "Mokki - Textured Black"]])]]]);
+  assert.equal(r.streams[0].disappearReady, true);
+  assert.deepEqual(r.appeared, ["300"]);
+  assert.deepEqual(r.disappeared, [], "Numéro Un под новым названием — та же модель");
+  // Номера модели — все её расцветки в прогоне (по ним каталог решает, видел ли он модель раньше).
+  const colors = changes([[P("2026-10-07"), before], [P("2026-10-14"), before], [P("2026-10-20"), [...before, ...rows([["301", "Tonca - Black"], ["302", "Tonca - Camel"]])]]]);
+  assert.deepEqual(colors.items.find((i) => i.itemId === "301")?.itemIds, ["301", "302"]);
+});
+
+test("Ревью: вернувшаяся модель (снова в наличии у Zara, снова в верху выдачи) — не «появилось»: каталог видел её раньше начала периода", () => {
+  const Z = (day: string) => R(day, "full", { sourceId: "S001" });
+  const runs: Array<[ChangeRun, string[]]> = [[Z("2026-09-23"), ["a", "r"]], [Z("2026-09-30"), ["a", "r"]], [Z("2026-10-07"), ["a"]], [Z("2026-10-14"), ["a"]], [Z("2026-10-21"), ["a", "r", "n"]]];
+  const firstSeen: Record<string, string> = { a: "2026-09-23", r: "2026-09-23", n: "2026-10-21" };
+  const seen: ChangesOptions = { firstSeenOn: (sourceId, id) => (sourceId === "S001" ? firstSeen[id] ?? null : null) };
+  assert.deepEqual(changes(runs, TODAY, 7, seen).appeared, ["n"], "r была 23.09 и 30.09, две недели её не было в наличии — это возврат");
+  assert.deepEqual(changes(runs).appeared, ["n", "r"], "без сверки с каталогом r выглядела бы новой");
+  // Строки в каталоге нет — сверять не с чем: правило по прогонам на начало периода.
+  assert.deepEqual(changes(runs, TODAY, 7, { firstSeenOn: () => null }).appeared, ["n", "r"]);
+  // Модель, впервые увиденная в сам день начала периода (после его полного прогона), — тоже не новая за неделю.
+  assert.deepEqual(changes(runs, TODAY, 7, { firstSeenOn: (_s, id) => (id === "n" ? "2026-10-14" : "2026-09-23") }).appeared, []);
+  // Верх выдачи: модель снова в топе — не «впервые»; числа и «массовая смена» — без вернувшихся.
+  const W = (day: string) => R(day, "window", { sourceId: "S007" });
+  const back = Array.from({ length: 40 }, (_, i) => `b${i}`);
+  const w = changes([[W("2026-09-20"), ["x", ...back]], [W("2026-10-10"), ["x"]], [W("2026-10-14"), ["x"]], [W("2026-10-20"), ["x", ...back, "fresh"]]], TODAY, 7, {
+    firstSeenOn: (_s, id) => (id === "fresh" ? "2026-10-20" : "2026-09-20"),
+  });
+  assert.deepEqual(w.first, ["fresh"]);
+  assert.deepEqual([w.streams[0].firstInWindow, w.streams[0].mass], [1, false]);
+});
+
+test("Ревью: вернувшаяся модель по базе — каталог читается с датой первого обхода, у «появилось» по всем номерам модели", async () => {
+  const tables = world();
+  const latest = tables.assortment_run.find((r) => r.source_id === "S300" && r.observed_on === "2026-10-20")!;
+  tables.assortment_item_snapshot.push(...snaps(latest, ["zz-back"]));
+  tables.assortment_source_items.push({ source_id: "S300", source_item_id: "zz-back", handle: null, reference_id: null, image_urls: null, brand: null, hidden_at: null, first_seen_at: "2026-09-30T03:00:00Z" });
+  // zz-new каталог впервые увидел в этом же прогоне (06:31 МСК 20.10) — новинка.
+  tables.assortment_source_items.find((r) => r.source_item_id === "zz-new")!.first_seen_at = "2026-10-20T03:31:00Z";
+  const { db, reads } = fakeDb({ tables });
+  const r = ready(await loadChanges(db, { direction: "jackets", periodDays: 7, now: NOW }));
+  assert.deepEqual(r.groups.appeared.map((c) => c.itemId), ["zz-new"], "zz-back каталог видел 30.09 — возврат, а не новинка");
+  assert.equal(r.totals.appeared, 1);
+  assert.equal(r.sources.find((s) => s.name === "Askent")?.appeared, 1, "и в числах источника её нет");
+  assert.ok(reads.some((x) => x.table === "assortment_source_items"));
+  // Расцветки (Polène): модель представлена новым цветом, но другой её цвет каталог видел 30.09 — модель вернулась, а не появилась.
+  const polene = tables.assortment_run.find((x) => x.source_id === "S024" && x.observed_on === "2026-10-20")!;
+  tables.assortment_item_snapshot.push(...snaps(polene, ["t301", "t302"], (id) => ({ direction: "bags", title: id === "t301" ? "Tonca - Black" : "Tonca - Camel" })));
+  tables.assortment_source_items.push(
+    { source_id: "S024", source_item_id: "t301", handle: null, reference_id: null, image_urls: null, brand: null, hidden_at: null, first_seen_at: "2026-10-20T00:31:00Z" },
+    { source_id: "S024", source_item_id: "t302", handle: null, reference_id: null, image_urls: null, brand: null, hidden_at: null, first_seen_at: "2026-09-30T00:31:00Z" },
+  );
+  const bags = ready(await loadChanges(fakeDb({ tables }).db, { direction: "bags", periodDays: 7, now: NOW }));
+  assert.deepEqual(bags.groups.appeared.map((c) => c.itemId), ["p-new"], "Tonca: решает любой номер модели, а не только тот, что на карточке");
+});
+
+test("Ревью: после простоя сборщика база устарела — сравнение за весь простой подписано в потоке, карточке, на экране и в сводке; недельный источник в норме — не «устарела»", async () => {
+  assert.equal(STALE_BASE_DAYS, 7);
+  const outage = changes([[R("2026-09-27"), ["a", "old"]], [R("2026-09-28"), ["a", "old"]], [R("2026-10-19"), ["a", "n1"]], [R("2026-10-20"), ["a", "n1"]]]);
+  assert.deepEqual([outage.streams[0].status, outage.streams[0].baseStale, outage.streams[0].spanDays], ["ready", true, 22]);
+  assert.deepEqual(outage.appeared, ["n1"]);
+  assert.ok(outage.items.length > 0 && outage.items.every((i) => i.staleSpanDays === 22));
+  // Zara — раз в неделю по средам: во вторник база — среда позапрошлой недели (6 дней до начала периода) — норма.
+  const Z = (day: string) => R(day, "full", { sourceId: "S001" });
+  const weekly = changes([[Z("2026-09-30"), ["a"]], [Z("2026-10-07"), ["a"]], [Z("2026-10-14"), ["a", "n"]]], "2026-10-20");
+  assert.deepEqual([weekly.streams[0].baseStale, weekly.streams[0].spanDays, weekly.items[0]?.staleSpanDays], [false, 7, null]);
+  // Пропущена неделя (402 у Bright Data) — уже «устарела»: сравнение за две недели.
+  const missed = changes([[Z("2026-09-23"), ["a"]], [Z("2026-09-30"), ["a"]], [Z("2026-10-14"), ["a", "n"]]], "2026-10-20");
+  assert.deepEqual([missed.streams[0].baseStale, missed.streams[0].spanDays], [true, 14]);
+  // Карточка, экран, список источников.
+  const cardText = flat(renderToStaticMarkup(createElement(ChangeCardView, { card: card({ staleSpanDays: 22, absentOn: ["2026-09-28", "2026-09-27"] }), local: {} })));
+  assert.match(cardText, /Сравнение за 22 дня, а не за период: между прогонами сборщик простаивал\./);
+  assert.doesNotMatch(flat(renderToStaticMarkup(createElement(ChangeCardView, { card: card(), local: {} }))), /простаивал/);
+  const staleSource = { ...result().sources[0], baseOn: ["2026-09-28", "2026-09-27"], spanDays: 22, baseStale: true };
+  const body = flat(renderToStaticMarkup(createElement(ChangesBody, { result: result({ sources: [staleSource] }) })));
+  assert.match(body, /Не за неделю: Askent — с 28\.09, за 22 дня\. Между прогонами сборщик простаивал/);
+  assert.match(body, /Askent — прогоны 28\.09 → 20\.10 \(за 22 дня: сборщик простаивал\): появилось — 1/);
+  assert.doesNotMatch(flat(renderToStaticMarkup(createElement(ChangesBody, { result: result() }))), /простаивал\./, "база в порядке — подписи нет");
+  // Сводка: в строке источника — реальный промежуток.
+  const staleBlock = block(7, "2026-10-14", "2026-10-21");
+  staleBlock.directions.jackets!.sources[0] = { ...staleBlock.directions.jackets!.sources[0], fromOn: "2026-09-28", toOn: "2026-10-20", staleSpanDays: 22 };
+  const digest = digestMessage(facts({ changes: { week: staleBlock, month: null, season: null, disappearRuns: 2 } }));
+  assert.match(digest, /• Askent: \+3 \/ −1 \(прогоны 28\.09 → 20\.10, за 22 дня — сборщик простаивал\)/);
+  assert.match(digest, /• ASOS: впервые в верху выдачи 2 \(прогоны 11\.10 → 17\.10\)\n/, "у источника с базой в порядке — без подписи");
+  // По базе: провязка до карточки и сводки.
+  runSeq = 0;
+  const runs = ["2026-09-27", "2026-09-28", "2026-10-19", "2026-10-20"].map((d) => run("S300", d));
+  const tables = {
+    assortment_sources: SOURCES, assortment_run: runs, assortment_source_items: [], assortment_references: [],
+    assortment_item_snapshot: runs.flatMap((x, i) => snaps(x, i < 2 ? ["a", "old"] : ["a", "n1"])),
+  };
+  const loaded = ready(await loadChanges(fakeDb({ tables }).db, { direction: "jackets", periodDays: 7, now: NOW }));
+  assert.deepEqual([loaded.sources[0].baseStale, loaded.sources[0].spanDays, loaded.groups.appeared[0]?.staleSpanDays], [true, 22, 22]);
+  const sunday = await loadDigestChanges(fakeDb({ tables }).db, NOW);
+  assert.equal(sunday?.week?.directions.jackets?.sources[0].staleSpanDays, 22);
+});
+
+test("Ревью: полоска — каждый источник назван в строках «Изменений» один раз, без противоречий (Zara с двумя полными — не «наблюдение»)", () => {
+  const today = "2026-10-16";
+  const report = buildReadiness({
+    today, nowMs: Date.parse(`${today}T09:00:00Z`), traits: null, demand: null,
+    history: { sources: [
+      { name: "Zara", status: "appearance", firstDay: "2026-10-07", firstFullDay: "2026-10-07", fullDays: 2 },
+      { name: "Rains", status: "appearance", firstDay: "2026-10-05", firstFullDay: "2026-10-05", fullDays: 11 },
+      { name: "befree", status: "building", firstDay: "2026-10-12", firstFullDay: "2026-10-12", fullDays: 4 },
+      { name: "ASOS", status: "window_only", firstDay: "2026-10-03", firstFullDay: null, fullDays: 0 },
+    ] },
+  });
+  const lines = report.groups.find((g) => g.key === "history")!.lines.map((l) => l.text);
+  // Строки про «появилось / пропало» (кроме «Динамики» — это другое).
+  const about = lines.filter((l) => !/^Динамика|^Можно смотреть динамику/.test(l));
+  for (const name of ["Zara", "Rains", "befree", "ASOS"]) {
+    assert.equal(about.join(" | ").split(name).length - 1, 1, `${name} назван один раз: ${about.join(" | ")}`);
+  }
+  assert.doesNotMatch(about.join(" | "), /наблюдение: [^;]*Zara/, "у Zara два полных прогона — «пропало» ещё не наблюдение");
+  assert.match(about.join(" | "), /пока только «появилось»[^|]*Zara — после ещё 1 полного прогона/);
+  assert.ok(about.length <= 2, `не больше двух строк про «Изменения»: ${about.length}`);
+});
+
+test("Ревью: сводка первого воскресенья месяца не длиннее предела Telegram — месячная выжимка итогами, а длинная сводка делится на сообщения по разделам", () => {
+  const names = ["Rains", "Polène", "Songmont", "Askent", "JW PEI", "befree", "Love Republic", "Ushatava", "Zara", "Zara (CHAQUETA)", "Uniqlo", "ZARINA", "Sela", "Pompa"];
+  const dir = (): DigestDirection => emptyDir();
+  const changesDir = () => ({
+    sources: names.map((n, i) => ({ name: n, appeared: 3 + i, disappeared: i % 3, firstInWindow: 0, fromOn: "2026-10-25", toOn: "2026-10-31", mass: false })),
+    quiet: [],
+    examples: ["Rains · Hilo Weekend Bag W3 — Black", "Polène · Numéro Dix Mini — Textured Camel", "Songmont · Luna Medium Shoulder Bag"],
+  });
+  const changesBlock = (days: number) => ({ periodDays: days, periodStart: days === 7 ? "2026-10-25" : "2026-10-02", today: "2026-11-01", directions: { bags: changesDir(), jackets: changesDir() } });
+  const top = Array.from({ length: 3 }, (_, i) => ({ id: `id-${i}`, title: `Куртка-бомбер укороченная оверсайз модель ${i}`, brand: "Zara", label: "новинка в каталоге бренда", tone: "novelty" as const }));
+  const social = { total: 9, items: Array.from({ length: 5 }, (_, i) => ({ direction: "jackets" as const, brand: "zara" as const, title: `Укороченная куртка-бомбер из искусственной замши ${i}`, views: 1_250_000, likes: 48_000, verdict: "viral" as const, url: `https://www.instagram.com/reel/ABCDEFGHIJ${i}/` })) };
+  const failing = ["JW PEI", "Zalando · Bershka", "Lime"].map((n) => ({ name: n, error: "обход не дошёл до конца (дедлайн 300 с), прогон записан оборванным; Bright Data: не куплено: куртки — фильтр не принят" }));
+  const heavy = facts({
+    from: "2026-10-25T07:00:00Z", to: "2026-11-01T07:00:00Z",
+    directions: { bags: { ...dir(), newCount: 24, retailCount: 3, top, selected: 2, sampleNeeded: 1, rejected: 4, topReason: "Похоже на то, что у нас есть" }, jackets: { ...dir(), newCount: 31, retailCount: 5, top, selected: 3, sampleNeeded: 2, rejected: 6, topReason: "Не наш стиль" } },
+    collections: [{ id: "c1", title: "Весна 2027 — сумки", progress: "12 из 20", status: "черновик", version: 1 }],
+    crawl: { ok: names, failing }, history: names.map((n) => ({ name: n, status: "appearance" as const })), social: social as never,
+    changes: { week: changesBlock(7), month: changesBlock(30), season: null, disappearRuns: 2 },
+  });
+  const whole = digestMessage(heavy);
+  const month = whole.split("<b>За месяц: 02.10–01.11</b>\n")[1].split("\n\n")[0];
+  assert.equal(month, "Сумки: появилось 133, пропало 13 — больше всего у Rains, Polène, Songmont.\nКуртки: появилось 133, пропало 13 — больше всего у Rains, Polène, Songmont.", "месяц — итоги и лидеры, без строк источников и примеров");
+  assert.ok(telegramVisibleLength(whole) <= TELEGRAM_TEXT_LIMIT, `сценарий ревью (14 источников, 3 сбоя, 5 «залётов», неделя и месяц) — одним сообщением: ${telegramVisibleLength(whole)}`);
+  assert.deepEqual(digestMessages(heavy), [whole], "влезает — одно сообщение, то же самое");
+  // Ещё больше: 12 подборок и 10 сбойных обходов — делится; каждая часть в пределе, ничего не потеряно, разрез — между разделами.
+  const huge = { ...heavy, collections: Array.from({ length: 12 }, (_, i) => ({ id: `c${i}`, title: `Подборка весна 2027 номер ${i} — сумки и куртки`, progress: "12 из 20", status: "черновик", version: 1 })), crawl: { ok: names, failing: Array.from({ length: 10 }, (_, i) => ({ ...failing[i % 3], name: `${failing[i % 3].name} ${i}` })) } };
+  const parts = digestMessages(huge);
+  assert.ok(telegramVisibleLength(digestMessage(huge)) > TELEGRAM_TEXT_LIMIT, "проверка без смысла, если сводка влезает");
+  assert.ok(parts.length >= 2);
+  for (const part of parts) assert.ok(telegramVisibleLength(part) <= TELEGRAM_TEXT_LIMIT, `часть ${telegramVisibleLength(part)}`);
+  assert.deepEqual(parts.join("\n").split("\n").filter(Boolean), digestMessage(huge).split("\n").filter(Boolean));
+  for (const part of parts.slice(1)) assert.match(part, /^(🧵 )?<b>/, "каждая следующая часть начинается с заголовка раздела");
+  // Раздел длиннее предела — по строкам, разметка в каждой части цела; строка длиннее предела — обрезана видимым текстом.
+  const long = ["<b>Раздел</b>", ...Array.from({ length: 30 }, (_, i) => `• <a href="https://x.example/${i}">${"я".repeat(60)} &amp; ${i}</a>`)].join("\n");
+  const split = splitTelegramMessage(long, 500);
+  assert.ok(split.length > 1);
+  for (const part of split) {
+    assert.ok(telegramVisibleLength(part) <= 500);
+    assert.equal((part.match(/<a /g) ?? []).length, (part.match(/<\/a>/g) ?? []).length);
+  }
+  const [cut] = splitTelegramMessage(`<b>${"ж".repeat(600)}</b>`, 500);
+  assert.equal(telegramVisibleLength(cut), 500);
+  // Роут шлёт все части по порядку, а в пробном прогоне показывает, сколько их.
+  const route = read("app/api/sync/assortment-digest/route.ts");
+  assert.match(route, /texts = digestMessages\(facts\)/);
+  assert.match(route, /for \(const text of texts\) await sendTelegramMessage\(text\);/);
+});
+
+test("Ревью: вкладки раздела — с sm ряд переносится (на десктопе «Изменения» не уходит за край), цели ≥ 44 px, на телефоне выбранная прокручивается в видимую часть", () => {
+  const section = read("components/assortment/AssortmentSection.tsx");
+  assert.match(section, /role="tablist" aria-label="Вид ленты" className="[^"]*\bsm:flex-wrap\b[^"]*"/);
+  assert.match(section, /className=\{`h-11 shrink-0 rounded-full px-4 text-sm \$\{v\.id === view/);
+  assert.doesNotMatch(section, /h-10 shrink-0 rounded-full/);
+  assert.match(section, /querySelector<HTMLElement>\('\[aria-selected="true"\]'\)/);
+  assert.match(section, /row\.scrollLeft \+= at\.left - box\.left/);
 });

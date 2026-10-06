@@ -16,7 +16,8 @@ import { isRuSource } from "./ruMarket";
 /**
  * «Появилось / пропало» — чтение базы для вкладки «Изменения» и воскресной сводки. Журнал прогонов — за 120 дней (как «История
  * наблюдений»: статусы совпадают), снимки — только нужных прогонов: последние и на начало периода, по разделу, без фото и меток
- * (фото и ссылки — из каталога, и только для найденных моделей). Всё — через loadAllSupabasePages: PostgREST молча режет на 1 000.
+ * (фото и ссылки — из каталога, и только для найденных моделей). Каталог заодно говорит, когда модель увидели впервые: вернувшаяся
+ * (снова в наличии) — не «появилось». Всё — через loadAllSupabasePages: PostgREST молча режет на 1 000.
  * Таблиц слоя наблюдений нет (миграция 202610050001) — вкладки нет, причина названа одной строкой.
  */
 
@@ -141,19 +142,30 @@ interface CatalogRowLite {
   source_item_id: string;
   handle: string | null;
   reference_id: string | null;
+  /** Когда обход впервые увидел строку (колонка таблицы с первой миграции каталога). */
+  first_seen_at?: string | null;
   image_urls?: string[] | null;
   brand?: string | null;
   hidden_at?: string | null;
 }
 
-const CATALOG_BASE = "source_item_id,handle,reference_id";
+const CATALOG_BASE = "source_item_id,handle,reference_id,first_seen_at";
 
-/** Строки каталога найденных моделей (ссылка, фото, «скрыта», находка) — пачками по источнику. Нет колонок каталога — без них. */
+/**
+ * Строки каталога найденных моделей (ссылка, фото, «скрыта», находка, когда увидели впервые) — пачками по источнику. У «появилось» и
+ * «впервые в верху выдачи» — все номера модели (вернулась ли она, решает любой из них), у «пропало» — строка модели. Нет колонок
+ * каталога — без них.
+ */
 async function loadCatalogRows(db: SupabaseClient, items: readonly ChangeItem[]): Promise<Map<string, CatalogRowLite>> {
-  const bySource = new Map<string, string[]>();
-  for (const item of items) bySource.set(item.sourceId, [...new Set([...(bySource.get(item.sourceId) ?? []), item.itemId])]);
+  const bySource = new Map<string, Set<string>>();
+  for (const item of items) {
+    const ids = bySource.get(item.sourceId) ?? new Set<string>();
+    for (const id of item.kind === "disappeared" ? [item.itemId] : [item.itemId, ...item.itemIds]) ids.add(id);
+    bySource.set(item.sourceId, ids);
+  }
   const out = new Map<string, CatalogRowLite>();
-  await Promise.all([...bySource.entries()].map(async ([sourceId, ids]) => {
+  await Promise.all([...bySource.entries()].map(async ([sourceId, idSet]) => {
+    const ids = [...idSet];
     const read = (columns: string) => rowsByIds<CatalogRowLite>(ids, "Каталог изменений", (part, from, to) => db.from("assortment_source_items")
       .select(columns)
       .eq("source_id", sourceId)
@@ -203,6 +215,8 @@ export interface ChangeCard {
   seenOn: string;
   absentOn: string[];
   mass: boolean;
+  /** База источника устарела (сборщик простаивал): сравнение на деле за столько дней, а не за период; null — база в порядке. */
+  staleSpanDays: number | null;
 }
 
 export interface ChangesSourceView {
@@ -223,6 +237,10 @@ export interface ChangesSourceView {
   disappeared: number;
   firstInWindow: number;
   mass: boolean;
+  /** Дней между базой и последним прогоном; null — базы нет. */
+  spanDays: number | null;
+  /** База старше начала периода больше чем на неделю — сборщик простаивал, сравнение за весь простой. */
+  baseStale: boolean;
 }
 
 export interface ChangesGroups {
@@ -268,8 +286,17 @@ async function buildDirection(db: SupabaseClient, ctx: Context, direction: Assor
   const reads = runsToRead(plan);
   const loaded = await pool(reads, SNAPSHOT_CONCURRENCY, async (run) => [run.runId, await loadRunModels(db, run, direction)] as const);
   mark?.("snapshots");
-  const computed = computeChanges(plan, new Map(loaded));
-  const catalog = computed.items.length ? await loadCatalogRows(db, computed.items) : new Map<string, CatalogRowLite>();
+  const snapshots = new Map(loaded);
+  // Первый проход — кандидаты по прогонам; каталог кандидатов говорит, когда модель увидели впервые; второй проход отбрасывает
+  // вернувшиеся (снова в наличии, снова в верху выдачи) и пересчитывает числа и «массовую смену» без них.
+  const candidates = computeChanges(plan, snapshots);
+  const catalog = candidates.items.length ? await loadCatalogRows(db, candidates.items) : new Map<string, CatalogRowLite>();
+  const computed = computeChanges(plan, snapshots, {
+    firstSeenOn: (sourceId, itemId) => {
+      const at = catalog.get(`${sourceId}:${itemId}`)?.first_seen_at;
+      return at && Number.isFinite(Date.parse(at)) ? moscowToday(Date.parse(at)) : null;
+    },
+  });
   const statuses = await loadReferenceStatuses(db, [...catalog.values()].map((r) => r.reference_id).filter((id): id is string => Boolean(id)));
   mark?.("catalog");
 
@@ -304,6 +331,7 @@ async function buildDirection(db: SupabaseClient, ctx: Context, direction: Assor
       seenOn: item.seenOn,
       absentOn: item.absentOn,
       mass: item.mass,
+      staleSpanDays: item.staleSpanDays,
     };
     groups[KIND_GROUP[item.kind]].push(card);
     const key = streamKey(item.sourceId, item.part);
@@ -322,7 +350,7 @@ async function buildDirection(db: SupabaseClient, ctx: Context, direction: Assor
       return {
         sourceId: s.sourceId, name: nameOf(s.sourceId), kind: s.kind, part: s.part ? partLabel(s.part) : null, status: s.status,
         historyStatus: historyOf.get(s.sourceId) ?? null, readyOn: s.readyOn, disappearReady: s.disappearReady, disappearRunsMissing: s.disappearRunsMissing,
-        latestOn: s.latestOn, baseOn: s.baseOn, recentOn: s.recentOn, ...counts, mass: s.mass,
+        latestOn: s.latestOn, baseOn: s.baseOn, recentOn: s.recentOn, ...counts, mass: s.mass, spanDays: s.spanDays, baseStale: s.baseStale,
       };
     })
     .sort((a, b) => Number(a.status !== "ready") - Number(b.status !== "ready") || a.name.localeCompare(b.name, "ru") || (a.part ?? "").localeCompare(b.part ?? "", "ru"));
@@ -374,6 +402,8 @@ export interface DigestChangesSource {
   fromOn: string | null;
   toOn: string | null;
   mass: boolean;
+  /** База устарела (сборщик простаивал): сравнение за столько дней, а не за период; null — база в порядке. */
+  staleSpanDays?: number | null;
 }
 
 export interface DigestChangesDirection {
@@ -411,7 +441,10 @@ function digestDirection(result: Ready): DigestChangesDirection | null {
   const changed = ready.filter((s) => s.appeared + s.disappeared + s.firstInWindow > 0)
     .sort((a, b) => (b.appeared + b.disappeared + b.firstInWindow) - (a.appeared + a.disappeared + a.firstInWindow) || a.name.localeCompare(b.name, "ru"));
   return {
-    sources: changed.map((s) => ({ name: label(s), appeared: s.appeared, disappeared: s.disappeared, firstInWindow: s.firstInWindow, fromOn: s.baseOn[0] ?? null, toOn: s.latestOn, mass: s.mass })),
+    sources: changed.map((s) => ({
+      name: label(s), appeared: s.appeared, disappeared: s.disappeared, firstInWindow: s.firstInWindow, fromOn: s.baseOn[0] ?? null, toOn: s.latestOn, mass: s.mass,
+      staleSpanDays: s.baseStale ? s.spanDays : null,
+    })),
     quiet: ready.filter((s) => s.appeared + s.disappeared + s.firstInWindow === 0).map(label),
     examples: result.groups.appeared.filter((c) => !c.mass).slice(0, 3).map((c) => (c.title.toLowerCase().includes(c.brand.toLowerCase()) ? c.title : `${c.brand} · ${c.title}`)),
   };

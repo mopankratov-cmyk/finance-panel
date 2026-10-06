@@ -9,9 +9,12 @@ import { APPEARANCE_MIN_SPAN_DAYS, type HistoryStatus } from "./observationState
  *
  * Правила (одобрено владельцем 07.10; правило «пропало» — по рекомендации, пока владелец не скажет иное):
  *  - засчитываются только полные прогоны основного раздела; оборванный (partial) не засчитывается вовсе — его «нет» ничего не значит;
- *  - на один день — один прогон (последний): повтор обхода в тот же день не второе наблюдение;
- *  - «Появилось» — модель есть в последнем полном прогоне, а в DISAPPEAR_FULL_RUNS полных прогонах на начало периода её не было;
- *    история полных прогонов источника — не короче APPEARANCE_MIN_SPAN_DAYS дней (иначе «новым» оказалось бы всё);
+ *  - на один день — один полный прогон (последний): повтор обхода в тот же день не второе наблюдение. У окон и частей прогоны дня
+ *    складываются: это разные выборки одного дня (ASOS — общие слова и Mango), а не повтор одной;
+ *  - «Появилось» — модель есть в последнем полном прогоне, а в DISAPPEAR_FULL_RUNS полных прогонах на начало периода её не было и
+ *    каталог не видел её раньше начала периода (вернулась в наличие — не «появилось»); модель есть в прогоне, если там есть её ключ
+ *    или хотя бы один её номер (переименованный товар Shopify — та же модель); история полных прогонов источника — не короче
+ *    APPEARANCE_MIN_SPAN_DAYS дней (иначе «новым» оказалось бы всё);
  *  - «Пропало» — модели нет в DISAPPEAR_FULL_RUNS последних полных прогонах подряд, а до них (на начало периода) она была: один
  *    пропуск — не «пропало» (сайт мог временно снять карточку);
  *  - источники, которые видят только верх выдачи (ASOS с Mango, H&M, Lime, Zalando), и части разделов (Zara CHAQUETA, коллаборации
@@ -37,6 +40,12 @@ export const MONTH_PERIOD_DAYS: ChangesPeriod = 30;
 export const MASS_CHANGE_MIN = 30;
 export const MASS_CHANGE_SHARE = 0.3;
 
+/**
+ * База на начало периода старше его начала больше чем на столько дней — сборщик простаивал: сравнение идёт за весь простой, а не за
+ * неделю. У недельных источников (Zara, Uniqlo) база в норме — до 6 дней до начала периода, у ежедневных — день.
+ */
+export const STALE_BASE_DAYS = 7;
+
 export function parseChangesPeriod(raw: string | null | undefined): ChangesPeriod {
   return raw === "30" ? 30 : DEFAULT_CHANGES_PERIOD;
 }
@@ -58,6 +67,11 @@ export interface ChangeRun {
   coverage: RunCoverage;
   /** Часть раздела (Zara CHAQUETA, коллаборации Uniqlo) — отдельная выборка-окно; null — основной прогон. */
   part?: string | null;
+  /**
+   * У окон и частей: другие прогоны того же дня — другие выборки (у ASOS на раздел две цели: общие слова и Mango), их модели
+   * складываются с моделями этого прогона. У полного потока не бывает: повтор полного обхода в тот же день — не вторая выборка.
+   */
+  sameDay?: ChangeRun[];
 }
 
 /** Поток прогонов: основной раздел источника (полный или только верх выдачи) либо часть раздела. */
@@ -87,6 +101,10 @@ export interface ChangeStream {
   disappearRunsMissing: number;
   /** У части раздела: прогоны основного раздела — их модели не «впервые в верху выдачи» (они уже в полном прогоне). */
   exclude: ChangeRun[];
+  /** Дней между базой на начало периода и последним прогоном — за сколько на деле сравнение; null — базы нет. */
+  spanDays: number | null;
+  /** База старше начала периода больше чем на STALE_BASE_DAYS: сборщик простаивал, сравнение — за весь простой, а не за период. */
+  baseStale: boolean;
 }
 
 export interface ChangesPlan {
@@ -97,18 +115,24 @@ export interface ChangesPlan {
   streams: ChangeStream[];
 }
 
-/** По одному прогону на день — последний по началу: повтор обхода в тот же день не второе независимое наблюдение. Новые первыми. */
-function perDay(runs: ChangeRun[]): ChangeRun[] {
-  const byDay = new Map<string, ChangeRun>();
-  for (const run of runs) {
-    const current = byDay.get(run.observedOn);
-    if (!current || run.startedAt > current.startedAt) byDay.set(run.observedOn, run);
+/**
+ * По одному прогону на день — последний по началу: повтор полного обхода в тот же день не второе независимое наблюдение. У окон и
+ * частей (merge) остальные прогоны дня не отбрасываются, а идут в sameDay: это другие выборки того же дня, их модели складываются.
+ * Новые первыми.
+ */
+function perDay(runs: ChangeRun[], merge: boolean): ChangeRun[] {
+  const byDay = new Map<string, ChangeRun[]>();
+  for (const run of runs) byDay.set(run.observedOn, [...(byDay.get(run.observedOn) ?? []), run]);
+  const out: ChangeRun[] = [];
+  for (const list of byDay.values()) {
+    const [last, ...others] = [...list].sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.runId.localeCompare(b.runId));
+    out.push(merge && others.length > 0 ? { ...last, sameDay: others } : last);
   }
-  return [...byDay.values()].sort((a, b) => b.observedOn.localeCompare(a.observedOn));
+  return out.sort((a, b) => b.observedOn.localeCompare(a.observedOn));
 }
 
 function buildStream(sourceId: string, kind: StreamKind, part: string | null, runs: ChangeRun[], today: string, periodStart: string, exclude: ChangeRun[] = []): ChangeStream {
-  const list = perDay(runs);
+  const list = perDay(runs, kind !== "full");
   const latest = list[0] ?? null;
   const older = list.slice(1);
   const firstDay = list.length ? list[list.length - 1].observedOn : null;
@@ -127,7 +151,9 @@ function buildStream(sourceId: string, kind: StreamKind, part: string | null, ru
   const recentIds = new Set(recent.map((r) => r.runId));
   const disappearRunsMissing = kind === "full" ? Math.max(0, DISAPPEAR_FULL_RUNS + 1 - list.length) : 0;
   const disappearReady = kind === "full" && status === "ready" && disappearRunsMissing === 0 && base.some((r) => !recentIds.has(r.runId));
-  return { sourceId, kind, part, latest, recent, base, firstDay, days: list.length, status, readyOn, disappearReady, disappearRunsMissing, exclude };
+  const spanDays = base[0] && latest ? daysBetween(base[0].observedOn, latest.observedOn) : null;
+  const baseStale = Boolean(base[0]) && daysBetween(base[0].observedOn, periodStart) > STALE_BASE_DAYS;
+  return { sourceId, kind, part, latest, recent, base, firstDay, days: list.length, status, readyOn, disappearReady, disappearRunsMissing, exclude, spanDays, baseStale };
 }
 
 /**
@@ -163,9 +189,14 @@ function uniqueRuns(runs: Array<ChangeRun | null | undefined>): ChangeRun[] {
   return [...seen.values()];
 }
 
-/** Прогоны, снимки которых нужно прочитать: только у готовых потоков — последние, на начало периода и (у частей) основного раздела. */
+/**
+ * Прогоны, снимки которых нужно прочитать: только у готовых потоков — последние, на начало периода и (у частей) основного раздела; у
+ * окон и частей — со всеми выборками того же дня.
+ */
 export function runsToRead(plan: ChangesPlan): ChangeRun[] {
-  return uniqueRuns(plan.streams.filter((s) => s.status === "ready").flatMap((s) => [s.latest, ...s.recent, ...s.base, ...s.exclude]));
+  return uniqueRuns(plan.streams.filter((s) => s.status === "ready")
+    .flatMap((s) => [s.latest, ...s.recent, ...s.base, ...s.exclude])
+    .flatMap((r) => (r ? [r, ...(r.sameDay ?? [])] : [])));
 }
 
 export interface SnapshotLite {
@@ -183,6 +214,8 @@ export interface ChangeItem {
   modelKey: string;
   /** Строка каталога, которой модель представлена (для «Отобрать» и «Не интересно» — они действуют на всю модель). */
   itemId: string;
+  /** Все номера модели в прогоне (расцветки Shopify и ASOS — несколько строк одной модели). */
+  itemIds: string[];
   title: string | null;
   brand: string | null;
   /** Прогон, в котором модель есть (у «пропало» — последний, где была). */
@@ -191,6 +224,8 @@ export interface ChangeItem {
   absentOn: string[];
   /** У источника массовая смена (оценка): модели в конце списка. */
   mass: boolean;
+  /** База устарела (сборщик простаивал): сравнение на деле за столько дней, а не за период; null — база в порядке. */
+  staleSpanDays: number | null;
 }
 
 export interface StreamSummary {
@@ -211,6 +246,10 @@ export interface StreamSummary {
   /** Моделей в последнем прогоне (раздел); null — снимки не читались (поток не готов). */
   models: number | null;
   mass: boolean;
+  /** Дней между базой и последним прогоном; null — базы нет. */
+  spanDays: number | null;
+  /** База старше начала периода больше чем на STALE_BASE_DAYS — сборщик простаивал, сравнение за весь простой. */
+  baseStale: boolean;
 }
 
 export interface ChangesComputed {
@@ -218,24 +257,54 @@ export interface ChangesComputed {
   streams: StreamSummary[];
 }
 
-/** Модели прогона: ключ модели → первая строка (расцветки одной модели Shopify и ASOS — одна модель). */
-function modelsOf(sourceId: string, rows: readonly SnapshotLite[] | undefined): Map<string, SnapshotLite> {
-  const map = new Map<string, SnapshotLite>();
-  for (const row of rows ?? []) {
-    const key = modelKey({ sourceId, sourceItemId: row.sourceItemId, title: row.title });
-    if (!map.has(key)) map.set(key, row);
-  }
-  return map;
+/** Модель прогона: первая строка (её номер представляет модель на экране) и все её номера в прогоне. */
+interface RunModel {
+  row: SnapshotLite;
+  ids: string[];
 }
 
+/** Модели прогона: ключ модели → строка и номера (расцветки одной модели Shopify и ASOS — одна модель) и все номера прогона. */
+interface RunModels {
+  byKey: Map<string, RunModel>;
+  ids: Set<string>;
+}
+
+function modelsOf(sourceId: string, rows: readonly SnapshotLite[]): RunModels {
+  const byKey = new Map<string, RunModel>();
+  const ids = new Set<string>();
+  for (const row of rows) {
+    ids.add(row.sourceItemId);
+    const key = modelKey({ sourceId, sourceItemId: row.sourceItemId, title: row.title });
+    const model = byKey.get(key);
+    if (!model) byKey.set(key, { row, ids: [row.sourceItemId] });
+    else if (!model.ids.includes(row.sourceItemId)) model.ids.push(row.sourceItemId);
+  }
+  return { byKey, ids };
+}
+
+/**
+ * Модель есть в прогоне, если там есть её ключ или хотя бы один её номер: у источников, где ключ — название (Shopify, ASOS),
+ * переименованный товар меняет ключ, но не номер, — это та же модель, а не «появилась новая и пропала старая».
+ */
+const presentIn = (models: RunModels, key: string, ids: readonly string[]) => models.byKey.has(key) || ids.some((id) => models.ids.has(id));
+
 const isMass = (count: number, of: number) => count >= MASS_CHANGE_MIN && count > of * MASS_CHANGE_SHARE;
+
+export interface ChangesOptions {
+  /**
+   * День (МСК), когда каталог впервые увидел строку (assortment_source_items.first_seen_at); null — строки нет. Модель, которую
+   * каталог видел раньше начала периода, — не «появилось» и не «впервые в верху выдачи»: она вернулась (снова в наличии у Zara,
+   * снова в верху выдачи), а не впервые вышла. Без этой сверки — только по прогонам на начало периода.
+   */
+  firstSeenOn?: (sourceId: string, itemId: string) => string | null;
+}
 
 /**
  * Что появилось, пропало и впервые попало в верх выдачи — по снимкам прочитанных прогонов (runId → строки раздела). Поток, у
  * которого в одном из нужных прогонов нет ни одной модели раздела (а в соседнем есть), не сравнивается: «пропало всё» или
  * «появилось всё» было бы ложью сборщика, а не решением бренда.
  */
-export function computeChanges(plan: ChangesPlan, snapshots: ReadonlyMap<string, readonly SnapshotLite[]>): ChangesComputed {
+export function computeChanges(plan: ChangesPlan, snapshots: ReadonlyMap<string, readonly SnapshotLite[]>, options: ChangesOptions = {}): ChangesComputed {
   const items: ChangeItem[] = [];
   const streams: StreamSummary[] = [];
   for (const stream of plan.streams) {
@@ -243,21 +312,22 @@ export function computeChanges(plan: ChangesPlan, snapshots: ReadonlyMap<string,
       sourceId: stream.sourceId, kind: stream.kind, part: stream.part, status: stream.status, readyOn: stream.readyOn,
       disappearReady: stream.disappearReady, disappearRunsMissing: stream.disappearRunsMissing,
       latestOn: stream.latest?.observedOn ?? null, baseOn: stream.base.map((r) => r.observedOn), recentOn: stream.recent.map((r) => r.observedOn),
-      appeared: 0, disappeared: 0, firstInWindow: 0, models: null, mass: false,
+      appeared: 0, disappeared: 0, firstInWindow: 0, models: null, mass: false, spanDays: stream.spanDays, baseStale: stream.baseStale,
     };
     streams.push(summary);
     if (stream.status !== "ready" || !stream.latest) continue;
-    const models = new Map<string, Map<string, SnapshotLite>>();
+    const models = new Map<string, RunModels>();
+    // Модели прогона вместе с другими выборками того же дня (у окон и частей).
     const of = (run: ChangeRun) => {
       let map = models.get(run.runId);
       if (!map) {
-        map = modelsOf(stream.sourceId, snapshots.get(run.runId));
+        map = modelsOf(stream.sourceId, [run, ...(run.sameDay ?? [])].flatMap((r) => snapshots.get(r.runId) ?? []));
         models.set(run.runId, map);
       }
       return map;
     };
     const own = uniqueRuns([stream.latest, ...stream.recent, ...stream.base]);
-    const sizes = own.map((r) => of(r).size);
+    const sizes = own.map((r) => of(r).byKey.size);
     if (sizes.every((n) => n === 0)) {
       // В разделе у источника моделей нет вовсе (обход «целиком» без этого раздела): нечего сравнивать — и показывать нечего.
       summary.models = 0;
@@ -268,45 +338,55 @@ export function computeChanges(plan: ChangesPlan, snapshots: ReadonlyMap<string,
       continue;
     }
     const latest = of(stream.latest);
-    summary.models = latest.size;
-    const inAny = (runs: ChangeRun[], key: string) => runs.some((r) => of(r).has(key));
+    summary.models = latest.byKey.size;
+    const inAny = (runs: ChangeRun[], key: string, ids: readonly string[]) => runs.some((r) => presentIn(of(r), key, ids));
+    // Каталог видел модель (любой её номер) раньше начала периода — она не новая, а вернулась.
+    const seenBefore = (ids: readonly string[]) => ids.some((id) => {
+      const day = options.firstSeenOn?.(stream.sourceId, id);
+      return Boolean(day) && (day as string) <= plan.periodStart;
+    });
+    const stale = stream.baseStale ? stream.spanDays : null;
     const found: ChangeItem[] = [];
     if (stream.kind === "full") {
-      for (const [key, row] of latest) {
-        if (inAny(stream.base, key)) continue;
-        found.push(item("appeared", stream, key, row, stream.latest.observedOn, stream.base.map((r) => r.observedOn)));
+      for (const [key, model] of latest.byKey) {
+        if (inAny(stream.base, key, model.ids) || seenBefore(model.ids)) continue;
+        found.push(item("appeared", stream, key, model, stream.latest.observedOn, stream.base.map((r) => r.observedOn), stale));
       }
       if (stream.disappearReady) {
         const recentIds = new Set(stream.recent.map((r) => r.runId));
         const earlier = stream.base.filter((r) => !recentIds.has(r.runId));
         const seen = new Set<string>();
         for (const run of earlier) {
-          for (const [key, row] of of(run)) {
+          for (const [key, model] of of(run).byKey) {
             if (seen.has(key)) continue;
             seen.add(key);
-            if (inAny(stream.recent, key)) continue;
-            found.push(item("disappeared", stream, key, row, run.observedOn, stream.recent.map((r) => r.observedOn)));
+            if (inAny(stream.recent, key, model.ids)) continue;
+            found.push(item("disappeared", stream, key, model, run.observedOn, stream.recent.map((r) => r.observedOn), stale));
           }
         }
       }
     } else {
-      for (const [key, row] of latest) {
-        if (inAny(stream.base, key) || inAny(stream.exclude, key)) continue;
-        found.push(item("first_window", stream, key, row, stream.latest.observedOn, stream.base.map((r) => r.observedOn)));
+      for (const [key, model] of latest.byKey) {
+        if (inAny(stream.base, key, model.ids) || inAny(stream.exclude, key, model.ids) || seenBefore(model.ids)) continue;
+        found.push(item("first_window", stream, key, model, stream.latest.observedOn, stream.base.map((r) => r.observedOn), stale));
       }
     }
     summary.appeared = found.filter((i) => i.kind === "appeared").length;
     summary.disappeared = found.filter((i) => i.kind === "disappeared").length;
     summary.firstInWindow = found.filter((i) => i.kind === "first_window").length;
-    const baseSize = Math.max(0, ...stream.base.map((r) => of(r).size));
-    summary.mass = isMass(summary.appeared + summary.firstInWindow, latest.size) || isMass(summary.disappeared, baseSize);
+    const baseSize = Math.max(0, ...stream.base.map((r) => of(r).byKey.size));
+    summary.mass = isMass(summary.appeared + summary.firstInWindow, latest.byKey.size) || isMass(summary.disappeared, baseSize);
     for (const f of found) items.push({ ...f, mass: summary.mass });
   }
   return { items, streams };
 }
 
-function item(kind: ChangeKind, stream: ChangeStream, key: string, row: SnapshotLite, seenOn: string, absentOn: string[]): ChangeItem {
-  return { kind, sourceId: stream.sourceId, part: stream.part, modelKey: key, itemId: row.sourceItemId, title: row.title, brand: row.brand ?? null, seenOn, absentOn, mass: false };
+function item(kind: ChangeKind, stream: ChangeStream, key: string, model: RunModel, seenOn: string, absentOn: string[], staleSpanDays: number | null): ChangeItem {
+  const { row } = model;
+  return {
+    kind, sourceId: stream.sourceId, part: stream.part, modelKey: key, itemId: row.sourceItemId, itemIds: [...model.ids], title: row.title, brand: row.brand ?? null,
+    seenOn, absentOn, mass: false, staleSpanDays,
+  };
 }
 
 /** Вкладка «Изменения»: есть, когда хотя бы у одного полного источника «появилось/пропало» уже наблюдение — и после 28 дней (динамика) не пропадает. */
@@ -347,32 +427,42 @@ export interface ChangesReadinessLine {
   text: string;
 }
 
+/** Сколько ещё полных прогонов нужно до «пропало»; число полных дней не известно — по статусу (как до вкладки). */
+const disappearMissing = (s: ChangesReadinessSource) => (s.fullDays == null ? 0 : Math.max(0, DISAPPEAR_FULL_RUNS + 1 - s.fullDays));
+
 /**
- * Строки полоски «На чём стоят цифры» про вкладку «Изменения»: по каким источникам «появилось» и «пропало» уже честные, по каким пока
- * только «появилось» (для «пропало» нужен ещё полный прогон) и по каким копится — с датой готовности (расчёт по текущим порогам).
- * stuck — источники, у которых второй полный прогон не приходит (их дата «не раньше сегодня» ничего бы не значила).
+ * Строки полоски «На чём стоят цифры» про вкладку «Изменения» — не больше двух, и каждый источник назван в них один раз:
+ *  - факт: где «появилось» и «пропало» уже наблюдение; где пока только «появилось» (для «пропало» нужен ещё полный прогон); где
+ *    только верх выдачи и уже есть с чем сравнить;
+ *  - оценка: что копится и с какого дня станет честным (расчёт по текущим порогам), в том числе верх выдачи с историей короче 7 дней.
+ * Застрявшие (skip: второй полный прогон не приходит) и ждущие первого полного прогона здесь не названы — у них свои строки в
+ * полоске, и дата «не раньше сегодня» для них ничего бы не значила.
  */
-export function changesReadiness(sources: readonly ChangesReadinessSource[], today: string, stuck: ReadonlySet<string> = new Set()): ChangesReadinessLine[] {
+export function changesReadiness(sources: readonly ChangesReadinessSource[], today: string, skip: ReadonlySet<string> = new Set()): ChangesReadinessLine[] {
   const lines: ChangesReadinessLine[] = [];
   const honest = sources.filter((s) => s.status === "appearance" || s.status === "dynamics");
-  const both = honest.filter((s) => (s.fullDays ?? 0) >= DISAPPEAR_FULL_RUNS + 1).map((s) => s.name);
-  if (both.length) lines.push({ kind: "факт", text: `Вкладка «Изменения»: «появилось» и «пропало» честные — ${both.join(", ")}.` });
-  const onlyAppeared = honest.filter((s) => (s.fullDays ?? 0) < DISAPPEAR_FULL_RUNS + 1).map((s) => {
-    const missing = DISAPPEAR_FULL_RUNS + 1 - (s.fullDays ?? 0);
+  const both = honest.filter((s) => disappearMissing(s) === 0).map((s) => s.name);
+  const onlyAppeared = honest.filter((s) => disappearMissing(s) > 0).map((s) => {
+    const missing = disappearMissing(s);
     return `${s.name} — после ещё ${missing} ${plural(missing, "полного прогона", "полных прогонов", "полных прогонов")}`;
   });
-  if (onlyAppeared.length) {
-    lines.push({ kind: "факт", text: `Вкладка «Изменения»: пока только «появилось», «пропало» (${DISAPPEAR_FULL_RUNS} полных прогона подряд без модели): ${onlyAppeared.join("; ")}.` });
-  }
-  const building = sources.filter((s) => s.status === "building" || s.status === "none").map((s) => {
-    if (stuck.has(s.name)) return `${s.name} — второй полный прогон не приходит`;
-    return s.firstFullDay ? `${s.name} — не раньше ${dm(laterOf(addDays(s.firstFullDay, APPEARANCE_MIN_SPAN_DAYS), today))}` : `${s.name} — ждёт первого полного прогона`;
-  });
-  if (building.length) lines.push({ kind: "оценка", text: `Вкладка «Изменения» копится: ${building.join("; ")}.` });
-  const windowOnly = sources.filter((s) => s.status === "window_only").map((s) => {
-    const ready = s.firstDay ? addDays(s.firstDay, APPEARANCE_MIN_SPAN_DAYS) : null;
-    return ready && ready > today ? `${s.name} — с ${dm(ready)}` : s.name;
-  });
-  if (windowOnly.length) lines.push({ kind: "факт", text: `Только верх выдачи — в «Изменениях» список «впервые в верху выдачи», «пропало» у них не бывает: ${windowOnly.join("; ")}.` });
+  const windowReadyOn = (s: ChangesReadinessSource) => (s.firstDay ? addDays(s.firstDay, APPEARANCE_MIN_SPAN_DAYS) : null);
+  const windows = sources.filter((s) => s.status === "window_only");
+  const windowReady = windows.filter((s) => {
+    const on = windowReadyOn(s);
+    return !on || on <= today;
+  }).map((s) => s.name);
+  const facts = [
+    both.length ? `«появилось» и «пропало» — наблюдение: ${both.join(", ")}` : null,
+    onlyAppeared.length ? `пока только «появилось», «пропало» — после ${DISAPPEAR_FULL_RUNS} полных прогонов подряд без модели: ${onlyAppeared.join("; ")}` : null,
+    windowReady.length ? `только верх выдачи — список «впервые в верху выдачи», «пропало» у них не бывает: ${windowReady.join(", ")}` : null,
+  ].filter(Boolean);
+  if (facts.length) lines.push({ kind: "факт", text: `Вкладка «Изменения»: ${facts.join("; ")}.` });
+  const pending = [
+    ...sources.filter((s) => (s.status === "building" || s.status === "none") && s.firstFullDay && !skip.has(s.name))
+      .map((s) => ({ name: s.name, on: laterOf(addDays(s.firstFullDay as string, APPEARANCE_MIN_SPAN_DAYS), today) })),
+    ...windows.filter((s) => !windowReady.includes(s.name)).map((s) => ({ name: `${s.name} (только верх выдачи)`, on: windowReadyOn(s) as string })),
+  ].sort((a, b) => a.on.localeCompare(b.on) || a.name.localeCompare(b.name));
+  if (pending.length) lines.push({ kind: "оценка", text: `Вкладка «Изменения» копится: ${pending.map((p) => `${p.name} — не раньше ${dm(p.on)}`).join("; ")}.` });
   return lines;
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { GitCompare, Plus, X } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ASSORTMENT_BASE_PATH,
   ASSORTMENT_LAST_SECTION_KEY,
@@ -238,6 +238,18 @@ export function AssortmentSection({
     // «Изменения» — когда «появилось/пропало» где-то уже наблюдение (и после 28 дней, при «динамике», тоже); журнала нет — вкладки нет.
     ...(changesVisible || changesCountFailed || view === "changes" ? [{ id: "changes" as const, label: "Изменения" }] : []),
   ];
+  // На телефоне ряд вкладок едет вбок: выбранная (например «Изменения», открытые по ссылке из сводки) не должна остаться за краем.
+  // С sm ряд переносится на вторую строку и прокрутки нет — там это ничего не делает.
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const tabIds = tabs.map((t) => t.id).join(",");
+  useEffect(() => {
+    const row = tabsRef.current;
+    const tab = row?.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!row || !tab || row.scrollWidth <= row.clientWidth) return;
+    const box = row.getBoundingClientRect();
+    const at = tab.getBoundingClientRect();
+    if (at.left < box.left || at.right > box.right) row.scrollLeft += at.left - box.left - (box.width - at.width) / 2;
+  }, [view, tabIds]);
 
   return (
     <div className="px-3 pb-16 pt-4 sm:px-6 md:pb-6">
@@ -269,7 +281,7 @@ export function AssortmentSection({
           </p>
         )}
 
-        <div role="tablist" aria-label="Вид ленты" className="-mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:px-0">
+        <div ref={tabsRef} role="tablist" aria-label="Вид ленты" className="-mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
           {tabs.map((v) => (
             <button
               key={v.id}
@@ -277,7 +289,7 @@ export function AssortmentSection({
               role="tab"
               aria-selected={v.id === view}
               onClick={() => setView(v.id)}
-              className={`h-10 shrink-0 rounded-full px-4 text-sm ${v.id === view ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+              className={`h-11 shrink-0 rounded-full px-4 text-sm ${v.id === view ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
             >
               {v.label}
             </button>

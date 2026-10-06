@@ -7,6 +7,7 @@
  * молча. Цен нет (граница ТЗ).
  */
 
+import { plural } from "@/lib/warehouse/plural";
 import { dm } from "./appearance";
 import type { DigestChanges, DigestChangesBlock } from "./appearanceStore";
 import type { AssortmentDirection } from "./constants";
@@ -109,9 +110,16 @@ function socialLines(social: DigestFacts["social"], base: string): string[] {
 }
 
 const MAX_CHANGE_SOURCES = 6;
+/** В месячной выжимке — только итог раздела и где изменений больше всего: подробности недели в ней уже есть, а сообщение не резиновое. */
+const MAX_MONTH_LEADERS = 3;
 
-/** Строки одного периода раздела «Появилось / пропало»: по разделам — итог, источники с датами прогонов, примеры появившегося. */
-function changesBlockLines(block: DigestChangesBlock, base: string): string[] {
+const daysWord = (n: number) => `${n} ${plural(n, "день", "дня", "дней")}`;
+
+/**
+ * Строки одного периода раздела «Появилось / пропало»: по разделам — итог, а в подробном виде (неделя) ещё источники с датами
+ * прогонов и примеры появившегося. Месячная выжимка — compact: итог и до трёх источников, где изменений больше всего.
+ */
+function changesBlockLines(block: DigestChangesBlock, compact = false): string[] {
   const lines: string[] = [];
   for (const direction of ["bags", "jackets"] as const) {
     const d = block.directions[direction];
@@ -123,20 +131,26 @@ function changesBlockLines(block: DigestChangesBlock, base: string): string[] {
     const disappeared = d.sources.reduce((n, s) => n + s.disappeared, 0);
     const first = d.sources.reduce((n, s) => n + s.firstInWindow, 0);
     if (appeared + disappeared + first === 0) {
-      lines.push(`${DIRECTION_LABEL[direction]}: ничего не появилось и не пропало (${telegramEscape(d.quiet.join(", "))}).`);
+      lines.push(`${DIRECTION_LABEL[direction]}: ничего не появилось и не пропало${compact ? "" : ` (${telegramEscape(d.quiet.join(", "))})`}.`);
       continue;
     }
     const totals = [`появилось ${appeared}`, `пропало ${disappeared}`, first > 0 ? `впервые в верху выдачи ${first}` : null].filter(Boolean).join(", ");
+    if (compact) {
+      const leaders = d.sources.slice(0, MAX_MONTH_LEADERS).map((s) => s.name);
+      lines.push(`${DIRECTION_LABEL[direction]}: ${totals}${leaders.length ? ` — больше всего у ${telegramEscape(leaders.join(", "))}` : ""}.`);
+      continue;
+    }
     lines.push(`${DIRECTION_LABEL[direction]}: ${totals}.`);
     for (const s of d.sources.slice(0, MAX_CHANGE_SOURCES)) {
       const parts = [s.appeared ? `+${s.appeared}` : null, s.disappeared ? `−${s.disappeared}` : null, s.firstInWindow ? `впервые в верху выдачи ${s.firstInWindow}` : null].filter(Boolean).join(" / ");
-      const runs = s.fromOn && s.toOn ? ` (прогоны ${dm(s.fromOn)} → ${dm(s.toOn)})` : "";
+      // База устарела (сборщик простаивал) — сравнение не за неделю, а за весь простой: так и написано.
+      const span = s.staleSpanDays != null ? `, за ${daysWord(s.staleSpanDays)} — сборщик простаивал` : "";
+      const runs = s.fromOn && s.toOn ? ` (прогоны ${dm(s.fromOn)} → ${dm(s.toOn)}${span})` : "";
       lines.push(`• ${telegramEscape(s.name)}: ${parts}${runs}${s.mass ? " — массовая смена, похоже на смену обхода" : ""}`);
     }
     if (d.sources.length > MAX_CHANGE_SOURCES) lines.push(`• и ещё ${d.sources.length - MAX_CHANGE_SOURCES}`);
     if (d.examples.length > 0) lines.push(`Новое: ${telegramEscape(d.examples.join("; "))}.`);
   }
-  lines.push(`Смотреть: ${(["bags", "jackets"] as const).map((d) => `<a href="${base}/assortment-development/${d}?view=changes">${DIRECTION_LABEL[d]}</a>`).join(" · ")}`);
   return lines;
 }
 
@@ -149,9 +163,10 @@ function changesLines(changes: DigestFacts["changes"], base: string): string[] {
   if (changes.error || !changes.week) return ["", "<b>Появилось / пропало</b>", `⚠️ Не загрузилось: ${telegramEscape(changes.error ?? "нет данных")}`];
   const lines = ["", "<b>Появилось / пропало за неделю</b>", `По полным прогонам обхода. «Пропало» — модели нет в ${changes.disappearRuns} полных прогонах подряд, а до них была.`];
   if (changes.season) lines.push(telegramEscape(changes.season));
-  lines.push(...changesBlockLines(changes.week, base));
+  lines.push(...changesBlockLines(changes.week));
+  lines.push(`Смотреть: ${(["bags", "jackets"] as const).map((d) => `<a href="${base}/assortment-development/${d}?view=changes">${DIRECTION_LABEL[d]}</a>`).join(" · ")}`);
   if (changes.month) {
-    lines.push("", `<b>За месяц: ${dm(changes.month.periodStart)}–${dm(changes.month.today)}</b>`, ...changesBlockLines(changes.month, base).slice(0, -1));
+    lines.push("", `<b>За месяц: ${dm(changes.month.periodStart)}–${dm(changes.month.today)}</b>`, ...changesBlockLines(changes.month, true));
   }
   return lines;
 }
@@ -207,4 +222,59 @@ export function digestMessage(facts: DigestFacts): string {
   }
   lines.push("", `<a href="${base}/assortment-development">Открыть модуль</a>`);
   return lines.join("\n");
+}
+
+/** Предел Telegram на одно сообщение — символов текста после разбора разметки (теги и сущности не в счёт). */
+export const TELEGRAM_TEXT_LIMIT = 4096;
+
+/** Сколько символов Telegram насчитает в тексте с HTML-разметкой: теги не в счёт, сущность — один символ. */
+export function telegramVisibleLength(html: string): number {
+  return html.replace(/<[^>]+>/g, "").replace(/&(lt|gt|amp|quot|#\d+);/g, "_").length;
+}
+
+/**
+ * Текст → сообщения не длиннее предела Telegram. Режем по границам разделов (пустая строка), а раздел длиннее предела — по
+ * строкам: каждая строка сводки — законченная разметка (тег открыт и закрыт в ней же), поэтому разрез между строками разметку не
+ * ломает. Строка длиннее предела (не бывает, но) — обрезается видимым текстом с многоточием.
+ */
+export function splitTelegramMessage(text: string, limit = TELEGRAM_TEXT_LIMIT): string[] {
+  const sections: string[][] = [[]];
+  for (const line of text.split("\n")) {
+    if (line === "" && sections[sections.length - 1].length > 0) sections.push([]);
+    else if (line !== "") sections[sections.length - 1].push(line);
+  }
+  const fit = (line: string) => {
+    if (telegramVisibleLength(line) <= limit) return line;
+    const plain = line.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
+    return `${telegramEscape(plain.slice(0, limit - 1))}…`;
+  };
+  const messages: string[] = [];
+  let current = "";
+  const push = (piece: string, separator: string) => {
+    const joined = current ? `${current}${separator}${piece}` : piece;
+    if (telegramVisibleLength(joined) <= limit) {
+      current = joined;
+      return true;
+    }
+    return false;
+  };
+  for (const section of sections.filter((s) => s.length > 0)) {
+    if (push(section.join("\n"), "\n\n")) continue;
+    if (current) messages.push(current);
+    current = "";
+    if (push(section.join("\n"), "\n\n")) continue;
+    // Раздел сам длиннее предела — по строкам.
+    for (const line of section.map(fit)) {
+      if (push(line, "\n")) continue;
+      messages.push(current);
+      current = line;
+    }
+  }
+  if (current) messages.push(current);
+  return messages;
+}
+
+/** Сводка — одним сообщением, а если не влезает в предел Telegram (первое воскресенье месяца, много источников и сбоев), — несколькими. */
+export function digestMessages(facts: DigestFacts): string[] {
+  return splitTelegramMessage(digestMessage(facts));
 }

@@ -15,7 +15,7 @@ import { plural } from "@/lib/warehouse/plural";
  * «Изменения»: что бренды добавили и что убрали за неделю (или месяц) — по снимкам полных прогонов обхода. Источники, которые видят
  * только верх выдачи, и части разделов — отдельным списком «впервые в верху выдачи» («пропало» у них не бывает). Карточка: фото,
  * бренд, название, источник, даты прогонов; «Отобрать» и «Не интересно» — те же действия, что в «Каталогах брендов»; «где купить
- * образец». Телефон — одна колонка, пояснения видимым текстом, цели нажатия ≥ 44 px. Цен нет.
+ * образец». Телефон и iPad в портрете (до 1023 px) — одна колонка (ТЗ Ф3), пояснения видимым текстом, цели нажатия ≥ 44 px. Цен нет.
  */
 
 type Ready = Extract<ChangesResult, { available: true }>;
@@ -160,11 +160,13 @@ export function ChangesBody({ result, local = {}, actions }: { result: Ready; lo
   const windowReady = ready.filter((s) => s.kind !== "full");
   const period = result.periodDays === 30 ? "за месяц" : "за неделю";
   const nothing = result.totals.appeared + result.totals.disappeared + result.totals.firstInWindow === 0;
+  const stale = ready.filter((s) => s.baseStale && s.baseOn[0]);
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm leading-6 text-slate-600">
         Сравниваем прогоны после {dm(result.periodStart)} с прогонами на {dm(result.periodStart)} и раньше; сегодня {dm(result.today)}.
       </p>
+      {stale.length > 0 && <StaleBaseNote sources={stale} period={period} />}
       {result.season && <p role="note" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">{result.season}</p>}
       {ready.length === 0 ? (
         <ChangesEmpty sources={result.sources} />
@@ -180,7 +182,7 @@ export function ChangesBody({ result, local = {}, actions }: { result: Ready; lo
             <ChangesGroup
               title="Появилось"
               total={result.totals.appeared}
-              hint={`В последнем полном прогоне модель есть, а в ${DISAPPEAR_FULL_RUNS} полных прогонах на начало периода её не было. Источник — с историей от ${APPEARANCE_MIN_SPAN_DAYS} дней.`}
+              hint={`В последнем полном прогоне модель есть, а в ${DISAPPEAR_FULL_RUNS} полных прогонах на начало периода её не было и раньше обход её не видел: вернувшаяся в наличие — не «появилось». Источник — с историей от ${APPEARANCE_MIN_SPAN_DAYS} дней.`}
               empty={`${period[0].toUpperCase()}${period.slice(1)} новых моделей нет.`}
               cards={result.groups.appeared}
               local={local}
@@ -203,7 +205,7 @@ export function ChangesBody({ result, local = {}, actions }: { result: Ready; lo
             <ChangesGroup
               title="Впервые в верху выдачи"
               total={result.totals.firstInWindow}
-              hint={`${windowReady.map(sourceName).join(", ")} — видим только верх выдачи или часть раздела: модель сейчас там, а в ${DISAPPEAR_FULL_RUNS} прогонах на начало периода её не было. «Пропало» здесь не бывает: выпасть из верха выдачи — не исчезнуть с сайта.`}
+              hint={`${windowReady.map(sourceName).join(", ")} — видим только верх выдачи или часть раздела: модель сейчас там, а в ${DISAPPEAR_FULL_RUNS} прогонах на начало периода её не было и раньше обход её не видел. «Пропало» здесь не бывает: выпасть из верха выдачи — не исчезнуть с сайта.`}
               empty="Новых моделей в верху выдачи нет."
               cards={result.groups.firstInWindow}
               local={local}
@@ -222,6 +224,18 @@ export function ChangesBody({ result, local = {}, actions }: { result: Ready; lo
 }
 
 const sourceName = (s: Pick<ChangesSourceView, "name" | "part">) => (s.part ? `${s.name} (${s.part})` : s.name);
+
+const daysWord = (n: number) => `${n} ${plural(n, "день", "дня", "дней")}`;
+
+/** База на начало периода устарела (сборщик простаивал): изменения таких источников накоплены за весь простой — сказано прямо. */
+export function StaleBaseNote({ sources, period }: { sources: ChangesSourceView[]; period: string }) {
+  return (
+    <p role="note" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+      Не {period}: {sources.map((s) => `${sourceName(s)} — с ${dm(s.baseOn[0])}${s.spanDays != null ? `, за ${daysWord(s.spanDays)}` : ""}`).join("; ")}.
+      {" "}Между прогонами сборщик простаивал, и всё, что изменилось за простой, попало в эти списки — даты прогонов в карточках.
+    </p>
+  );
+}
 
 /** Ни один источник ещё не готов: что копится и с какого дня станет честным (расчёт по текущим порогам). */
 export function ChangesEmpty({ sources }: { sources: ChangesSourceView[] }) {
@@ -267,7 +281,7 @@ export function ChangesGroup({ title, total, hint, empty, cards, local, actions 
         <p className="text-sm text-slate-500">{empty}</p>
       ) : (
         <>
-          <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2 xl:grid-cols-3">
             {cards.slice(0, shown).map((card) => (
               <ChangeCardView key={card.key} card={card} local={local[card.key] ?? {}} actions={actions} />
             ))}
@@ -294,7 +308,8 @@ const canPick = (card: ChangeCard) => !card.referenceId || card.referenceStatus 
 export function runsLine(card: Pick<ChangeCard, "kind" | "seenOn" | "absentOn">): string {
   const absent = `${card.absentOn.length === 1 ? "прогоне" : "прогонах"} ${datesText(card.absentOn)}`;
   if (card.kind === "appeared") return `Есть в полном прогоне ${dm(card.seenOn)}; не было в ${absent}`;
-  if (card.kind === "disappeared") return `Последний раз — в полном прогоне ${dm(card.seenOn)}; нет в ${card.absentOn.length} ${plural(card.absentOn.length, "полном прогоне", "полных прогонах подряд", "полных прогонах подряд")}: ${datesText(card.absentOn)}`;
+  // Прогоны между базой и последними не читаются: дата базы — «была на начало периода», а не «последний раз».
+  if (card.kind === "disappeared") return `Была в полном прогоне ${dm(card.seenOn)} (на начало периода); нет в ${card.absentOn.length} ${plural(card.absentOn.length, "полном прогоне", "полных прогонах подряд", "полных прогонах подряд")}: ${datesText(card.absentOn)}`;
   return `В верху выдачи ${dm(card.seenOn)}; не было в ${absent}`;
 }
 
@@ -327,6 +342,7 @@ export function ChangeCardView({ card, local, actions }: { card: ChangeCard; loc
           <div className="text-xs leading-5 text-slate-600">
             {runsLine(card)} <span className={kindTag}>— факт обхода</span>
           </div>
+          {card.staleSpanDays != null && <div className="text-xs leading-5 text-amber-800">Сравнение за {daysWord(card.staleSpanDays)}, а не за период: между прогонами сборщик простаивал.</div>}
           {card.mass && <div className="text-xs leading-5 text-amber-800">У источника массовая смена — похоже на смену обхода, а не на решение бренда (оценка).</div>}
         </div>
       </div>
@@ -406,7 +422,7 @@ function ChangePhoto({ card }: { card: ChangeCard }) {
 }
 
 const STATUS_TEXT = (s: ChangesSourceView): string => {
-  const runs = s.latestOn ? `прогоны ${s.baseOn[0] ? `${dm(s.baseOn[0])} → ` : ""}${dm(s.latestOn)}` : "";
+  const runs = s.latestOn ? `прогоны ${s.baseOn[0] ? `${dm(s.baseOn[0])} → ` : ""}${dm(s.latestOn)}${s.baseStale && s.spanDays != null ? ` (за ${daysWord(s.spanDays)}: сборщик простаивал)` : ""}` : "";
   if (s.status === "ready") {
     if (s.kind !== "full") return `${runs}: впервые в верху выдачи — ${s.firstInWindow}`;
     const disappeared = s.disappearReady
@@ -445,11 +461,12 @@ export function ChangesRule() {
     <details className="rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700">
       <summary className="flex h-11 cursor-pointer items-center font-medium text-slate-900">Как считаем «появилось» и «пропало»</summary>
       <ul className="flex list-disc flex-col gap-1 pb-3 pl-5 leading-6">
-        <li>Сравниваем только полные прогоны — когда обход прошёл раздел сайта до конца. Оборванный обход не засчитывается ни как «есть», ни как «нет»; в один день — один прогон.</li>
-        <li>«Появилось» — в последнем полном прогоне модель есть, а в {DISAPPEAR_FULL_RUNS} полных прогонах на начало периода её не было; у источника не меньше {APPEARANCE_MIN_SPAN_DAYS} дней истории.</li>
+        <li>Сравниваем только полные прогоны — когда обход прошёл раздел сайта до конца. Оборванный обход не засчитывается ни как «есть», ни как «нет»; в один день — один полный прогон (повтор обхода — не второе наблюдение).</li>
+        <li>«Появилось» — в последнем полном прогоне модель есть, а в {DISAPPEAR_FULL_RUNS} полных прогонах на начало периода её не было и раньше обход её не видел (вернулась в наличие — не «появилось»); у источника не меньше {APPEARANCE_MIN_SPAN_DAYS} дней истории.</li>
         <li>{DISAPPEAR_RULE_TEXT}</li>
-        <li>Расцветки одной модели — одна модель: новый цвет старой модели не «появилось», пропажа одного цвета не «пропало».</li>
-        <li>Источники, которые видят только верх выдачи, и части разделов — отдельный список «впервые в верху выдачи»; «пропало» у них не бывает.</li>
+        <li>Расцветки одной модели — одна модель: новый цвет старой модели не «появилось», пропажа одного цвета не «пропало». Переименованный товар с тем же номером — та же модель.</li>
+        <li>База на начало периода старше его начала больше чем на неделю (сборщик простаивал) — изменения накоплены за весь простой; так и подписано.</li>
+        <li>Источники, которые видят только верх выдачи, и части разделов — отдельный список «впервые в верху выдачи»; «пропало» у них не бывает. Выборки одного дня складываются: у ASOS на раздел две — общие слова и Mango.</li>
       </ul>
     </details>
   );
