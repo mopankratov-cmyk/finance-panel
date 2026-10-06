@@ -25,6 +25,16 @@ export function ddsSheetNameForCompany(company: DdsCompany | null | undefined): 
   return `ДДС ${safeSheetPart(company.name)}`.slice(0, 31);
 }
 
+export type DdsContour = "all" | "general" | "filippov" | "unassigned";
+
+export function ddsContourForCompany(company: DdsCompany | null | undefined): Exclude<DdsContour, "all"> | "other" {
+  const sheet = ddsSheetNameForCompany(company);
+  if (sheet === "ДДС Группа компаний") return "general";
+  if (sheet === "ДДС ИП Филиппов") return "filippov";
+  if (sheet === "ДДС На проверке") return "unassigned";
+  return "other";
+}
+
 export function groupCompanyIdsByDdsSheet(companies: DdsCompany[]) {
   const result = new Map<string, Set<string>>();
   for (const company of companies) {

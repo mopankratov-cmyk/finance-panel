@@ -52,6 +52,7 @@ import {
 } from "./cashLoanScheduleLink";
 import { closeLoanScheduleRows, loadLoanScheduleRows } from "@/components/loans/scheduleStore";
 import type { ScheduleRowRecord } from "@/lib/loans/scheduleRows";
+import { isSharedPersonalWalletName } from "@/lib/finance/sharedPersonalWallets";
 
 // Статьи — из единого справочника (раньше свой список дублировал «Получение кредитов и займов»).
 
@@ -106,6 +107,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const counterparties = useMemo(() => [...new Set([...state.payments.map(p => p.counterparty), ...items.map(item => item.counterparty)].map(name => name.trim()).filter(Boolean))].sort((a,b) => a.localeCompare(b,"ru")), [state.payments, items]);
   const companyById = useMemo(() => new Map(companies.map((company) => [company.id, company.name])), [companies]);
   const accountById = useMemo(() => new Map(accounts.map((account) => [account.id, account.name])), [accounts]);
+  const isSharedWalletExpense = (item: BankReviewItem) => item.amount < 0 && Boolean(item.accountId && isSharedPersonalWalletName(accountById.get(item.accountId) ?? ""));
   const bankAccounts = useMemo(() => bankStatementSourceAccounts(accounts), [accounts]);
   const bankAccountIds = useMemo(() => new Set(bankAccounts.map((account) => account.id)), [bankAccounts]);
   const hasBankAccount = (accountId: string | null) => Boolean(accountId && bankAccountIds.has(accountId));
@@ -216,6 +218,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   const readySelected = items.filter((item) => selected.has(item.id));
   const itemIsReady = (item: BankReviewItem) => {
     if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id))return false;
+    if(isSharedWalletExpense(item))return false;
     const splits = decodeBankSplits(item.managerAnswer);
     if (unmatchedTransferNeedsDestination(item, splits)) return false;
     if (splits) return hasBankAccount(item.accountId) && !splits.some(split => !split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId))) && splitsAreReady(item, splits);
@@ -257,7 +260,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
       const splits=decodeBankSplits(item.managerAnswer);
       const source=companies.find(c=>c.id===item.companyId);
       const destination=companies.find(c=>c.id===mentionedCompanyId(item,companies));
-      return splits?.some(split=>!split.excluded && requiresFilippovLoan(source,companies.find(c=>c.id===split.companyId))) || (item.amount<0 && requiresFilippovLoan(source,destination));
+      return isSharedWalletExpense(item) || splits?.some(split=>!split.excluded && requiresFilippovLoan(source,companies.find(c=>c.id===split.companyId))) || (item.amount<0 && requiresFilippovLoan(source,destination));
     });
     if(loanItem){openChain(loanItem.id,true);return;}
     if (targetItems.length === 0 || targetItems.some((item) => !itemIsReady(item))) return;
@@ -450,7 +453,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
   };
 
   const saveAndApproveSplits = async (item: BankReviewItem, splits: BankInstructionSplit[]) => {
-    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || splits.some(split=>!split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {openChain(item.id,true);return;}
+    if(state.payments.some(p=>chainMetadata(p.comment)?.id===item.id) || isSharedWalletExpense(item) || splits.some(split=>!split.excluded && requiresFilippovLoan(companies.find(c=>c.id===item.companyId),companies.find(c=>c.id===split.companyId)))) {openChain(item.id,true);return;}
     if (!hasBankAccount(item.accountId) || !splitsAreReady(item, splits)) return;
     const prepared = { ...item, managerAnswer: encodeBankSplits(splits), status: "ready" as const };
     try {
@@ -513,6 +516,8 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
             const sourceCompany = companies.find((company) => company.id === item.companyId);
             const expenseOwner = companies.find((company) => company.id === expenseOwnerId);
             const needsGuidedLoan = item.amount < 0 && requiresFilippovLoan(sourceCompany, expenseOwner);
+            const sharedWalletExpense = isSharedWalletExpense(item);
+            const needsGuidedChain = needsGuidedLoan || sharedWalletExpense;
             return (
             <Card key={item.id} className={item.status === "waiting_manager" ? "border-amber-300" : ""}>
               <CardContent className="space-y-3 pt-4">
@@ -529,7 +534,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     {item.reasons.filter((reason) => !reason.startsWith("__")).length > 0 && <p className="mt-1 text-xs text-violet-700">{item.reasons.filter((reason) => !reason.startsWith("__")).join(" · ")}</p>}
                     {item.matchedTransferId && <p className="mt-1 text-xs font-medium text-emerald-700">Найдена встречная операция в другой выписке — платежи связаны</p>}
                   </div>
-                  {item.amount<0 && <button type="button" onClick={()=>openChain(item.id,needsGuidedLoan)} className={`min-h-11 rounded-lg px-3 text-xs font-medium ${needsGuidedLoan?"bg-amber-500 text-amber-950":"border border-violet-300 text-violet-800"}`}>{needsGuidedLoan?"Проверить и провести":"Разбивка внутри операции · "+formatMoney(Math.abs(item.amount))}</button>}
+                  {item.amount<0 && <button type="button" onClick={()=>openChain(item.id,needsGuidedChain)} className={`min-h-11 rounded-lg px-3 text-xs font-medium ${needsGuidedChain?"bg-amber-500 text-amber-950":"border border-violet-300 text-violet-800"}`}>{sharedWalletExpense?"Определить чей расход":needsGuidedLoan?"Проверить и провести":"Разбивка внутри операции · "+formatMoney(Math.abs(item.amount))}</button>}
                   <button onClick={() => openManagerQuestion(item)} className="inline-flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 px-3 text-xs text-slate-600"><HelpCircle className="h-4 w-4" /> Спросить</button>
                 </div>
                 <div className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-4">
@@ -560,12 +565,12 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     void rememberCounterparty(item, counterparty, {managerAnswer, status: valid ? "ready" : "needs_info"});
                   }}/>
                 </div>
-                {item.amount < 0 && <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"><label className="text-xs text-slate-600">Чей это расход<select aria-label={`Чей расход от ${item.date} на ${formatMoney(item.amount)}`} value={expenseOwnerId} disabled={saving||spendingSplits.length>1} onChange={event=>{const companyId=event.target.value;const managerAnswer=companyId===item.companyId?null:encodeBankSplits(expenseOwnerSplits(item,companyId));const prepared={...item,managerAnswer};const decoded=decodeBankSplits(managerAnswer);const status=hasBankAccount(item.accountId)&&(decoded?splitsAreReady(prepared,decoded):Boolean(item.category&&item.companyId&&categoryMatchesDirection(item.category,item.amount)))?"ready":"needs_info";void updateLocal(item.id,{managerAnswer,status}).then(()=>{const selectedOwner=companies.find(company=>company.id===companyId);if(requiresFilippovLoan(sourceCompany,selectedOwner))openChain(item.id,true);});}} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"><option value={item.companyId??""}>{sourceCompany?.name??"Компания счёта"}</option>{selectableCompanies.filter(company=>company.id!==item.companyId).map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select>{spendingSplits.length>1&&<span className="mt-1 block text-amber-700">Расход уже разбит на несколько частей; компания выбирается в каждой части.</span>}</label>{needsGuidedLoan&&<button type="button" disabled={saving} onClick={()=>openChain(item.id,true)} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-semibold text-amber-950 disabled:opacity-50">Проверить и провести</button>}</div>}
+                {item.amount < 0 && <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"><label className="text-xs text-slate-600">Чей это расход<select aria-label={`Чей расход от ${item.date} на ${formatMoney(item.amount)}`} value={expenseOwnerId} disabled={saving||spendingSplits.length>1} onChange={event=>{const companyId=event.target.value;const managerAnswer=sharedWalletExpense||companyId!==item.companyId?encodeBankSplits(expenseOwnerSplits(item,companyId)):null;const prepared={...item,managerAnswer};const decoded=decodeBankSplits(managerAnswer);const status=hasBankAccount(item.accountId)&&(decoded?splitsAreReady(prepared,decoded):Boolean(item.category&&item.companyId&&categoryMatchesDirection(item.category,item.amount)))?"ready":"needs_info";void updateLocal(item.id,{managerAnswer,status}).then(()=>{const selectedOwner=companies.find(company=>company.id===companyId);if(sharedWalletExpense||requiresFilippovLoan(sourceCompany,selectedOwner))openChain(item.id,true);});}} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm text-slate-900"><option value={item.companyId??""}>{sourceCompany?.name??"Компания счёта"}</option>{selectableCompanies.filter(company=>company.id!==item.companyId).map(company=><option key={company.id} value={company.id}>{company.name}</option>)}</select>{spendingSplits.length>1&&<span className="mt-1 block text-amber-700">Расход уже разбит на несколько частей; компания выбирается в каждой части.</span>}</label>{needsGuidedChain&&<button type="button" disabled={saving} onClick={()=>openChain(item.id,true)} className="min-h-11 rounded-lg bg-amber-500 px-4 text-sm font-semibold text-amber-950 disabled:opacity-50">{sharedWalletExpense?"Определить и провести":"Проверить и провести"}</button>}</div>}
                 <label className="block text-xs text-slate-500">Комментарий к платежу<textarea aria-label={`Комментарий к платежу от ${item.date} на ${formatMoney(item.amount)}`} value={item.paymentComment} disabled={saving} rows={2} onChange={(event) => setItems((current) => current.map((row) => row.id===item.id ? {...row,paymentComment:event.target.value}:row))} onBlur={(event) => void updateLocal(item.id,{paymentComment:event.target.value})} placeholder="Пояснение, которое сохранится в ДДС" className="mt-1 min-h-11 w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-900" /></label>
                 {item.category&&isLoanRepaymentCategory(item.category)&&(()=>{const allOptions=cashLoanScheduleOptions({loans:state.loans,payments:state.payments,paymentCompanies,scheduleRows,category:item.category!});const options=relevantCashLoanScheduleOptions(allOptions,item.counterparty,item.purpose);const loanCount=new Set(options.map(option=>option.loanId)).size;return <label className="block text-xs text-slate-500">Связать с графиком кредита<select value={loanLinks.get(item.id)??""} onChange={event=>setLoanLinks(current=>new Map(current).set(item.id,event.target.value))} className="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900"><option value="">Выберите кредит и дату платежа</option>{options.filter(option=>option.rowIds.length>0).map(option=><option key={option.key} value={option.key}>{option.loanName} · {option.label}</option>)}</select>{!options.some(option=>option.rowIds.length>0)&&<span className="mt-1 block text-amber-700">В графиках нет открытой строки для этой статьи. Добавьте или проверьте график в разделе кредитов.</span>}{options.some(option=>option.rowIds.length>0)&&loanCount>1&&<span className="mt-1 block text-amber-700">Статья уже сохранена. Выберите номер договора — у этого кредитора найдено несколько активных кредитов.</span>}{loanLinks.get(item.id)&&loanCount===1&&<span className="mt-1 block text-emerald-700">Подставлен единственный договор с точным именем кредитора. Проверьте дату и подтвердите операцию.</span>}</label>;})()}
                 {item.category?.includes("Перевод между счетами")&&!item.matchedTransferId&&!decodeBankSplits(item.managerAnswer)&&<p className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-800">Укажите вторую сторону через «Перевод между кошельками» (банк, наличные или крипто) либо загрузите встречную выписку. Односторонний перевод подтвердить нельзя.</p>}
                 {!companies.length && <p role="status" className="text-xs text-amber-800">Список компаний пуст или не загрузился. <button type="button" onClick={() => void reloadCompanies()} className="min-h-11 underline">Загрузить компании повторно</button></p>}
-                {needsGuidedLoan&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">Плательщик и владелец расхода относятся к разным контурам ДДС. Нажмите «Проверить и провести»: система сама создаст перевод в наличные, обе стороны займа и конечный расход.</p>}
+                {needsGuidedChain&&<p className="rounded-lg bg-sky-50 p-3 text-sm text-sky-900">{sharedWalletExpense?"Это общая личная карта. Система проверит, из какой компании пришли деньги, а для зарплаты — компанию сотрудника. Если расход относится к другому контуру, займ создастся автоматически.":"Плательщик и владелец расхода относятся к разным контурам ДДС. Нажмите «Проверить и провести»: система сама создаст перевод в наличные, обе стороны займа и конечный расход."}</p>}
                 {item.category && !categoryMatchesDirection(item.category, item.amount) && <p role="alert" className="text-xs font-medium text-red-700">Статья противоречит знаку операции: расход нельзя отнести к поступлениям, а поступление — к расходам.</p>}
                 {requiresCounterparty(item.category) && !item.counterparty.trim() && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                   Для зарплаты обязательно укажите получателя. Без контрагента строку подтвердить нельзя.
@@ -606,7 +611,7 @@ export function BankReviewPanel({ accounts, companies: providedCompanies, paymen
                     </div>
                     </div>
                   );
-                  if (needsGuidedLoan) return null;
+                  if (needsGuidedChain) return null;
                   const total = splitTotal(splits);
                   const netTotal = splitNetTotal(item, splits);
                   const bankTotal = splitBankTotal(item, splits);
