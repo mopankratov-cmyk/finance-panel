@@ -7,7 +7,7 @@ import {
   CHINA_NICHES, CHINA_NICHES_VERSION, CHINA_STOP_WORDS, chinaKeyConfigured, countRefCopies, FIND_PRODUCT_PATH, isChina1688Error, isNewOffer, nicheSearchBody,
   nicheTop, OPPORTUNITY_BODY, parseFindProduct, parseOfferHot, parseOpportunities, parseRefKey, refSearchBody, stripChinaMoney, trendBody, WORKFLOW_PATH,
   CALL_TIMEOUT_MS, RETRY_DELAY_MS, TRANSIENT_RETRIES,
-  type BrandRef, type ChinaCaller, type ChinaNiche, type MarketTrend,
+  type BrandRef, type ChinaCaller, type ChinaHost, type ChinaNiche, type MarketTrend,
 } from "./china1688";
 import type { AssortmentDirection } from "./constants";
 import { ENGINE_KIND, engineBudgetConfig, engineRefusal } from "./engineBudget";
@@ -26,7 +26,8 @@ import { isMissingAssortmentSchema } from "./errors";
  *
  * Запросы к 1688 стоят 0 $, но считаются (assortment_ai_usage, kind cn_1688): потолки на прогон и на 7 суток проверяются до запроса.
  * 429 / Qos* — прогон откладывается без траты попытки задачи (и следующие прогоны ждут RATE_LIMIT_PAUSE_MS); ключ не принят — остановка
- * одной причиной (блок на экране скрыт). Без миграции 202610070001 и без ключа ALI_1688_AK прогон не начинается (причина одной строкой).
+ * одной причиной с хостом (gateway — блок на экране скрыт; ainext — не снимаются только тренды). Без миграции 202610070001, без ключа
+ * ALI_1688_AK и без строки S104 (в ней хранится прогресс недели) прогон не начинается — причина одной строкой.
  */
 
 export const CHINA_MIGRATION = "202610070001_assortment_china_1688.sql";
@@ -60,8 +61,13 @@ export const TRANSLATE_BATCH = 40;
 export const TRANSLATE_PER_RUN = 160;
 /** Вызовов перевода за неделю снимка (≈60 новых названий — 2 вызова; потолок с запасом). */
 export const TRANSLATE_CALLS_PER_WEEK = 12;
-/** Запас времени на вызов перевода (таймаут Polza). */
-const TRANSLATE_TIMEOUT_MS = 55_000;
+/** Запас времени на вызов перевода (таймаут Polza): позже дедлайна минус это перевод не начинается — оборванный платформой платный вызов
+ * не записал бы ни расход, ни недельный счётчик вызовов. */
+export const TRANSLATE_TIMEOUT_MS = 55_000;
+/** Предел ответа модели на одно название: перевод не длиннее 80 знаков — до ~30 токенов, с кавычками и запятой; запас вдвое с лишним. */
+export const TRANSLATE_OUT_TOKENS_PER_TITLE = 80;
+/** Служебная разметка чата (роли, обёртка) поверх байт вопроса и названий. */
+const TRANSLATE_CHAT_OVERHEAD_TOKENS = 64;
 export const DEFAULT_TRANSLATE_MODEL = "google/gemini-2.5-flash-lite";
 
 // ---------------------------------------------------------------------------
@@ -118,6 +124,13 @@ export interface ChinaTaskMark {
   note?: string | null;
 }
 
+export interface ChinaStopMark {
+  reason: "auth" | "rate_limit";
+  at: string;
+  message: string;
+  host?: ChinaHost | null;
+}
+
 export interface ChinaState {
   week: string | null;
   version: string | null;
@@ -125,8 +138,11 @@ export interface ChinaState {
   runs: number;
   startedAt: string | null;
   completedAt: string | null;
-  /** Остановка одной причиной: ключ не принят или лимит 1688. Снимается первым удачным вызовом. */
-  stop: { reason: "auth" | "rate_limit"; at: string; message: string } | null;
+  /**
+   * Остановка одной причиной: ключ не принят или лимит 1688. Снимается первым удачным вызовом. host — на каком хосте: ключ, не принятый
+   * только сервисом трендов (ainext), не прячет топ ниш и копии (поиск идёт через gateway); без host (старая запись) — как gateway.
+   */
+  stop: ChinaStopMark | null;
   lastRunAt: string | null;
   /** Вызовов перевода за неделю снимка: не больше TRANSLATE_CALLS_PER_WEEK (ответ-мусор не должен покупаться каждый прогон). */
   translateCalls: number;
@@ -146,8 +162,11 @@ export function readChinaState(capabilities: unknown): ChinaState {
       marks[id] = { status: m.status as ChinaTaskStatus, attempts: Math.max(0, Math.floor(Number(m.attempts) || 0)), at: String(m.at ?? ""), note: typeof m.note === "string" ? m.note : null };
     }
   }
-  const stop = isRecord(raw.stop) && (raw.stop.reason === "auth" || raw.stop.reason === "rate_limit") && typeof raw.stop.at === "string"
-    ? { reason: raw.stop.reason as "auth" | "rate_limit", at: raw.stop.at, message: String(raw.stop.message ?? CHINA_STOP_WORDS[raw.stop.reason as "auth" | "rate_limit"]) }
+  const stop: ChinaStopMark | null = isRecord(raw.stop) && (raw.stop.reason === "auth" || raw.stop.reason === "rate_limit") && typeof raw.stop.at === "string"
+    ? {
+      reason: raw.stop.reason as "auth" | "rate_limit", at: raw.stop.at, message: String(raw.stop.message ?? CHINA_STOP_WORDS[raw.stop.reason as "auth" | "rate_limit"]),
+      host: raw.stop.host === "gateway" || raw.stop.host === "ainext" ? raw.stop.host : null,
+    }
     : null;
   const str = (v: unknown) => (typeof v === "string" && v ? v : null);
   return {
@@ -156,6 +175,25 @@ export function readChinaState(capabilities: unknown): ChinaState {
     translateCalls: Math.max(0, Math.floor(Number(raw.translateCalls) || 0)),
   };
 }
+
+/**
+ * Ключ отвергнут поиском 1688 (gateway): топ ниш и копии не снимаются — блок на экране скрыт. Отказ только сервиса трендов (ainext) — нет:
+ * снимок топа и копий идёт и показывается, не снимаются тренды и «возможности».
+ */
+export function chinaKeyRejected(stop: ChinaStopMark | null | undefined): boolean {
+  return stop?.reason === "auth" && stop.host !== "ainext";
+}
+
+/** Ключ не принят только сервисом трендов (ainext). */
+export function chinaTrendsKeyRejected(stop: ChinaStopMark | null | undefined): boolean {
+  return stop?.reason === "auth" && stop.host === "ainext";
+}
+
+/** Без строки S104: прогресс недели негде хранить — прогон не начинается. */
+export const CHINA_NO_STATE_WORDS = "нет строки S104 (1688) в assortment_sources — прогресс недельного снимка негде хранить, прогон не начинается (засев — миграция 202610010005)";
+
+/** Причина одной строкой: ключ не принят сервисом трендов (ainext), поиск работает. */
+export const CHINA_TRENDS_AUTH_WORDS = "тренды и «возможности» 1688 не снимаются: ключ не принят сервисом трендов (ainext, 401) — топ ниш и копии снимаются";
 
 function missing(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
@@ -367,14 +405,11 @@ export interface OfferRow {
   tags: string[];
 }
 
-/** Ответ find.product ниши → строки топа: без платных размещений и мужского/детского, без повторов карточки, со значками. */
+/** Ответ find.product ниши → строки топа: без платных размещений и мужского/детского, со значками (повторы карточки отсекает разбор). */
 export function nicheRows(niche: ChinaNiche, week: string, data: unknown, topPerNiche: number, known: ReadonlyMap<string, string> = new Map()): OfferRow[] {
   const top = nicheTop(parseFindProduct(data), topPerNiche);
-  const seen = new Set<string>();
   const rows: OfferRow[] = [];
   for (const o of top.offers) {
-    if (seen.has(o.offerId)) continue;
-    seen.add(o.offerId);
     rows.push({
       provider: "1688",
       niche_key: niche.key,
@@ -501,7 +536,7 @@ export function chinaTranslatorFromEnv(env: Record<string, string | undefined> =
       body: JSON.stringify({
         model,
         ...(model.startsWith("google/") ? { reasoning: { effort: "none" } } : {}),
-        max_tokens: 4000,
+        max_tokens: translateMaxTokens(texts.length),
         messages: [{ role: "system", content: TRANSLATE_PROMPT }, { role: "user", content: JSON.stringify(texts) }],
       }),
       signal: AbortSignal.timeout(TRANSLATE_TIMEOUT_MS),
@@ -534,9 +569,20 @@ export function chinaTranslatorFromEnv(env: Record<string, string | undefined> =
   return { translate, reason: null, model, price };
 }
 
-/** Оценка пачки перевода сверху: ~60 токенов на название на входе и на выходе плюс вопрос. */
-export function translateBatchMaxUsd(count: number, price: { in: number; out: number }): number {
-  return costUsd({ inputTokens: 300 + 60 * count, outputTokens: 60 * count }, price);
+/** Предел ответа модели (max_tokens запроса) на пачку из `count` названий: обёртка JSON-массива и TRANSLATE_OUT_TOKENS_PER_TITLE на название. */
+export function translateMaxTokens(count: number): number {
+  return 100 + TRANSLATE_OUT_TOKENS_PER_TITLE * Math.max(0, Math.floor(count));
+}
+
+/**
+ * Цена пачки перевода СВЕРХУ — для проверки общего потолка движка до платного вызова. Вход — не больше байт UTF-8 вопроса и названий
+ * (любой токен модели — хотя бы один байт; иероглиф — 3 байта) плюс служебная разметка чата; выход — ровно предел max_tokens, который
+ * уходит в запрос. Округление — вверх, до 0,00001 $.
+ */
+export function translateBatchMaxUsd(texts: readonly string[], price: { in: number; out: number }): number {
+  const inputTokens = TRANSLATE_CHAT_OVERHEAD_TOKENS + Buffer.byteLength(TRANSLATE_PROMPT, "utf8") + Buffer.byteLength(JSON.stringify(texts), "utf8");
+  const usd = (inputTokens * price.in + translateMaxTokens(texts.length) * price.out) / 1_000_000;
+  return Math.ceil(usd * 100_000 - 1e-9) / 100_000;
 }
 
 // ---------------------------------------------------------------------------
@@ -569,7 +615,7 @@ export interface ChinaPhaseCount {
 
 export interface ChinaRunSummary {
   skipped: string | null;
-  skippedBecause?: "off" | "no_key" | "no_migration" | "no_usage" | "busy" | "idle" | "rate_limit_pause";
+  skippedBecause?: "off" | "no_key" | "no_migration" | "no_state" | "no_usage" | "busy" | "idle" | "rate_limit_pause";
   week: string;
   version: string;
   calls: number;
@@ -584,6 +630,8 @@ export interface ChinaRunSummary {
   byPhase: Record<ChinaPhase, ChinaPhaseCount>;
   refs: string[];
   stoppedBy: ChinaStop | null;
+  /** На каком хосте ключ не принят (только при stoppedBy = auth). */
+  stopHost: ChinaHost | null;
   stopMessage: string | null;
   complete: boolean;
   translated: number;
@@ -599,7 +647,7 @@ function emptySummary(week: string): ChinaRunSummary {
   const phase = (): ChinaPhaseCount => ({ total: 0, closed: 0, done: 0, empty: 0, failed: 0 });
   return {
     skipped: null, week, version: CHINA_NICHES_VERSION, calls: 0, failedCalls: 0, weekCalls: null, rows: 0, done: 0, empty: 0, failed: 0,
-    byPhase: { niches: phase(), articles: phase(), trends: phase() }, refs: [], stoppedBy: null, stopMessage: null, complete: false,
+    byPhase: { niches: phase(), articles: phase(), trends: phase() }, refs: [], stoppedBy: null, stopHost: null, stopMessage: null, complete: false,
     translated: 0, translateCalls: 0, translateCostUsd: 0, translateSkipped: null, errors: [],
   };
 }
@@ -644,8 +692,11 @@ export async function runChinaSnapshot(db: SupabaseClient, options: RunChinaOpti
     }
   }
 
+  // Прогресс недели (отметки «пусто / не удалось», попытки, пауза после лимита, вызовы перевода) живёт в строке S104: без неё каждый прогон
+  // начинал бы неделю заново — перезапрашивал пустое и вечно падающее, не держал паузу после 429 и недельный предел перевода.
   const loaded = await loadChinaState(db);
-  let state = loaded?.state ?? emptyChinaState();
+  if (!loaded) return { ...summary, skipped: CHINA_NO_STATE_WORDS, skippedBecause: "no_state" };
+  let state = loaded.state;
   if (state.stop?.reason === "rate_limit" && nowMs - Date.parse(state.stop.at) < RATE_LIMIT_PAUSE_MS) {
     const until = new Date(Date.parse(state.stop.at) + RATE_LIMIT_PAUSE_MS).toISOString().slice(11, 16);
     return { ...summary, skipped: `пауза после лимита 1688 до ${until} UTC`, skippedBecause: "rate_limit_pause" };
@@ -681,7 +732,6 @@ export async function runChinaSnapshot(db: SupabaseClient, options: RunChinaOpti
   const marks = { ...state.marks };
   // Прогресс пишется после каждой задачи: прогон, оборванный платформой на maxDuration, не теряет отметок «пусто / не удалось / попытка».
   const persist = async (final = false) => {
-    if (!loaded) return;
     const next: ChinaState = {
       ...state, marks, translateCalls: state.translateCalls + summary.translateCalls,
       ...(final ? { runs: state.runs + 1, lastRunAt: new Date(nowMs).toISOString() } : {}),
@@ -715,16 +765,19 @@ export async function runChinaSnapshot(db: SupabaseClient, options: RunChinaOpti
         await addEngineUsage(db, clock(), CHINA_USAGE_KIND, { calls: 1, failed: 1, costUsd: 0 });
         if (!isChina1688Error(error)) throw error;
         if (error.kind === "auth" || error.kind === "no_key") {
+          // Хост — в отметке: ключ, не принятый только сервисом трендов, не прячет топ ниш и копии.
+          const host = taskHost(task);
           summary.stoppedBy = "auth";
-          summary.stopMessage = CHINA_STOP_WORDS.auth;
-          state.stop = { reason: "auth", at, message: CHINA_STOP_WORDS.auth };
+          summary.stopHost = host;
+          summary.stopMessage = host === "ainext" ? CHINA_TRENDS_AUTH_WORDS : CHINA_STOP_WORDS.auth;
+          state.stop = { reason: "auth", at, message: summary.stopMessage, host };
           break;
         }
         if (error.kind === "rate_limit") {
           // Без траты попытки задачи: задача остаётся в очереди недели.
           summary.stoppedBy = "rate_limit";
           summary.stopMessage = CHINA_STOP_WORDS.rate_limit;
-          state.stop = { reason: "rate_limit", at, message: CHINA_STOP_WORDS.rate_limit };
+          state.stop = { reason: "rate_limit", at, message: CHINA_STOP_WORDS.rate_limit, host: taskHost(task) };
           break;
         }
         const attempts = (marks[task.id]?.attempts ?? 0) + 1;
@@ -743,12 +796,12 @@ export async function runChinaSnapshot(db: SupabaseClient, options: RunChinaOpti
       marks[task.id] = { status, attempts: (marks[task.id]?.attempts ?? 0) + 1, at, note: null };
       if (status === "done") summary.done += 1;
       else summary.empty += 1;
-      if (task.kind === "niche") presence.niches.add(task.niche.key);
       await persist();
     }
 
-    // Перевод новых названий топа — после 1688 и только если осталось время.
-    if (translator && summary.stoppedBy !== "auth") {
+    // Перевод новых названий топа — после 1688 и только если осталось время. Ключ не принят поиском (gateway) — не переводим: блок на
+    // экране скрыт, платить не за что. Отказ только сервиса трендов (ainext) — переводим: топ ниш показывается.
+    if (translator && !(summary.stoppedBy === "auth" && summary.stopHost !== "ainext")) {
       if (!translator.translate) summary.translateSkipped = translator.reason;
       else if (!translateRoom) summary.translateSkipped = `перевод недели исчерпал ${TRANSLATE_CALLS_PER_WEEK} вызовов — остальные названия на китайском`;
       else await translateWeek(db, summary, translator, week, { clock, deadlineMs: options.deadlineMs, env, callsLeft: TRANSLATE_CALLS_PER_WEEK - state.translateCalls });
@@ -762,6 +815,11 @@ export async function runChinaSnapshot(db: SupabaseClient, options: RunChinaOpti
   } finally {
     await releaseLease(db, nowMs, lease);
   }
+}
+
+/** Хост задачи: поиск (ниши, номера) — gateway, тренды и «возможности» — ainext. */
+export function taskHost(task: ChinaTask): ChinaHost {
+  return task.kind === "niche" || task.kind === "ref" ? "gateway" : "ainext";
 }
 
 function callFor(call: ChinaCaller, task: ChinaTask): Promise<unknown> {
@@ -785,6 +843,7 @@ async function applyTask(db: SupabaseClient, task: ChinaTask, payload: unknown, 
     const known = await knownTranslations(db, draft.map((r) => r.offer_id));
     const rows = draft.map((r) => ({ ...r, title_ru: known.get(r.offer_id) ?? null }));
     await upsert(db, OFFERS, rows as unknown as Record<string, unknown>[], "niche_key,observed_on,offer_id");
+    await clearOlderImages(db, task.niche.key, week);
     return rows.length;
   }
   if (task.kind === "ref") {
@@ -819,6 +878,16 @@ async function applyTask(db: SupabaseClient, task: ChinaTask, payload: unknown, 
   if (rows.size === 0) return 0;
   await upsert(db, TRENDS, [...rows.values()], "list_key,observed_on,rank");
   return rows.size;
+}
+
+/**
+ * Адрес фото 1688 («…_!!<id>-0-cib.jpg») несёт числовой id загрузившего (у ИП — фактически человека): храним его только у снимка ниши,
+ * который показывается на экране (последний). Записан снимок этой недели — у прошлых снимков ниши адрес стирается: по сохранённым строкам
+ * не связать карточки одного продавца между неделями. Неделя к неделе сравнивает только номер карточки и позицию — фото там не нужно.
+ */
+async function clearOlderImages(db: SupabaseClient, nicheKey: string, week: string): Promise<void> {
+  const { error } = await db.from(OFFERS).update({ image_url: null }).eq("niche_key", nicheKey).lt("observed_on", week).not("image_url", "is", null);
+  if (error) throw new Error(`${OFFERS}: ${error.message}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -882,7 +951,7 @@ async function translateWeek(
       summary.translateSkipped = "нет учёта расхода движка — перевод не запускается";
       return;
     }
-    const refusal = engineRefusal(engineWeek, CHINA_TRANSLATE_KIND, translateBatchMaxUsd(batch.length, translator.price), budget);
+    const refusal = engineRefusal(engineWeek, CHINA_TRANSLATE_KIND, translateBatchMaxUsd(batch.map((b) => b.text), translator.price), budget);
     if (refusal) {
       summary.translateSkipped = refusal;
       return;
@@ -930,7 +999,7 @@ export function chinaRunLog(s: ChinaRunSummary): { status: "ok" | "partial" | "e
   }).join(", ");
   const translate = s.translated > 0 ? `; перевод ${s.translated} назв. ($${s.translateCostUsd.toFixed(4)})` : s.translateSkipped ? `; перевод: ${s.translateSkipped}` : "";
   const base = `неделя ${s.week}: ${phases}; запросов 1688 ${s.calls}${s.failedCalls ? ` (сбоев ${s.failedCalls})` : ""}${translate}`;
-  if (s.stoppedBy === "auth") return { status: "error", note: `${CHINA_STOP_WORDS.auth}. ${base}` };
+  if (s.stoppedBy === "auth") return { status: "error", note: `${s.stopHost === "ainext" ? CHINA_TRENDS_AUTH_WORDS : CHINA_STOP_WORDS.auth}. ${base}` };
   const tried = s.done + s.empty + s.errors.length;
   if (tried > 0 && s.done + s.empty === 0) return { status: "error", note: `ни одна задача не удалась: ${s.errors.slice(0, 2).join("; ")}. ${base}` };
   if (s.stoppedBy === "rate_limit") return { status: "partial", note: `${CHINA_STOP_WORDS.rate_limit}. ${base}` };

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { CHINA_LINKS_PATH, nicheLinks, nicheShortLabel, offerLink } from "@/lib/assortment/chinaLinks";
 import { CHINA_NICHES } from "@/lib/assortment/chinaNiches";
 import type { ChinaArticleCard, ChinaMarket, ChinaNicheBlock, ChinaOfferCard, ChinaOpportunity, ChinaView as ChinaViewData } from "@/lib/assortment/chinaStore";
-import { changeText, CHINA_SCREEN_NOTE, dm, offerBadges, soldText, type BadgeKind } from "@/lib/assortment/chinaUi";
+import { changeText, CHINA_SCREEN_NOTE, copiesDeltaText, dm, offerBadges, soldText, type BadgeKind } from "@/lib/assortment/chinaUi";
 import type { AssortmentDirection } from "@/lib/assortment/constants";
 import { BRAND_LABEL, refArticle } from "@/lib/assortment/socialFeed";
 import { plural } from "@/lib/warehouse/plural";
@@ -144,13 +144,18 @@ export function ChinaNicheSection({ niche, initialFilter = "all" }: { niche: Chi
           {niche.previousOn ? `, сравнение со снимком ${dm(niche.previousOn)}` : " — прошлого снимка ниши нет: «новое в топе» и «поднялось» появятся со следующей недели"}.
           {niche.sellers != null && (
             <>
-              {" "}Разных продавцов в топе: {niche.sellers} <span className={kindTag}>— факт 1688; самих продавцов не храним</span>
+              {" "}Разных продавцов в топе: {niche.sellers} <span className={kindTag}>— расчёт по карточкам 1688; самих продавцов не храним</span>
             </>
           )}
         </p>
         {niche.previousOn && (
           <p className="text-sm leading-6 text-slate-600">
             Новое в топе: {niche.newInTop}, поднялось: {niche.rose} <span className={kindTag}>— расчёт, неделя к неделе по позиции в выдаче 1688</span>
+            {niche.comparedDepth != null && (
+              <>
+                {" "}<span className={kindTag}>«Новое в топе» — только в первых {niche.comparedDepth} местах: глубже прошлый снимок не доставал</span>
+              </>
+            )}
           </p>
         )}
         {niche.market && <ChinaMarketLine market={niche.market} />}
@@ -188,7 +193,10 @@ export function ChinaMarketLine({ market }: { market: ChinaMarket }) {
   return (
     <p className="text-sm leading-6 text-slate-600">
       {text[0].toUpperCase() + text.slice(1)}{" "}
-      <span className={kindTag}>— факт 1688{market.lastMonth ? `, ряд по ${month(market.lastMonth)}` : ""} (отстаёт на 5–6 недель); к году — расчёт 1688; это просмотры покупателей, не продажи</span>
+      <span className={kindTag}>
+        — факт 1688{market.lastMonth ? `, ряд по ${month(market.lastMonth)}` : ""} (отстаёт на 5–6 недель); к году — расчёт 1688; это просмотры покупателей, не продажи
+        {market.allBuyers ? "; ключ без «女» — по всем покупателям, не только женское" : ""}
+      </span>
     </p>
   );
 }
@@ -280,7 +288,7 @@ export function ChinaArticles({ articles }: { articles: ChinaArticleCard[] }) {
       <h2 className="text-base font-semibold text-slate-900">Копии по номерам из рилсов — «ставки фабрик»</h2>
       <p className="text-xs leading-5 text-slate-500">
         Номера Zara и Uniqlo из ленты «Залетает» за 30 дней. Копия — карточка 1688 с номером в названии; поиск 1688 смысловой и находит часть
-        карточек, поэтому число — оценка снизу, прирост — расчёт к прошлому снимку номера.
+        карточек, поэтому число — оценка снизу, прирост — расчёт к прошлому снимку номера с тем же запросом.
       </p>
       <ul className="divide-y divide-slate-100">
         {articles.map((a) => (
@@ -289,7 +297,7 @@ export function ChinaArticles({ articles }: { articles: ChinaArticleCard[] }) {
               <span className="text-sm font-medium text-slate-900">{BRAND_LABEL[a.brand]} {refArticle(a.refKey) ?? a.number}</span>
               <span className="text-sm text-slate-700">
                 {a.offers > 0 ? `${a.offers} ${plural(a.offers, "копия", "копии", "копий")}` : "копий не нашли"}
-                {a.delta != null && a.delta !== 0 ? ` (${a.delta > 0 ? "+" : "−"}${Math.abs(a.delta)} за неделю)` : ""}
+                {a.delta != null && a.delta !== 0 ? copiesDeltaText(a.delta, a.observedOn, a.previousOn) : ""}
                 {a.sellers > 0 ? `, продавцов от ${a.sellers}` : ""}
               </span>
               <span className={kindTag}>— оценка снизу{a.delta != null ? ", прирост — расчёт" : ""}; снимок {dm(a.observedOn)}</span>
@@ -342,9 +350,10 @@ export function ChinaRule() {
       <ul className="flex list-disc flex-col gap-1 pb-3 pl-5 leading-6">
         <li>Снимок — раз в неделю, с понедельника: топ ниши по продажам 1688 (до 40 карточек одного запроса), без платных размещений, мужского и детского.</li>
         <li>«Продано» — счётчик 1688: накопленный и округлённый «корзиной» (5000+, 900+); за какой период — 1688 не указывает. Факт площадки, нижняя граница.</li>
-        <li>«Новое в топе» — карточки не было в прошлом снимке ниши; «поднялось на N» — позиция в выдаче выше на N, от 3 мест (на 1–2 выдача гуляет сама). Расчёт.</li>
-        <li>«Новинка — оценка» — по номеру карточки 1688 (номера растут со временем); «新款» — слово продавца в названии, гипотеза.</li>
-        <li>Цены и продавцов не храним и не показываем — только число разных продавцов в топе. Оптовые продажи в Китае — не спрос WB.</li>
+        <li>«Новое в топе» — карточки не было в прошлом снимке ниши (только до места, докуда прошлый снимок доставал); «поднялось на N» — позиция в выдаче выше на N, от 3 мест (на 1–2 выдача гуляет сама). Расчёт.</li>
+        <li>«Новинка — оценка» — по номеру карточки 1688 (номера растут со временем); «新款» и «унисекс» — слова продавца в названии, гипотеза.</li>
+        <li>Копия по номеру — номер Zara (7 цифр; цвет через пробел или приклеенными тремя цифрами) или Uniqlo (6 цифр, можно с буквой впереди) в названии карточки; номер внутри другого числа, с косыми или через дефис — не считаем. Оценка снизу.</li>
+        <li>Цены и продавцов не храним и не показываем — только число разных продавцов в топе (наш расчёт по карточкам). Оптовые продажи в Китае — не спрос WB.</li>
       </ul>
     </details>
   );

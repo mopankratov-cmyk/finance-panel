@@ -21,7 +21,8 @@ const PHASES: readonly ChinaPhase[] = ["niches", "articles", "trends"];
  * Готовый снимок — ответ без строки в журнале.
  *
  * Ключ — ALI_1688_AK (как у официальных навыков). Без ключа — строка-ошибка в журнале и блок на экране скрыт; ключ не принят (401 /
- * SignatureInvalid) — остановка одной причиной; 429 / Qos* — пауза без траты попыток. Без миграции 202610070001 — тихий выход с причиной.
+ * SignatureInvalid) — остановка одной причиной; 429 / Qos* — пауза без траты попыток. Без миграции 202610070001 — тихий выход с причиной;
+ * без строки S104 в assortment_sources (там прогресс недели) — прогон не начинается, строка-ошибка в журнале.
  * Выключатель ASSORTMENT_CHINA=off. Потолки: ASSORTMENT_CHINA_MAX_CALLS_PER_RUN (40), ASSORTMENT_CHINA_WEEKLY_CALLS (150).
  *
  * `?dryRun=1` — что пора сделать, ничего не вызывая и не записывая; `?phase=niches|articles|trends` — только этот шаг недели.
@@ -58,7 +59,8 @@ export async function GET(request: NextRequest) {
       await writeSyncLog(CHINA_JOB, "ok", 0, summary.skipped, startedAt);
       return NextResponse.json({ ok: true, ...body });
     }
-    if (summary.skippedBecause === "no_key") {
+    // Нет ключа или строки S104 (прогресс недели негде хранить) — ошибка в журнале каждым прогоном: сторож поднимет тревогу.
+    if (summary.skippedBecause === "no_key" || summary.skippedBecause === "no_state") {
       await writeSyncLog(CHINA_JOB, "error", null, summary.skipped, startedAt);
       return NextResponse.json({ ok: true, ...body });
     }

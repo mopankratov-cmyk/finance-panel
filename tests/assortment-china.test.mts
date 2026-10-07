@@ -4,17 +4,21 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  call1688, canonicalResource, China1688Error, CHINA_NICHES, CHINA_STOP_WORDS, classifyBizError, containsChinaMoney, contentMd5, countRefCopies, estimateListedOn,
+  call1688, canonicalResource, China1688Error, CHINA_NICHES, CHINA_STOP_WORDS, classifyBizError, classifyHttpStatus, containsChinaMoney, contentMd5, countRefCopies, estimateListedOn,
   FIND_PRODUCT_PATH, isNewOffer, isWomenTitle, nicheTop, parseAk, parseFindProduct, parseOfferHot, parseOpportunities, parseRefKey, parseSearchOffer, refQuery,
   signHeaders, soldLowerBound, stripChinaMoney, titleHasAlias, titleHasRef, topicDirection, WORKFLOW_PATH,
   type ChinaCaller, type ChinaOffer,
 } from "../lib/assortment/china1688.ts";
 import {
-  CHINA_SOURCE_ID, CHINA_TRANSLATE_KIND, CHINA_USAGE_KIND, chinaConfig, chinaRunLog, chinaTranslatorFromEnv, chinaWeekOf, MAX_TASK_ATTEMPTS, nicheRows, parseTranslations,
-  pickRefTasks, RATE_LIMIT_PAUSE_MS, readChinaState, runChinaSnapshot, TRANSLATE_CALLS_PER_WEEK, TranslateStopError,
+  CALL_WORST_MS, CHINA_NO_STATE_WORDS, CHINA_SOURCE_ID, CHINA_TRANSLATE_KIND, CHINA_TRENDS_AUTH_WORDS, CHINA_USAGE_KIND, chinaConfig, chinaKeyRejected, chinaRunLog,
+  chinaTranslatorFromEnv, chinaWeekOf, marketValueText, MAX_TASK_ATTEMPTS, nicheRows, parseTranslations, pickRefTasks, RATE_LIMIT_PAUSE_MS, readChinaState, runChinaSnapshot,
+  TRANSLATE_CALLS_PER_WEEK, TRANSLATE_TIMEOUT_MS, translateBatchMaxUsd, translateMaxTokens, TranslateStopError,
   type ChinaConfig, type ChinaRunSummary, type RunChinaOptions, type TranslateSetup,
 } from "../lib/assortment/chinaSync.ts";
-import { articleCards, compareTop, loadChinaView, ROSE_MIN_POSITIONS } from "../lib/assortment/chinaStore.ts";
+import {
+  articleCards, buildNicheBlocks, buildOpportunities, chinaStatusLine, compareTop, loadChinaView, pickChinaDigest, ROSE_MIN_POSITIONS, topDepth,
+} from "../lib/assortment/chinaStore.ts";
+import { costUsd } from "../lib/assortment/catalogAi.ts";
 import { ENGINE_KIND, engineWeek, isEngineKind, kindTier } from "../lib/assortment/engineBudget.ts";
 
 /**
@@ -455,6 +459,7 @@ function fakeDb(init: FakeInit = {}) {
         },
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
         gte: (c: string, v: unknown) => (filters.push((r) => r[c] != null && String(r[c]) >= String(v)), q),
+        lt: (c: string, v: unknown) => (filters.push((r) => r[c] != null && String(r[c]) < String(v)), q),
         in: (c: string, vs: unknown[]) => (filters.push((r) => vs.includes(r[c])), q),
         is: (c: string, v: unknown) => (filters.push((r) => (r[c] ?? null) === v), q),
         not: (c: string, operator: string, v: unknown) => {
@@ -518,7 +523,7 @@ function fakeDb(init: FakeInit = {}) {
       return q;
     },
   };
-  return { db: db as never, tables, log };
+  return { db: db as never, tables, log, missing };
 }
 
 // ---------------------------------------------------------------------------
@@ -1009,4 +1014,379 @@ test("ключ — только из окружения ALI_1688_AK без зн�
     assert.doesNotMatch(text, /x-csk-sign"\s*:\s*"[A-Za-z0-9+/=]{20,}"/, `${path}: подпись в образце`);
   }
   for (const name of readdirSync(join(root, FIXTURES))) assert.doesNotMatch(read(`${FIXTURES}/${name}`), /"x-csk-|"Authorization"/i, `${name}: заголовков авторизации в образцах нет`);
+});
+
+// ---------------------------------------------------------------------------
+// По ревью 07.10: глубина сравнения, SKU-строки, 403, хост ключа, время, пауза, деньги в признаках и тренде, S104, фото, номера
+
+const nicheRow = (key: string, observedOn: string, offerId: string, rank: number): Row => ({
+  provider: "1688", niche_key: key, direction: CHINA_NICHES.find((n) => n.key === key)!.direction, observed_on: observedOn, rank, offer_id: offerId, title_zh: `腋下包 ${rank}`,
+  title_ru: null, image_url: null, category: null, sold_text: null, sold_min: null, orders_30d: null, sellers: 10, is_new: false, tags: [],
+});
+
+test("«новое в топе» — только в пределах глубины прошлого снимка: прошлый 12 мест, нынешний 40 — ниже 12-го сравнивать не с чем, в сводку не идёт", () => {
+  const ids = Array.from({ length: 40 }, (_, i) => String(900000000000 + i));
+  const prev = ids.slice(0, 12).map((offer_id, i) => ({ offer_id, rank: i + 1 }));
+  const cur = ids.map((offer_id, i) => ({ offer_id, rank: i + 1 }));
+  const changes = compareTop(cur, prev);
+  assert.equal([...changes.values()].filter((c) => c?.kind === "new").length, 0, "28 карточек ниже прошлой страницы — не «новые»");
+  assert.equal(changes.get(ids[20]), null, "ниже глубины прошлого снимка — без сравнения");
+  assert.deepEqual(changes.get(ids[0]), { kind: "same" });
+  assert.equal(topDepth(prev), 12);
+  // В пределах глубины «новое» остаётся «новым»; ушедшая вниз карточка — «опустилась» (обе позиции известны).
+  const mixed = compareTop([{ offer_id: "x7", rank: 7 }, { offer_id: ids[4], rank: 30 }, { offer_id: "x13", rank: 13 }], prev);
+  assert.deepEqual(mixed.get("x7"), { kind: "new" });
+  assert.deepEqual(mixed.get(ids[4]), { kind: "fell", from: 5, to: 30 });
+  assert.equal(mixed.get("x13"), null);
+
+  const offers = [...prev.map((p) => nicheRow("underarm", "2026-09-28", p.offer_id, p.rank)), ...cur.map((c) => nicheRow("underarm", "2026-10-05", c.offer_id, c.rank))];
+  const blocks = buildNicheBlocks("bags", offers as never, []);
+  const underarm = blocks.find((b) => b.key === "underarm")!;
+  assert.equal(underarm.newInTop, 0);
+  assert.equal(underarm.comparedDepth, 12, "глубина сравнения названа — экран её показывает");
+  assert.equal(pickChinaDigest("2026-10-05", blocks, []), null, "ложные «новые» в сводку не уходят");
+  // Глубины совпадают — глубина не называется.
+  const same = buildNicheBlocks("bags", [...cur.map((c) => nicheRow("underarm", "2026-09-28", c.offer_id, c.rank)), ...cur.map((c) => nicheRow("underarm", "2026-10-05", c.offer_id, c.rank))] as never, []);
+  assert.equal(same[0].comparedDepth, null);
+});
+
+test("основной ключ ниши закреплён за её key: поменять запрос — новая ниша, иначе неделя к неделе сравнит две разные выдачи", () => {
+  assert.deepEqual(Object.fromEntries(CHINA_NICHES.map((n) => [n.key, n.zh[0]])), {
+    bomber: "飞行员夹克 女", short_down: "短款羽绒服 女", shirt_jacket: "衬衫式夹克 女", trench: "风衣 女", suede: "麂皮绒外套 女", leather: "皮衣 女 短款",
+    fleece: "摇粒绒外套 女", windbreaker: "防风夹克 女 薄款", padded_short: "棉服 女 短款", crossbody: "斜挎包 女", hobo: "hobo包 女", tote: "托特包 女", baguette: "法棍包 女",
+    underarm: "腋下包 女", bucket: "水桶包 女", shopper: "购物袋 女 大容量", backpack: "双肩包 女", dumpling: "饺子包", saddle: "马鞍包 女", envelope: "信封包 女", suede_bag: "麂皮 包 女",
+  });
+});
+
+test("SKU-строки find.product: одна карточка двумя SKU — одна карточка (первая позиция), копий по номеру — по карточкам, в топе — разные карточки", () => {
+  const data = { data: [
+    { itemId: 1080947777395, skuId: 1, title: "TAOP&ZA 立领夹克外套 8372288", company: "shopA", soldOut: 10 },
+    { itemId: 1080947777395, skuId: 2, title: "TAOP&ZA 立领夹克外套 8372288", company: "shopA", soldOut: 10 },
+    { itemId: 1082953013238, skuId: 3, title: "棉衣夹克外套8372288", company: "shopB", soldOut: 5 },
+  ] };
+  const parsed = parseFindProduct(data);
+  assert.deepEqual(parsed.offers.map((o) => [o.offerId, o.position]), [["1080947777395", 1], ["1082953013238", 3]]);
+  const copies = countRefCopies(parsed.offers, { brand: "zara", number: "8372288" });
+  assert.equal(copies.offers, 2);
+  assert.deepEqual(copies.sampleOfferIds, ["1080947777395", "1082953013238"]);
+  // Топ ниши: 41 строка, из них повтор — 40 разных карточек.
+  const many = { data: [{ itemId: 100000000, title: "腋下包 女", company: "a" }, ...Array.from({ length: 40 }, (_, i) => ({ itemId: 100000000 + i, title: `腋下包 女 ${i}`, company: `c${i}` }))] };
+  const top = nicheTop(parseFindProduct(many), 40);
+  assert.equal(new Set(top.offers.map((o) => o.offerId)).size, 40);
+  // Старые строки с повтором в образцах — ссылки без повторов (ключи разметки уникальны).
+  const cards = articleCards([{ ref_key: "zara:8372288", observed_on: "2026-10-05", direction: "jackets", offers: 2, sellers: 1, sample_offer_ids: ["1080947777395", "1080947777395"] }]);
+  assert.deepEqual(cards[0].sampleUrls, ["https://detail.1688.com/offer/1080947777395.html"]);
+});
+
+test("номер в названии: Zara — и с приклеенным цветом (3 цифры), Uniqlo — и после года, и после «UNIQLO»; ложных срабатываний нет", () => {
+  const zara = { brand: "zara" as const, number: "8372288" };
+  assert.equal(titleHasRef("ZA 8372288600 外套", zara), true, "цвет приклеен — полный номер Zara");
+  assert.equal(titleHasRef("ZA8372288外套", zara), true);
+  assert.equal(titleHasRef("外套 83722886001", zara), false, "11 цифр — другое число");
+  assert.equal(titleHasRef("外套 83722886", zara), false, "8 цифр — другое число");
+  const uq = { brand: "uniqlo" as const, number: "487517" };
+  assert.equal(titleHasRef("2025R487517 立领", uq), true, "буква после года");
+  assert.equal(titleHasRef("UNIQLO487517 外套", uq), true);
+  assert.equal(titleHasRef("Uniqlo487517", uq), true);
+  assert.equal(titleHasRef("U家487517", uq), true);
+  assert.equal(titleHasRef("款号 4875171 女", uq), false);
+  assert.equal(titleHasRef("外套AR487517", uq), false);
+  assert.equal(titleHasRef("外套x487517", uq), false);
+  assert.equal(titleHasRef("外套1487517", uq), false);
+  assert.equal(titleHasRef("XUNIQLOX487517", uq), false);
+});
+
+test("HTTP 403 — не ключ: сбой сервиса (попытка задачи, без повтора), остановки нет, снимок на экране не прячется; ключ — только 401", async () => {
+  assert.equal(classifyHttpStatus(401).kind, "auth");
+  const forbidden = classifyHttpStatus(403);
+  assert.equal(forbidden.kind, "service");
+  assert.equal(forbidden.message, "1688: доступ запрещён (HTTP 403)");
+  const f = fakeFetch([{ status: 403, body: {} }, { status: 200, body: G_BAGS }]);
+  await assert.rejects(call1688("gateway", FIND_PRODUCT_PATH, {}, { env: ENV, fetchImpl: f.impl, sleep: noSleep }), (e: unknown) => e instanceof China1688Error && e.kind === "service");
+  assert.equal(f.calls.length, 1, "403 не повторяется");
+  const { db, tables } = fakeDb();
+  tables.assortment_cn_offer_snapshot.push(...snapshotRows(CHINA_NICHES.find((n) => n.key === "underarm")!, "2026-09-28", G_BAGS.data));
+  const waf = fakeCaller({ fail: () => classifyHttpStatus(403) });
+  const s = await runChinaSnapshot(db, opts({ call: waf.call, config: { ...WIDE, maxCallsPerRun: 2 } }));
+  assert.equal(s.stoppedBy, "run_cap", "403 не останавливает прогон как ключ");
+  const state = readChinaState(tables.assortment_sources[0].capabilities);
+  assert.equal(state.stop, null);
+  assert.equal(state.marks[`niche:${CHINA_NICHES[0].key}`].attempts, 1, "попытка задачи потрачена");
+  assert.match(String(state.marks[`niche:${CHINA_NICHES[0].key}`].note), /доступ запрещён \(HTTP 403\)/);
+  assert.equal((await loadChinaView(db, { direction: "bags", nowMs: MONDAY, env: ENV })).available, true, "исправный ключ из-за 403 недействительным не объявлен");
+});
+
+test("ключ не принят только сервисом трендов (ainext): топ ниш и копии снимаются, переводятся и показываются; тренды — нет; причина — строкой и в журнале", async () => {
+  const { db, tables } = fakeDb({ tables: { assortment_social_post: posts(MONDAY) } });
+  const trendsOff = fakeCaller({ fail: (b) => (b.host === "ainext" ? classifyBizError({ msgCode: "401" }) : null) });
+  const tr = fakeTranslator();
+  const s = await runChinaSnapshot(db, opts({ call: trendsOff.call, translator: tr.setup }));
+  assert.equal(s.stoppedBy, "auth");
+  assert.equal(s.stopHost, "ainext");
+  assert.equal(trendsOff.served.filter((x) => x.host === "gateway").length, 21 + 2, "поиск — целиком");
+  assert.equal(trendsOff.served.filter((x) => x.host === "ainext").length, 1, "после отказа — ни одного вызова трендов");
+  assert.ok(tr.batches.length > 0, "названия топа переводятся: ключ поиска исправен");
+  const state = readChinaState(tables.assortment_sources[0].capabilities);
+  assert.deepEqual([state.stop?.reason, state.stop?.host], ["auth", "ainext"]);
+  const log = chinaRunLog(s);
+  assert.equal(log.status, "error", "тренды не снимаются, пока ключ не поправят — сторож поднимет тревогу");
+  assert.ok(String(log.note).startsWith(CHINA_TRENDS_AUTH_WORDS));
+  const view = await loadChinaView(db, { direction: "bags", nowMs: MONDAY, env: ENV });
+  assert.equal(view.available, true, "топ ниш не прячется");
+  assert.match(String(view.available && view.status), /ключ не принят сервисом трендов/);
+  // Отказ поиска (gateway) — прячет; старая отметка без хоста — как поиск.
+  assert.equal(chinaKeyRejected({ reason: "auth", at: "x", message: "x", host: "gateway" }), true);
+  assert.equal(chinaKeyRejected({ reason: "auth", at: "x", message: "x" }), true);
+  assert.equal(chinaKeyRejected({ reason: "auth", at: "x", message: "x", host: "ainext" }), false);
+  assert.equal(chinaKeyRejected({ reason: "rate_limit", at: "x", message: "x", host: "gateway" }), false);
+  // Отказ поиска (gateway): блок скрыт — названия, оставшиеся без перевода, не покупаются.
+  const bad = fakeCaller({ fail: () => classifyBizError({ code: "SignatureInvalid" }) });
+  const { db: db2, tables: t2 } = fakeDb();
+  t2.assortment_cn_offer_snapshot.push(...snapshotRows(CHINA_NICHES.find((n) => n.key === "underarm")!, "2026-10-05", G_BAGS.data));
+  const paid = fakeTranslator();
+  const g = await runChinaSnapshot(db2, opts({ call: bad.call, translator: paid.setup }));
+  assert.equal(g.stopHost, "gateway");
+  assert.equal(readChinaState(t2.assortment_sources[0].capabilities).stop?.host, "gateway");
+  assert.equal(paid.batches.length, 0, "ключ поиска отвергнут — перевод не покупается");
+});
+
+test("время: новый вызов не начинается, если до дедлайна меньше худшего случая вызова (таймаут × 2 + пауза повтора)", async () => {
+  assert.equal(CALL_WORST_MS, 62_000);
+  const { db } = fakeDb();
+  const late = fakeCaller();
+  const s = await runChinaSnapshot(db, opts({ call: late.call, deadlineMs: MONDAY + 40_000 }));
+  assert.equal(late.served.length, 0, "40 с до дедлайна — вызов, начатый сейчас, может уйти за maxDuration");
+  assert.equal(s.stoppedBy, "time");
+  const inTime = fakeCaller();
+  await runChinaSnapshot(fakeDb().db, opts({ call: inTime.call, deadlineMs: MONDAY + CALL_WORST_MS + 1000 }));
+  assert.ok(inTime.served.length >= 1, "запаса хватает — вызов идёт");
+});
+
+test("пауза между вызовами 1688 — 3 с (проба: так ни одного 429); перед первым вызовом паузы нет", async () => {
+  assert.equal(chinaConfig({}).pauseMs, 3000);
+  const events: string[] = [];
+  const { call } = fakeCaller({ fail: () => (events.push("call"), null) });
+  await runChinaSnapshot(fakeDb().db, opts({ call, config: { ...chinaConfig({}), maxCallsPerRun: 3, weeklyCalls: 500 }, sleep: async (ms) => { events.push(`sleep ${ms}`); } }));
+  assert.deepEqual(events, ["call", "sleep 3000", "call", "sleep 3000", "call"]);
+});
+
+test("перевод не начинается, если до дедлайна меньше таймаута Polza: оборванный платный вызов не записал бы расход", async () => {
+  const { db, tables } = fakeDb();
+  tables.assortment_cn_offer_snapshot.push(...snapshotRows(CHINA_NICHES.find((n) => n.key === "underarm")!, "2026-10-05", G_BAGS.data));
+  const tr = fakeTranslator();
+  const call = fakeCaller();
+  const s = await runChinaSnapshot(db, opts({ call: call.call, translator: tr.setup, deadlineMs: MONDAY + TRANSLATE_TIMEOUT_MS - 5_000 }));
+  assert.equal(call.served.length, 0);
+  assert.equal(tr.batches.length, 0, "платный вызов не начат");
+  assert.equal(s.translateSkipped, "не хватило времени прогона — переведём в следующем");
+  assert.equal(usageCalls(tables, CHINA_TRANSLATE_KIND), 0);
+  const roomy = fakeTranslator();
+  const { db: db2, tables: t2 } = fakeDb();
+  t2.assortment_cn_offer_snapshot.push(...snapshotRows(CHINA_NICHES.find((n) => n.key === "underarm")!, "2026-10-05", G_BAGS.data));
+  await runChinaSnapshot(db2, opts({ call: fakeCaller().call, translator: roomy.setup, phase: "articles", deadlineMs: MONDAY + TRANSLATE_TIMEOUT_MS + 5_000 }));
+  assert.equal(roomy.batches.length, 1, "времени хватает — переводим");
+});
+
+test("перевод без учёта расхода движка не платится: таблица учёта пропала к моменту перевода — причина словами, вызова нет", async () => {
+  const { db, tables, missing } = fakeDb();
+  tables.assortment_cn_offer_snapshot.push(...snapshotRows(CHINA_NICHES.find((n) => n.key === "underarm")!, "2026-10-05", G_BAGS.data));
+  const tr = fakeTranslator();
+  const vanish = fakeCaller({ fail: () => (missing.add("assortment_ai_usage"), null) });
+  const s = await runChinaSnapshot(db, opts({ call: vanish.call, translator: tr.setup, config: { ...WIDE, maxCallsPerRun: 1 } }));
+  assert.equal(vanish.served.length, 1);
+  assert.equal(tr.batches.length, 0);
+  assert.equal(s.translateSkipped, "нет учёта расхода движка — перевод не запускается");
+});
+
+test("цена пачки перевода — верхняя граница: max_tokens запроса и байты названий; остаток выше старой оценки, но ниже худшего случая — отказ", async () => {
+  const price = { in: 0.07, out: 0.29 };
+  // Худший случай старой оценки: 40 названий по 200 иероглифов, ответ до предела max_tokens.
+  const long = Array.from({ length: 40 }, (_, i) => `${"腋".repeat(196)}${String(i).padStart(4, "0")}`);
+  const oldEstimate = costUsd({ inputTokens: 300 + 60 * 40, outputTokens: 60 * 40 }, price);
+  const worst = costUsd({ inputTokens: Buffer.byteLength(JSON.stringify(long), "utf8"), outputTokens: translateMaxTokens(40) }, price);
+  assert.ok(worst > oldEstimate * 1.5, "старая оценка была ниже худшего случая");
+  assert.ok(translateBatchMaxUsd(long, price) >= worst, "новая — не ниже худшего случая");
+  assert.equal(translateMaxTokens(40), 3300);
+  // В запрос уходит тот же предел ответа, что в оценке.
+  const f = fakeFetch([{ status: 200, body: { choices: [{ message: { content: "[\"a\",\"b\"]" } }], usage: { prompt_tokens: 10, completion_tokens: 5 } } }]);
+  await chinaTranslatorFromEnv({ POLZA_API_KEY: "test-polza" }, f.impl).translate!(["腋下包", "托特包"]);
+  assert.equal(JSON.parse(String(f.calls[0].init.body)).max_tokens, translateMaxTokens(2));
+  // Прогон: остаток статьи перевода — между старой оценкой первой пачки и верхней границей → перевода нет.
+  const probe = fakeTranslator(price);
+  await runChinaSnapshot(fakeDb().db, opts({ call: fakeCaller().call, translator: probe.setup }));
+  const batch = probe.batches[0];
+  const before = costUsd({ inputTokens: 300 + 60 * batch.length, outputTokens: 60 * batch.length }, price);
+  const bound = translateBatchMaxUsd(batch, price);
+  assert.ok(bound > before + 0.0001, `${bound} > ${before}`);
+  const room = Math.round(((before + bound) / 2) * 100_000) / 100_000;
+  // Без расхода каталогов их норма отложена (ярус выше): остаток = 30 − 9,95 − расход разбора по фото.
+  const spent = { day: "2026-10-04", kind: ENGINE_KIND.catalogAi, calls: 1, failed_calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: Math.round((20.05 - room) * 100_000) / 100_000, updated_at: "2026-10-04T10:00:00Z" };
+  const tight = fakeTranslator(price);
+  const s = await runChinaSnapshot(fakeDb({ tables: { assortment_ai_usage: [spent] } }).db, opts({ call: fakeCaller().call, translator: tight.setup }));
+  assert.equal(tight.batches.length, 0, "вызов, способный выйти за потолок, не делается");
+  assert.match(String(s.translateSkipped), /^общий потолок движка/);
+});
+
+test("признаки карточки (sellingPoints → tags cpv:…) без сумм и длинных чисел: «39元», «1999», «￥12», «RMB 5» не проходят", () => {
+  const raw = { data: [{ itemId: 123456789, title: "女士夹克", company: "a", soldOut: 1, sellingPoints: [
+    { type: "industryCPV", value: "39元" }, { type: "industryCPV", value: "1999" }, { type: "industryCPV", value: "￥12" }, { type: "industryCPV", value: "RMB 5" },
+    { type: "industryCPV", value: "涤纶" }, { type: "price", value: "立领" },
+  ] }] };
+  const parsed = parseFindProduct(raw);
+  assert.deepEqual(parsed.offers[0].traits, ["涤纶"]);
+  const rows = nicheRows(CHINA_NICHES.find((n) => n.key === "bomber")!, "2026-10-05", raw, 40);
+  assert.deepEqual(rows[0].tags, ["cpv:涤纶"]);
+  assert.doesNotMatch(JSON.stringify([rows[0].tags, parsed.offers[0].traits]), /39|1999|12|RMB|元|￥/);
+});
+
+test("тренд с настоящими ценами в разделе хитов Taobao: средняя, медианная цена и распределение цен не читаются ни в разбор, ни в value_text", () => {
+  const base = (SK_TREND_BAGS.model as { bizData: string }).bizData;
+  const priced = base
+    .replace("**均价**：PRICE　|　**中位数价格**：PRICE", "**均价**：¥89.57　|　**中位数价格**：77.31元")
+    .replace(/\| PRICE - PRICE \|/, "| ¥12.34 - ¥56.78 |")
+    .replace(/\| PRICE - PRICE \|/, "| 61.23 - 64.56 |");
+  assert.match(priced, /89\.57/, "синтетика действительно с ценами");
+  const noCount = priced.replace(/\*\*商品数量\*\*[：:]\s*[\d,]+\n/, "");
+  const plain = noCount.replace("¥89.57", "89.57").replace("77.31元", "77.31");
+  for (const text of [priced, noCount, plain]) {
+    const t = parseOfferHot(text)!;
+    assert.ok(t);
+    const out = JSON.stringify(t) + marketValueText(t);
+    for (const price of ["89.57", "77.31", "12.34", "56.78", "61.23", "64.56"]) assert.ok(!out.includes(price), `${price} в разборе тренда`);
+    assert.doesNotMatch(out, /¥|元/);
+  }
+});
+
+test("строка состояния: лимит 1688 — названа; «возможности» другого раздела не попадают в раздел", () => {
+  const stop = { week: "2026-10-05", version: "v", marks: {}, runs: 1, startedAt: null, completedAt: null, stop: { reason: "rate_limit" as const, at: "2026-10-05T07:00:00Z", message: "x" }, lastRunAt: null, translateCalls: 0 };
+  assert.equal(chinaStatusLine(stop, "2026-10-05", "2026-10-05"), CHINA_STOP_WORDS.rate_limit);
+  assert.equal(chinaStatusLine({ ...stop, stop: null }, "2026-10-05", "2026-10-05"), null);
+  const trends = [
+    { list_key: "opportunity:taobao:hot", observed_on: "2026-10-05", rank: 1, keyword_zh: "通勤托特包", keyword_ru: null, value_text: "{}", direction: "bags" },
+    { list_key: "opportunity:1688:trend", observed_on: "2026-10-05", rank: 1, keyword_zh: "短款羽绒服女", keyword_ru: null, value_text: "{}", direction: "jackets" },
+  ];
+  assert.deepEqual(buildOpportunities("jackets", trends as never).map((o) => o.topic), ["短款羽绒服女"]);
+  assert.deepEqual(buildOpportunities("bags", trends as never).map((o) => o.topic), ["通勤托特包"]);
+});
+
+test("без строки S104 прогон не начинается: прогресс недели (пусто, попытки, пауза после 429, вызовы перевода) негде хранить — причина одной строкой", async () => {
+  const { db, log } = fakeDb({ tables: { assortment_sources: [] } });
+  const { call, served } = fakeCaller();
+  const s = await runChinaSnapshot(db, opts({ call }));
+  assert.equal(s.skippedBecause, "no_state");
+  assert.equal(s.skipped, CHINA_NO_STATE_WORDS);
+  assert.equal(served.length, 0);
+  assert.ok(!log.some((l) => l.op !== "select"), "ничего не пишет");
+  const noTable = await runChinaSnapshot(fakeDb({ missing: ["assortment_sources"] }).db, opts({ call }));
+  assert.equal(noTable.skippedBecause, "no_state");
+  const route = read("app/api/sync/assortment-china/route.ts");
+  assert.match(route, /if \(summary\.skippedBecause === "no_key" \|\| summary\.skippedBecause === "no_state"\) \{\n\s+await writeSyncLog\(CHINA_JOB, "error",/, "в журнале — ошибка: сторож поднимет тревогу");
+});
+
+test("фото с id загрузившего — только у показанного снимка ниши: записан снимок новой недели — у прошлого снимка этой ниши адрес стёрт", async () => {
+  const { db, tables } = fakeDb();
+  await runChinaSnapshot(db, opts({ call: fakeCaller().call }));
+  assert.ok(tables.assortment_cn_offer_snapshot.filter((r) => r.observed_on === "2026-10-05").some((r) => typeof r.image_url === "string"));
+  const emptyNiche = CHINA_NICHES.find((n) => n.key === "bucket")!;
+  const base = fakeCaller();
+  const wrapped: ChinaCaller = async (host, path, body) => (body.query === emptyNiche.zh[0] ? { count: 0, data: [] } : base.call(host, path, body));
+  await runChinaSnapshot(db, opts({ call: wrapped }, MONDAY + 7 * DAY));
+  const old = tables.assortment_cn_offer_snapshot.filter((r) => r.observed_on === "2026-10-05");
+  assert.ok(old.filter((r) => r.niche_key !== "bucket").every((r) => r.image_url === null), "прошлый снимок ниши — без адресов фото");
+  assert.ok(old.filter((r) => r.niche_key === "bucket").some((r) => typeof r.image_url === "string"), "ниша без снимка этой недели показывает прошлый — его фото на месте");
+  assert.ok(tables.assortment_cn_offer_snapshot.filter((r) => r.observed_on === "2026-10-12").some((r) => typeof r.image_url === "string"), "у нынешнего снимка фото есть");
+});
+
+test("образцы обезличены: у всех адресов фото alicdn id загрузившего вымышленный (и старого формата)", () => {
+  for (const name of readdirSync(join(root, FIXTURES))) {
+    for (const url of read(`${FIXTURES}/${name}`).match(/alicdn\.com\/[^"\s]+/g) ?? []) {
+      assert.match(url, /!!9000000000\d*-|\/ibank\/9000000000\d_9000000001\.jpg$/, `${name}: ${url}`);
+    }
+  }
+});
+
+test("прирост копий — к прошлому снимку ТОГО ЖЕ запроса: сменилось направление лучшего рилса — к другой выдаче не считаем", async () => {
+  const cards = articleCards([
+    { ref_key: "zara:8372288", observed_on: "2026-10-05", direction: "jackets", offers: 5, sellers: 4, sample_offer_ids: [] },
+    { ref_key: "zara:8372288", observed_on: "2026-09-28", direction: null, offers: 2, sellers: 2, sample_offer_ids: [] },
+    { ref_key: "zara:8372288", observed_on: "2026-09-14", direction: "jackets", offers: 1, sellers: 1, sample_offer_ids: [] },
+    { ref_key: "uniqlo:487517", observed_on: "2026-10-05", direction: "bags", offers: 3, sellers: 3, sample_offer_ids: [] },
+    { ref_key: "uniqlo:487517", observed_on: "2026-09-28", direction: "jackets", offers: 9, sellers: 9, sample_offer_ids: [] },
+  ]);
+  const zara = cards.find((c) => c.refKey === "zara:8372288")!;
+  assert.deepEqual([zara.delta, zara.previousOn], [4, "2026-09-14"], "«ZA 8372288 女» (без раздела) — другой запрос: мимо");
+  const uq = cards.find((c) => c.refKey === "uniqlo:487517")!;
+  assert.deepEqual([uq.delta, uq.previousOn], [null, null]);
+  // На экране раздела — последний снимок номера: номер, ушедший в «Сумки», не всплывает в «Куртках» старым снимком.
+  const { db, tables } = fakeDb();
+  tables.assortment_cn_offer_snapshot.push(...snapshotRows(CHINA_NICHES.find((n) => n.key === "bomber")!, "2026-10-05", G_JACKETS.data));
+  tables.assortment_cn_article_snapshot.push(
+    { ref_key: "uniqlo:487517", observed_on: "2026-10-05", direction: "bags", offers: 3, sellers: 3, sample_offer_ids: [] },
+    { ref_key: "uniqlo:487517", observed_on: "2026-09-28", direction: "jackets", offers: 9, sellers: 9, sample_offer_ids: [] },
+  );
+  const view = await loadChinaView(db, { direction: "jackets", nowMs: MONDAY, env: ENV });
+  assert.ok(view.available);
+  assert.deepEqual(view.articles, []);
+});
+
+test("разбор find.product: фото — только https-адрес alicdn (без параметров), номер карточки — только цифры, «унисекс» — по «男» и «女» в названии", () => {
+  const raw = { data: [
+    { itemId: 100000001, title: "男女同款 夹克", company: "a", imageUrl: "http://cbu01.alicdn.com/img/ibank/a.jpg" },
+    { itemId: 100000002, title: "女士夹克", company: "b", imageUrl: "https://evil.example.com/img/ibank/b.jpg" },
+    { itemId: 100000003, title: "女士夹克 2", company: "c", imageUrl: "https://cbu01.alicdn.com/img/ibank/c.jpg?x-oss-process=resize#frag" },
+    { itemId: "abc123", title: "女士夹克 3", company: "d" },
+    { itemId: 12345, title: "女士夹克 4", company: "e" },
+  ] };
+  const offers = parseFindProduct(raw).offers;
+  assert.deepEqual(offers.map((o) => [o.offerId, o.imageUrl]), [["100000001", null], ["100000002", null], ["100000003", "https://cbu01.alicdn.com/img/ibank/c.jpg"]]);
+  assert.deepEqual(offers[0].badges, ["unisex"]);
+  assert.deepEqual(offers[1].badges, []);
+});
+
+test("суммы без цифр рядом тоже вырезаются: одинокий «￥», «¥», «人民币»", () => {
+  assert.equal(stripChinaMoney("女士夹克 ￥ 新款"), "女士夹克 新款");
+  assert.equal(stripChinaMoney("¥夹克人民币女"), "夹克 女");
+});
+
+test("вызов: ошибка не сети (не таймаут, не обрыв) — без повтора, сбой сервиса", async () => {
+  const f = fakeFetch([new Error("invalid header value"), { status: 200, body: G_BAGS }]);
+  await assert.rejects(call1688("gateway", FIND_PRODUCT_PATH, {}, { env: ENV, fetchImpl: f.impl, sleep: noSleep }), (e: unknown) => e instanceof China1688Error && e.kind === "service");
+  assert.equal(f.calls.length, 1);
+});
+
+test("учёт запросов 1688: неудачный вызов (и лимит) — тоже запрос: в calls и в failed_calls", async () => {
+  const { db, tables } = fakeDb();
+  const limited = fakeCaller({ fail: (_b, n) => (n === 3 ? classifyBizError({ code: "QosAppFrequencyLimit" }) : null) });
+  await runChinaSnapshot(db, opts({ call: limited.call }));
+  assert.equal(limited.served.length, 3);
+  assert.equal(usageCalls(tables, CHINA_USAGE_KIND), 3, "все три запроса — в учёте (недельный потолок считает и неудачные)");
+  assert.equal(tables.assortment_ai_usage.filter((r) => r.kind === CHINA_USAGE_KIND).reduce((n, r) => n + Number(r.failed_calls ?? 0), 0), 1);
+});
+
+test("перевод за прогон — не больше TRANSLATE_PER_RUN названий (4 пачки по 40), остальное — следующим прогоном", async () => {
+  const { db, tables } = fakeDb();
+  const bomber = CHINA_NICHES.find((n) => n.key === "bomber")!;
+  for (let i = 0; i < 200; i += 1) tables.assortment_cn_offer_snapshot.push({ ...nicheRow("bomber", "2026-10-05", String(1_090_000_000_000 + i), i + 1), direction: bomber.direction, title_zh: `女士夹克 ${i}` });
+  const tr = fakeTranslator();
+  const s = await runChinaSnapshot(db, opts({ call: fakeCaller().call, translator: tr.setup, phase: "articles" }));
+  assert.deepEqual(tr.batches.map((b) => b.length), [40, 40, 40, 40]);
+  assert.equal(s.translated, 160);
+  assert.equal(tables.assortment_cn_offer_snapshot.filter((r) => r.title_ru == null).length, 40);
+});
+
+test("замок прогона: держит и через полночь (вчерашняя отметка свежая — занято); после прогона снимается — следующий идёт сразу", async () => {
+  const MIDNIGHT = Date.parse("2026-10-04T21:01:00Z"); // понедельник 00:01 МСК
+  const lock = { day: "2026-10-04", kind: `lock:${CHINA_USAGE_KIND}`, calls: 0, failed_calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, updated_at: new Date(MIDNIGHT - 120_000).toISOString() };
+  const { db } = fakeDb({ tables: { assortment_ai_usage: [lock] } });
+  const busy = fakeCaller();
+  const s = await runChinaSnapshot(db, opts({ call: busy.call }, MIDNIGHT));
+  assert.equal(s.skippedBecause, "busy", "прогон, начатый в 23:59, ещё идёт");
+  assert.equal(busy.served.length, 0);
+  const { db: db2, tables } = fakeDb();
+  await runChinaSnapshot(db2, opts({ call: fakeCaller().call, config: { ...WIDE, maxCallsPerRun: 1 } }));
+  assert.equal(tables.assortment_ai_usage.find((r) => r.kind === `lock:${CHINA_USAGE_KIND}`)?.updated_at, "1970-01-01T00:00:00.000Z", "замок снят");
+  const next = fakeCaller();
+  const t = await runChinaSnapshot(db2, opts({ call: next.call, config: { ...WIDE, maxCallsPerRun: 1 } }));
+  assert.notEqual(t.skippedBecause, "busy");
+  assert.equal(next.served.length, 1);
 });

@@ -3,7 +3,7 @@ import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { shiftIsoDay } from "@/lib/sync/moscowDay";
 import { rowsByIds } from "./byIds";
 import { CHINA_NICHES, CHINA_NICHES_VERSION, CHINA_STOP_WORDS, chinaKeyConfigured, parseRefKey, type ChinaBrand } from "./china1688";
-import { CHINA_MIGRATION, chinaConfig, chinaWeekOf, loadChinaState, type ChinaState } from "./chinaSync";
+import { CHINA_MIGRATION, CHINA_TRENDS_AUTH_WORDS, chinaConfig, chinaKeyRejected, chinaTrendsKeyRejected, chinaWeekOf, loadChinaState, type ChinaState } from "./chinaSync";
 import type { AccessStatus, AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
 import type { NumberKind } from "./socialReelsStore";
@@ -11,10 +11,11 @@ import type { NumberKind } from "./socialReelsStore";
 /**
  * «Китай (1688)» — чтение для экрана раздела (Куртки / Сумки). Только то, что записал недельный снимок: карточки топа ниш без цен и без
  * продавцов, копии по номерам товаров брендов, тренды ключей и «возможности». Неделя к неделе: «новое в топе» — карточки, которых не было
- * в прошлом снимке этой ниши; «поднялось» — позиция в выдаче 1688 выросла не меньше чем на ROSE_MIN_POSITIONS.
+ * в прошлом снимке этой ниши в пределах его глубины (глубже прошлый снимок не смотрел — там сравнивать не с чем); «поднялось» — позиция в
+ * выдаче 1688 выросла не меньше чем на ROSE_MIN_POSITIONS.
  *
- * Без ключа ALI_1688_AK, без миграции, с недействительным ключом или до первого снимка блок скрыт — причина одной строкой. Это наблюдение
- * рынка 1688, а не решение о закупке.
+ * Без ключа ALI_1688_AK, без миграции, с ключом, отвергнутым поиском 1688, или до первого снимка блок скрыт — причина одной строкой. Это
+ * наблюдение рынка 1688, а не решение о закупке.
  */
 
 const OFFERS = "assortment_cn_offer_snapshot";
@@ -34,8 +35,8 @@ export const CHINA_NUMBER_KINDS = {
   soldMin: "fact",
   /** Оплаченные заказы за 30 дней. */
   orders30d: "fact",
-  /** Разных продавцов в топе ниши. */
-  sellers: "fact",
+  /** Разных продавцов в топе ниши — наш подсчёт по карточкам 1688 после отсева рекламы, мужского и детского. */
+  sellers: "calc",
   /** Новинка — по номеру карточки (номера растут со временем). */
   isNew: "estimate",
   /** «新款» в названии — заявление продавца. */
@@ -45,9 +46,9 @@ export const CHINA_NUMBER_KINDS = {
   /** Копии по номеру: поиск смысловой, полнота 6–8% — нижняя граница. */
   copies: "estimate",
   copiesSellers: "estimate",
-  /** Прирост копий за неделю. */
+  /** Прирост копий к прошлому снимку номера (того же запроса). */
   copiesDelta: "calc",
-  /** Покупателей в день по ключу (ряд с отставанием 5–6 недель). */
+  /** Покупателей в день по ключу (ряд с отставанием 5–6 недель); ключ без «女» — все покупатели, не только женское. */
   marketBuyers: "fact",
   /** Изменение к прошлому году — расчёт 1688. */
   marketYoy: "calc",
@@ -87,6 +88,8 @@ export interface ChinaMarket {
   lastMonth: string | null;
   top1Pct: number | null;
   top3Pct: number | null;
+  /** Ключ без «女»: число — по всем покупателям ключа, не только женское (ключ тренда — не длиннее 5 иероглифов). */
+  allBuyers: boolean;
 }
 
 export interface ChinaNicheBlock {
@@ -97,6 +100,11 @@ export interface ChinaNicheBlock {
   clerin: boolean;
   observedOn: string;
   previousOn: string | null;
+  /**
+   * Глубина сравнения: прошлый снимок ниши доставал только до этого места выдачи, а нынешний — глубже (неполная страница 1688, другой
+   * потолок топа). Карточки ниже — без «новое в топе»: сравнивать не с чем. null — глубины совпадают или сравнения нет.
+   */
+  comparedDepth: number | null;
   sellers: number | null;
   offers: ChinaOfferCard[];
   newInTop: number;
@@ -112,8 +120,9 @@ export interface ChinaArticleCard {
   observedOn: string;
   offers: number;
   sellers: number;
+  /** Прошлый снимок номера ТОГО ЖЕ запроса (направление входит в запрос); бывает на 2–3 недели старше — подпись «с ДД.ММ». */
   previousOn: string | null;
-  /** Прирост карточек с номером за неделю; null — прошлого снимка нет. */
+  /** Прирост карточек с номером к previousOn; null — прошлого снимка того же запроса нет. */
   delta: number | null;
   sampleUrls: string[];
 }
@@ -149,9 +158,21 @@ export type ChinaView =
 
 export const offerUrl = (offerId: string) => `https://detail.1688.com/offer/${offerId}.html`;
 
+/** Глубина снимка ниши — самое глубокое место выдачи среди его строк (позиция — по выдаче 1688, с рекламой и отсеянным). */
+export function topDepth(rows: ReadonlyArray<{ rank: number }>): number {
+  let depth = 0;
+  for (const r of rows) {
+    const rank = Number(r.rank);
+    if (Number.isFinite(rank) && rank > depth) depth = rank;
+  }
+  return depth;
+}
+
 /**
- * Неделя к неделе по позиции в выдаче: нет в прошлом топе — «новое»; позиция выросла на ROSE_MIN_POSITIONS и больше — «поднялось»;
- * упала на столько же — «опустилось»; иначе — «как было». Прошлого снимка нет — null у всех.
+ * Неделя к неделе по позиции в выдаче: нет в прошлом топе — «новое», но только в пределах глубины прошлого снимка (1688 вернул неполную
+ * страницу или потолок топа был меньше — ниже его последнего места сравнивать не с чем, change = null); позиция выросла на
+ * ROSE_MIN_POSITIONS и больше — «поднялось»; упала на столько же — «опустилось» (обе позиции известны — и ниже глубины); иначе — «как было».
+ * Прошлого снимка нет — null у всех.
  */
 export function compareTop(
   current: ReadonlyArray<{ offer_id: string; rank: number }>,
@@ -159,15 +180,16 @@ export function compareTop(
   minRise = ROSE_MIN_POSITIONS,
 ): Map<string, ChinaChange | null> {
   const out = new Map<string, ChinaChange | null>();
-  if (!previous) {
+  if (!previous || previous.length === 0) {
     for (const r of current) out.set(r.offer_id, null);
     return out;
   }
   const before = new Map(previous.map((r) => [r.offer_id, Number(r.rank)]));
+  const depth = topDepth(previous);
   for (const r of current) {
     const from = before.get(r.offer_id);
     const to = Number(r.rank);
-    if (from == null) out.set(r.offer_id, { kind: "new" });
+    if (from == null) out.set(r.offer_id, to <= depth ? { kind: "new" } : null);
     else if (from - to >= minRise) out.set(r.offer_id, { kind: "rose", from, to });
     else if (to - from >= minRise) out.set(r.offer_id, { kind: "fell", from, to });
     else out.set(r.offer_id, { kind: "same" });
@@ -175,7 +197,12 @@ export function compareTop(
   return out;
 }
 
-/** Копии по номерам: последний снимок номера и прирост к прошлому. */
+const articleDirection = (value: string | null | undefined): AssortmentDirection | null => (value === "jackets" || value === "bags" ? value : null);
+
+/**
+ * Копии по номерам: последний снимок номера и прирост к прошлому снимку ТОГО ЖЕ запроса. Направление входит в запрос («ZA 8372288 外套 女»
+ * против «ZA 8372288 女»): сменилось направление лучшего рилса — это другая выдача, прирост к ней не считается.
+ */
 export function articleCards(rows: ReadonlyArray<ArticleRow>): ChinaArticleCard[] {
   const byRef = new Map<string, ArticleRow[]>();
   for (const r of rows) (byRef.get(r.ref_key) ?? byRef.set(r.ref_key, []).get(r.ref_key)!).push(r);
@@ -184,19 +211,22 @@ export function articleCards(rows: ReadonlyArray<ArticleRow>): ChinaArticleCard[
     const ref = parseRefKey(refKey);
     if (!ref) continue;
     const sorted = [...list].sort((a, b) => b.observed_on.localeCompare(a.observed_on));
-    const [latest, previous] = sorted;
+    const latest = sorted[0];
+    const direction = articleDirection(latest.direction);
+    const previous = sorted.slice(1).find((r) => articleDirection(r.direction) === direction) ?? null;
     const offers = Number(latest.offers) || 0;
+    const ids = (Array.isArray(latest.sample_offer_ids) ? latest.sample_offer_ids : []).map(String).filter((id) => /^\d{6,16}$/.test(id));
     out.push({
       refKey,
       brand: ref.brand,
       number: ref.number,
-      direction: latest.direction === "jackets" || latest.direction === "bags" ? latest.direction : null,
+      direction,
       observedOn: latest.observed_on,
       offers,
       sellers: Number(latest.sellers) || 0,
       previousOn: previous?.observed_on ?? null,
       delta: previous ? offers - (Number(previous.offers) || 0) : null,
-      sampleUrls: (Array.isArray(latest.sample_offer_ids) ? latest.sample_offer_ids : []).filter((id) => /^\d{6,16}$/.test(String(id))).slice(0, 5).map((id) => offerUrl(String(id))),
+      sampleUrls: [...new Set(ids)].slice(0, 5).map(offerUrl),
     });
   }
   return out.sort((a, b) => b.offers - a.offers || (b.delta ?? 0) - (a.delta ?? 0) || a.refKey.localeCompare(b.refKey));
@@ -213,7 +243,7 @@ export function parseMarketValue(text: string | null | undefined, observedOn: st
       .map(([month, value]) => ({ month, value }));
     const market: ChinaMarket = {
       observedOn, keyword, buyersPerDay: num(v.buyers), supplyPerDay: num(v.supply), ratio: num(v.ratio), yoyPct: num(v.yoy), series,
-      lastMonth: series.length ? series[series.length - 1].month : null, top1Pct: num(v.top1), top3Pct: num(v.top3),
+      lastMonth: series.length ? series[series.length - 1].month : null, top1Pct: num(v.top1), top3Pct: num(v.top3), allBuyers: !keyword.includes("女"),
     };
     return market.buyersPerDay == null && series.length === 0 ? null : market;
   } catch {
@@ -280,6 +310,7 @@ export function buildNicheBlocks(direction: AssortmentDirection, offers: readonl
     const current = rows.filter((r) => r.observed_on === latestOn).sort((a, b) => Number(a.rank) - Number(b.rank));
     const previous = previousOn ? rows.filter((r) => r.observed_on === previousOn) : null;
     const changes = compareTop(current, previous);
+    const previousDepth = previous ? topDepth(previous) : null;
     const cards: ChinaOfferCard[] = current.map((r) => {
       const tags = Array.isArray(r.tags) ? r.tags.map(String) : [];
       return {
@@ -309,6 +340,7 @@ export function buildNicheBlocks(direction: AssortmentDirection, offers: readonl
       clerin: niche.clerin === true,
       observedOn: latestOn,
       previousOn,
+      comparedDepth: previousDepth != null && topDepth(current) > previousDepth ? previousDepth : null,
       sellers: current[0]?.sellers == null ? null : Number(current[0].sellers),
       offers: cards,
       newInTop: cards.filter((c) => c.change?.kind === "new").length,
@@ -319,7 +351,7 @@ export function buildNicheBlocks(direction: AssortmentDirection, offers: readonl
   return blocks;
 }
 
-/** «Возможности» раздела — последний снимок каждого списка. */
+/** «Возможности» раздела — последний снимок каждого списка; темы другого раздела не попадают (и при чтении всех разделов разом). */
 export function buildOpportunities(direction: AssortmentDirection, trends: readonly TrendRow[]): ChinaOpportunity[] {
   const rows = trends.filter((t) => t.list_key.startsWith("opportunity:") && t.direction === direction);
   const latestByList = new Map<string, string>();
@@ -342,13 +374,15 @@ export function buildOpportunities(direction: AssortmentDirection, trends: reado
   }).sort((a, b) => a.listKey.localeCompare(b.listKey) || a.rank - b.rank);
 }
 
-/** Строка состояния: лимит 1688 или снимок недели ещё идёт. */
+/** Строка состояния: лимит 1688, ключ не принят сервисом трендов, снимок недели ещё идёт; null — всё в порядке. */
 export function chinaStatusLine(state: ChinaState | null, week: string, latestOn: string | null): string | null {
-  if (state?.stop?.reason === "rate_limit") return CHINA_STOP_WORDS.rate_limit;
+  const lines: string[] = [];
+  if (state?.stop?.reason === "rate_limit") lines.push(CHINA_STOP_WORDS.rate_limit);
+  if (chinaTrendsKeyRejected(state?.stop)) lines.push(CHINA_TRENDS_AUTH_WORDS);
   if (latestOn && latestOn < week && !(state?.week === week && state.completedAt)) {
-    return `снимок недели с ${week.split("-").reverse().join(".")} ещё снимается — показан снимок с ${latestOn.split("-").reverse().join(".")}`;
+    lines.push(`снимок недели с ${week.split("-").reverse().join(".")} ещё снимается — показан снимок с ${latestOn.split("-").reverse().join(".")}`);
   }
-  return null;
+  return lines.length > 0 ? lines.join("; ") : null;
 }
 
 /** Причина «блок скрыт» без миграции. */
@@ -408,7 +442,7 @@ export async function loadChinaView(db: SupabaseClient, options: LoadChinaOption
   }
   const loaded = await loadChinaState(db).catch(() => null);
   const state = loaded?.state ?? null;
-  if (state?.stop?.reason === "auth") return { available: false, reason: CHINA_STOP_WORDS.auth };
+  if (chinaKeyRejected(state?.stop)) return { available: false, reason: CHINA_STOP_WORDS.auth };
   const niches = buildNicheBlocks(options.direction, offers, trends);
   if (niches.length === 0) {
     const running = state?.week === week && !state.completedAt;
@@ -422,7 +456,8 @@ export async function loadChinaView(db: SupabaseClient, options: LoadChinaOption
     version: CHINA_NICHES_VERSION,
     status: chinaStatusLine(state, week, latestOn),
     niches,
-    articles: articleCards(articles.filter((a) => a.direction == null || a.direction === options.direction)),
+    // Сначала последний снимок номера (и прирост к тому же запросу), потом раздел: старый снимок номера под другим разделом не всплывает.
+    articles: articleCards(articles).filter((a) => a.direction == null || a.direction === options.direction),
     opportunities: buildOpportunities(options.direction, trends),
     kinds: CHINA_NUMBER_KINDS,
     disclaimer: CHINA_DISCLAIMER,
@@ -448,7 +483,7 @@ export async function loadChinaTab(db: SupabaseClient, options: LoadChinaOptions
   }
   if (!data || data.length === 0) return { visible: false, reason: CHINA_NO_SNAPSHOT_REASON };
   const loaded = await loadChinaState(db).catch(() => null);
-  if (loaded?.state.stop?.reason === "auth") return { visible: false, reason: CHINA_STOP_WORDS.auth };
+  if (chinaKeyRejected(loaded?.state.stop)) return { visible: false, reason: CHINA_STOP_WORDS.auth };
   return { visible: true, reason: null };
 }
 
@@ -486,7 +521,7 @@ export async function loadChinaCopies(db: SupabaseClient, refKeys: readonly stri
   }
   if (rows.length === 0) return {};
   const loaded = await loadChinaState(db).catch(() => null);
-  if (loaded?.state.stop?.reason === "auth") return null;
+  if (chinaKeyRejected(loaded?.state.stop)) return null;
   const out: Record<string, ChinaRefCopies> = {};
   for (const c of articleCards(rows)) out[c.refKey] = { refKey: c.refKey, offers: c.offers, sellers: c.sellers, delta: c.delta, observedOn: c.observedOn, previousOn: c.previousOn };
   return out;
@@ -512,6 +547,9 @@ export interface ChinaDigestGrowth {
   number: string;
   offers: number;
   delta: number;
+  /** Снимок номера, к которому считан прирост (того же запроса): не всегда ровно неделя назад. */
+  previousOn: string;
+  observedOn: string;
 }
 
 export interface ChinaDigest {
@@ -548,7 +586,7 @@ export function pickChinaDigest(week: string, blocks: readonly ChinaNicheBlock[]
   const growth = articles.filter((a) => a.observedOn === week && a.delta != null && a.delta > 0)
     .sort((a, b) => (b.delta ?? 0) - (a.delta ?? 0) || b.offers - a.offers || a.refKey.localeCompare(b.refKey))
     .slice(0, CHINA_DIGEST_MAX_GROWTH)
-    .map((a): ChinaDigestGrowth => ({ refKey: a.refKey, brand: a.brand, number: a.number, offers: a.offers, delta: a.delta ?? 0 }));
+    .map((a): ChinaDigestGrowth => ({ refKey: a.refKey, brand: a.brand, number: a.number, offers: a.offers, delta: a.delta ?? 0, previousOn: a.previousOn ?? a.observedOn, observedOn: a.observedOn }));
   if (items.length === 0 && growth.length === 0) return null;
   return { week, items, newTotal: compared.reduce((n, b) => n + b.newInTop, 0), niches: compared.length, growth };
 }
@@ -568,7 +606,7 @@ export async function loadChinaDigest(db: SupabaseClient, options: { nowMs: numb
   }
   if (offers.length === 0 && articles.length === 0) return null;
   const loaded = await loadChinaState(db).catch(() => null);
-  if (loaded?.state.stop?.reason === "auth") return null;
+  if (chinaKeyRejected(loaded?.state.stop)) return null;
   const blocks = (["bags", "jackets"] as const).flatMap((d) => buildNicheBlocks(d, offers, []));
   return pickChinaDigest(chinaWeekOf(options.nowMs), blocks, articleCards(articles));
 }
@@ -591,21 +629,25 @@ const dmy = (iso: string) => iso.split("-").reverse().join(".");
 
 /**
  * Статус S104 для экрана «Источники» — по факту, а не по паспорту этапа 0 («Кандидат; доступ не проверен»): выключен, нет ключа, нет
- * миграции, ключ отвергнут, снимка ещё нет, свежий снимок (эта или прошлая неделя) или давно не снимался. Чистая функция.
+ * миграции, ключ отвергнут поиском, снимка ещё нет, свежий снимок (эта или прошлая неделя) или давно не снимался; ключ не принят только
+ * сервисом трендов — «Частично» с причиной. Чистая функция.
  */
 export function chinaSourceView(facts: ChinaSourceFacts, nowMs: number): { accessStatus: AccessStatus; accessNote: string } {
   const manual = "Вручную — страница «Китайские площадки — ссылки».";
   if (!facts.enabled) return { accessStatus: "disabled", accessNote: `«Китай (1688)» выключен настройкой ASSORTMENT_CHINA=off: 1688 не спрашиваем. ${manual}` };
   if (!facts.keyConfigured) return { accessStatus: "not_connected", accessNote: `1688: нет ключа — задайте ALI_1688_AK (выдаётся на clawhub.1688.com); недельный снимок не снимается. ${manual}` };
   if (facts.migrationMissing) return { accessStatus: "partial", accessNote: `1688: ключ задан, но таблиц снимка нет — нужна миграция ${CHINA_MIGRATION}.` };
-  if (facts.stop?.reason === "auth") return { accessStatus: "unavailable", accessNote: `1688: ${CHINA_STOP_WORDS.auth} — перевыпустите ключ на clawhub.1688.com; вкладка «Китай (1688)» скрыта.` };
+  if (chinaKeyRejected(facts.stop)) return { accessStatus: "unavailable", accessNote: `1688: ${CHINA_STOP_WORDS.auth} — перевыпустите ключ на clawhub.1688.com; вкладка «Китай (1688)» скрыта.` };
   const limit = facts.stop?.reason === "rate_limit" ? `; ${CHINA_STOP_WORDS.rate_limit}` : "";
-  if (!facts.latestOn) return { accessStatus: "partial", accessNote: `1688 подключён (официальные навыки 1688): первого недельного снимка ещё нет — снимок недели начинается в понедельник${limit}.` };
+  // Ключ не принят только сервисом трендов: топ ниш и копии снимаются, но источник работает не целиком — «Частично», не «проверен».
+  const trendsOff = chinaTrendsKeyRejected(facts.stop);
+  const trends = trendsOff ? `; ${CHINA_TRENDS_AUTH_WORDS} — проверьте права ключа на clawhub.1688.com` : "";
+  if (!facts.latestOn) return { accessStatus: "partial", accessNote: `1688 подключён (официальные навыки 1688): первого недельного снимка ещё нет — снимок недели начинается в понедельник${limit}${trends}.` };
   const fresh = facts.latestOn >= shiftIsoDay(chinaWeekOf(nowMs), -7);
-  if (!fresh) return { accessStatus: "partial", accessNote: `1688 подключён, но свежего снимка нет: последний — неделя с ${dmy(facts.latestOn)}; смотрите журнал задачи assortment-china${limit}.` };
+  if (!fresh) return { accessStatus: "partial", accessNote: `1688 подключён, но свежего снимка нет: последний — неделя с ${dmy(facts.latestOn)}; смотрите журнал задачи assortment-china${limit}${trends}.` };
   return {
-    accessStatus: "auto_verified",
-    accessNote: `1688 подключён (официальные навыки 1688): последний снимок — неделя с ${dmy(facts.latestOn)}, ниш ${facts.niches} из ${CHINA_NICHES.length}; вкладка «Китай (1688)» в «Куртках» и «Сумках»${limit}.`,
+    accessStatus: trendsOff ? "partial" : "auto_verified",
+    accessNote: `1688 подключён (официальные навыки 1688): последний снимок — неделя с ${dmy(facts.latestOn)}, ниш ${facts.niches} из ${CHINA_NICHES.length}; вкладка «Китай (1688)» в «Куртках» и «Сумках»${limit}${trends}.`,
   };
 }
 

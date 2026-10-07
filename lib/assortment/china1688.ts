@@ -142,10 +142,12 @@ export function signHeaders(input: SignInput): Record<string, string> {
 
 /**
  * Почему вызов не удался:
- * - no_key — ключа нет в окружении; auth — ключ не принят (401, SignatureInvalid): остановка прогона одной причиной, блок скрыт;
+ * - no_key — ключа нет в окружении; auth — ключ не принят (HTTP 401, SignatureInvalid, 1688_token_*): остановка прогона одной причиной;
  * - rate_limit — 429, QosAppFrequencyLimit / QosApiFrequencyLimit: прогон откладывается без траты попытки задачи;
  * - transient — 5xx, ISPInvokeTimeout, сеть, наш таймаут (повторены TRANSIENT_RETRIES раз); param — 400, ParamMissing, APIUnsupported;
- * - service — прочее (ISPInvokeError, неизвестная бизнес-ошибка, ответ без ожидаемого содержимого).
+ * - service — прочее (HTTP 403 и другие не-200, ISPInvokeError, неизвестная бизнес-ошибка, ответ без ожидаемого содержимого). 403 — не
+ *   ключ: официальные клиенты считают его сбоем сервиса (у product-find любой не-200 — ServiceError, у shopkeeper AuthError — только 401),
+ *   а 403 даёт и WAF / геоблокировка на пути от Vercel. Исправный ключ из-за него не объявляется недействительным.
  */
 export type ChinaErrorKind = "no_key" | "auth" | "rate_limit" | "transient" | "param" | "service";
 
@@ -183,12 +185,13 @@ export function classifyBizError(payload: Record<string, unknown>): China1688Err
   return new China1688Error(`1688: ${snippet(payload.message ?? payload.msgInfo ?? (code || msgCode)) || "неизвестная ошибка"}`, "service", code || msgCode || null);
 }
 
-/** HTTP-статус (не 200) → вид ошибки. */
+/** HTTP-статус (не 200) → вид ошибки. Ключ — только 401; 403 — сбой сервиса (попытка задачи), не «ключ недействителен». */
 export function classifyHttpStatus(status: number): China1688Error {
-  if (status === 401 || status === 403) return new China1688Error(CHINA_STOP_WORDS.auth, "auth", null, status);
+  if (status === 401) return new China1688Error(CHINA_STOP_WORDS.auth, "auth", null, status);
   if (status === 429) return new China1688Error(CHINA_STOP_WORDS.rate_limit, "rate_limit", null, status);
   if (status >= 500) return new China1688Error(`1688: временный сбой (HTTP ${status})`, "transient", null, status);
   if (status === 400) return new China1688Error("1688: параметры запроса не приняты (HTTP 400)", "param", null, status);
+  if (status === 403) return new China1688Error("1688: доступ запрещён (HTTP 403)", "service", null, status);
   return new China1688Error(`1688: ответ HTTP ${status}`, "service", null, status);
 }
 
@@ -436,17 +439,22 @@ const distinctSellers = (offers: readonly Pick<ChinaOffer, "sellerSlot">[]) => n
  * oldReputationTags.pay_ord_cnt_30d, qualityTags.core_decision_attr.cate_id, recallSource, offerICTagInfo (реклама, проверка),
  * qualityTags.is_official_inspect, sellingPoints[industryCPV]; company — только для номера продавца. Цены, промо, показатели магазина,
  * rankedContent, serviceInfos и прочее не читаются.
+ *
+ * Элементы выдачи — на уровне SKU (у каждого skuId / skuTitle): одна карточка может прийти несколькими строками. Карточка считается один
+ * раз — по первой позиции; иначе копий по номеру было бы больше, чем карточек, а в топе ниши — меньше разных карточек, чем мест.
  */
 export function parseFindProduct(data: unknown): ChinaSearchResult {
   const root = isRecord(data) ? data : {};
   const list = Array.isArray(root.data) ? root.data : [];
   const slot = sellerSlots();
   const offers: ChinaOffer[] = [];
+  const seen = new Set<string>();
   list.forEach((raw, index) => {
     if (!isRecord(raw)) return;
     const offerId = offerIdOf(raw.itemId);
     const titleZh = cleanTitle(raw.title);
-    if (!offerId || !titleZh) return;
+    if (!offerId || !titleZh || seen.has(offerId)) return;
+    seen.add(offerId);
     const sold = nonNegInt(raw.soldOut);
     const rep = isRecord(raw.oldReputationTags) ? raw.oldReputationTags : {};
     const ic = isRecord(raw.offerICTagInfo) ? raw.offerICTagInfo : {};
@@ -627,13 +635,19 @@ export function refSearchBody(ref: BrandRef, direction: AssortmentDirection | nu
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * Стоит ли номер в названии: Zara — ровно эти 7 цифр (не часть длинного числа; бывает с цветом через пробел — «6318268 600»), Uniqlo —
- * эти 6 цифр, допускается одна заглавная буква впереди («R487517», «E469955»), но не часть слова или числа.
+ * Стоит ли номер в названии (правило «Как считаем» на экране):
+ * - Zara — эти 7 цифр (модель + качество) не внутри другого числа; цвет бывает через пробел («6318268 600») или приклеен — ровно три
+ *   цифры («8372288600», полный номер Zara без косых); «ZA8372288» — да. 8 или 11 цифр подряд — уже другое число, не номер.
+ * - Uniqlo — эти 6 цифр не внутри другого числа; впереди допускается одна заглавная буква («R487517», «E469955»), в том числе сразу после
+ *   года («2025R487517»), и приклеенное название бренда («UNIQLO487517»). Не номер: буква — часть слова («AR487517»), строчная буква
+ *   («x487517»), семь цифр («款号 4875171»).
+ * Номер в другом написании (с косыми, через дефис, словами) не засчитывается: копии — оценка снизу.
  */
 export function titleHasRef(title: string, ref: Pick<BrandRef, "brand" | "number">): boolean {
   const n = escapeRe(ref.number);
-  // Uniqlo: буква впереди допустима, только если перед ней самой не буква и не цифра («AR487517», «x487517» — не номер).
-  const re = ref.brand === "zara" ? new RegExp(`(?<!\\d)${n}(?!\\d)`) : new RegExp(`(?<![\\dA-Za-z])[A-Z]?${n}(?!\\d)`);
+  const re = ref.brand === "zara"
+    ? new RegExp(`(?<!\\d)${n}(?:\\d{3})?(?!\\d)`)
+    : new RegExp(`(?:(?<![A-Za-z])[A-Z]|(?<![\\dA-Za-z])|(?<=[Uu][Nn][Ii][Qq][Ll][Oo]))${n}(?!\\d)`);
   return re.test(title);
 }
 

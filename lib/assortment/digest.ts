@@ -11,6 +11,7 @@ import { plural } from "@/lib/warehouse/plural";
 import { dm } from "./appearance";
 import type { DigestChanges, DigestChangesBlock } from "./appearanceStore";
 import type { ChinaDigest } from "./chinaStore";
+import { deltaPeriod } from "./chinaUi";
 import type { AssortmentDirection } from "./constants";
 import { DIRECTION_LABEL } from "./constants";
 import { partsCaveat, type HistoryStatus } from "./observationState";
@@ -131,7 +132,7 @@ function chinaLines(china: DigestFacts["china"], base: string): string[] {
   }
   if (china.growth.length > 0) {
     lines.push("Копий на 1688 стало больше (номера из рилсов; оценка снизу, прирост — расчёт):");
-    for (const g of china.growth) lines.push(`• ${BRAND_LABEL[g.brand]} ${refArticle(g.refKey) ?? g.number} — ${g.offers} ${plural(g.offers, "копия", "копии", "копий")} (+${g.delta} за неделю)`);
+    for (const g of china.growth) lines.push(`• ${BRAND_LABEL[g.brand]} ${refArticle(g.refKey) ?? g.number} — ${g.offers} ${plural(g.offers, "копия", "копии", "копий")} (+${g.delta} ${deltaPeriod(g.observedOn, g.previousOn)})`);
   }
   lines.push(`Смотреть: ${(["bags", "jackets"] as const).map((d) => `<a href="${base}/assortment-development/${d}?view=china">${DIRECTION_LABEL[d]}</a>`).join(" · ")}`);
   return lines;

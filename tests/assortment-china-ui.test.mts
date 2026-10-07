@@ -7,17 +7,17 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { AssortmentSection } from "../components/assortment/AssortmentSection.tsx";
 import { ChinaLinksPage } from "../components/assortment/ChinaLinksPage.tsx";
-import { CHINA_PAGE, ChinaBody, ChinaIntro, ChinaOfferCardView, ChinaUnavailable } from "../components/assortment/ChinaView.tsx";
+import { CHINA_PAGE, ChinaArticles, ChinaBody, ChinaIntro, ChinaMarketLine, ChinaNicheSection, ChinaOfferCardView, ChinaUnavailable } from "../components/assortment/ChinaView.tsx";
 import { SocialReelCardView } from "../components/assortment/SocialView.tsx";
 import { isFeedView, sectionViewFrom } from "../lib/assortment/catalog.ts";
 import { CHINA_NICHES, CHINA_NICHES_VERSION, CHINA_STOP_WORDS, parseOfferHot } from "../lib/assortment/china1688.ts";
 import { ALPHASHOP_URL, CHINA_LINKS_PATH, nicheLinks, nicheShortLabel, nichesFor, offerLink, search1688Url, taobaoSearchUrl } from "../lib/assortment/chinaLinks.ts";
 import {
   articleCards, buildNicheBlocks, CHINA_DIGEST_MAX_ITEMS, CHINA_DISCLAIMER, CHINA_NUMBER_KINDS, chinaSourceView, loadChinaCopies, loadChinaDigest, loadChinaSourceFacts, loadChinaTab,
-  pickChinaDigest, type ChinaDigest, type ChinaOfferCard, type ChinaRefCopies, type ChinaSourceFacts, type ChinaView,
+  parseMarketValue, pickChinaDigest, type ChinaDigest, type ChinaOfferCard, type ChinaRefCopies, type ChinaSourceFacts, type ChinaView,
 } from "../lib/assortment/chinaStore.ts";
-import { CHINA_JOB, CHINA_SOURCE_ID, marketValueText, nicheRows } from "../lib/assortment/chinaSync.ts";
-import { chinaCopiesFor, copiesLine, CHINA_SCREEN_NOTE } from "../lib/assortment/chinaUi.ts";
+import { CHINA_JOB, CHINA_SOURCE_ID, CHINA_TRENDS_AUTH_WORDS, marketValueText, nicheRows } from "../lib/assortment/chinaSync.ts";
+import { chinaCopiesFor, copiesLine, CHINA_SCREEN_NOTE, deltaPeriod, offerBadges } from "../lib/assortment/chinaUi.ts";
 import { ASSORTMENT_BASE_PATH } from "../lib/assortment/constants.ts";
 import { digestMessage, type DigestDirection, type DigestFacts } from "../lib/assortment/digest.ts";
 import { loadDigestFacts } from "../lib/assortment/digestFacts.ts";
@@ -168,7 +168,7 @@ const s104 = (china: Row | null = null): Row => ({
   source_id: CHINA_SOURCE_ID, name: "1688", source_group: "Фабрики и материалы", categories: ["jackets", "bags"], region: "Китай", priority: "P1", adapter_type: "C4 Китай",
   access_status: "untested", access_note: "Кандидат; доступ не проверен", last_success_at: null, last_attempt_at: null, last_error: null, capabilities: china ? { china } : {},
 });
-const stopState = (reason: "auth" | "rate_limit") => ({ week: WEEK, version: "v", marks: {}, runs: 1, startedAt: null, completedAt: null, stop: { reason, at: iso(MONDAY), message: "x" }, lastRunAt: null, translateCalls: 0 });
+const stopState = (reason: "auth" | "rate_limit", host?: "gateway" | "ainext") => ({ week: WEEK, version: "v", marks: {}, runs: 1, startedAt: null, completedAt: null, stop: { reason, at: iso(MONDAY), message: "x", ...(host ? { host } : {}) }, lastRunAt: null, translateCalls: 0 });
 
 type Ready = Extract<ChinaView, { available: true }>;
 const ready = (over: Partial<Ready> = {}): Ready => ({
@@ -276,7 +276,7 @@ test("вкладка по снимку: переключатель ниш (ко�
   assert.match(out, /aria-pressed="true"[^>]*>Сумка под мышку/, "по умолчанию — первая ниша");
   assert.match(text, /снимок недели с 05\.10\.2026 ещё снимается/);
   assert.match(text, /Снимок недели с 05\.10, сравнение со снимком 28\.09\./);
-  assert.match(text, new RegExp(`Разных продавцов в топе: ${underarm.sellers} — факт 1688; самих продавцов не храним`));
+  assert.match(text, new RegExp(`Разных продавцов в топе: ${underarm.sellers} — расчёт по карточкам 1688; самих продавцов не храним`), "число продавцов — наш подсчёт, не факт 1688");
   assert.match(text, new RegExp(`Новое в топе: ${underarm.newInTop}, поднялось: ${underarm.rose} — расчёт, неделя к неделе по позиции в выдаче 1688`));
   assert.match(text, /Покупателей в день на 1688 по ключу «腋下包»: ≈7 729; к прошлому году −6,2% — факт 1688, ряд по 08\.2026 \(отстаёт на 5–6 недель\); к году — расчёт 1688; это просмотры покупателей, не продажи/);
   assert.match(text, new RegExp(`Все · ${underarm.offers.length} Новое в топе · ${underarm.newInTop} Поднялось · ${underarm.rose}`));
@@ -539,7 +539,10 @@ test("сводка: раздел «Китай (1688)» — ссылки на к�
   const china: ChinaDigest = {
     week: WEEK, newTotal: 8, niches: 3,
     items: [{ direction: "bags", niche: "Женская сумка под мышку", title: "Сумка <мини> & ремень", rank: 2, url: "https://detail.1688.com/offer/1080947777395.html" }],
-    growth: [{ refKey: "zara:6318267", brand: "zara", number: "6318267", offers: 7, delta: 5 }, { refKey: "uniqlo:460329", brand: "uniqlo", number: "460329", offers: 1, delta: 1 }],
+    growth: [
+      { refKey: "zara:6318267", brand: "zara", number: "6318267", offers: 7, delta: 5, observedOn: WEEK, previousOn: PREV },
+      { refKey: "uniqlo:460329", brand: "uniqlo", number: "460329", offers: 1, delta: 1, observedOn: WEEK, previousOn: PREV },
+    ],
   };
   const text = digestMessage(facts(china));
   assert.match(text, /<b>Китай \(1688\): топ ниш и копии<\/b>\nСнимок недели с 05\.10\. Оптовые продажи в Китае — не спрос WB; цены не показываем\./);
@@ -696,4 +699,73 @@ test("страница «Китайские площадки — ссылки»:
   assert.ok(existsSync(join(root, "app/assortment-development/china-links/page.tsx")));
   assert.match(read("app/assortment-development/china-links/page.tsx"), /initialFilter=\{direction \?\? "all"\}/);
   assert.match(read("lib/auth/roles.ts"), /buyer: \[[^\]]*"\/assortment-development"\]/, "страница под правами модуля (по префиксу)");
+});
+
+// ---------------------------------------------------------------------------
+// По ревью 07.10: метки чисел, «за неделю» по правде, рынок по всем покупателям, глубина сравнения, ключ трендов
+
+test("метки: число продавцов в топе — расчёт (наш подсчёт по карточкам), «унисекс» — со слов продавца (гипотеза), а не факт 1688", () => {
+  assert.equal(CHINA_NUMBER_KINDS.sellers, "calc");
+  const unisex = offerBadges({ badges: ["unisex"], isNew: false });
+  assert.deepEqual(unisex.map((b) => [b.text, b.kind]), [["унисекс — со слов продавца", "hypothesis"]]);
+  const text = flat(html(createElement(ChinaOfferCardView, { card: offer({ badges: ["unisex"], isNew: false }) })));
+  assert.match(text, /унисекс — со слов продавца/);
+  assert.match(html(createElement(ChinaOfferCardView, { card: offer({ badges: ["unisex"], isNew: false }) })), /class="rounded-full px-2 py-0\.5 text-xs bg-slate-100 text-slate-600">унисекс/, "цвет гипотезы, не факта");
+});
+
+test("прирост копий «за неделю» — только если снимки ровно через неделю; иначе «с ДД.ММ» — в ленте, на вкладке и в сводке", () => {
+  assert.equal(deltaPeriod(WEEK, PREV), "за неделю");
+  assert.equal(deltaPeriod(WEEK, "2026-09-14"), "с 14.09");
+  assert.equal(copiesLine(copies({ offers: 5, delta: 3, previousOn: "2026-09-14" })).text, "На 1688: 5 копий (+3 с 14.09)");
+  assert.equal(copiesLine(copies({ offers: 5, delta: 3 })).text, "На 1688: 5 копий (+3 за неделю)");
+  assert.equal(copiesLine(copies({ offers: 2, delta: 0, previousOn: "2026-09-21" })).text, "На 1688: 2 копии (столько же, сколько 21.09)");
+  const cards = articleCards([
+    { ref_key: "zara:8372288", observed_on: "2026-09-14", direction: "jackets", offers: 2, sellers: 2, sample_offer_ids: [] },
+    { ref_key: "zara:8372288", observed_on: WEEK, direction: "jackets", offers: 5, sellers: 4, sample_offer_ids: [] },
+  ] as never);
+  assert.match(flat(html(createElement(ChinaArticles, { articles: cards }))), /Zara 8372\/288 5 копий \(\+3 с 14\.09\), продавцов от 4/);
+  const d = pickChinaDigest(WEEK, [], cards)!;
+  assert.deepEqual(d.growth.map((g) => [g.delta, g.previousOn, g.observedOn]), [[3, "2026-09-14", WEEK]]);
+  const message = digestMessage(facts(d));
+  assert.match(message, /• Zara 8372\/288 — 5 копий \(\+3 с 14\.09\)/);
+  assert.doesNotMatch(message, /за неделю\)/);
+});
+
+test("рынок по ключу без «女» — по всем покупателям, а не только женское: оговорка видимым текстом; ключ с «女» — без оговорки", () => {
+  const trend = parseOfferHot((SK_TREND_BAGS.model as { bizData: unknown }).bizData)!;
+  const all = parseMarketValue(marketValueText(trend), WEEK, "飞行员夹克")!;
+  assert.equal(all.allBuyers, true);
+  assert.match(flat(html(createElement(ChinaMarketLine, { market: all }))), /ключ без «女» — по всем покупателям, не только женское/);
+  const women = parseMarketValue(marketValueText(trend), WEEK, "风衣 女")!;
+  assert.equal(women.allBuyers, false);
+  assert.doesNotMatch(flat(html(createElement(ChinaMarketLine, { market: women }))), /по всем покупателям/);
+  assert.equal(CHINA_NICHES.filter((n) => !n.trendKey.includes("女")).length > 0, true, "такие ключи есть — оговорка нужна");
+});
+
+test("глубина сравнения на экране: прошлый снимок мельче — «новое в топе» только в первых N местах, это сказано словами", () => {
+  const block = bagBlocks()[0];
+  const shallow = { ...block, comparedDepth: 12 };
+  assert.match(flat(html(createElement(ChinaNicheSection, { niche: shallow }))), /«Новое в топе» — только в первых 12 местах: глубже прошлый снимок не доставал/);
+  assert.doesNotMatch(flat(html(createElement(ChinaNicheSection, { niche: { ...block, comparedDepth: null } }))), /только в первых/);
+  assert.match(flat(html(createElement(ChinaBody, { data: ready() }))), /только до места, докуда прошлый снимок доставал/, "и в «Как считаем»");
+});
+
+test("ключ не принят только сервисом трендов (ainext): вкладка, копии в ленте и сводка на месте; «Источники» — «Частично» с причиной; отказ поиска — прячет", async () => {
+  const rows = offerRows("underarm", WEEK, G_BAGS.data);
+  const articles: Row[] = [{ ref_key: "zara:8372288", observed_on: WEEK, direction: "jackets", offers: 3, sellers: 3, sample_offer_ids: [] }];
+  const trendsOff = () => fakeDb({ tables: { assortment_cn_offer_snapshot: rows, assortment_cn_article_snapshot: articles, assortment_sources: [s104(stopState("auth", "ainext"))] } }).db;
+  assert.equal((await loadChinaTab(trendsOff(), { direction: "bags", env: ENV, nowMs: MONDAY })).visible, true);
+  assert.ok(await loadChinaCopies(trendsOff(), ["zara:8372288"], { nowMs: MONDAY, env: ENV }));
+  const searchOff = fakeDb({ tables: { assortment_cn_offer_snapshot: rows, assortment_cn_article_snapshot: articles, assortment_sources: [s104(stopState("auth", "gateway"))] } }).db;
+  assert.equal((await loadChinaTab(searchOff, { direction: "bags", env: ENV, nowMs: MONDAY })).visible, false);
+  assert.equal(await loadChinaCopies(searchOff, ["zara:8372288"], { nowMs: MONDAY, env: ENV }), null);
+  const twoWeeks = [...offerRows("underarm", PREV, SHIFTED), ...rows];
+  const digestDb = (host: "gateway" | "ainext") => fakeDb({ tables: { assortment_cn_offer_snapshot: twoWeeks, assortment_sources: [s104(stopState("auth", host))] } }).db;
+  assert.ok(await loadChinaDigest(digestDb("ainext"), { nowMs: MONDAY + 6 * DAY, env: ENV }), "сводка о топе ниш — на месте");
+  assert.equal(await loadChinaDigest(digestDb("gateway"), { nowMs: MONDAY + 6 * DAY, env: ENV }), null);
+  const now = MONDAY + 2 * DAY;
+  const source = chinaSourceView(sourceFacts({ stop: { reason: "auth", at: iso(MONDAY), message: "x", host: "ainext" } }), now);
+  assert.equal(source.accessStatus, "partial", "часть источника не работает — не «проверен»");
+  assert.ok(source.accessNote.includes(CHINA_TRENDS_AUTH_WORDS));
+  assert.equal(chinaSourceView(sourceFacts({ stop: { reason: "auth", at: iso(MONDAY), message: "x", host: "gateway" } }), now).accessStatus, "unavailable");
 });

@@ -24,7 +24,7 @@ export function offerBadges(card: Pick<ChinaOfferCard, "badges" | "isNew">): Arr
   if (card.badges.includes("inspected")) out.push({ key: "inspected", text: "проверено 1688", kind: "fact", title: "Официальная проверка 1688 — отметка площадки" });
   if (card.isNew) out.push({ key: "new", text: "новинка — оценка", kind: "estimate", title: "Новинка по номеру карточки (номера растут со временем) — оценка" });
   if (card.badges.includes("claims_new")) out.push({ key: "claims_new", text: "«新款» — со слов продавца", kind: "hypothesis", title: "Продавец пишет «новинка» в названии — заявление, гипотеза" });
-  if (card.badges.includes("unisex")) out.push({ key: "unisex", text: "унисекс", kind: "fact", title: "В названии и «男», и «女»" });
+  if (card.badges.includes("unisex")) out.push({ key: "unisex", text: "унисекс — со слов продавца", kind: "hypothesis", title: "В названии продавца и «男», и «女» — заявление продавца, гипотеза" });
   return out;
 }
 
@@ -54,21 +54,36 @@ export function chinaCopiesFor(refs: readonly string[], copies: Readonly<Record<
   return null;
 }
 
-const deltaText = (delta: number | null) => {
-  if (delta == null) return "";
-  if (delta > 0) return ` (+${delta} за неделю)`;
-  if (delta < 0) return ` (−${Math.abs(delta)} за неделю)`;
-  return " (за неделю столько же)";
-};
+const DAY_MS = 24 * 3600 * 1000;
+
+/**
+ * Отрезок прироста словами: снимки ровно через неделю — «за неделю», иначе — «с ДД.ММ». Номер мог выпадать из недельного снимка (в неделю —
+ * до 20 номеров из рилсов), и прошлый снимок того же запроса бывает на 2–3 недели старше: «+3 за неделю» тогда было бы неправдой.
+ */
+export function deltaPeriod(observedOn: string, previousOn: string): string {
+  const days = Math.round((Date.parse(`${observedOn}T00:00:00Z`) - Date.parse(`${previousOn}T00:00:00Z`)) / DAY_MS);
+  return days === 7 ? "за неделю" : `с ${dm(previousOn)}`;
+}
+
+/** Прирост копий в скобках: «(+2 за неделю)», «(+3 с 14.09)», «(−1 за неделю)», «(за неделю столько же)»; без прошлого снимка — пусто. */
+export function copiesDeltaText(delta: number | null, observedOn: string, previousOn: string | null): string {
+  if (delta == null || !previousOn) return "";
+  const period = deltaPeriod(observedOn, previousOn);
+  if (delta > 0) return ` (+${delta} ${period})`;
+  if (delta < 0) return ` (−${Math.abs(delta)} ${period})`;
+  return period === "за неделю" ? " (за неделю столько же)" : ` (столько же, сколько ${dm(previousOn)})`;
+}
 
 /**
  * Строка «ставки фабрик» в карточке рилса: «на 1688: 3 копии (+2 за неделю)». Число копий — карточки 1688 с номером в названии; поиск
- * 1688 смысловой и находит часть карточек, поэтому это оценка снизу; прирост — расчёт к прошлому снимку номера.
+ * 1688 смысловой и находит часть карточек, поэтому это оценка снизу; прирост — расчёт к прошлому снимку номера того же запроса (не всегда
+ * ровно неделю назад — тогда «с ДД.ММ»).
  */
 export function copiesLine(c: ChinaRefCopies): { text: string; note: string } {
+  const delta = copiesDeltaText(c.delta, c.observedOn, c.previousOn);
   const text = c.offers > 0
-    ? `На 1688: ${c.offers} ${plural(c.offers, "копия", "копии", "копий")}${deltaText(c.delta)}`
-    : `На 1688 копий по номеру не нашли${c.delta != null && c.delta < 0 ? deltaText(c.delta) : ""}`;
+    ? `На 1688: ${c.offers} ${plural(c.offers, "копия", "копии", "копий")}${delta}`
+    : `На 1688 копий по номеру не нашли${c.delta != null && c.delta < 0 ? delta : ""}`;
   const note = `оценка снизу: поиск 1688 находит часть карточек${c.delta != null ? "; прирост — расчёт" : ""}; снимок ${dm(c.observedOn)}`;
   return { text, note };
 }
