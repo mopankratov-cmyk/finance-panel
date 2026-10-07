@@ -8,6 +8,14 @@ import { buildOzonOpiuDateRangeWarning } from "@/lib/ozon/opiuOzonDateRangeWarni
 
 export const maxDuration = 60;
 
+// Месяц по двум кабинетам — это 60–100 тысяч строк начислений (каждая продажа
+// даёт строку комиссии плюс по строке на каждую услугу). Прежний потолок в 30
+// страниц (30 000 строк) ронял отчёт ошибкой «превысил безопасный лимит».
+// Страницы читаем пачками, иначе последовательные запросы не уложатся в минуту.
+const ACCRUAL_MAX_PAGES = 400;
+const POSTINGS_MAX_PAGES = 100;
+const PAGE_CONCURRENCY = 8;
+
 function resolveCabinetIds(request: NextRequest): string[] {
   return request.nextUrl.searchParams.getAll("cabinetId").filter(Boolean);
 }
@@ -60,7 +68,7 @@ export async function GET(request: NextRequest) {
             .range(from, to);
           return { data: result.data, error: result.error };
         },
-        { label: "ozon_accrual_rows" },
+        { label: "ozon_accrual_rows", maxPages: ACCRUAL_MAX_PAGES, concurrency: PAGE_CONCURRENCY },
       ).then((rows) =>
         rows.map((r) => ({
           // ID начисления уникален в пределах кабинета — склеиваем с кабинетом,
@@ -84,7 +92,7 @@ export async function GET(request: NextRequest) {
             .range(from, to);
           return { data: result.data, error: result.error };
         },
-        { label: "ozon_postings" },
+        { label: "ozon_postings", maxPages: POSTINGS_MAX_PAGES, concurrency: PAGE_CONCURRENCY },
       ).then((rows) => rows.map((r) => ({ status: String(r.status), amount: Number(r.amount) }))),
     ]);
   } catch (error) {
