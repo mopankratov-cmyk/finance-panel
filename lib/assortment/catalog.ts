@@ -281,21 +281,26 @@ export function rejectedFormFrom(params: PageParams, direction: AssortmentDirect
 
 /**
  * Вид раздела: лента находок, «Каталоги брендов», «Формы» (разбор каталога по формам), «Залетает» (рилсы Instagram), «Изменения»
- * (появилось / пропало) или «Китай (1688)» (недельный снимок топа ниш 1688).
+ * (появилось / пропало), «Китай (1688)» (недельный снимок топа ниш 1688) или «Фабрики (1688)» (поиск фабрик и шорт-лист — только в «Сумках»).
  */
-export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms" | "social" | "changes" | "china";
+export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms" | "social" | "changes" | "china" | "factories";
 
-export function sectionViewFrom(params: PageParams): SectionView {
+/**
+ * Вид из адреса. «Фабрики (1688)» — только у сумок (решение владельца 07.10: в Китае закупаем сумки, а не куртки): у курток ?view=factories
+ * открывает «Новинки», а не пустую вкладку.
+ */
+export function sectionViewFrom(params: PageParams, direction?: AssortmentDirection): SectionView {
   const view = one(params, "view");
+  if (view === "factories") return direction === "jackets" ? "new" : view;
   return view === "catalog" || view === "forms" || view === "social" || view === "changes" || view === "china" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
 }
 
 /**
- * Вкладка — лента находок (грузит /references?view=…). Каталог, «Формы», «Залетает», «Изменения» и «Китай (1688)» — свои экраны: запрос
+ * Вкладка — лента находок (грузит /references?view=…). Каталог, «Формы», «Залетает», «Изменения», «Китай (1688)» и «Фабрики (1688)» — свои экраны: запрос
  * ленты для них роут молча превратил бы в «Новинки», и под чужим названием показалось бы «Находок пока нет».
  */
 export function isFeedView(view: SectionView): boolean {
-  return view !== "catalog" && view !== "forms" && view !== "social" && view !== "changes" && view !== "china";
+  return view !== "catalog" && view !== "forms" && view !== "social" && view !== "changes" && view !== "china" && view !== "factories";
 }
 
 /**

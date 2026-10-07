@@ -8,6 +8,10 @@ import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
 import type { FactoryCard, FactoryFlag, RegistryFacts } from "./factoryCards";
 import type { EntityKind, FactoryClusterKey } from "./factoryGuide";
+import {
+  CHECKLIST_VALUE_LABEL, CHECKLIST_VALUES, FACTORY_CHECKLIST, FACTORY_STATUS_LABEL, FACTORY_STATUSES, parseFactoryStatus,
+  type ChecklistKey, type ChecklistKind, type FactoryStatus,
+} from "./factoryUi";
 
 /**
  * «Фабрики сумок (1688)» — шорт-лист: только фабрики, которые человек сам отправил кнопкой «В шорт-лист». Снимок показателей и цен
@@ -40,50 +44,10 @@ export function factoriesTab(direction: AssortmentDirection | null, env: Record<
   return { visible: true, reason: null };
 }
 
-export const FACTORY_STATUSES = ["candidate", "contacted", "video_call", "sample_ordered", "sample_received", "approved", "rejected"] as const;
-export type FactoryStatus = (typeof FACTORY_STATUSES)[number];
-
-export const FACTORY_STATUS_LABEL: Record<FactoryStatus, string> = {
-  candidate: "Кандидат",
-  contacted: "Написали",
-  video_call: "Видеозвонок",
-  sample_ordered: "Образец заказан",
-  sample_received: "Образец получен",
-  approved: "Одобрена",
-  rejected: "Отклонена",
-};
-
-export function parseFactoryStatus(value: unknown): FactoryStatus | null {
-  return FACTORY_STATUSES.find((s) => s === value) ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// Ручной чек-лист: каждый пункт отдельно, без суммы
-
-export type ChecklistKind = "yesno" | "number" | "grade";
-
-export const FACTORY_CHECKLIST = [
-  { key: "license_production", kind: "yesno", label: "Лицензия: производство по сумкам (生产/加工 箱包·皮具 в 经营范围)" },
-  { key: "insured_staff", kind: "number", label: "Число застрахованных сотрудников (参保人数)" },
-  { key: "badges_report", kind: "yesno", label: "Значки на странице магазина и отчёт проверки фабрики не старше 12 месяцев" },
-  { key: "video_call", kind: "yesno", label: "Видеозвонок из цеха" },
-  { key: "answers", kind: "yesno", label: "Ответы на вопросы получены и конкретны" },
-  { key: "sample_material", kind: "grade", label: "Образец: материал" },
-  { key: "sample_hardware", kind: "grade", label: "Образец: фурнитура" },
-  { key: "sample_stitching", kind: "grade", label: "Образец: швы" },
-  { key: "sample_edges", kind: "grade", label: "Образец: кромка (边油)" },
-  { key: "sample_lining", kind: "grade", label: "Образец: подклад" },
-] as const satisfies ReadonlyArray<{ key: string; kind: ChecklistKind; label: string }>;
-
-export type ChecklistKey = (typeof FACTORY_CHECKLIST)[number]["key"];
-
-export const CHECKLIST_VALUES: Record<Exclude<ChecklistKind, "number">, readonly string[]> = {
-  yesno: ["yes", "no", "unknown"],
-  grade: ["good", "acceptable", "bad", "unknown"],
-};
-
-export const CHECKLIST_VALUE_LABEL: Record<string, string> = {
-  yes: "да", no: "нет", unknown: "не ясно", good: "хорошо", acceptable: "приемлемо", bad: "плохо",
+// Статусы и чек-лист — словарь экрана и сервера один (lib/assortment/factoryUi.ts: экран не тянет node:crypto и базу).
+export {
+  CHECKLIST_VALUE_LABEL, CHECKLIST_VALUES, FACTORY_CHECKLIST, FACTORY_STATUS_LABEL, FACTORY_STATUSES, parseFactoryStatus,
+  type ChecklistKey, type ChecklistKind, type FactoryStatus,
 };
 
 export interface ChecklistMark {

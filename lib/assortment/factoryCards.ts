@@ -1,6 +1,6 @@
 import type { CompanyCandidate, CompanyRisk, FactoryOffer, PriceTier, RiskTypeCount, ShopProps, SupplierFactory } from "./factories1688";
 import {
-  clusterByKey, clusterOf, entityFromName, FACTORY_PRICE_CAPTION, outsideBagProvinces, regionLabel, tagLabel,
+  clusterByKey, clusterOf, entityFromName, FACTORY_PRICE_CAPTION, outsideBagProvinces, regionLabel, riskTypeLabel, tagLabel,
   type EntityKind, type FactoryClusterKey, type FactorySource,
 } from "./factoryGuide";
 
@@ -533,6 +533,30 @@ export function fullYears(from: string, to: string): number | null {
   return y >= 0 ? y : null;
 }
 
+/** Факты реестра без показателей — как их хранит шорт-лист (StoredRegistry) и как их получает экран. */
+export type RegistrySummary = Omit<RegistryFacts, "indicators" | "flags">;
+
+/**
+ * Показатели реестра (метка Р) по фактам: статус, возраст, юрлицо или ИП, капитал (с пометкой «легко подогнать»), риски по типам и дата
+ * последнего. Одна функция и для свежей проверки, и для сохранённой в шорт-листе — слова не расходятся.
+ */
+export function registryIndicators(r: Pick<RegistrySummary, "entity" | "status" | "active" | "establishedOn" | "ageYears" | "entType" | "regCapText" | "risks">): FactoryIndicator[] {
+  const indicators: FactoryIndicator[] = [];
+  indicators.push(ind("regStatus", "Статус в реестре", "Р", r.status ? `${r.status}${r.active === true ? " — действует" : r.active === false ? " — не действует" : ""}` : null));
+  indicators.push(ind("regAge", "Возраст компании", "Р", r.ageYears != null ? `${years(r.ageYears)} (с ${r.establishedOn})` : null, r.ageYears));
+  indicators.push(ind("regEntity", "Юрлицо или ИП", "Р", r.entType ? `${r.entity === "company" ? "юрлицо" : r.entity === "individual" ? "ИП" : "не ясно"} (${r.entType})` : null));
+  indicators.push(ind("regCapital", "Уставный капитал", "Р", r.regCapText ?? null, null, { note: "легко подогнать — не опора" }));
+  if (r.risks) {
+    const risk = r.risks;
+    const total = risk.total ?? risk.fetched;
+    const parts = risk.byType.map((t) => `${riskTypeLabel(t.subType ?? t.mainType)} — ${t.count}${t.lastOn ? ` (последний ${t.lastOn})` : ""}`);
+    indicators.push(ind("regRisks", "Риски (88查)", "Р", total === 0 ? "рисков не найдено" : `${fmtNum(total)}: ${parts.join("; ")}`, total, {
+      basis: risk.complete ? null : `по типам — первые ${risk.fetched} из ${risk.total}`,
+    }));
+  }
+  return indicators;
+}
+
 /**
  * Факты реестра для карточки: статус, возраст, юрлицо или ИП, капитал (с пометкой «легко подогнать»), риски по типам и дата последнего.
  * Флаги: статус не «действует» и «недобросовестный должник» (失信被执行人) — красные; «нарушения в деятельности» (经营异常) за последний
@@ -544,14 +568,9 @@ export function registryFacts(candidate: Partial<CompanyCandidate> | null, risk:
   const establishedOn = candidate?.establishedOn ?? null;
   const ageYears = establishedOn ? fullYears(establishedOn, today) : null;
   const entity = candidate?.entity ?? "unknown";
-  const indicators: FactoryIndicator[] = [];
   const flags: FactoryFlag[] = [];
-  indicators.push(ind("regStatus", "Статус в реестре", "Р", status ? `${status}${active === true ? " — действует" : active === false ? " — не действует" : ""}` : null));
   if (active === false) flags.push({ key: "registry_not_active", level: "red", source: "Р", text: `в реестре не «действует»: ${status}` });
-  indicators.push(ind("regAge", "Возраст компании", "Р", ageYears != null ? `${years(ageYears)} (с ${establishedOn})` : null, ageYears));
   if (ageYears != null && ageYears < 1) flags.push({ key: "registry_young", level: "yellow", source: "Р", text: "компании меньше года" });
-  indicators.push(ind("regEntity", "Юрлицо или ИП", "Р", candidate?.entType ? `${entity === "company" ? "юрлицо" : entity === "individual" ? "ИП" : "не ясно"} (${candidate.entType})` : null));
-  indicators.push(ind("regCapital", "Уставный капитал", "Р", candidate?.regCapText ?? null, null, { note: "легко подогнать — не опора" }));
   let risks: RegistryFacts["risks"] = null;
   if (risk) {
     const complete = risk.total == null || risk.fetched >= risk.total;
@@ -559,18 +578,14 @@ export function registryFacts(candidate: Partial<CompanyCandidate> | null, risk:
       total: risk.total, fetched: risk.fetched, complete, byType: risk.byType, lastOn: risk.lastOn, dishonest: risk.dishonest,
       abnormalCount: risk.abnormal.count, abnormalLastOn: risk.abnormal.lastOn,
     };
-    const total = risk.total ?? risk.fetched;
-    const parts = risk.byType.map((t) => `${t.subType ?? t.mainType} ${t.count}${t.lastOn ? ` (последний ${t.lastOn})` : ""}`);
-    indicators.push(ind("regRisks", "Риски (88查)", "Р", total === 0 ? "рисков не найдено" : `${fmtNum(total)}: ${parts.join("; ")}`, total, {
-      basis: complete ? null : `по типам — первые ${risk.fetched} из ${risk.total}`,
-    }));
     if (risk.dishonest > 0) flags.push({ key: "registry_dishonest", level: "red", source: "Р", text: "недобросовестный должник (失信被执行人)" });
     if (risk.abnormal.lastOn && dayMs(today) - dayMs(risk.abnormal.lastOn) <= 365 * DAY_MS) {
       flags.push({ key: "registry_abnormal", level: "red", source: "Р", text: `нарушения в деятельности (经营异常) за последний год: ${risk.abnormal.lastOn}` });
     }
   }
-  return {
+  const summary: RegistrySummary = {
     checkedOn: today, entity, status, active, establishedOn, ageYears, entType: candidate?.entType ?? null, regCapText: candidate?.regCapText ?? null,
-    area: candidate?.area ?? null, risks, indicators, flags,
+    area: candidate?.area ?? null, risks,
   };
+  return { ...summary, indicators: registryIndicators(summary), flags };
 }

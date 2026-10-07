@@ -3,7 +3,7 @@ import { catalogFiltersFrom, rejectedFormFrom, sectionViewFrom } from "@/lib/ass
 
 export default async function AssortmentJacketsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const params = await searchParams;
-  const view = sectionViewFrom(params);
+  const view = sectionViewFrom(params, "jackets");
   const filters = catalogFiltersFrom(params, "jackets");
   const rejectedForm = rejectedFormFrom(params, "jackets");
   // Ключ по адресу: вход по ссылке с другим видом или фильтрами пересоздаёт раздел. Нажатие пункта меню на уже открытом разделе

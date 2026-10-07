@@ -25,16 +25,18 @@ function errorResponse(error: unknown, fallback: string) {
 
 /**
  * Шорт-лист фабрик сумок. GET ?direction=bags — { tab, shortlist, canEdit, items }: смотрят все роли модуля; вкладки нет без ключа 1688
- * и вне «Сумок», шорт-листа нет без миграции (причина одной строкой). Только чтение.
+ * и вне «Сумок», шорт-листа нет без миграции (причина одной строкой). ?count=1 — только «есть ли вкладка» ({ tab, canEdit }) без базы:
+ * его спрашивает раздел «Сумки» при каждом открытии. Только чтение.
  */
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession(ASSORTMENT_ROLES);
   if (gate) return gate;
-  const db = getSupabaseAdmin();
-  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   const session = await getServerSession();
   const tab = factoriesTab(parseDirection(request.nextUrl.searchParams.get("direction")));
   const canEdit = canEditFactories(sessionRoles(session));
+  if (request.nextUrl.searchParams.get("count") === "1") return NextResponse.json({ tab, canEdit }, { headers: NO_STORE });
+  const db = getSupabaseAdmin();
+  if (!db) return NextResponse.json({ error: "Supabase не настроен" }, { status: 503 });
   if (!tab.visible) {
     const view: ShortlistView = { tab, shortlist: { available: false, reason: tab.reason }, canEdit, items: [] };
     return NextResponse.json(view, { headers: NO_STORE });
