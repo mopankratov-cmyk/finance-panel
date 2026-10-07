@@ -1,0 +1,64 @@
+{
+ "success": true,
+ "msgCode": "200",
+ "data": {
+  "data": {
+   "total": 5,
+   "pageNo": 1,
+   "pageSize": 20,
+   "riskMap": {
+    "经营风险": [
+     {
+      "mainType": "经营风险",
+      "subType": "经营异常",
+      "level": "中风险",
+      "time": "2026-03-02 10:00:00",
+      "companyName": "广州市花都区狮岭镇明辉皮具有限公司",
+      "socialCreditCode": "91440114MA59ABCD1X",
+      "contentChinese": "{\"列入原因\":\"通过登记的住所无法联系\",\"负责人\":\"张测试\"}",
+      "rowId": "r1"
+     },
+     {
+      "mainType": "经营风险",
+      "subType": "经营异常",
+      "level": "中风险",
+      "time": "2019-07-01",
+      "companyName": "广州市花都区狮岭镇明辉皮具有限公司",
+      "contentChinese": "{}",
+      "rowId": "r2"
+     }
+    ],
+    "司法风险": [
+     {
+      "mainType": "司法风险",
+      "subType": "失信被执行人",
+      "level": "高风险",
+      "timeStamp": 1767225600000,
+      "companyName": "x",
+      "contentChinese": "{\"被执行人\":\"张测试\",\"电话\":\"13800000000\"}",
+      "rowId": "r3"
+     },
+     {
+      "mainType": "司法风险",
+      "subType": "被执行人",
+      "level": "高风险",
+      "time": "2024-11-11",
+      "companyName": "x",
+      "contentChinese": "{}",
+      "rowId": "r4"
+     }
+    ],
+    "监管措施": [
+     {
+      "mainType": "监管措施",
+      "subType": "行政处罚",
+      "level": "低风险",
+      "time": "2023-02-15",
+      "contentChinese": "{\"处罚内容\":\"罚款\"}",
+      "rowId": "r5"
+     }
+    ]
+   }
+  }
+ }
+}

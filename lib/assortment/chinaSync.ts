@@ -519,8 +519,12 @@ export function parseTranslations(content: string, expected: number): Array<stri
   }
 }
 
-/** Переводчик Polza (OpenAI-совместимый чат), если есть ключ Polza и цена модели; иначе — причина одной строкой. */
-export function chinaTranslatorFromEnv(env: Record<string, string | undefined> = process.env, fetchImpl: typeof fetch = fetch): TranslateSetup {
+/**
+ * Переводчик Polza (OpenAI-совместимый чат), если есть ключ Polza и цена модели; иначе — причина одной строкой. `prompt` — другой вопрос
+ * модели с тем же форматом ответа (JSON-массив строк той же длины): так «Фабрики сумок» переводят запрос с русского на китайский.
+ */
+export function chinaTranslatorFromEnv(env: Record<string, string | undefined> = process.env, fetchImpl: typeof fetch = fetch, options: { prompt?: string } = {}): TranslateSetup {
+  const prompt = options.prompt ?? TRANSLATE_PROMPT;
   const model = env.ASSORTMENT_CHINA_TRANSLATE_MODEL?.trim() || DEFAULT_TRANSLATE_MODEL;
   const rubPerUsd = catalogAiConfig(env).rubPerUsd;
   const rub = POLZA_PRICES_RUB[model] ?? null;
@@ -537,7 +541,7 @@ export function chinaTranslatorFromEnv(env: Record<string, string | undefined> =
         model,
         ...(model.startsWith("google/") ? { reasoning: { effort: "none" } } : {}),
         max_tokens: translateMaxTokens(texts.length),
-        messages: [{ role: "system", content: TRANSLATE_PROMPT }, { role: "user", content: JSON.stringify(texts) }],
+        messages: [{ role: "system", content: prompt }, { role: "user", content: JSON.stringify(texts) }],
       }),
       signal: AbortSignal.timeout(TRANSLATE_TIMEOUT_MS),
     });
@@ -579,8 +583,8 @@ export function translateMaxTokens(count: number): number {
  * (любой токен модели — хотя бы один байт; иероглиф — 3 байта) плюс служебная разметка чата; выход — ровно предел max_tokens, который
  * уходит в запрос. Округление — вверх, до 0,00001 $.
  */
-export function translateBatchMaxUsd(texts: readonly string[], price: { in: number; out: number }): number {
-  const inputTokens = TRANSLATE_CHAT_OVERHEAD_TOKENS + Buffer.byteLength(TRANSLATE_PROMPT, "utf8") + Buffer.byteLength(JSON.stringify(texts), "utf8");
+export function translateBatchMaxUsd(texts: readonly string[], price: { in: number; out: number }, prompt: string = TRANSLATE_PROMPT): number {
+  const inputTokens = TRANSLATE_CHAT_OVERHEAD_TOKENS + Buffer.byteLength(prompt, "utf8") + Buffer.byteLength(JSON.stringify(texts), "utf8");
   const usd = (inputTokens * price.in + translateMaxTokens(texts.length) * price.out) / 1_000_000;
   return Math.ceil(usd * 100_000 - 1e-9) / 100_000;
 }
