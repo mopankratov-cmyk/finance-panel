@@ -39,3 +39,11 @@ test("OzonOpiuPage renders a data-range warning from the API when the period pre
   const source = await readFile(new URL("../components/opiu/OzonOpiuPage.tsx", import.meta.url), "utf8");
   assert.match(source, /warning/, "must read and render the route's warning field");
 });
+
+test("отчёт Ozon читает больше 30 000 строк начислений: месяц по двум кабинетам — около 70 000", async () => {
+  const source = await readFile(new URL("../app/api/opiu/ozon/route.ts", import.meta.url), "utf8");
+  const match = source.match(/ACCRUAL_MAX_PAGES\s*=\s*(\d+)/);
+  assert.ok(match, "потолок страниц начислений должен быть задан явно");
+  assert.ok(Number(match[1]) * 1000 >= 150_000, "потолок должен вмещать несколько месяцев по нескольким кабинетам");
+  assert.match(source, /concurrency:\s*PAGE_CONCURRENCY/, "страницы читаются пачками, иначе не уложиться в 60с");
+});
