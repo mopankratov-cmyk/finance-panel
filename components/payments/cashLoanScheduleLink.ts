@@ -14,6 +14,12 @@ export interface CashLoanScheduleOption {
   label: string;
 }
 
+export interface CashLoanContractOption {
+  loanId: string;
+  loanName: string;
+  companyId: string | null;
+}
+
 const GENERIC_LOAN_PAYMENT_CATEGORIES = new Set([
   "Оплаты по кредитам и займам",
   "Оплата % по кредиту",
@@ -62,7 +68,7 @@ const normalizeLoanName = (value: string) => value
   .replace(/\s+/g, " ")
   .trim();
 
-function optionCreditor(option: CashLoanScheduleOption) {
+function optionCreditor(option: Pick<CashLoanScheduleOption, "loanName">) {
   return option.loanName.split(" · с ", 1)[0] ?? option.loanName;
 }
 
@@ -71,8 +77,8 @@ function optionCreditor(option: CashLoanScheduleOption) {
  * сильнее общего бренда: «Сбербанк» не должно смешиваться с договорами
  * «Сбербанк № ...». Если доказательства нет, оставляем полный список.
  */
-export function relevantCashLoanScheduleOptions(
-  options: readonly CashLoanScheduleOption[],
+export function relevantCashLoanScheduleOptions<T extends Pick<CashLoanScheduleOption, "loanId" | "loanName">>(
+  options: readonly T[],
   counterparty: string,
   purpose: string,
 ) {
@@ -96,6 +102,21 @@ export function relevantCashLoanScheduleOptions(
     return family.some((alias) => creditor.includes(alias));
   });
   return matching.length ? matching : [...options];
+}
+
+export function cashLoanContractOptions(input: {
+  loans: readonly Loan[];
+  payments: readonly Payment[];
+  paymentCompanies: ReadonlyMap<string, string | null>;
+}): CashLoanContractOption[] {
+  return input.loans
+    .filter((loan) => loan.status === "active")
+    .map((loan) => ({
+      loanId: loan.id,
+      loanName: loanOptionLabel(loan),
+      companyId: loanCompanyId(loan.id, input.payments, input.paymentCompanies),
+    }))
+    .sort((left, right) => left.loanName.localeCompare(right.loanName, "ru"));
 }
 
 /** Автоподстановка допустима только когда реквизиты оставили один договор. */
