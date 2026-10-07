@@ -1,0 +1,3716 @@
+{
+ "traceId": "trace-1",
+ "code": "Success",
+ "codeType": "SUCCESS",
+ "data": {
+  "data": [
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "2025简约大容量波士顿腋下包包女潮腋肩包小众设计法棍包mlb包包",
+    "score": 0.998828125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "180",
+     "chat_cnt_30d": "28",
+     "puhuo_cnt_30d": "122",
+     "pay_ord_cnt_30d": "181",
+     "favor_cnt_30d": "18",
+     "cart_cnt_30d": "44"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0131hMt025zwOgg7AXX_!!9000000000001-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop1",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6094442750064,
+    "skuTitle": "黑色 30*7*16",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8890649762282092"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6266530521720124",
+     "customer_scale": "9765",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2025简约大容量波士顿腋下包包女潮腋肩包小众设计法棍包mlb包包  \n</商品标题>\n\n<商品属性>\n**箱包类型**：腋下包 / 波士顿式腋肩包  \n**箱包形状**：横款方型  \n**箱包大小**：中号  \n**硬度**：中偏软  \n**开盖方式**：拉链闭合  \n**肩带配置**：双根肩带  \n**尺寸规格**：30*7*16cm  \n**材质构成**：外部采用PU材质，里料为涤纶  \n**流行元素**：拼接设计、车缝线工艺  \n</商品属性>\n\n<功能结构>\n**内部结构**：设有手机袋，便于快速取用  \n**外袋种类**：配备内贴袋，提升实用性  \n**夹层设计**：无独立夹层，适合轻便携带  \n**容量表现**：强调“恰到好处的大容量收纳”，适配日常出行需求  \n</功能结构>\n\n<外观与风格>\n**风格定位**：都市简约风  \n**颜色选择**：提供深棕色、白色、银色、黄色、黑色等多种配色  \n**视觉特征**：融合法棍包造型与腋下包轮廓，兼具潮流感与实用性  \n</外观与风格>\n\n<适用场景>\n**主要用途**：日常搭配使用  \n**穿着场景适配性**：适用于通勤、逛街、短途出行等城市生活场景  \n**搭配兼容性**：简约设计易于搭配各类服饰风格  \n</适用场景>\n\n<公司名称>\nshop1\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 5000,
+    "itemId": 975160314318,
+    "offerTags": "180739;422914;522754;503298;677890;537090;625154;595970;…",
+    "storeAmount": 66399,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/975160314318.html?&object_id=975160314318",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.84,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "时尚2025新款拼色洋气复古大容量通勤单肩帆布腋下手提大包包女",
+    "score": 0.9662693750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "40",
+     "chat_cnt_30d": "20",
+     "puhuo_cnt_30d": "4",
+     "pay_ord_cnt_30d": "41",
+     "favor_cnt_30d": "24",
+     "cart_cnt_30d": "57"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN019DIMI52DjvSwcnM4W_!!9000000000002-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop2",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5899201856187,
+    "skuTitle": "棕色",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"208.9028697571744\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"140.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.11965811965811966"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6045729135666905",
+     "customer_scale": "18712",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "9"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n时尚2025新款拼色洋气复古大容量通勤单肩帆布腋下手提大包包女  \n</商品标题>\n\n<商品属性>\n材质：PU（人造革），里料为尼龙；  \n箱包大小：大；  \n箱包形状：横款方型；  \n箱包潮流款式：腋下包；  \n硬度：软；  \n重量：0.32kg；  \n尺寸（长×宽×高）：20cm × 33cm × 11cm（注：原文“高20CM”应为笔误，结合上下文及常规腋下包规格，实际应为20cm×33cm×11cm，属中大型通勤包）；  \n肩带配置：双根肩带，支持单肩/手提两种背法；  \n开盖方式：拉链闭合；  \n内部结构：含拉链暗袋、内贴袋；  \n有无夹层：无；  \n流行元素：车缝线装饰；  \n风格定位：都市简约 + 拼色+复古；  \n适用场景：日常搭配。  \n</商品属性>\n\n<公司名称>\nshop2\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 5000,
+    "itemId": 962784378968,
+    "offerTags": "180739;575939;677890;564226;621570;649730;595970;654338;…",
+    "storeAmount": 23841,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/962784378968.html?&object_id=962784378968",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "尼龙"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "横款方型"
+     }
+    ],
+    "yxIndex": 4.76,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE",
+     "PRICE",
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "百搭包包女单肩包女士包2024腋下包shoulder bag外贸女包批发",
+    "score": 0.9609375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "14",
+     "chat_cnt_30d": "8",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "15",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "17"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01ClI2QE1rwMQr45BWI_!!9000000000003-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop3",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5798438547496,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6540273572872479",
+     "customer_scale": "5066",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n百搭包包女单肩包女士包2024腋下包shoulder bag外贸女包批发  \n</商品标题>\n\n<商品属性>\n材质：PU（人造革），里料为合成革；硬度：软；箱包大小：中；箱包形状：横款方型；肩带根数：单根；外袋种类：敞口袋；开盖方式：拉链；内部结构：含手机袋、证件袋；无夹层；风格：街头潮流；流行元素：纯色绣线元素（强调“少女感”）；颜色可选：卡其色、棕色、白色、粉色、黑色  \n</商品属性>\n\n<公司名称>\nshop3\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 3000,
+    "itemId": 846569442447,
+    "offerTags": "481538;475650;462850;480002;514818;519170;678658;659202;…",
+    "storeAmount": 169946,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/846569442447.html?&object_id=846569442447",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "敞口袋"
+     },
+     {
+      "type": "industryCPV",
+      "value": "证件袋"
+     },
+     {
+      "type": "industryCPV",
+      "value": "横款方型"
+     }
+    ],
+    "yxIndex": 4.49,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "新款冬季毛毛流行洋气时尚气质时尚毛绒绒大容量单肩腋下包通勤女",
+    "score": 0.9746093750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "34",
+     "chat_cnt_30d": "16",
+     "puhuo_cnt_30d": "67",
+     "pay_ord_cnt_30d": "35",
+     "favor_cnt_30d": "11",
+     "cart_cnt_30d": "15"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01ujhGmD1ggN4mw7mm1_!!9000000000004-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"201580619\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop4",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6056937938941,
+    "skuTitle": "黑色【狐狸褶皱】",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.26666666666666666"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6532001032085452",
+     "customer_scale": "4614",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n新款冬季毛毛流行洋气时尚气质时尚毛绒绒大容量单肩腋下包通勤女  \n</商品标题>\n\n<商品属性>\n**材质构成**：采用柔软毛绒面料，结合合成革里料，触感细腻且具备良好耐用性。  \n**箱包类型**：横款方型腋下包，造型简洁大方，适合日常通勤及休闲穿搭。  \n**容量表现**：最大容量达20L，空间充足，可容纳口红、钥匙、粉饼、公交卡等多种随身物品。  \n**尺寸规格**：宽35cm × 高17cm × 厚9cm，厚度适中，兼顾美观与实用性。  \n**重量数据**：净重约270g，轻便易携，长时间佩戴无负担。  \n</商品属性>\n\n<适用场景>\n**日常搭配定位**：主打通勤与休闲场景，兼具实用性和时尚感。  \n**风格兼容性强**：百搭设计使其适用于职场、约会、逛街等多种生活情境。  \n</适用场景>\n\n<公司名称>\nshop4\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 2000,
+    "itemId": 961281484042,
+    "offerTags": "422914;677890;678402;644098;615426;595970;649730;625666;…",
+    "storeAmount": 5996138,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/961281484042.html?&object_id=961281484042",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "毛绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "法棍包"
+     },
+     {
+      "type": "industryCPV",
+      "value": "糖果色"
+     }
+    ],
+    "yxIndex": 4.63,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "今年流行的腋下包2025跨境女包工厂直营单肩包女高级感女生腋下包",
+    "score": 0.9804587500000002,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "39",
+     "chat_cnt_30d": "122",
+     "puhuo_cnt_30d": "38",
+     "pay_ord_cnt_30d": "40",
+     "favor_cnt_30d": "129",
+     "cart_cnt_30d": "216"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01zMkzGB1cYo2hRXwKL_!!9000000000005-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop5",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5971990070600,
+    "skuTitle": "白色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8636363636363636"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "Y",
+     "repeated_rate": "0.49282203718120315",
+     "customer_scale": "6089",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n今年流行的腋下包2025跨境女包工厂直营单肩包女高级感女生腋下包  \n</商品标题>\n\n<款式与设计定位>\n上市季节为2025年春季；风格兼具“商务通勤”与“休闲时尚”双重属性；造型为小尺寸横款方型，硬挺度属中偏软，符合当下轻盈利落的腋下包审美趋势；融入流行元素“字母”，强化年轻化视觉识别。  \n</款式与设计定位>\n\n<公司名称>\nshop5\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 1000,
+    "itemId": 925926365867,
+    "offerTags": "180739;698371;458242;406018;522754;519170;669186;657922;…",
+    "storeAmount": 47976,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/925926365867.html?&object_id=925926365867",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "字母"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.37,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "跨境包包女春夏季新款小众单肩手拎包时尚高级感小方包PU腋下包女",
+    "score": 0.9742187500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "48",
+     "chat_cnt_30d": "8",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "49",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "36"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01w7EaRX1ZNPQKlqfk4_!!9000000000006-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2}\",\"cate_id\":\"201967404\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop6",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6114689478332,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.78"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5098632320176929",
+     "customer_scale": "2783",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n跨境包包女春夏季新款小众单肩手拎包时尚高级感小方包PU腋下包女  \n</商品标题>\n\n<公司名称>\nshop6\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 1000,
+    "itemId": 923330629237,
+    "offerTags": "180739;522754;677890;627202;595970;649730;642562;589826;…",
+    "storeAmount": 25411,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/923330629237.html?&object_id=923330629237",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏硬"
+     },
+     {
+      "type": "industryCPV",
+      "value": "单肩包"
+     }
+    ],
+    "yxIndex": 4.34,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "春夏简约腋下包单肩小众法棍包包女斜挎包2025新款半月包",
+    "score": 0.9684962500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "42",
+     "chat_cnt_30d": "12",
+     "puhuo_cnt_30d": "19",
+     "pay_ord_cnt_30d": "43",
+     "favor_cnt_30d": "5",
+     "cart_cnt_30d": "15"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01ZcxDx71tWpbPvo6kW_!!9000000000007-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2}\",\"cate_id\":\"201967404\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop7",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5213634431303,
+    "skuTitle": "米白色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7252747252747253"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.37589527345223717",
+     "customer_scale": "6284",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "4"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n春夏简约腋下包单肩小众法棍包包女斜挎包2025新款半月包  \n</商品标题>\n\n<公司名称>\nshop7\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 1000,
+    "itemId": 725895604172,
+    "offerTags": "180739;576067;401410;393730;503298;475650;522754;519170;…",
+    "storeAmount": 22706,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/725895604172.html?&object_id=725895604172",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "横款方形"
+     }
+    ],
+    "yxIndex": 4.5,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "春夏季时尚大容量腋下包包女2026新款超火个性休闲通勒单肩手提包",
+    "score": 0.9371093750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "16",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "17",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01hqLEgU24OYV5wpBzU_!!9000000000008-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop8",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6244458979259,
+    "skuTitle": "咖色+挂件",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.6666666666666666"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5435102199913331",
+     "customer_scale": "1025",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "4"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n春夏季时尚大容量腋下包包女2026新款超火个性休闲通勒单肩手提包  \n</商品标题>\n\n<商品属性>\n材质：PU+帆布（主材为PU，里料为涤纶）；  \n尺寸：宽30cm × 高15cm × 厚10cm（手工测量，允差±1–3cm）；  \n重量：0.36kg，属轻量级设计；  \n箱包形状：横款方型；  \n箱包大小：中号；  \n硬度：中等挺括度，兼顾造型感与收纳稳定性；  \n背法：支持单肩、手提两种模式；  \n肩带配置：双根肩带，柄高30cm；  \n开盖方式：拉链闭合；  \n内部结构：含手机袋、拉链暗袋、内贴袋；  \n外部结构：无夹层、无外袋；  \n流行元素：车缝线装饰；  \n风格定位：都市简约；  \n适用场景：日常搭配；  \n上市时效：2026年夏季新品。  \n</商品属性>\n\n<公司名称>\nshop8\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 1000,
+    "itemId": 1049007222156,
+    "offerTags": "180739;502274;480002;501506;514818;481538;688386;656130;…",
+    "storeAmount": 2000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1049007222156.html?&object_id=1049007222156",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "横款方型"
+     }
+    ],
+    "yxIndex": 4.06,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "银色女包包2026新款小众手提链条法棍腋下包高级感百搭单肩斜挎包",
+    "score": 0.941786875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "8",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "51",
+     "pay_ord_cnt_30d": "9",
+     "favor_cnt_30d": "7",
+     "cart_cnt_30d": "13"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01PzwWHC1nhTCySFPVQ_!!9000000000009-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop9",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5420360732041,
+    "skuTitle": "银色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.22666666666666666"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4877994579986437",
+     "customer_scale": "24188",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n银色女包包2026新款小众手提链条法棍腋下包高级感百搭单肩斜挎包  \n</商品标题>\n\n<商品属性>\n材质：PU（含里料）；箱包大小：中；箱包形状：横款方型；硬度：中偏软；颜色：银色、黑色；风格：清新甜美；上市年份季节：2024年春季；尺寸（长×宽×高）：24cm×7cm×11cm（手工测量，误差±2–3cm）；肩带根数：单根；开盖方式：拉链；外袋种类：挖袋；包内部结构：夹层拉链袋；有无夹层：无（注：虽标“夹层拉链袋”，但明确注明“有无夹层：无”，故该拉链袋属功能性分隔而非独立夹层结构）  \n</商品属性>\n\n<公司名称>\nshop9\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 900,
+    "itemId": 794183402019,
+    "offerTags": "393474;458242;510210;481538;475650;462850;480002;514818;…",
+    "storeAmount": 421938,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/794183402019.html?&object_id=794183402019",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     },
+     {
+      "type": "industryCPV",
+      "value": "横款方型"
+     }
+    ],
+    "yxIndex": 4.26,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "韩版都市简约休闲腋下包女2026夏季新款时尚甜美蝴蝶结单肩包包潮",
+    "score": 0.9871093750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "50",
+     "chat_cnt_30d": "43",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "51",
+     "favor_cnt_30d": "139",
+     "cart_cnt_30d": "228"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01ybnjPP1hQd1tdMTOc_!!9000000000010-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop10",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5911256819846,
+    "skuTitle": "黄色 27*9*15.5",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.390625"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6398624759786181",
+     "customer_scale": "6033",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n韩版都市简约休闲腋下包女2026夏季新款时尚甜美蝴蝶结单肩包包潮  \n</商品标题>\n\n<商品属性>\n面料成分：PU（人造革），里料为涤纶；  \n版型设计：横款方型、中偏软硬度、大容量箱包；  \n尺寸规格：高15.5 cm × 上宽24.5 cm × 下宽27 cm，肩带长70 cm，手工测量允差±1.3 cm；  \n重量指标：净重380 g，属轻量级腋下包；  \n结构特征：含拉链暗袋、内贴袋，无夹层，单肩背负设计；  \n开合方式：拉链闭合；  \n颜色选择：米白色、粉色、银色、黄色、黑色共5色；  \n风格定位：都市简约风，融合蝴蝶结装饰与精致车缝线元素。  \n</商品属性>\n\n<公司名称>\nshop10\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 700,
+    "itemId": 893598870921,
+    "offerTags": "180739;475650;519170;537090;595970;649730;483394;476738;…",
+    "storeAmount": 48969,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/893598870921.html?&object_id=893598870921",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "蝴蝶结"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.59,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "腋下包包女2026新款夏季简约质感单肩包潮斜挎包定制跨境斜挎包",
+    "score": 0.9246093750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "5",
+     "chat_cnt_30d": "6",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "6",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "3"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01F4kWcX2J4bSB818Sk_!!9000000000011-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop11",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5985762356214,
+    "skuTitle": "黑色 26*10*26cm（长*宽*高）",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.3684210526315789"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6867818347057488",
+     "customer_scale": "1197",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 5,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n腋下包包女2026新款夏季简约质感单肩包潮斜挎包定制跨境斜挎包  \n</商品标题>\n\n<商品属性>\n面料成分：PU（人造革），里料为涤棉；  \n版型设计：椭圆形中号包身，中偏硬挺感，兼顾造型感与实用性；  \n尺寸规格：26×10×26 cm（长×宽×高），属中等容量腋下/斜挎包范畴；  \n重量与厚度指数：未提供具体数值，但结合“轻量化”“中偏硬”及PU材质特性，推断为轻便型日常通勤包；  \n开合方式：拉链闭合，配顺滑五金配件扣；  \n肩带配置：单根可调节肩带，支持单肩/斜挎双用；  \n内部结构：含3卡槽口袋×3、2个拉链口袋×1、1个主口袋，另设手机袋，无夹层。  \n</商品属性>\n\n<公司名称>\nshop11\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 400,
+    "itemId": 966297601427,
+    "offerTags": "180739;677890;678402;595970;649730;483394;481346;335938;…",
+    "storeAmount": 709476,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/966297601427.html?&object_id=966297601427",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤棉"
+     },
+     {
+      "type": "industryCPV",
+      "value": "敞口袋"
+     }
+    ],
+    "yxIndex": 4.08,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "韩国小众腋下包女式2026秋冬季新款潮流手提包高级感百搭单肩包女",
+    "score": 0.9867187500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "59",
+     "chat_cnt_30d": "25",
+     "puhuo_cnt_30d": "52",
+     "pay_ord_cnt_30d": "60",
+     "favor_cnt_30d": "59",
+     "cart_cnt_30d": "157"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01cp8qiZ2IO0VeP9NSP_!!9000000000012-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop12",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5619002188702,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.5084745762711864"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "Y",
+     "repeated_rate": "0.5713014625107347",
+     "customer_scale": "30836",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n韩国小众腋下包女式2026秋冬季新款潮流手提包高级感百搭单肩包女  \n</商品标题>\n\n<商品属性>\n面料成分：PU（聚氨酯合成革）；里料质地：涤纶；硬度：中偏软；箱包形状：水饺型；箱包大小：中；肩带根数：单根；背法：单肩；重量：0.26kg；尺寸（手工测量）：高13cm、上宽19cm、下宽29cm、厚8cm、肩带长58cm；外袋种类：立体袋；开盖方式：拉链；有无夹层：无；颜色：白色、粉色、银色、黑色；风格：街头潮流；上市年份季节：2024年秋季。  \n</商品属性>\n\n<公司名称>\nshop12\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 300,
+    "itemId": 843989880358,
+    "offerTags": "422914;475650;462850;519170;677890;668162;625154;595970;…",
+    "storeAmount": 20000,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/843989880358.html?&object_id=843989880358",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.47,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "简约腋下包女2026新款夏季时尚百搭饺子包休闲手提包单肩斜挎包",
+    "score": 0.9492187500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "26",
+     "chat_cnt_30d": "4",
+     "puhuo_cnt_30d": "26",
+     "pay_ord_cnt_30d": "27",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "6"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01UK3FsC1NUwUK0gsZR_!!9000000000013-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop13",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6062048342676,
+    "skuTitle": "白色【单包】",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7086614173228346"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5424214529028103",
+     "customer_scale": "34758",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n简约腋下包女2026新款夏季时尚百搭饺子包休闲手提包单肩斜挎包  \n</商品标题>\n\n<商品属性>\n材质：PU（人造革），里料为涤纶；  \n箱包形状：枕头型；  \n箱包大小：中号；  \n硬度：适中；  \n净重：310g；  \n开盖方式：拉链；  \n内部结构：含拉链暗袋；  \n肩带配置：单根肩带，支持手提/单肩/斜挎三用背法；  \n颜色选项：卡其色、白色、黑色、蓝色、粉色、米白色（均提供单包及带挂件版本）；  \n风格定位：都市简约；  \n流行元素：车缝线装饰；  \n上市时效：2026年春季新款。  \n</商品属性>\n\n<公司名称>\nshop13\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "24小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 300,
+    "itemId": 962278689795,
+    "offerTags": "180739;422914;522754;503298;677890;537090;621570;595970;…",
+    "storeAmount": 1536,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/962278689795.html?&object_id=962278689795",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "25新款b家机车包腋下包铆钉流苏三合一月牙褶皱牛皮单肩斜挎女包",
+    "score": 0.9389256250000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "16",
+     "chat_cnt_30d": "33",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "17",
+     "favor_cnt_30d": "23",
+     "cart_cnt_30d": "55"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01rwJYTO28lEUhEkMO0_!!9000000000014-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop14",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5806998780835,
+    "skuTitle": "黑色-小号",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7419354838709677"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.2866243431208266",
+     "customer_scale": "1363",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n25新款b家机车包腋下包铆钉流苏三合一月牙褶皱牛皮单肩斜挎女包  \n</商品标题>\n\n<材质与工艺>\n- **主要材质**：头层牛皮（爆裂纹）  \n- **表面处理**：皮面光泽度适中，纹路呈不规则线条状，粗浅均匀  \n- **细节设计**：铆钉装饰，兼具时尚感与实用性  \n</材质与工艺>\n\n<外观设计>\n- **款式类型**：女式单肩包，兼具腋下包与斜挎包两种使用场景  \n- **风格定位**：欧美复古风，融合现代与传统元素  \n- **颜色选择**：提供多种颜色组合，包括牛油果绿、白色、粉色、铁灰色、银色、黑色及黑银色，满足个性化需求  \n- **造型特点**：月牙形设计，兼具复古与现代美感  \n</外观设计>\n\n<公司名称>\nshop14\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 300,
+    "itemId": 926911853103,
+    "offerTags": "519170;514818;522754;476930;481538;503298;387074;677890;…",
+    "storeAmount": 2763,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/926911853103.html?&object_id=926911853103",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "头层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "单根"
+     }
+    ],
+    "yxIndex": 4.32,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "外单手拎包包女2026新款时尚休闲腋下包小众高级感潮流百搭单肩包",
+    "score": 0.9121093750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "8",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "17",
+     "pay_ord_cnt_30d": "9",
+     "favor_cnt_30d": "2",
+     "cart_cnt_30d": "4"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01NHPDGv1IFlEbcJJkB_!!9000000000015-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"201580619\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop15",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5735414769309,
+    "skuTitle": "红色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7058823529411765"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "Y",
+     "repeated_rate": "0.5279472010291257",
+     "customer_scale": "17893",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "15"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n外单手拎包包女2026新款时尚休闲腋下包小众高级感潮流百搭单肩包  \n</商品标题>\n\n<商品属性>\n面料成分：PU（人造革），里料为涤纶；  \n版型设计：横款方型、中偏软硬度、小号尺寸（高13cm × 宽26cm × 厚6cm）；  \n结构特征：单肩背负式腋下包，双根肩带，无外袋、无夹层、无开盖结构；  \n重量指标：净重300g，属轻量级通勤配饰；  \n开合方式：拉链闭合；  \n内部配置：含独立手机袋，无额外隔层或收纳分区。  \n</商品属性>\n\n<公司名称>\nshop15\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 300,
+    "itemId": 888899222771,
+    "offerTags": "406018;422914;503298;669186;677890;668162;625666;595970;…",
+    "storeAmount": 2500,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/888899222771.html?&object_id=888899222771",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "法棍包"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     }
+    ],
+    "yxIndex": 4.15,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "2026新款真皮女包腋下单肩牛皮托特包小众斜挎复古软皮大容量包包",
+    "score": 0.8643162500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "5",
+     "chat_cnt_30d": "32",
+     "puhuo_cnt_30d": "39",
+     "pay_ord_cnt_30d": "6",
+     "favor_cnt_30d": "6",
+     "cart_cnt_30d": "28"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0177Fhf71xkoOLbuy2u_!!9000000000016-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop16",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5938372060069,
+    "skuTitle": "咖啡",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.46134741948089086",
+     "customer_scale": "11325",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "14"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2026新款真皮女包腋下单肩牛皮托特包小众斜挎复古软皮大容量包包  \n</商品标题>\n\n<公司名称>\nshop16\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 300,
+    "itemId": 981988980742,
+    "offerTags": "422914;503298;677890;657922;678402;677378;669186;625666;…",
+    "storeAmount": 1622,
+    "offerICTagInfo": {
+     "isYuanbaoadOffer": true,
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/981988980742.html?&object_id=981988980742",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "头层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "磁扣"
+     }
+    ],
+    "yxIndex": 4.02,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "高版本女包抖音代发真皮凯旋门包女单肩高级感腋下包小方包斜挎包",
+    "score": 0.992568125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "79",
+     "chat_cnt_30d": "117",
+     "puhuo_cnt_30d": "13",
+     "pay_ord_cnt_30d": "80",
+     "favor_cnt_30d": "60",
+     "cart_cnt_30d": "206"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01Zl8uzg2FnhzMesrtT_!!9000000000017-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "1.25%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop17",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6126734670736,
+    "skuTitle": "黑色皮肩带+礼盒",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.4370860927152318"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.366162019414584",
+     "customer_scale": "4764",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n高版本女包抖音代发真皮凯旋门包女单肩高级感腋下包小方包斜挎包  \n</商品标题>\n\n<公司名称>\nshop17\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 990153487773,
+    "offerTags": "180739;677890;627202;642050;625154;644098;647170;654850;…",
+    "storeAmount": 4641,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/990153487773.html?&object_id=990153487773",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "真皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "二层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     }
+    ],
+    "yxIndex": 4.27,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "质感链条腋下包包女2026新款大容量斜挎包百搭流浪包通勤单肩包潮",
+    "score": 0.9954493750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "81",
+     "chat_cnt_30d": "47",
+     "puhuo_cnt_30d": "28",
+     "pay_ord_cnt_30d": "82",
+     "favor_cnt_30d": "77",
+     "cart_cnt_30d": "165"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN010xoxMz1ZrB8wJd5jd_!!9000000000018-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"201580619\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop18",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6185504730507,
+    "skuTitle": "卡其色无挂件",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7244897959183674"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.48983298136355685",
+     "customer_scale": "8122",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n质感链条腋下包包女2026新款大容量斜挎包百搭流浪包通勤单肩包潮  \n</商品标题>\n\n<商品属性>\n材质：PU（人造革），里料为涤纶；  \n箱包形状：横款方型；  \n箱包大小：中；  \n硬度：中；  \n重量：270g；  \n开盖方式：拉链；  \n内部结构：含拉链暗袋、证件袋；  \n有无夹层：无；  \n肩带配置：单根肩带，适配腋下/斜挎/单肩多背法；  \n流行元素：车缝线设计；  \n风格定位：街头潮流；  \n适用场景：日常搭配；  \n上市时效：2026年春季新款。  \n</商品属性>\n\n<功能结构>\n容量定位：中等容量，兼顾实用性与便携性；  \n收纳能力：配备拉链暗袋+证件袋，满足基础分隔需求；  \n开合安全性：全封闭式拉链闭合，提升防盗性与使用便捷性；  \n轻量化设计：仅270g，减轻肩部负担，契合通勤及短途出行需求。  \n</功能结构>\n\n<公司名称>\nshop18\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 1015998064260,
+    "offerTags": "180739;422914;522754;677890;625154;595970;613378;649730;…",
+    "storeAmount": 5346,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1015998064260.html?&object_id=1015998064260",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "法棍包"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     }
+    ],
+    "yxIndex": 4.55,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "复古法棍包2026新款简约枕头包跨境腋下包包女时尚休闲百搭单肩包",
+    "score": 0.9283787500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "11",
+     "chat_cnt_30d": "6",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "12",
+     "favor_cnt_30d": "7",
+     "cart_cnt_30d": "17"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01UiTdo61zY6fPQZSS3_!!9000000000019-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop19",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6035379752802,
+    "skuTitle": "棕色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5013749477976763",
+     "customer_scale": "6920",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n复古法棍包2026新款简约枕头包跨境腋下包包女时尚休闲百搭单肩包  \n</商品标题>\n\n<商品属性>\n面料成分：PU/绒面（人造革），里料为涤纶；  \n箱包造型：枕头型轮廓，中偏软硬度，属小号腋下包；  \n尺寸规格：高16cm、厚6cm，上宽26cm、下宽30cm，手工测量允差±1.3cm；  \n重量指标：净重0.33kg，轻量化设计；  \n结构特征：含拉链暗袋、内贴袋、无夹层、单根肩带、拉链开合；  \n颜色选择：咖色、杏色、棕色、红色、黑色共5色可选。  \n</商品属性>\n\n<公司名称>\nshop19\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 1025733025449,
+    "offerTags": "180739;510210;480002;514818;522498;481538;668418;677890;…",
+    "storeAmount": 29185,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1025733025449.html?&object_id=1025733025449",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.11,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "头层牛皮保龄球腋下包真皮单肩包吐司包枕头包手提包大容量通勤包",
+    "score": 0.915488125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "9",
+     "chat_cnt_30d": "23",
+     "puhuo_cnt_30d": "33",
+     "pay_ord_cnt_30d": "10",
+     "favor_cnt_30d": "25",
+     "cart_cnt_30d": "61"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01oPYAWJ1xkoMdqDHZI_!!9000000000016-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop20",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6024955989671,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"191.44\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"172.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8571428571428571"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.41346530263688147",
+     "customer_scale": "1803",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n头层牛皮保龄球腋下包真皮单肩包吐司包枕头包手提包大容量通勤包  \n</商品标题>\n\n<公司名称>\nshop20\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 1015473451680,
+    "offerTags": "180739;422914;522754;503298;677890;657922;678402;677378;…",
+    "storeAmount": 3277,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1015473451680.html?&object_id=1015473451680",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "头层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "法棍包"
+     }
+    ],
+    "yxIndex": 4.26,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "Gentlewoman编织芭蕾包包2025新款字母刺绣质感腋下包小众单肩包",
+    "score": 0.8192775,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "16",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "4",
+     "cart_cnt_30d": "30"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01mDJOyP1GOnpk2FCWo_!!9000000000020-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop21",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5929621942025,
+    "skuTitle": "卡其色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.4"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.542410112402354",
+     "customer_scale": "10549",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nGentlewoman编织芭蕾包包2025新款字母刺绣质感腋下包小众单肩包  \n</商品标题>\n\n<商品属性>\n材质：外层为棉麻（天然透气、质朴肌理），里料为涤纶（耐磨防刮、提升内袋结构稳定性）；  \n尺寸：宽30cm × 高19cm × 厚10cm（中号横款方型，适配日常通勤与休闲场景）；  \n重量：仅0.13kg（轻量化设计，减轻肩部负担）；  \n硬度：中偏软（兼顾造型感与收纳柔韧性）；  \n开盖方式：拉链封口（保障物品安全，开合便捷）；  \n内部结构：含夹层拉链袋（基础分隔功能，提升小物收纳条理性）；  \n肩带配置：双根肩带（支持单肩/手提双背法，符合腋下包佩戴习惯）。  \n</商品属性>\n\n<公司名称>\nshop21\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 904419897771,
+    "offerTags": "422914;501506;480002;475650;514818;519170;476930;481538;…",
+    "storeAmount": 2461,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/904419897771.html?&object_id=904419897771",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "棉麻"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "字母"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "2025潮流酷辣妹复古机车个性腋下包女休闲逛街铆钉洋气轻奢单肩包",
+    "score": 0.9679587500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "21",
+     "chat_cnt_30d": "14",
+     "puhuo_cnt_30d": "37",
+     "pay_ord_cnt_30d": "22",
+     "favor_cnt_30d": "19",
+     "cart_cnt_30d": "36"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01At7Vaa2IO0YvGYthp_!!9000000000012-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop12",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5954812098207,
+    "skuTitle": "银色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.41818181818181815"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "Y",
+     "repeated_rate": "0.5713014625107347",
+     "customer_scale": "30836",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2025潮流酷辣妹复古机车个性腋下包女休闲逛街铆钉洋气轻奢单肩包  \n</商品标题>\n\n<商品属性>\n材质：PU（人造革），里料为涤纶；  \n箱包大小：小号；  \n箱包形状：横款方型；  \n硬度：硬挺结构；  \n重量：0.27kg（轻量化设计）；  \n尺寸（长×高×厚）：27cm×14cm×7cm（手工测量，允差1–3cm）；  \n开盖方式：拉链闭合；  \n肩带配置：单根肩带；  \n内部结构：含手机袋、证件袋；  \n外部结构：内贴袋；  \n有无夹层：无；  \n流行风格：复古机车风、跨境风潮、铆钉元素；  \n适用场景：日常搭配、休闲逛街。  \n</商品属性>\n\n<功能结构>\n收纳分区明确：内置手机袋+证件袋，满足基础随身物品分类需求；  \n便携性突出：轻量（270g）+小体积+单肩/腋下背法，适配短时外出与快节奏出行；  \n结构稳定性强：硬质造型保持包型挺括，不易塌陷，利于物品规整存放；  \n开合安全性高：拉链封口设计，防丢防盗优于磁吸或按扣式。  \n</功能结构>\n\n<外观设计>\n色彩选择丰富：提供卡其色、咖色、红色、银色、黑色五种配色，覆盖中性、暖调与高亮风格；  \n视觉元素鲜明：融合铆钉装饰、机车线条、复古轮廓，强化“酷辣妹”人设表达；  \n款式定位清晰：属典型腋下包品类，强调上身比例修饰与时尚出街感；  \n整体调性统一：“跨境风潮”风格体现混搭国际审美，非传统国货简约路线。  \n</外观设计>\n\n<公司名称>\nshop12\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 918557546297,
+    "offerTags": "422914;519170;677890;668162;625154;595970;649730;644098;…",
+    "storeAmount": 24760,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/918557546297.html?&object_id=918557546297",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "单根"
+     },
+     {
+      "type": "industryCPV",
+      "value": "横款方型"
+     }
+    ],
+    "yxIndex": 4.05,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "2026新款高级感时尚百搭复古包女腋下休闲女包通勤手单肩手提包",
+    "score": 0.9304587500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "5",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "6",
+     "favor_cnt_30d": "4",
+     "cart_cnt_30d": "9"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01v5PRV51cJEcFyaIzr_!!9000000000021-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop22",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5946938300932,
+    "skuTitle": "咖啡",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7894736842105263"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4310954405223586",
+     "customer_scale": "1042",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2026新款高级感时尚百搭复古包女腋下休闲女包通勤手单肩手提包  \n</商品标题>\n\n<商品属性>\n- 材质：PVC（外料）＋涤纶里料（标注为“里料质地：帆布”存疑，但表格明确写“内里：涤纶”，以表格为准）  \n- 硬度：软  \n- 箱包大小：中；箱包形状：横款方型；尺寸：24cm（长）×6cm（厚），高未标，按常规腋下包推定为约15–17cm  \n- 重量：0.36kg  \n- 开盖方式：拉链；外袋种类：立体袋；有无夹层：无；内部结构：手机袋（唯一明确功能性隔层）  \n- 肩带：双根，可拆卸，支持单肩/斜挎/腋下手提多模式切换；配可拆五金钩扣与新潮撞色织带  \n</商品属性>\n\n<设计风格>\n- 风格定位：跨境风潮、潮流时尚、复古+高级感+简约；流行元素：字母装饰  \n- 视觉特征：咖啡色主色调；时尚五金装饰；顺滑五金拉头（强调易拉不卡齿）；立体造型+辨识度腋下包廓形  \n- 设计理念：强调“简约·好搭”“有颜有值”“装你所需 容你所爱”，突出颜值与实用平衡  \n</设计风格>\n\n<公司名称>\nshop22\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 984857370553,
+    "offerTags": "425858;481538;462850;522498;516738;476930;480002;503298;…",
+    "storeAmount": 20000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/984857370553.html?&object_id=984857370553",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "字母"
+     },
+     {
+      "type": "industryCPV",
+      "value": "双根"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立体袋"
+     }
+    ],
+    "yxIndex": 4.04,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "【朱珠同款】Fabrique波士顿长款油蜡反绒腋下包女牛皮单肩法棍包",
+    "score": 0.9825587500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "54",
+     "chat_cnt_30d": "65",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "55",
+     "favor_cnt_30d": "52",
+     "cart_cnt_30d": "209"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN010QENnU1gxJm7QeYeR_!!9000000000022-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2}\",\"cate_id\":\"201548714\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop23",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6247973775821,
+    "skuTitle": "波多尔红",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"225.87951807228916\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"158.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.3275862068965517"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.39838974119280074",
+     "customer_scale": "1423",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n【朱珠同款】Fabrique波士顿长款油蜡反绒腋下包女牛皮单肩法棍包  \n</商品标题>\n\n<商品属性>\n材质：真皮（明确标注“皮质特征：真皮”，结合“油蜡反绒”工艺及“牛皮”命名，确认主体为天然皮革；里料为涤纶）  \n箱包形状：横款方型  \n箱包大小：中（官方定义）  \n硬度：中（指包体挺括度与轮廓感适中）  \n重量：500g（主参数），另提及“三折款晴雨伞”约400g、Monti单肩包约560g，综合判定为轻量级中号设计  \n肩带配置：单根肩带（属腋下包典型结构，强调单肩/斜挎兼容性）  \n开盖方式：拉链（保障安全性与防丢性）  \n外袋种类：立体袋（提升外部空间利用率与视觉层次）  \n内部结构：含拉链暗袋、证件袋（基础收纳分区，兼顾隐私与取用便捷性）  \n有无夹层：无（结构简洁，突出利落线条与功能聚焦）  \n</商品属性>\n\n<公司名称>\nshop23\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 100,
+    "itemId": 1037339261909,
+    "offerTags": "180739;677890;657922;677378;553986;625154;595970;649730;…",
+    "storeAmount": 1123,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1037339261909.html?&object_id=1037339261909",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "真皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "撞色"
+     }
+    ],
+    "yxIndex": 4.47,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "hobo女包时尚单肩腋下包2026夏头层牛皮通勤牛角包斜挎真皮女包",
+    "score": 0.9033787500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "8",
+     "chat_cnt_30d": "30",
+     "puhuo_cnt_30d": "62",
+     "pay_ord_cnt_30d": "9",
+     "favor_cnt_30d": "12",
+     "cart_cnt_30d": "39"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01QriovO1xkoLf8REz5_!!9000000000016-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop16",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5779483904539,
+    "skuTitle": "象牙白",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8214285714285714"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.46134741948089086",
+     "customer_scale": "11325",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "14"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nhobo女包时尚单肩腋下包2026夏头层牛皮通勤牛角包斜挎真皮女包  \n</商品标题>\n\n<商品属性>\n面料成分：头层牛皮（外层）＋真皮里料；软面加工，皮质光洁细腻、带轻微自然光泽，具轻度防水性与本源肌理感  \n版型设计：新月包廓形，椭圆形箱包形状；柔和曲线轮廓，简洁中见层次，强调“柔软表达”与非静止态美学  \n尺码体系：中号箱包，实测尺寸约长23cm×宽11cm×高13cm（手工平铺测量，误差±1–2cm）；重量约0.40kg，轻盈便携  \n结构细节：拉链开盖；内部含拉链暗袋；精致同色系车缝线工艺，走线严谨紧密，增强耐用性与视觉协调性  \n</商品属性>\n\n<公司名称>\nshop16\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 914710161768,
+    "offerTags": "422914;519170;503298;677890;661506;657922;678402;677378;…",
+    "storeAmount": 4000,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/914710161768.html?&object_id=914710161768",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "头层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "新月包"
+     },
+     {
+      "type": "industryCPV",
+      "value": "椭圆形"
+     }
+    ],
+    "yxIndex": 4.35,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "跨境2026新款韩国小众包包设计高级时尚腋下包法棍包单肩斜挎包女",
+    "score": 0.8931056250000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "7",
+     "chat_cnt_30d": "13",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "8",
+     "favor_cnt_30d": "5",
+     "cart_cnt_30d": "35"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01ZWcLEE1ukPC8PjYc5_!!9000000000023-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop24",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5945265269203,
+    "skuTitle": "白色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.4"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5662426077743055",
+     "customer_scale": "4913",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n跨境2026新款韩国小众包包设计高级时尚腋下包法棍包单肩斜挎包女  \n</商品标题>\n\n<商品属性>\n材质：PU（人造革），里料为涤纶；  \n箱包形状：横款方型，属小方包潮流款式；  \n硬度：中偏软；  \n尺寸规格：宽25cm × 高12.5cm × 厚6.5cm（手工测量，允差±1–3cm）；  \n重量：0.21kg，轻量化设计；  \n开盖方式：包盖式；  \n内部结构：含手机袋、内贴袋；  \n外部结构：无夹层、无外袋；  \n肩带配置：单根肩带，支持腋下/单肩/斜挎多背法；  \n颜色选项：咖色、白色、红色、黑色四色可选；  \n流行元素：车缝线装饰 + 锁扣设计；  \n表面工艺：热转印印花。  \n</商品属性>\n\n<公司名称>\nshop24\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 100,
+    "itemId": 983036094913,
+    "offerTags": "180739;422914;677890;525314;595970;649730;625666;649218;…",
+    "storeAmount": 11842,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/983036094913.html?&object_id=983036094913",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "锁扣"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.33,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "时尚百搭腋下包小香风气质通勤手提包女洋气毛毡流行女单肩包轻便",
+    "score": 0.81171875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "14",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01d2VvkL1PE6rvN4KlX_!!9000000000024-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop25",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 4891882940461,
+    "skuTitle": "玫粉色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.6363636363636364"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5802831524939777",
+     "customer_scale": "10638",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n时尚百搭腋下包小香风气质通勤手提包女洋气毛毡流行女单肩包轻便  \n</商品标题>\n\n<商品属性>\n**材质类型**：采用毛毡材质，质感柔软且具有一定的耐用性。  \n**箱包造型**：横款方型设计，兼具实用性与美观性。  \n**尺寸规格**：上宽18cm、下宽20cm、高度14cm、厚度6cm，属于中等容量的腋下包。  \n**重量表现**：净重约0.05kg，轻盈便携，适合日常携带。  \n</商品属性>\n\n<功能结构>\n**内部配置**：设有证件袋，便于收纳随身物品。  \n**外部结构**：配备内贴袋和拉链开合方式，提升安全性与便捷性。  \n**夹层设计**：无独立夹层，内部空间简洁实用。  \n</功能结构>\n\n<外观设计>\n**流行元素**：融入拼接工艺与车缝线设计，增强视觉层次感。  \n**配色选择**：提供卡其色、玫粉色、绿色、黑色四种颜色选项，适配多种穿搭风格。  \n**风格定位**：都市简约风格，融合小香风与现代通勤审美，展现女性优雅气质。  \n</外观设计>\n\n<公司名称>\nshop25\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 684466752047,
+    "offerTags": "401410;393986;393474;398594;422914;503298;480002;475650;…",
+    "storeAmount": 3826,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/684466752047.html?&object_id=684466752047",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "单根"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "韩国小众单肩腋下包编织菜篮子休闲女士手提包个性洋气子母水桶包",
+    "score": 0.8040431250000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "14",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0146KvsK2Kww5eDryrS_!!9000000000025-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2}\",\"cate_id\":\"201548714\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop26",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6111357781384,
+    "skuTitle": "金色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.3333333333333333"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.48943516559035405",
+     "customer_scale": "5990",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n韩国小众单肩腋下包编织菜篮子休闲女士手提包个性洋气子母水桶包  \n</商品标题>\n\n<商品属性>\n材质：PU（表层与里料均为PU）；  \n箱包形状：水饺型；  \n箱包大小：中；  \n硬度：中偏软；  \n重量：0.40kg；  \n尺寸：长32cm × 宽10cm × 高17cm（手工测量，误差±1–2cm）；  \n开盖方式：敞口；  \n肩带配置：单根、垂直高度27cm（适配手提），另含抽绳调节；  \n内部结构：主袋+手机袋+内贴袋；  \n外部结构：无夹层；  \n开合形式：抽绳闭合；  \n风格定位：街头潮流；  \n流行元素：编织纹；  \n适用场景：日常搭配。  \n</商品属性>\n\n<公司名称>\nshop26\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 1064452733926,
+    "offerTags": "180739;422914;480002;514818;522498;481538;678658;678146;…",
+    "storeAmount": 71564,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1064452733926.html?&object_id=1064452733926",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "单肩包"
+     },
+     {
+      "type": "industryCPV",
+      "value": "编织纹"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "洋气时尚百搭包包女2025新款高级感精致单肩斜挎包休闲手提腋下包",
+    "score": 0.886328125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01xKovsf26Pac1lvFM4_!!9000000000026-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop27",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6201063278637,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4886007292479192",
+     "customer_scale": "1843",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n洋气时尚百搭包包女2025新款高级感精致单肩斜挎包休闲手提腋下包  \n</商品标题>\n\n<商品属性>\n尺寸（长×宽×高）：22 cm × 6 cm × 14 cm（8.66″×2.36″×5.51″）；净重：0.29 kg；箱包大小：小；箱包形状：横款方型；硬度：中偏软；风格：街头潮流；颜色：黑色；流行元素：纯色  \n</商品属性>\n\n<设计细节>\n闭合方式：拉链开盖，兼顾安全性与便捷性；内部收纳分区清晰（含证件袋+双拉链袋）；纯色简约外观强化百搭性；横款方型轮廓契合当下腋下包流行廓形  \n</设计细节>\n\n<公司名称>\nshop27\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 90,
+    "itemId": 1026920416720,
+    "offerTags": "425858;426882;516738;480002;481538;514818;678658;677890;…",
+    "storeAmount": 405,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1026920416720.html?&object_id=1026920416720",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "纯色"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 2.87,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "真皮女包therow羊皮包包通勤托特包韩国小众设计单肩包女士腋下包",
+    "score": 0.9559962500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "36",
+     "chat_cnt_30d": "35",
+     "puhuo_cnt_30d": "32",
+     "pay_ord_cnt_30d": "37",
+     "favor_cnt_30d": "23",
+     "cart_cnt_30d": "86"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01wyD5pE1da0m5BEjJe_!!9000000000027-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop20",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6058189588421,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"191.44\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"172.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8217054263565892"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.41346530263688147",
+     "customer_scale": "1803",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n真皮女包therow羊皮包包通勤托特包韩国小众设计单肩包女士腋下包  \n</商品标题>\n\n<公司名称>\nshop20\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 90,
+    "itemId": 1039196134664,
+    "offerTags": "180739;422914;522754;677890;657922;678402;677378;644098;…",
+    "storeAmount": 2000,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1039196134664.html?&object_id=1039196134664",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "真皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "超纤"
+     },
+     {
+      "type": "industryCPV",
+      "value": "纯色"
+     }
+    ],
+    "yxIndex": 4.33,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "头层牛皮腋下托特包女新款真皮波士顿保龄球包百搭休闲单肩女包",
+    "score": 0.886328125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "6",
+     "chat_cnt_30d": "39",
+     "puhuo_cnt_30d": "43",
+     "pay_ord_cnt_30d": "7",
+     "favor_cnt_30d": "8",
+     "cart_cnt_30d": "41"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01oPYAWJ1xkoMdqDHZI_!!9000000000016-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop16",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6013804473313,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"203.11111111111111\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"123.5\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.92"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.46134741948089086",
+     "customer_scale": "11325",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "14"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n头层牛皮腋下托特包女新款真皮波士顿保龄球包百搭休闲单肩女包  \n</商品标题>\n\n<材质与工艺>\n- **主要材质**：头层牛皮，质感优良，耐用性强。  \n- **里料质地**：涤纶，轻便且易于清洁。  \n- **开合方式**：拉链开合，安全可靠。  \n- **细节设计**：底部防磨铆钉、双边五金拉头设计，增强耐用性和美观性。  \n</材质与工艺>\n\n<外观与风格>\n- **颜色选择**：提供咖啡、象牙白、黑色三种经典配色，适合不同审美偏好。  \n- **款式特点**：法棍包设计，简约而不失层次感，展现优雅气质。  \n- **流行元素**：车缝线工艺，提升整体质感；纯色设计，百搭易搭配。  \n- **箱包潮流款式**：法棍包，符合当下潮流趋势。  \n</外观与风格>\n\n<公司名称>\nshop16\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 80,
+    "itemId": 1011115162274,
+    "offerTags": "422914;677890;657922;678402;677378;669186;625666;595970;…",
+    "storeAmount": 1956,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1011115162274.html?&object_id=1011115162274",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "头层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "法棍包"
+     }
+    ],
+    "yxIndex": 4.31,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE",
+     "PRICE",
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "hobo腋下包2025新款women bags广州女包工厂直销外贸包包女批发",
+    "score": 0.8325587500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "3"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01UgG77R1cYo2fHTKQe_!!9000000000005-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop3",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5972687966411,
+    "skuTitle": "白色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6540273572872479",
+     "customer_scale": "5066",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nhobo腋下包2025新款women bags广州女包工厂直销外贸包包女批发  \n</商品标题>\n\n<商品属性>\n**材质**：采用PU材质，表面光滑，具备一定耐磨性与柔软触感。  \n**尺寸规格**：长宽高分别为16cm × 6.2in × 7cm × 2.7in（约6.2英寸×16英寸），属于中号横款方型设计。  \n**重量**：净重仅0.19kg，轻便易携，适合日常通勤使用。  \n**颜色选择**：提供白色、粉红色、黑色三种配色，满足不同穿搭需求。  \n</商品属性>\n\n<功能结构>\n**内部结构**：配备证件袋、内贴袋及外拉链袋，便于分类收纳小物件。  \n**外部结构**：设有拉链开合方式，提升安全性；无夹层设计，空间简洁实用。  \n**肩带配置**：单根肩带，适配多种背法，增强佩戴灵活性。  \n</功能结构>\n\n<外观设计>\n**风格定位**：主打清新甜美风格，契合年轻女性审美偏好。  \n**流行元素**：融入字母装饰细节，增添时尚感与辨识度。  \n**箱包造型**：Hobo腋下包设计，兼具休闲与实用性，适合日常出街或短途出行。  \n</外观设计>\n\n<适用场景>\n**主要用途**：适用于日常搭配场景，如逛街、约会、购物等场合。  \n**季节适配**：作为2025年春季新品推出，色彩柔和，更适合春夏季穿着。  \n</适用场景>\n\n<公司名称>\nshop3\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 80,
+    "itemId": 926733100932,
+    "offerTags": "425858;398210;502274;519170;522498;516738;480002;481538;…",
+    "storeAmount": 89918,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/926733100932.html?&object_id=926733100932",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "字母"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "证件袋"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "毛毛包女2026潮秋冬大牌季毛绒包百搭链条腋下包真滩羊皮毛单肩",
+    "score": 0.8408787500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "6"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01yMQV4d1rVnjNSFBhk_!!9000000000028-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop28",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5988794268467,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.5"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5654458635910242",
+     "customer_scale": "518",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "11"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n毛毛包女2026潮秋冬大牌季毛绒包百搭链条腋下包真滩羊皮毛单肩  \n</商品标题>\n\n<公司名称>\nshop28\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 50,
+    "itemId": 998267038954,
+    "offerTags": "180739;677890;661506;564738;553986;649730;589826;442434;…",
+    "storeAmount": 439,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/998267038954.html?&object_id=998267038954",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "羊皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 4.14,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "韩版腋下包2025新款ladies bags广州女包工厂直营跨境包包女批发",
+    "score": 0.935546875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "7",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "14",
+     "pay_ord_cnt_30d": "8",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "14"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01UgG77R1cYo2fHTKQe_!!9000000000005-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop5",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5806793037902,
+    "skuTitle": "白色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.9"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "Y",
+     "repeated_rate": "0.49282203718120315",
+     "customer_scale": "6089",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n韩版腋下包2025新款ladies bags广州女包工厂直营跨境包包女批发  \n</商品标题>\n\n<商品属性>\n**上市年份季节**：2025年春季  \n**箱包大小**：中号  \n**箱包形状**：横款方型  \n**硬度**：软质设计  \n**肩带根数**：单根肩带  \n**颜色选项**：白色、粉红色、黑色  \n**风格定位**：清新甜美风  \n**适用场景**：日常搭配  \n</商品属性>\n\n<材质与工艺>\n**主要材质**：PU皮面 + 涤纶里料  \n**手感触感**：柔软舒适，适合日常使用  \n**细节处理**：金属拉链顺滑耐用  \n</材质与工艺>\n\n<公司名称>\nshop5\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 925941933384,
+    "offerTags": "180739;698371;421122;406018;501506;480002;514818;522754;…",
+    "storeAmount": 89915,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/925941933384.html?&object_id=925941933384",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "字母"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "证件袋"
+     }
+    ],
+    "yxIndex": 4.09,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "韩版高级感小众设计大容量腋下包包女新款简约百搭小挂饰单肩包女",
+    "score": 0.899609375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "22",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01WalsjF20NrMEx68wv_!!9000000000029-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop29",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5983657210808,
+    "skuTitle": "黑色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.52786563642202",
+     "customer_scale": "4699",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 50,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n韩版高级感小众设计大容量腋下包包女新款简约百搭小挂饰单肩包女  \n</商品标题>\n\n<商品属性>\n面料成分：PU（人造皮革）；里料质地：涤纶；重量：0.405kg；硬度：中偏软；箱包大小：中；箱包形状：横款方型；肩带根数：双根；肩带长度：65cm（可调节）；开盖方式：磁扣；内部结构：证件袋 + 内贴袋（即“有夹层”）；流行元素：车缝线；风格定位：都市简约；适用场景：日常搭配；颜色选项：白色、红色、蓝色、黑色  \n</商品属性>\n\n<功能结构>\n大容量设计（标注为“大容量腋下包”，结合中号尺寸与内袋配置，满足手机、口红、气垫、钥匙、耳机、香水等日常随身物品收纳）；模块化收纳：含证件袋+内贴袋，实现分类分区；磁扣开合：便捷快速，兼顾安全性与操作流畅度；双肩带设计：支持单肩/斜挎多背法，适配不同身形与穿搭需求  \n</功能结构>\n\n<公司名称>\nshop29\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 930713947569,
+    "offerTags": "451330;437506;516738;519170;480002;481538;514818;306562;…",
+    "storeAmount": 2000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/930713947569.html?&object_id=930713947569",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 2.01,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "复古油皮腋下包2025欧美单肩包VR跨境女包批发时尚hobo 腋下包",
+    "score": 0.861328125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01WaI0Zy1cYo1xstiey_!!9000000000005-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201972802\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop30",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5963389951054,
+    "skuTitle": "白色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6554700003613592",
+     "customer_scale": "6590",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n复古油皮腋下包2025欧美单肩包VR跨境女包批发时尚hobo 腋下包  \n</商品标题>\n\n<商品属性>\n材质：PU（人造革），表面具复古油皮质感；里料：涤纶；硬度：中偏软；箱包形状：横款方型；箱包大小：中；肩带根数：单根；开盖方式：拉链；外袋种类：内贴袋；包内部结构：证件袋；有无夹层：无夹层；颜色：咖啡色、白色、黑色；尺寸：长23×宽8×高13 cm（约9.06×3.15×5.12 in）；重量：170 g。  \n</商品属性>\n\n<公司名称>\nshop30\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 922014772870,
+    "offerTags": "425858;398210;516738;480002;481538;514818;678274;678658;…",
+    "storeAmount": 91918,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/922014772870.html?&object_id=922014772870",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     }
+    ],
+    "yxIndex": 2.22,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "大容量腋下包女2023新款高级感稀奇古怪的包包复古爆款手提单肩包",
+    "score": 0.8575587500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "4",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "5",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01pW7vqQ1u3LvLpRCzZ_!!9000000000030-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":2}\",\"cate_id\":\"201548714\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop31",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5796845845975,
+    "skuTitle": "454棕色豹纹",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5582492289726121",
+     "customer_scale": "4413",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n大容量腋下包女2023新款高级感稀奇古怪的包包复古爆款手提单肩包  \n</商品标题>\n\n<商品属性>\n**箱包类型**：腋下包  \n**箱包形状**：横款方型  \n**箱包大小**：大  \n**肩带设计**：单根可调节肩带，长度分别为26cm、32cm、32cm；宽度从32cm至35cm不等  \n**背法方式**：支持单肩、手提、斜挎三种背法  \n**材质构成**：外部采用PU材质，里料为涤纶  \n**重量区间**：轻便款约370g，重达945g或0.58kg  \n</商品属性>\n\n<外观设计>\n**流行元素**：豹纹图案，搭配可拆卸挂件装饰  \n**颜色选择**：提供多种配色组合，包括卡其色、棕色、咖色、黑色及带挂件版本  \n**风格定位**：街头潮流风格，兼具复古与时尚感  \n**细节工艺**：配有拉链暗袋、内贴袋，提升收纳实用性  \n</外观设计>\n\n<功能结构>\n**内部结构**：设有拉链暗袋，便于分类存放小物件  \n**外袋配置**：配备内贴袋，增强物品保护性  \n**开合方式**：拉链封口，保障安全性  \n</功能结构>\n\n<公司名称>\nshop31\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 764695333013,
+    "offerTags": "180739;519170;677890;621570;613378;649730;644098;589826;…",
+    "storeAmount": 85999532,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/764695333013.html?&object_id=764695333013",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "豹纹"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拉链暗袋"
+     }
+    ],
+    "yxIndex": 4.15,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "跨境货源高质量Ophidia迷你腋下老花G法棍hobo手提链条真皮女包包",
+    "score": 0.835546875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "4",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01V2ZPEm1toEuwJsrpo_!!9000000000031-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop32",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6017071304592,
+    "skuTitle": "棕色金链",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"231.65625\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"119.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.46153846153846156"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.2688836261737788",
+     "customer_scale": "5099",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n跨境货源高质量Ophidia迷你腋下老花G法棍hobo手提链条真皮女包包  \n</商品标题>\n\n<商品属性>\n面料成分：头层牛皮（外皮）＋帆布（里料）  \n箱包大小：MINI/迷你（尺寸：19×10×3 cm）  \n箱包形状：横款方型  \n款式类型：Hobo包（腋下包/手提包）  \n开盖方式：拉链  \n提拎部件：锁链式提把（含金链/银链配色）  \n外袋种类：立体袋  \n有无夹层：无  \n硬度：中偏软  \n流行元素：印花（字母图案）、老花（Ophidia/G法棍风格）  \n风格定位：跨境风潮  \n</商品属性>\n\n<公司名称>\nshop32\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 1012607155281,
+    "offerTags": "180739;502274;677890;553986;650242;649730;649218;483394;…",
+    "storeAmount": 5000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1012607155281.html?&object_id=1012607155281",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "头层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "中偏软"
+     },
+     {
+      "type": "industryCPV",
+      "value": "印花"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "山羊纹凯丽腋下包新款真皮包女百搭单肩腋下包高级感复古小方包女",
+    "score": 0.9558493750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "10",
+     "chat_cnt_30d": "13",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "11",
+     "favor_cnt_30d": "29",
+     "cart_cnt_30d": "45"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01QwfxfX1bC4nzK7agH_!!9000000000032-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"箱包潮流款式\\\",\\\"prop_id\\\":147156518,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"流行元素\\\",\\\"prop_id\\\":8614,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"201554511\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop33",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6101448491199,
+    "skuTitle": "马鞍红金扣 27.5cm 配礼盒",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.3416888851384676",
+     "customer_scale": "1102",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "10"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n山羊纹凯丽腋下包新款真皮包女百搭单肩腋下包高级感复古小方包女  \n</商品标题>\n\n<材质与工艺>\n- 主材采用头层牛皮，质感细腻且耐用，具备天然皮革特有的纹理光泽。  \n- 包身使用山羊皮制作，外观呈现“山羊纹”视觉效果，兼具高级感与复古韵味。  \n- 里料同样选用牛皮材质，提升整体包裹性与舒适度。  \n- 硬度适中，兼顾造型挺括与柔软手感，适合多种穿搭风格。  \n</材质与工艺>\n\n<设计与款式>\n- 款式定位为“腋下包”，属于小号横款方型包型，空间利用率高，便于随身携带。  \n- 背法多样：支持单肩、斜挎及腋下背法，适应不同场合与穿搭需求。  \n- 开盖方式为锁扣设计，兼具安全性与仪式感，符合欧美复古审美趋势。  \n- 内部结构包含证件袋，方便收纳常用物品；外袋为内贴袋，简洁实用。  \n- 风格融合欧美复古与现代简约，通过银扣装饰强化精致感。  \n</设计与款式>\n\n<公司名称>\nshop33\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 30,
+    "itemId": 978070463939,
+    "offerTags": "425858;510210;515458;522498;516738;476930;481538;514818;…",
+    "storeAmount": 760,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/978070463939.html?&object_id=978070463939",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "真皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "头层牛皮"
+     },
+     {
+      "type": "industryCPV",
+      "value": "牛皮"
+     }
+    ],
+    "yxIndex": 4.3,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "真皮高级感保龄球包包女秋冬新款复古大容量通勤单肩手提腋下包",
+    "score": 0.8825587500000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "5",
+     "chat_cnt_30d": "12",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "6",
+     "favor_cnt_30d": "7",
+     "cart_cnt_30d": "17"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01XhpKkU1da0ka2e5qS_!!9000000000027-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"箱包大小\\\",\\\"prop_id\\\":100078582,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"开盖方式\\\",\\\"prop_id\\\":1701,\\\"policy_prop_sort_num\\\":8},{\\\"prop_name\\\":\\\"里料质地\\\",\\\"prop_id\\\":17137233,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"款式\\\",\\\"prop_id\\\":1811,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"硬度\\\",\\\"prop_id\\\":3301,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"皮质特征\\\",\\\"prop_id\\\":8628,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":973,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"124020001\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop20",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6142321391863,
+    "skuTitle": "棕色",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.5454545454545454"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.41346530263688147",
+     "customer_scale": "1803",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n真皮高级感保龄球包包女秋冬新款复古大容量通勤单肩手提腋下包  \n</商品标题>\n\n<商品属性>\n面料成分：里料为真皮；整体为软面工艺；硬质为“软”，属轻盈柔韧质感；  \n版型设计：横款方型、中号尺寸、中等体量，适配日常通勤与休闲场景；  \n结构细节：含拉链暗袋、挖袋外袋、软把提拎部件、无夹层、无外部口袋；  \n款式定位：女式单肩包，融合保龄球造型与复古车缝线流行元素；  \n颜色选择：提供棕色、黑色两种经典沉稳色系；  \n风格标签：都市简约风，强调高级感与复古调性。  \n</商品属性>\n\n<公司名称>\nshop20\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 30,
+    "itemId": 995718622979,
+    "offerTags": "180739;503298;677890;657922;678402;625154;595970;649730;…",
+    "storeAmount": 1600,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/995718622979.html?&object_id=995718622979",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "拉链暗袋"
+     },
+     {
+      "type": "industryCPV",
+      "value": "车缝线"
+     },
+     {
+      "type": "industryCPV",
+      "value": "横款方型"
+     }
+    ],
+    "yxIndex": 4.09,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   }
+  ],
+  "count": 40,
+  "intent": {
+   "intentType": "TEXT_SEARCH",
+   "searchKeyword": "腋下包 女",
+   "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductIntent",
+   "extInfo": {},
+   "rawQuery": "腋下包 女"
+  }
+ },
+ "success": true,
+ "requestId": "request-2",
+ "message": "success",
+ "timestamp": 1791368929978
+}

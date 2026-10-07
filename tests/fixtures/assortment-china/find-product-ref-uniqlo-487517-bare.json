@@ -1,0 +1,952 @@
+{
+ "traceId": "trace-9",
+ "code": "Success",
+ "codeType": "SUCCESS",
+ "data": {
+  "data": [
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "果之秘时光锁护肤品套装补水保湿滋润面部护理化妆品水乳套装正品",
+    "score": 0.20519104003906252,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "29",
+     "chat_cnt_30d": "15",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "30",
+     "favor_cnt_30d": "5",
+     "cart_cnt_30d": "29"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN012FTAqF1HfZjIsGZU7_!!9000000000073-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop74",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 4965794221079,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.9714285714285714"
+    },
+    "skuTitle": "精华液",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6135256733276482",
+     "customer_scale": "3814",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n果之秘时光锁护肤品套装补水保湿滋润面部护理化妆品水乳套装正品  \n</商品标题>\n\n<公司名称>\nshop74\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 800,
+    "itemId": 705619925140,
+    "offerTags": "422914;393474;514818;480002;475650;481538;519170;522498;…",
+    "storeAmount": 5609,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/705619925140.html?&object_id=705619925140",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "补水保湿"
+     },
+     {
+      "type": "industryCPV",
+      "value": "油性"
+     },
+     {
+      "type": "industryCPV",
+      "value": "国货品牌"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.61
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "自然堂凝时水乳护肤套装洗面奶冰肌水鲜颜补水抗皱淡纹紧致正品",
+    "score": 0.19570863769531252,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "10",
+     "chat_cnt_30d": "21",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "11",
+     "favor_cnt_30d": "10",
+     "cart_cnt_30d": "26"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01MkCzrq2N8xiXdvajy_!!9000000000074-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop75",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6081874836551,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.9090909090909091"
+    },
+    "skuTitle": "凝时水乳带小样共七件套",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4570281426294868",
+     "customer_scale": "4443",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n自然堂凝时水乳护肤套装洗面奶冰肌水鲜颜补水抗皱淡纹紧致正品  \n</商品标题>\n\n<公司名称>\nshop75\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "24小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 20,
+    "itemId": 1049657203746,
+    "offerTags": "425858;510210;522754;477826;516738;500354;480002;481538;…",
+    "storeAmount": 5168,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1049657203746.html?&object_id=1049657203746",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "紧致"
+     },
+     {
+      "type": "industryCPV",
+      "value": "国货品牌"
+     },
+     {
+      "type": "industryCPV",
+      "value": "正常规格"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.33
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "欧诺兰八重玻尿酸精华原液补水保湿滋养细致毛孔护肤品套盒控油",
+    "score": 0.18612994140625003,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "7",
+     "chat_cnt_30d": "8",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "8",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "11"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN012tKbDM2CcIzPUIfTk_!!9000000000075-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop76",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 4942421281882,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.6818181818181818"
+    },
+    "skuTitle": "欧诺兰八重玻尿酸臻润滢采精华乳120ml",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6675860723026508",
+     "customer_scale": "1453",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "13"
+    },
+    "quantityBegin": 3,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n欧诺兰八重玻尿酸精华原液补水保湿滋养细致毛孔护肤品套盒控油  \n</商品标题>\n\n<公司名称>\nshop76\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 697026595517,
+    "offerTags": "422914;393474;481538;480002;475650;514818;676098;659202;…",
+    "storeAmount": 51860,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/697026595517.html?&object_id=697026595517",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "紧致"
+     },
+     {
+      "type": "industryCPV",
+      "value": "正常规格"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.36
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "果之秘芦荟原液大瓶水500ml补水保湿水爽肤水滋润舒缓实体店批发",
+    "score": 0.17373311035156253,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "5",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "6",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "4"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01qgcjCq1HfZrcOopCf_!!9000000000073-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop74",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5561888574062,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.875"
+    },
+    "skuTitle": "鳄梨抗皱大瓶水500ml",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6135256733276482",
+     "customer_scale": "3814",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n果之秘芦荟原液大瓶水500ml补水保湿水爽肤水滋润舒缓实体店批发  \n</商品标题>\n\n<公司名称>\nshop74\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 790395340903,
+    "offerTags": "426882;425858;441218;422914;502658;462850;522498;516738;…",
+    "storeAmount": 414,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/790395340903.html?&object_id=790395340903",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "补水保湿"
+     },
+     {
+      "type": "industryCPV",
+      "value": "油性"
+     },
+     {
+      "type": "industryCPV",
+      "value": "正常规格"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.21
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "欧缇尚红参蜗牛护肤系列魔法蜗牛洗面奶BB霜美肌水保湿乳精华眼霜",
+    "score": 0.16309104003906252,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "3",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "4",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN010Vymk01nsunjeka4X_!!9000000000076-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop77",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 4711157091207,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"147.65384615384616\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"132.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "保湿乳",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5688472961447522",
+     "customer_scale": "1187",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 3,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n欧缇尚红参蜗牛护肤系列魔法蜗牛洗面奶BB霜美肌水保湿乳精华眼霜  \n</商品标题>\n\n<商品属性>\n产品名称：欧缇尚®红参蜗牛养护补水保湿乳液；套装类型：BB五件套（含洗面奶、BB霜、美肌水、保湿乳、眼霜，另含精华素、保湿霜、嫩肤霜/免洗面膜）；净含量：120mL（指保湿乳规格，套装内各单品容量未单独说明）；产地：广东；保质期：3年；适用人群：普通人群；适用肤质：通用；非特化妆品备案证号：粤G妆网备字2024097439；品牌类型：精品国货；是否进口：否；特殊用途化妆品：否。  \n</商品属性>\n\n<公司名称>\nshop77\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 634438529100,
+    "offerTags": "422914;393986;393474;514818;480002;522498;481538;377346;…",
+    "storeAmount": 3122,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/634438529100.html?&object_id=634438529100",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "正常规格"
+     },
+     {
+      "type": "industryCPV",
+      "value": "普通人群"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 3.41
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "院线专业点斑祛斑霜徒手清斑术代谢黑色素提亮肤色淡化各类斑点",
+    "score": 0.1558459375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "13",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01L5Om4n1gGixX3w9tB_!!9000000000077-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop78",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6105914237324,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"132.0\",\"min_invoice_hh\":\"173.0\",\"median_invoice_hh\":\"132.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": ",徒手祛斑啫喱5g",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.43573890564411893",
+     "customer_scale": "133",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n院线专业点斑祛斑霜徒手清斑术代谢黑色素提亮肤色淡化各类斑点  \n</商品标题>\n\n<公司名称>\nshop78\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1060051838318,
+    "offerTags": "180739;480002;514818;522498;481538;677890;657922;676098;…",
+    "storeAmount": 69192,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1060051838318.html?&object_id=1060051838318",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "提亮肤色"
+     },
+     {
+      "type": "industryCPV",
+      "value": "油性"
+     },
+     {
+      "type": "industryCPV",
+      "value": "男士"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.56
+   },
+   {
+    "promotionTags": [
+     "PRICE",
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "补水保湿护肤品套装水乳套盒紧致肌底修护精华水乳套装敏感肌",
+    "score": 0.154386015625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "15",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01tbI1fY1s0wcOiIPGI_!!9000000000078-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop79",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5998095022002,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"378.25\",\"min_invoice_hh\":\"18.0\",\"median_invoice_hh\":\"458.5\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.6"
+    },
+    "skuTitle": "银耳保湿水100ml",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.534388368500474",
+     "customer_scale": "397",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n补水保湿护肤品套装水乳套盒紧致肌底修护精华水乳套装敏感肌  \n</商品标题>\n\n<公司名称>\nshop79\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 20,
+    "itemId": 938076037555,
+    "offerTags": "426882;441218;425858;398210;422914;480002;514818;516738;…",
+    "storeAmount": 40000,
+    "offerICTagInfo": {
+     "isYuanbaoadOffer": true,
+     "isAddSwbpOffer": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/938076037555.html?&object_id=938076037555",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "补水保湿"
+     },
+     {
+      "type": "industryCPV",
+      "value": "国货品牌"
+     },
+     {
+      "type": "industryCPV",
+      "value": "甘油"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 1.96
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "自然堂凝时鲜颜小紫瓶护肤品套装水乳精华补水抗皱淡纹紧致亮肤正",
+    "score": 0.1536832421875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "3"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01HWH7xX1thMz5trHpx_!!9000000000079-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop80",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5903162054578,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "洗面奶（125g）",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.3963158939905804",
+     "customer_scale": "1342",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "4"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n自然堂凝时鲜颜小紫瓶护肤品套装水乳精华补水抗皱淡纹紧致亮肤正  \n</商品标题>\n\n<公司名称>\nshop80\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "24小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 891254608665,
+    "offerTags": "425858;398210;475650;522498;516738;480002;481538;514818;…",
+    "storeAmount": 2200,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/891254608665.html?&object_id=891254608665",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "紧致"
+     },
+     {
+      "type": "industryCPV",
+      "value": "国货品牌"
+     },
+     {
+      "type": "industryCPV",
+      "value": "正常规格"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.0
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "美容院专用护肤品客装抗皱紧致修复舒缓提亮保湿水乳套装大牌平替",
+    "score": 0.15277017578125002,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "6",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "6"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN015nfsIn2CwSjoKDtEv_!!9000000000080-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop81",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6205797406115,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"356.08\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"195.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7272727272727273"
+    },
+    "skuTitle": "【美容院客装-精华】本源焕亮发光精华液30ml（修丽同款平替）",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4679972931449537",
+     "customer_scale": "2096",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n美容院专用护肤品客装抗皱紧致修复舒缓提亮保湿水乳套装大牌平替  \n</商品标题>\n\n<公司名称>\nshop81\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 300,
+    "itemId": 1009877293183,
+    "offerTags": "180739;575939;522754;677890;654850;649730;649218;627202;…",
+    "storeAmount": 555232,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1009877293183.html?&object_id=1009877293183",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "补水保湿"
+     },
+     {
+      "type": "industryCPV",
+      "value": "男士"
+     },
+     {
+      "type": "industryCPV",
+      "value": "积雪草"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.01
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "上海女人雪花膏伴手礼套装老牌国货经典护肤品滋润保湿四件套",
+    "score": 0.12936718017578128,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01zfHHTD1yOetAFh0BU_!!9000000000081-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"适用肤质\\\",\\\"prop_id\\\":100000192,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"特殊用途化妆品\\\",\\\"prop_id\\\":119140111,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"化妆品功效\\\",\\\"prop_id\\\":30033,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1036807\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop82",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6108679383764,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "上海女人雪花膏伴手礼（含礼品袋）",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6743541576469484",
+     "customer_scale": "2636",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "9"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n上海女人雪花膏伴手礼套装老牌国货经典护肤品滋润保湿四件套  \n</商品标题>\n\n<商品属性>\n- **产品名称**：上海女人黄瓜籽水活精华雪花膏  \n- **净含量**：80g / 320ml（具体以实物为准）  \n- **包装形式**：提供两种选择——不含礼品袋和含礼品袋版本  \n- **产地**：江苏  \n- **保质期**：3年  \n- **生产许可证号**：苏妆20160047  \n- **非特化妆品备案证号**：沪G妆网备字2021504895  \n</商品属性>\n\n<公司名称>\nshop82\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 70,
+    "itemId": 720174387063,
+    "offerTags": "180739;441218;426882;422914;437506;522498;516738;476930;…",
+    "storeAmount": 1140,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/720174387063.html?&object_id=720174387063",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "补水保湿"
+     },
+     {
+      "type": "industryCPV",
+      "value": "国货品牌"
+     },
+     {
+      "type": "industryCPV",
+      "value": "甘油"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.0
+   }
+  ],
+  "count": 40,
+  "intent": {
+   "intentType": "TEXT_SEARCH",
+   "searchKeyword": "487517",
+   "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductIntent",
+   "extInfo": {},
+   "rawQuery": "487517"
+  }
+ },
+ "success": true,
+ "requestId": "request-10",
+ "message": "success",
+ "timestamp": 1791369001497
+}

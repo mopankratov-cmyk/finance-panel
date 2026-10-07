@@ -1,0 +1,9 @@
+{
+ "_synthetic": "Сконструировано по 1688-product-find/scripts/_http.py::_handle_biz_error; живым ответом не проверено",
+ "success": false,
+ "code": "SignatureInvalid",
+ "codeType": "FAILED",
+ "message": "SignatureInvalid",
+ "requestId": "request-synthetic",
+ "traceId": "trace-synthetic"
+}

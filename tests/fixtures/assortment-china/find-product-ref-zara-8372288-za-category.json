@@ -1,0 +1,1676 @@
+{
+ "traceId": "trace-11",
+ "code": "Success",
+ "codeType": "SUCCESS",
+ "data": {
+  "data": [
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "Z家外贸跨境欧美风现货ZA女装2026春季新款水洗飞行员女士夹克",
+    "score": 0.8346593750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "13",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "14",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "4"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN016QCX3l1h5YvLfxMGr_!!9000000000046-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop47",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6273130910164,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8636363636363636"
+    },
+    "skuTitle": "抹茶色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.533715754846492",
+     "customer_scale": "4464",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nZ家外贸跨境欧美风现货ZA女装2026春季新款水洗飞行员女士夹克  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n版型设计：修身型；  \n衣长规格：普通款（50cm＜衣长≤65cm），实测前衣长1.0–1.5m（依部位分段测量）；  \n袖型特征：常规袖、长袖；  \n领型结构：V字领；  \n门襟形式：拉链闭合；  \n厚薄指数：常规厚度；  \n重量指标：净重570g；  \n尺码体系：提供XS/S/M/L四档标准尺码；  \n吊牌配置：配有吊牌，无领标。  \n</商品属性>\n\n<公司名称>\nshop47\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 1063787576068,
+    "offerTags": "180739;480002;501506;514818;522754;481538;677890;676098;…",
+    "storeAmount": 39996,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1063787576068.html?&object_id=1063787576068",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "欧美风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.24
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "TAOP&ZA 2026秋季新品女装宽松休闲时尚立领长袖夹克外套 8372288",
+    "score": 0.7984375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "3"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01wTgQMTJx5uH3FPpA_!!9000000000082-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop83",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6297634722923,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "红色 XS",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5079562126667312",
+     "customer_scale": "1769",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nTAOP&ZA 2026秋季新品女装宽松休闲时尚立领长袖夹克外套 8372288  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n版型设计：宽松型，立领+拉链门襟，常规袖、长袖、普通衣长（50cm＜衣长≤65cm）；  \n尺码体系：提供XS、S、M、L四档标准女式尺码；  \n工艺特征：采用立体剪裁工艺；  \n颜色与图案：纯色红色；  \n风格定位：简约通勤风 × 气质通勤，融合舒适休闲跨境风格；  \n吊牌与标识：有领标，无吊牌。  \n</商品属性>\n\n<公司名称>\nshop83\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1080947777395,
+    "offerTags": "441218;438594;439106;414146;481346;481538;514818;516738;…",
+    "storeAmount": 2000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1080947777395.html?&object_id=1080947777395",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立体剪裁"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.13
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "za跨境外贸现货2025款欧美女装秋季时尚拉链刺绣圆领女士夹克外套",
+    "score": 0.7964843750000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "17",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "18",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01Imv8Q21h5Yrrkk1KE_!!9000000000046-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop47",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5940758641974,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.47058823529411764"
+    },
+    "skuTitle": "象牙白 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.533715754846492",
+     "customer_scale": "4464",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nza跨境外贸现货2025款欧美女装秋季时尚拉链刺绣圆领女士夹克外套  \n</商品标题>\n\n<商品属性>\n**面料成分**：主面料为涤纶（聚酯纤维），含量90%-95%，辅以棉（85%）提升舒适度。  \n**版型设计**：常规版型，适合日常穿着，提供舒适的活动空间。  \n**尺码体系**：包含XS、S、M、L四个尺码，适配不同体型女性。  \n**重量与厚度指数**：轻便常规厚度，适合春秋季节穿着。  \n</商品属性>\n\n<公司名称>\nshop47\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 60,
+    "itemId": 982500948025,
+    "offerTags": "425858;426882;502274;516738;476930;480002;481538;503298;…",
+    "storeAmount": 79992,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/982500948025.html?&object_id=982500948025",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "欧美风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "刺绣"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.13
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "跨境女装2026秋冬新款 时尚复古休闲长袖立领棉衣夹克外套8372288",
+    "score": 0.739453125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01WgwrjDS6J8C3FPpA_!!9000000000056-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop57",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6136236801696,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "红色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49037867935491775",
+     "customer_scale": "2145",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n跨境女装2026秋冬新款 时尚复古休闲长袖立领棉衣夹克外套8372288  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n版型设计：立领、常规袖、长袖、简约通勤风+日韩休闲风格融合；  \n尺码体系：提供S/M/L三档基础尺码；  \n厚薄指数：标注为“常规”，适配秋冬季过渡穿着需求；  \n工艺特征：采用拼接工艺，强化视觉层次感与结构表现力。  \n</商品属性>\n\n<公司名称>\nshop57\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1082953013238,
+    "offerTags": "438594;439106;414146;514818;481346;522434;481538;522690;…",
+    "storeAmount": 3,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1082953013238.html?&object_id=1082953013238",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "1",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 1.98
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "外贸女装2026秋冬新款   时尚休闲长袖立领棉衣夹克外套8372288",
+    "score": 0.700390625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01yWUCiQIxxmK3FPpA_!!9000000000083-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop84",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6140956509391,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "红色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4528991680652193",
+     "customer_scale": "600",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n外贸女装2026秋冬新款   时尚休闲长袖立领棉衣夹克外套8372288  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n版型设计：常规版型、短款衣长（40cm＜衣长≤50cm）、高领、长袖、常规袖型；  \n尺码体系：提供S/M/L三档基础尺码；  \n工艺细节：采用拼接工艺，含3D视觉效果图案；  \n颜色与风格：主色为红色，定位复古风，融合个性街头跨境风格；  \n吊牌与标识：无吊牌、无领标；  \n计量与供应：按件销售，最小起批量为1件；  \n货源性质：源头工厂直供，属跨境专供款，适配Amazon、Ozon、eBay、Alibaba Group、TikTok等多平台分销。  \n</商品属性>\n\n<公司名称>\nshop84\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1087509220041,
+    "offerTags": "455234;438594;439106;414146;481346;522434;481538;522690;…",
+    "storeAmount": 3,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1087509220041.html?&object_id=1087509220041",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     },
+     {
+      "type": "industryCPV",
+      "value": "高领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 1.77
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "速卖通爆款外贸女装厂家现货批发ZA复古时尚宽松麂皮绒飞行员夹克",
+    "score": 0.65894125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "4",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01whu9I3oMs5D3FPpA_!!9000000000084-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop85",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6130459768385,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "黑色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5182634441677496",
+     "customer_scale": "4470",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n速卖通爆款外贸女装厂家现货批发ZA复古时尚宽松麂皮绒飞行员夹克  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为麂皮绒，含兔毛（材质成分明确标注）；工艺含免烫处理；有吊牌、领标；衣长为普通款（50cm＜衣长≤65cm）；袖型为连袖，袖长为长袖；领型为翻领；门襟为拉链；版型为宽松型；厚薄属“厚”款；款式类型、风格类型归类为街头潮人/个性街头，整体风格为欧美风。  \n</商品属性>\n\n<公司名称>\nshop85\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1080048932207,
+    "offerTags": "438594;439106;414146;481346;502274;483394;481538;514818;…",
+    "storeAmount": 29997,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1080048932207.html?&object_id=1080048932207",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "欧美风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "麂皮绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "2",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "2",
+     "chat_uv_7d": "1",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.71
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "批发跨境欧美外贸秋季ZA女装长袖立领波点印花夹克外套女6318278",
+    "score": 0.6259306250000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01TElunSFXokB3thOC_!!9000000000085-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop86",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6138601057691,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "巧克力棕色 XS (160/80A)",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.360625984680945",
+     "customer_scale": "236",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n批发跨境欧美外贸秋季ZA女装长袖立领波点印花夹克外套女6318278  \n</商品标题>\n\n<商品属性>\n面料成分：涤纶（聚酯纤维）为主，属化纤类混纺；含“其它”成分（具体比例未说明）  \n版型设计：宽松型，适配日常活动与多场景穿着需求  \n尺码体系：提供XS/S/M/L四档，对应身高体重区间明确（如S码适配160/80A），具备基础体型兼容性  \n衣长规格：普通款（50cm＜衣长≤65cm），符合主流女性外套长度定位  \n领型与细节：立领设计，搭配拉链门襟，强化利落轮廓与穿脱便利性  \n袖型特征：常规袖、长袖，兼顾保暖性与造型完整性  \n</商品属性>\n\n<公司名称>\nshop86\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1082779123124,
+    "offerTags": "441218;422914;477826;501506;514818;522498;516738;500354;…",
+    "storeAmount": 888,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1082779123124.html?&object_id=1082779123124",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "百搭风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "印染"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "1",
+     "pay_ord_byr_30d": "1",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.0
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "Z家外贸跨境欧美风za女装2026春季新款时尚高领波点外套女士夹克",
+    "score": 0.47265625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "7",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01n9ssjN1h5Yu0CzPvg_!!9000000000046-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop47",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6211406854901,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "粉红色 XS",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.533715754846492",
+     "customer_scale": "4464",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nZ家外贸跨境欧美风za女装2026春季新款时尚高领波点外套女士夹克  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维），梭织工艺；  \n版型设计：修身型，高领+常规袖+长袖，衣长属普通款（50–65cm）；  \n尺码体系：XS/S/M/L四档，提供肩宽、胸围、衣长、袖长及单件净重数据（均标注为0.3kg，存在明显录入异常，应以实测为准）；  \n重量与厚度指数：整件约0.3kg，厚薄标注为“常规”，适配春秋季日常穿着；  \n吊牌与标识：配有吊牌，无领标。  \n</商品属性>\n\n<公司名称>\nshop47\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1033605868942,
+    "offerTags": "425858;438594;439106;414146;412482;481346;480002;481538;…",
+    "storeAmount": 199980,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1033605868942.html?&object_id=1033605868942",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "欧美风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 3.42
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "外贸跨境2025秋季 ZA欧美风休闲反绒皮效果立领夹克外套女3046278",
+    "score": 0.46718750000000003,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01JG3AHN1eYT1cVU891_!!9000000000086-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop87",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5960149872724,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "卡其色 XS",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5096916521381019",
+     "customer_scale": "5817",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n外贸跨境2025秋季 ZA欧美风休闲反绒皮效果立领夹克外套女3046278  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为麂皮绒（成分含量未标注具体百分比，但检测值显示含65.5%±1.5%、98%±2%等多组数值，结合上下文及行业惯例，判定为麂皮绒复合材质，主体为聚酯纤维类仿麂皮）；  \n版型设计：常规版型，立领+单排扣门襟，街头潮人风格，强调个性街头跨境调性；  \n尺码体系：提供XS/S/M/L四码（表格中误标“i”应为“L”，依据衣长递增序列及常见尺码逻辑校正），各码衣长53–59cm，胸围106–118cm，肩宽44–47cm，符合亚洲女性常规尺码覆盖；  \n重量与厚度指数：整件净重约690g，厚薄标注为“常规”，适配秋季中等温区穿着。  \n</商品属性>\n\n<公司名称>\nshop87\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 990529490998,
+    "offerTags": "437506;425858;442434;439106;414146;412482;481346;501442;…",
+    "storeAmount": 0,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/990529490998.html?&object_id=990529490998",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "欧美风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "麂皮绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.69
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "KAOPU ZA 2025秋季新款女装时尚休闲长袖立领皮衣夹克外套",
+    "score": 0.409736875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01MagTzA1k9Aq58bpEy_!!9000000000087-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop88",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6106613858426,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.7142857142857143"
+    },
+    "skuTitle": "军绿色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4858939428409211",
+     "customer_scale": "1167",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nKAOPU ZA 2025秋季新款女装时尚休闲长袖立领皮衣夹克外套  \n</商品标题>\n\n<商品属性>\n品牌：KAOPU ZA  \n适用性别：女  \n上市年份/季节：2025年秋季  \n风格类型：日韩休闲  \n跨境风格类型：舒适休闲  \n版型：常规  \n袖型：常规袖  \n袖长：长袖  \n领型：立领  \n门襟：拉链  \n图案：纯色  \n颜色选项：军绿色、咖啡色、黑色  \n尺码范围：XS、S、M、L  \n面料名称：PU  \n厚薄程度：常规  \n克重：0.79kg/件  \n吊牌与领标：无吊牌、无领标  \n货号：80  \n计量单位：件  \n</商品属性>\n\n<公司名称>\nshop88\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 500,
+    "itemId": 981167051910,
+    "offerTags": "425858;502274;477826;476930;516738;500354;480002;481538;…",
+    "storeAmount": 5819,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/981167051910.html?&object_id=981167051910",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "休闲风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.72
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "现货跨境欧美复古豹纹立领短款夹克女 宽松单排扣休闲外套",
+    "score": 0.36785390625000003,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "7",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "5",
+     "pay_ord_cnt_30d": "8",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01G01lO51jsgdUN9kSX_!!9000000000088-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop89",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6271106758267,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"268.44\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"204.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.875"
+    },
+    "skuTitle": "小麦色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49995225883709365",
+     "customer_scale": "423",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n现货跨境欧美复古豹纹立领短款夹克女 宽松单排扣休闲外套  \n</商品标题>\n\n<商品属性>\n面料成分：涤纶；  \n版型设计：宽松型；  \n衣长规格：普通款（50cm＜衣长≤65cm），实测XS–XXL衣长55.0–60.0cm；  \n领型与门襟：立领、单排扣；  \n袖型与长度：常规袖、长袖；  \n厚薄指数：常规；  \n颜色：小麦色；  \n图案工艺：豹纹印花；  \n风格定位：休闲风 × 日韩休闲 × 跨境舒适休闲；  \n适用性别：女；  \n上市时效：2026年夏季款。  \n</商品属性>\n\n<公司名称>\nshop89\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 10,
+    "itemId": 1059886371702,
+    "offerTags": "500354;516738;522754;502274;481538;514818;673154;677890;…",
+    "storeAmount": 105,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1059886371702.html?&object_id=1059886371702",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "休闲风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "印花"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.03
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "TAOP&ZA 女装2026夏季宽松舒适复古上衣仿皮夹克外套欧美复古夹克",
+    "score": 0.3207203125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0128ki7V1bXbTJxfLmh_!!9000000000082-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop83",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6094640464812,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "墨绿色 XS",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5079562126667312",
+     "customer_scale": "1769",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nTAOP&ZA 女装2026夏季宽松舒适复古上衣仿皮夹克外套欧美复古夹克  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n版型设计：宽松型、中长款（衣长65–80cm）、立领、拉链门襟、常规长袖；  \n尺码体系：XS/S/M/L四档标准尺码；  \n工艺特征：拼接工艺、做旧处理、纯色设计；  \n风格定位：文艺复古风，融合欧美及东南亚市场审美偏好；  \n颜色选择：乳白色、卡其色、墨绿色、深棕色、深红色、黑色共6种经典复古色调。  \n</商品属性>\n\n<公司名称>\nshop83\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1056000424762,
+    "offerTags": "425858;441218;516738;514818;480002;481538;386434;676098;…",
+    "storeAmount": 11999,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1056000424762.html?&object_id=1056000424762",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.05
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "PB&ZA跨境欧美爆款 2026秋新款拉链款软质正肩显瘦拿破仑夹克外套",
+    "score": 0.31043484375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "6",
+     "chat_cnt_30d": "7",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "7",
+     "favor_cnt_30d": "2",
+     "cart_cnt_30d": "6"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01Xtpi7Yg61aL1chua_!!9000000000089-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop90",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6288230682315,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "深空灰 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5481745745395463",
+     "customer_scale": "6814",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nPB&ZA跨境欧美爆款 2026秋新款拉链款软质正肩显瘦拿破仑夹克外套  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n款式类型：立领+拉链门襟+正肩剪裁+常规袖+长袖+普通衣长（52–55 cm）；  \n版型设计：常规版型、显瘦剪裁、软质质感；  \n风格定位：御姐风 × 气质通勤，融合舒适休闲跨境风格；  \n颜色选择：卡其色、深棕色、深空灰、白色、红色、藏青色、黑色共7色；  \n尺码体系：XS/S/M/L四档，提供肩宽、胸围、衣长、袖长实测数据（单位：cm），平铺测量，允差±1–3 cm；  \n工艺细节：拼接工艺，含纽扣流行元素；  \n吊牌与标识：无吊牌、无领标。  \n</商品属性>\n\n<公司名称>\nshop90\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 10,
+    "itemId": 1072768254529,
+    "offerTags": "516738;481538;514818;670338;662658;666498;676098;562306;…",
+    "storeAmount": 27961,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1072768254529.html?&object_id=1072768254529",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "御姐风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "1",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "2",
+     "pay_ord_byr_7d": "1",
+     "poling_dates": "1",
+     "chat_uv_7d": "1",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.09
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "批发跨境欧美外贸秋季新品ZA女装配垫肩皮革效果夹克外套4391705",
+    "score": 0.30683593750000004,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01V7ePxgtBSHI3thOC_!!9000000000085-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop86",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6302818491098,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "深棕色 S (165/84A)",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.360625984680945",
+     "customer_scale": "236",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n批发跨境欧美外贸秋季新品ZA女装配垫肩皮革效果夹克外套4391705  \n</商品标题>\n\n<商品属性>\n面料成分：PU（聚氨酯合成革）；辅料含“其它”（具体成分未说明）  \n版型设计：宽松型，立领，单排扣，常规袖与长袖，普通衣长（50cm＜衣长≤65cm）  \n尺码体系：S码（适配身高约165cm，胸围84A），标注为“165/84A”，属标准女式尺码  \n厚薄指数：常规厚度，定位2026年秋季穿着  \n颜色与图案：深棕色纯色，无印花或装饰图案  \n工艺处理：水洗工艺，提升柔软度与复古质感  \n</商品属性>\n\n<公司名称>\nshop86\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1084716981115,
+    "offerTags": "441218;422914;500354;516738;477826;481538;514818;386434;…",
+    "storeAmount": 222,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1084716981115.html?&object_id=1084716981115",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "百搭风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "水洗"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "3",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 1.92
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "PB&ZA 跨境爆款女装 甜美波点春秋百搭立领飞行员夹克外套8372236",
+    "score": 0.29413484375000004,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "6",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "7",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "8"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01HsAEWynbRHI32pKq_!!9000000000090-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop91",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6293045990679,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "米白 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.529815928351413",
+     "customer_scale": "3656",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nPB&ZA 跨境爆款女装 甜美波点春秋百搭立领飞行员夹克外套8372236  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n款式类型：夹克类外套；  \n领型：立领；  \n袖型：插肩袖；  \n门襟：拉链；  \n衣长：普通款（50cm＜衣长≤65cm），实测XS–M码衣长为59–62cm；  \n版型：宽松型；  \n厚薄：常规；  \n图案：波点；  \n风格定位：百搭风、私服名媛、舒适休闲；  \n适用性别：女；  \n颜色选项：棕色、浅蓝色、米白、粉色、红色、黄色、黑色共7色；  \n尺码体系：XS/S/M/L四档，提供肩宽、胸围、衣长、袖长具体数据（单位：cm），标注平铺测量及±1–3cm合理误差范围。  \n</商品属性>\n\n<公司名称>\nshop91\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 60,
+    "itemId": 1078426444191,
+    "offerTags": "516738;481538;514818;670594;662658;656130;670338;676098;…",
+    "storeAmount": 27936,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1078426444191.html?&object_id=1078426444191",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "百搭风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "裁剪"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "1",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "4",
+     "pay_ord_byr_7d": "1",
+     "poling_dates": "2",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "2"
+    },
+    "yxIndex": 4.1
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "TAOP&ZA 女装2026夏季新款欧美复古风方格翻领飞行员夹克外套",
+    "score": 0.2837890625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01XHIgj61bXbToHL6AL_!!9000000000082-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop83",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6275211738319,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "格纹 XS",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5079562126667312",
+     "customer_scale": "1769",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nTAOP&ZA 女装2026夏季新款欧美复古风方格翻领飞行员夹克外套  \n</商品标题>\n\n<商品属性>\n面料成分：涤纶  \n版型设计：修身型  \n衣长规格：普通款（50cm＜衣长≤65cm）  \n袖型与袖长：常规袖、长袖  \n领型：POLO领（注：商品描述中“方格翻领飞行员夹克”与“POLO领”存在表述差异，以实际标注“POLO领”为准；“翻领”可能为视觉风格描述，非结构领型分类）  \n门襟方式：拉链  \n图案与风格：格纹（格子）图案；欧美复古风、文艺复古风格  \n厚薄指数：常规  \n适用性别：女  \n尺码体系：XS/S/M/L（未提供具体尺码表或版型适配说明）  \n</商品属性>\n\n<公司名称>\nshop83\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1062488739943,
+    "offerTags": "441218;438594;439106;414146;481346;480002;481538;514818;…",
+    "storeAmount": 0,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1062488739943.html?&object_id=1062488739943",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "复古风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.02
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "TAOP&ZA秋季2026新款女装休闲格纹抽绳饰立领长袖夹克外套6318267",
+    "score": 0.27945484375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01CZ3ERkPMdpH2R3rs_!!9000000000082-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop83",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6132552664963,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "深灰色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5079562126667312",
+     "customer_scale": "1769",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nTAOP&ZA秋季2026新款女装休闲格纹抽绳饰立领长袖夹克外套6318267  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；  \n版型设计：常规版型、立领、无袖、普通衣长（50cm＜衣长≤65cm）、拉链门襟；  \n尺码体系：提供XS/S/M/L四档标准尺码；  \n厚薄指数：常规厚度，适配秋季穿着；  \n工艺细节：含抽绳饰、撞色设计、口袋装饰；  \n风格定位：简约通勤风 × 气质通勤，融合休闲与职场感；  \n颜色与图案：深灰色主色调，格纹视觉元素；  \n吊牌与标识：配有吊牌及领标。  \n</商品属性>\n\n<公司名称>\nshop83\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1078725743851,
+    "offerTags": "441218;438594;439106;414146;481346;522562;483394;481538;…",
+    "storeAmount": 1998,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1078725743851.html?&object_id=1078725743851",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "撞色"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "1",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "10",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 2.22
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "TAOP&ZA 女装2026秋季新款都市风翻领宽松舒适休闲外套夹克上衣潮",
+    "score": 0.2594784375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01zu9Pau1bXbU3hXcJn_!!9000000000082-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop83",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6118608641202,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "粉红色 XS",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5079562126667312",
+     "customer_scale": "1769",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nTAOP&ZA 女装2026秋季新款都市风翻领宽松舒适休闲外套夹克上衣潮  \n</商品标题>\n\n<商品属性>\n面料成分：涤纶（聚酯纤维）  \n版型设计：宽松型  \n衣长规格：普通款（50cm＜衣长≤65cm）  \n袖型/袖长：常规袖、长袖  \n领型：翻领  \n门襟：拉链  \n图案风格：纯色、都市风、日韩休闲  \n颜色：粉红色  \n尺码体系：XS/S/M/L（四码齐备）  \n工艺处理：印染  \n吊牌与领标：无吊牌、无领标  \n</商品属性>\n\n<公司名称>\nshop83\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1069480213009,
+    "offerTags": "441218;438594;439106;414146;481346;480002;481538;514818;…",
+    "storeAmount": 0,
+    "offerICTagInfo": {
+     "isYuanbaoadOffer": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1069480213009.html?&object_id=1069480213009",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "都市风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "印染"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 1.03
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "PB&ZA 美式双拉链复古时尚气质修身拿破仑立领拉链夹克外套160053",
+    "score": 0.25242125000000004,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "3",
+     "chat_cnt_30d": "15",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "4",
+     "favor_cnt_30d": "9",
+     "cart_cnt_30d": "17"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01YkqnULHDQ6B1chua_!!9000000000090-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop91",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6122803917799,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "卡其色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.529815928351413",
+     "customer_scale": "3656",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nPB&ZA 美式双拉链复古时尚气质修身拿破仑立领拉链夹克外套160053  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）  \n款式类型：夹克｜领型：立领（拿破仑立领）｜门襟：双排扣＋双拉链复合设计  \n图案风格：纯色｜整体风格：百搭风＋街头潮人｜流行元素：纽扣、水洗工艺  \n衣长/袖长：普通款（衣长51–53cm，袖长61–63cm）｜袖型：常规袖｜版型：常规（标注“修身”，但版型描述为“常规”，结合“气质修身”命名，体现微修身剪裁）  \n尺码体系：S/M/L三码，提供肩宽、胸围、衣长、袖长实测数据（平铺测量，误差±1–3cm）  \n颜色：卡其色  \n</商品属性>\n\n<公司名称>\nshop91\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1072839769446,
+    "offerTags": "516738;481538;514818;669058;673154;656130;670338;676098;…",
+    "storeAmount": 2989,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1072839769446.html?&object_id=1072839769446",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "百搭风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "水洗"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 4.02
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "TAOP&ZA 女装2026秋冬新款皮革效果饰层夹克休闲外套上衣 3046220",
+    "score": 0.248828125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN011IdIJc1bXbU3v3Ocu_!!9000000000082-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop83",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6117689976734,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "卡其色 XS",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5079562126667312",
+     "customer_scale": "1769",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nTAOP&ZA 女装2026秋冬新款皮革效果饰层夹克休闲外套上衣 3046220  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；版型设计：宽松型；衣长类型：普通款（50cm＜衣长≤65cm）；袖型/袖长：常规袖、长袖；领型：圆领；门襟：拉链；图案：纯色；颜色：卡其色；风格定位：小香风、清新甜美；流行元素：皮革效果饰层（非真皮，为复合工艺模拟皮革质感）；吊牌状态：无吊牌；领标：有领标。  \n</商品属性>\n\n<公司名称>\nshop83\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1067439251986,
+    "offerTags": "441218;438594;439106;414146;481346;480002;481538;514818;…",
+    "storeAmount": 0,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1067439251986.html?&object_id=1067439251986",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "小香风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "复合"
+     }
+    ],
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    },
+    "yxIndex": 1.03
+   }
+  ],
+  "count": 40,
+  "intent": {
+   "intentType": "TEXT_SEARCH",
+   "searchKeyword": "ZA 8372288 夹克 女",
+   "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductIntent",
+   "extInfo": {},
+   "rawQuery": "ZA 8372288 夹克 女"
+  }
+ },
+ "success": true,
+ "requestId": "request-12",
+ "message": "success",
+ "timestamp": 1791369088090
+}

@@ -1,0 +1,256 @@
+{
+ "about": "Образцы ответов официальных ИИ-навыков 1688 (next-1688/1688-product-find, next-1688/1688-shopkeeper), сняты 07.10.2026 пробой из 12 вызовов. Обезличено: цены → \"PRICE\", продавцы → shopN, id загрузившего в адресе картинки → вымышленный, служебные id запросов → trace-N/request-N, rankedContent урезан до блоков описания товара, offerTags — первые 8 id и «…», часть поисков урезана по числу карточек (trimmedTo; count в конверте исходный). Подписи и заголовки авторизации не сохранялись.",
+ "fixtures": [
+  {
+   "file": "find-product-niche-yexiabao-sold-desc.json",
+   "capability": "find.product",
+   "host": "https://gateway.1688.com",
+   "path": "/api/alibaba.1688.find.product/1.0.0/github",
+   "method": "POST",
+   "requestBody": {
+    "query": "腋下包 女",
+    "pageSize": 40,
+    "purchaseAmount": 1,
+    "sortType": "sold_desc",
+    "scoreLevel": "high",
+    "tags": "4306497"
+   },
+   "capturedAt": "2026-10-07T13:28:44+0300",
+   "httpStatus": 200,
+   "elapsedMs": 6254,
+   "items": 40,
+   "itemsInResponse": 40,
+   "distinctShops": 33
+  },
+  {
+   "file": "find-product-niche-nvshi-jiake-sold-desc.json",
+   "capability": "find.product",
+   "host": "https://gateway.1688.com",
+   "path": "/api/alibaba.1688.find.product/1.0.0/github",
+   "method": "POST",
+   "requestBody": {
+    "query": "女士夹克",
+    "pageSize": 20,
+    "purchaseAmount": 1,
+    "sortType": "sold_desc",
+    "scoreLevel": "high",
+    "tags": "4306497"
+   },
+   "capturedAt": "2026-10-07T13:29:42+0300",
+   "httpStatus": 200,
+   "elapsedMs": 4294,
+   "items": 20,
+   "itemsInResponse": 20,
+   "distinctShops": 17
+  },
+  {
+   "file": "find-product-niche-nvshi-jiake-2026-new-sold-desc.json",
+   "capability": "find.product",
+   "host": "https://gateway.1688.com",
+   "path": "/api/alibaba.1688.find.product/1.0.0/github",
+   "method": "POST",
+   "requestBody": {
+    "query": "女士夹克 2026秋冬新款",
+    "pageSize": 20,
+    "purchaseAmount": 1,
+    "sortType": "sold_desc",
+    "scoreLevel": "high",
+    "tags": "4306497"
+   },
+   "capturedAt": "2026-10-07T13:31:58+0300",
+   "httpStatus": 200,
+   "elapsedMs": 4790,
+   "items": 20,
+   "itemsInResponse": 20,
+   "distinctShops": 17
+  },
+  {
+   "file": "find-product-ref-zara-8372288-bare.json",
+   "capability": "find.product",
+   "host": "https://gateway.1688.com",
+   "path": "/api/alibaba.1688.find.product/1.0.0/github",
+   "method": "POST",
+   "requestBody": {
+    "query": "8372288",
+    "pageSize": 40,
+    "purchaseAmount": 1,
+    "scoreLevel": "high",
+    "tags": "4306497"
+   },
+   "capturedAt": "2026-10-07T13:29:49+0300",
+   "httpStatus": 200,
+   "elapsedMs": 4992,
+   "items": 10,
+   "itemsInResponse": 40,
+   "trimmedTo": 10,
+   "distinctShops": 10,
+   "refNumber": "8372288",
+   "itemsWithRefInTitle": 0,
+   "distinctShopsWithRefInTitle": 0
+  },
+  {
+   "file": "find-product-ref-uniqlo-487517-bare.json",
+   "capability": "find.product",
+   "host": "https://gateway.1688.com",
+   "path": "/api/alibaba.1688.find.product/1.0.0/github",
+   "method": "POST",
+   "requestBody": {
+    "query": "487517",
+    "pageSize": 40,
+    "purchaseAmount": 1,
+    "scoreLevel": "high",
+    "tags": "4306497"
+   },
+   "capturedAt": "2026-10-07T13:29:57+0300",
+   "httpStatus": 200,
+   "elapsedMs": 4776,
+   "items": 10,
+   "itemsInResponse": 40,
+   "trimmedTo": 10,
+   "distinctShops": 9,
+   "refNumber": "487517",
+   "itemsWithRefInTitle": 0,
+   "distinctShopsWithRefInTitle": 0
+  },
+  {
+   "file": "find-product-ref-zara-8372288-za-category.json",
+   "capability": "find.product",
+   "host": "https://gateway.1688.com",
+   "path": "/api/alibaba.1688.find.product/1.0.0/github",
+   "method": "POST",
+   "requestBody": {
+    "query": "ZA 8372288 夹克 女",
+    "pageSize": 40,
+    "purchaseAmount": 1,
+    "scoreLevel": "high",
+    "tags": "4306497"
+   },
+   "capturedAt": "2026-10-07T13:31:24+0300",
+   "httpStatus": 200,
+   "elapsedMs": 4649,
+   "items": 20,
+   "itemsInResponse": 40,
+   "trimmedTo": 20,
+   "distinctShops": 11,
+   "refNumber": "8372288",
+   "itemsWithRefInTitle": 3,
+   "distinctShopsWithRefInTitle": 3
+  },
+  {
+   "file": "find-product-ref-uniqlo-487517-ujia-category.json",
+   "capability": "find.product",
+   "host": "https://gateway.1688.com",
+   "path": "/api/alibaba.1688.find.product/1.0.0/github",
+   "method": "POST",
+   "requestBody": {
+    "query": "U家 487517 立领茄克 摇粒绒内里 女",
+    "pageSize": 40,
+    "purchaseAmount": 1,
+    "scoreLevel": "high",
+    "tags": "4306497"
+   },
+   "capturedAt": "2026-10-07T13:31:49+0300",
+   "httpStatus": 200,
+   "elapsedMs": 6202,
+   "items": 20,
+   "itemsInResponse": 40,
+   "trimmedTo": 20,
+   "distinctShops": 13,
+   "refNumber": "487517",
+   "itemsWithRefInTitle": 2,
+   "distinctShopsWithRefInTitle": 2
+  },
+  {
+   "file": "shopkeeper-searchoffer-yexiabao.json",
+   "capability": "shopkeeper.searchoffer",
+   "host": "https://ainext.1688.com",
+   "path": "/1688claw/skill/searchoffer",
+   "method": "POST",
+   "requestBody": {
+    "query": "腋下包 女",
+    "channel": ""
+   },
+   "capturedAt": "2026-10-07T13:30:05+0300",
+   "httpStatus": 200,
+   "elapsedMs": 6816,
+   "items": 20
+  },
+  {
+   "file": "shopkeeper-searchoffer-ref-8372288.json",
+   "capability": "shopkeeper.searchoffer",
+   "host": "https://ainext.1688.com",
+   "path": "/1688claw/skill/searchoffer",
+   "method": "POST",
+   "requestBody": {
+    "query": "8372288",
+    "channel": ""
+   },
+   "capturedAt": "2026-10-07T13:31:02+0300",
+   "httpStatus": 200,
+   "elapsedMs": 6196,
+   "items": 20,
+   "refNumber": "8372288",
+   "itemsWithRefInTitle": 0
+  },
+  {
+   "file": "shopkeeper-trend-yexiabao.json",
+   "capability": "shopkeeper.workflow.offer_hot (trend)",
+   "host": "https://ainext.1688.com",
+   "path": "/1688claw/skill/workflow",
+   "method": "POST",
+   "requestBody": {
+    "code": "offer_hot",
+    "bizParams": {
+     "query": "腋下包"
+    }
+   },
+   "capturedAt": "2026-10-07T13:30:15+0300",
+   "httpStatus": 200,
+   "elapsedMs": 1515
+  },
+  {
+   "file": "shopkeeper-trend-nvshi-jiake.json",
+   "capability": "shopkeeper.workflow.offer_hot (trend)",
+   "host": "https://ainext.1688.com",
+   "path": "/1688claw/skill/workflow",
+   "method": "POST",
+   "requestBody": {
+    "code": "offer_hot",
+    "bizParams": {
+     "query": "女士夹克"
+    }
+   },
+   "capturedAt": "2026-10-07T13:30:20+0300",
+   "httpStatus": 200,
+   "elapsedMs": 1210
+  },
+  {
+   "file": "shopkeeper-opportunities.json",
+   "capability": "shopkeeper.workflow.offer_opportunity (opportunities)",
+   "host": "https://ainext.1688.com",
+   "path": "/1688claw/skill/workflow",
+   "method": "POST",
+   "requestBody": {
+    "code": "offer_opportunity"
+   },
+   "capturedAt": "2026-10-07T13:28:54+0300",
+   "httpStatus": 200,
+   "elapsedMs": 2096
+  },
+  {
+   "file": "synthetic-gateway-error-qos.json",
+   "capability": "synthetic error envelope",
+   "synthetic": true
+  },
+  {
+   "file": "synthetic-gateway-error-signature.json",
+   "capability": "synthetic error envelope",
+   "synthetic": true
+  },
+  {
+   "file": "synthetic-ainext-error-429.json",
+   "capability": "synthetic error envelope",
+   "synthetic": true
+  }
+ ]
+}

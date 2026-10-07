@@ -1,0 +1,13 @@
+{
+ "_synthetic": "Сконструировано по 1688-shopkeeper/scripts/_http.py::_handle_biz_error; живым ответом не проверено",
+ "success": false,
+ "msgCode": "429",
+ "msgInfo": "request limited",
+ "httpStatusCode": 200,
+ "mappingCode": null,
+ "headers": {
+  "EagleEye-TraceId": "trace-synthetic"
+ },
+ "bizExtMap": null,
+ "model": null
+}

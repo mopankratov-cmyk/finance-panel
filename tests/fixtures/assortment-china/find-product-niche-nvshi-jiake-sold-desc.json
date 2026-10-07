@@ -1,0 +1,1809 @@
+{
+ "traceId": "trace-3",
+ "code": "Success",
+ "codeType": "SUCCESS",
+ "data": {
+  "data": [
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "现货-时尚个性街头风翻领系带长袖夹克外套2026秋冬跨境欧美女士",
+    "score": 0.926046875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "3",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "4",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "4"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01gNzzqA29VUaRObOm5_!!9000000000033-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop34",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6271577911662,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "棕色 794g L",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4866370127624826",
+     "customer_scale": "8393",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n现货-时尚个性街头风翻领系带长袖夹克外套2026秋冬跨境欧美女士  \n</商品标题>\n\n<商品属性>\n面料成分：PU（聚氨酯合成革）  \n版型设计：常规版型、短款（衣长40–50cm）、翻领+系带门襟  \n尺码体系：S/M/L三码，提供详细尺寸表（肩宽54–56cm、胸围100–108cm、袖长51–53cm），属标准女装尺码区间  \n厚薄指数：常规厚度，适配秋冬季过渡穿着需求  \n工艺处理：免烫处理，提升日常打理便捷性  \n</商品属性>\n\n<公司名称>\nshop34\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 1000,
+    "itemId": 847749942744,
+    "offerTags": "425858;437634;522754;502658;516738;480002;481538;501506;…",
+    "storeAmount": 16680,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/847749942744.html?&object_id=847749942744",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "街头风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     },
+     {
+      "type": "industryCPV",
+      "value": "翻领"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "跨境货源2026新款韩版机车服修身皮衣女士短款小外套pu夹克现货",
+    "score": 0.95063125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "24",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "7",
+     "pay_ord_cnt_30d": "25",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "17"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN017IbTQG1v5TMobinJN_!!9000000000034-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop35",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5940030250377,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7631578947368421"
+    },
+    "skuTitle": "酒红色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5903101190528198",
+     "customer_scale": "636",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "13"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n跨境货源2026新款韩版机车服修身皮衣女士短款小外套pu夹克现货  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为PU（聚氨酯仿皮革），属人造皮毛类材质；无天然皮革或毛领；经水洗工艺处理。  \n版型设计：修身型，短款（衣长49–54cm，符合40cm＜衣长≤50cm定义）；翻领、拉链门襟、常规长袖；整体轮廓强调线条感与利落感。  \n尺码体系：覆盖S–XXXL共6个标准尺码，提供详细三围参考（胸围86–106cm、肩宽38–43cm、袖长58–63cm、衣长49–54cm），适配成人女性体型。  \n颜色选择：酒红色、黑色为主推色；另有米白、黄色等延伸色系（部分色号对应不同货号G04/G05/G07），满足多元街头穿搭需求。  \n</商品属性>\n\n<公司名称>\nshop35\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 1000,
+    "itemId": 614362965446,
+    "offerTags": "180739;576067;575939;422914;519170;503298;677890;564226;…",
+    "storeAmount": 1656,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/614362965446.html?&object_id=614362965446",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "修身型"
+     },
+     {
+      "type": "industryCPV",
+      "value": "人造皮毛"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     }
+    ],
+    "yxIndex": 4.69,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "时颖欧美西部印花中长款夹克女秋季新款灯芯绒休闲风开衫女式外套",
+    "score": 0.869265625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01c7r7Gk1dE1iJ706PM_!!9000000000035-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop36",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5908953729871,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"346.07516339869284\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"200.5\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.25"
+    },
+    "skuTitle": "卡其色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6130765780854952",
+     "customer_scale": "4056",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n时颖欧美西部印花中长款夹克女秋季新款灯芯绒休闲风开衫女式外套  \n</商品标题>\n\n<商品属性>\n**面料成分**：100%涤纶（聚酯纤维）  \n**款式类型**：衬衫式夹克外套  \n**衣长分类**：中长款（65cm < 衣长 ≤ 80cm）  \n**版型设计**：宽松型  \n**领型与门襟**：翻领、单排扣  \n**袖型与长度**：常规袖、长袖  \n**颜色选择**：卡其色、浅蓝色、灰色、红色、绿色、黑色  \n**尺码范围**：XS至2XL  \n</商品属性>\n\n<公司名称>\nshop36\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 800,
+    "itemId": 965168446460,
+    "offerTags": "425858;426882;437506;481538;469634;516738;476930;480002;…",
+    "storeAmount": 276,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/965168446460.html?&object_id=965168446460",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "休闲风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "印花"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "HOUSE秋冬 三色美式宽松休闲保暖拉链高领女士摇粒绒夹克外套",
+    "score": 0.988286875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "58",
+     "chat_cnt_30d": "60",
+     "puhuo_cnt_30d": "4",
+     "pay_ord_cnt_30d": "59",
+     "favor_cnt_30d": "6",
+     "cart_cnt_30d": "76"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01q7K0AM1IGDhUqBPHx_!!9000000000036-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop37",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6182085879937,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.9305555555555556"
+    },
+    "skuTitle": "深灰 XS/S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6838211955460685",
+     "customer_scale": "2722",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "10"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nHOUSE秋冬 三色美式宽松休闲保暖拉链高领女士摇粒绒夹克外套  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；面料名称：摇粒绒；厚薄：厚；版型：宽松型；领型：立领（高领）；门襟：拉链；袖型：插肩袖；袖长：长袖；工艺：包边；图案：纯色；风格：休闲风／日韩休闲；适用性别：女；计量单位：件；颜色：桃红、棕绿、棕色、橘黄色、深灰、笋绿、米黄、青绿色、靛蓝（共9色可选）  \n</商品属性>\n\n<公司名称>\nshop37\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 600,
+    "itemId": 986113809618,
+    "offerTags": "180739;458242;503298;677890;661506;627202;621570;654850;…",
+    "storeAmount": 1365,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/986113809618.html?&object_id=986113809618",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "包边"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "yxIndex": 4.66,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "女士水洗收腰 装饰口袋 短夹克 牛仔伞状下摆小外套",
+    "score": 0.87413375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "3",
+     "chat_cnt_30d": "4",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "4",
+     "favor_cnt_30d": "4",
+     "cart_cnt_30d": "8"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01bRnDyo2BZjLYP8auG_!!9000000000037-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"上市年份/季节\\\",\\\"prop_id\\\":20666,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"201560705\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop38",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5821729371409,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"324.3961904761905\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"253.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "深蓝色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6372252172030319",
+     "customer_scale": "3577",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "12"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n女士水洗收腰 装饰口袋 短夹克 牛仔伞状下摆小外套  \n</商品标题>\n\n<商品属性>\n**面料成分**：采用牛仔布材质，具备良好的耐磨性与穿着舒适度。  \n**版型设计**：收腰型剪裁，贴合身形线条，展现女性优雅气质。  \n**尺码体系**：提供XS、S、M、L、XL五种尺码选择，适配不同体型需求。  \n**重量与厚度指数**：短款夹克设计，适合春秋季节穿着，兼顾保暖与轻便。  \n</商品属性>\n\n<公司名称>\nshop38\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 500,
+    "itemId": 853456997671,
+    "offerTags": "501506;481538;502274;480002;514818;519170;476930;305410;…",
+    "storeAmount": 2481,
+    "offerICTagInfo": {
+     "isYuanbaoadOffer": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/853456997671.html?&object_id=853456997671",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "牛仔布"
+     },
+     {
+      "type": "industryCPV",
+      "value": "翻领"
+     },
+     {
+      "type": "industryCPV",
+      "value": "常规"
+     }
+    ],
+    "yxIndex": 4.08,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "跨境女士 无弹力 袖口衣摆多层次 蕾丝花边 长袖牛仔夹克外套",
+    "score": 0.90497625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "4",
+     "chat_cnt_30d": "6",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "5",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01C00MfC2BZjQLOtZt7_!!9000000000037-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"上市年份/季节\\\",\\\"prop_id\\\":20666,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"201560705\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop38",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5921425357941,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"324.3961904761905\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"253.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8518518518518519"
+    },
+    "skuTitle": "蓝色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6372252172030319",
+     "customer_scale": "3577",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "12"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n跨境女士 无弹力 袖口衣摆多层次 蕾丝花边 长袖牛仔夹克外套  \n</商品标题>\n\n<商品属性>\n面料成分：牛仔布；领型：翻领；袖型：常规长袖；颜色：蓝色；风格定位：潮流风、街头潮人；跨境风格类型：舒适休闲；上市季节：2025年秋季；尺码体系：S/M/L/XL（附实测胸围与衣长数据）；计量单位：件；货号：11187；货源类型：源头工厂  \n</商品属性>\n\n<公司名称>\nshop38\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 400,
+    "itemId": 971236077259,
+    "offerTags": "425858;502274;516738;476930;480002;481538;522626;514818;…",
+    "storeAmount": 24,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/971236077259.html?&object_id=971236077259",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "潮流风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "牛仔布"
+     },
+     {
+      "type": "industryCPV",
+      "value": "翻领"
+     }
+    ],
+    "yxIndex": 4.36,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "欧美女装批发2026春季新品休闲质感飞行员夹克外套宽松版女士皮衣",
+    "score": 0.96039125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "36",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "37",
+     "favor_cnt_30d": "5",
+     "cart_cnt_30d": "13"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01Z8uaZP21Xlb4icggM_!!9000000000038-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop39",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6012768680532,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7931034482758621"
+    },
+    "skuTitle": "酒红色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5484788158144424",
+     "customer_scale": "1065",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n欧美女装批发2026春季新品休闲质感飞行员夹克外套宽松版女士皮衣  \n</商品标题>\n\n<商品属性>\n面料成分：涤纶（聚酯纤维）为主，含氨纶；内里处理为涤纶；整体为合成革类皮质，非真皮但强调“皮衣”与“飞行员夹克”双重风格定位。  \n版型设计：宽松型剪裁，适配修身型与通用型体型，兼顾活动自由度与视觉松弛感；衣长为普通款（50cm＜衣长≤65cm），实测S–3XL衣长65–70cm（依尺码递增）。  \n尺码体系：覆盖S至3XL共6个标准尺码，提供详细胸围、肩宽、衣长、袖长数据及建议身高体重区间，支持精准选码；标注手工测量±1–2cm合理误差。  \n重量与厚度指数：未直接提及，但基于“飞行员夹克”廓形、涤纶+氨纶混纺及“普通款”衣长设定，推断为轻量级春秋过渡季通勤/日常穿着厚度。  \n</商品属性>\n\n<公司名称>\nshop39\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "24小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 300,
+    "itemId": 950388949437,
+    "offerTags": "501506;510210;480002;514818;522754;476930;481538;503298;…",
+    "storeAmount": 23932,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/950388949437.html?&object_id=950388949437",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "宽松型"
+     },
+     {
+      "type": "industryCPV",
+      "value": "氨纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     }
+    ],
+    "yxIndex": 4.59,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "立领宽松拉链荔枝纹黑色休闲仿皮女士夹克外套欧美潮流新款皮衣",
+    "score": 0.969568125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "42",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "9",
+     "pay_ord_cnt_30d": "43",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01BHotC71xBXt7DwIld_!!9000000000039-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop40",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6093304547567,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"135.38095238095238\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"98.5\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "11623黑荔枝纹皮衣 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5816039142831144",
+     "customer_scale": "1912",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "9"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n立领宽松拉链荔枝纹黑色休闲仿皮女士夹克外套欧美潮流新款皮衣  \n</商品标题>\n\n<商品属性>\n面料成分：涤纶（聚酯纤维）；  \n皮质分类：仿皮革；  \n版型设计：宽松型；  \n衣长规格：普通款（实测XS–M码衣长分别为65cm、64cm、65cm、66cm），属短款夹克；  \n袖型与长度：常规袖、长袖；  \n领型：立领；  \n门襟方式：拉链闭合；  \n工艺特征：拼接工艺；  \n颜色选项：暗红、棕、黑三色荔枝纹皮衣；  \n尺码体系：XS/S/M/L四档，提供详细量尺数据（含前衣长、肩宽、胸围、袖口围等）。  \n</商品属性>\n\n<公司名称>\nshop40\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 975340280970,
+    "offerTags": "180739;422914;522754;677890;649730;644098;647170;422978;…",
+    "storeAmount": 2351,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/975340280970.html?&object_id=975340280970",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "宽松型"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     }
+    ],
+    "yxIndex": 4.15,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "厂家批发欧美外套时尚潮人女皮夹克皮衣",
+    "score": 0.9436056250000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "21",
+     "chat_cnt_30d": "11",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "22",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "13"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01cfsD0M2GG6KEUKIux_!!9000000000040-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop41",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5728517235782,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.5526315789473685"
+    },
+    "skuTitle": "黑色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6014048111257282",
+     "customer_scale": "698",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n厂家批发欧美外套时尚潮人女皮夹克皮衣  \n</商品标题>\n\n<商品属性>\n**面料成分**：PU（人造皮）  \n**皮质分类**：仿皮革  \n**版型设计**：修身型  \n**衣长范围**：54cm - 59cm（普通款）  \n**袖型与长度**：常规袖型、长袖设计  \n**领型与装饰**：翻领+铆钉元素  \n**颜色选择**：咖啡色、棕色、白色、绿色、蓝色、酒红、黑色  \n**尺码体系**：XS至XXL共6种尺码  \n</商品属性>\n\n<风格定位>\n**整体风格**：欧美风、街头潮人风  \n**流行元素**：铆钉、机车夹克、英伦范机车装  \n**适用场景**：日常穿搭、通勤休闲  \n**目标人群**：女性消费者，追求潮流与个性表达  \n</风格定位>\n\n<公司名称>\nshop41\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 829005008210,
+    "offerTags": "480002;510210;462850;501506;514818;476930;481538;668418;…",
+    "storeAmount": 31737,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/829005008210.html?&object_id=829005008210",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "修身型"
+     },
+     {
+      "type": "industryCPV",
+      "value": "人造皮毛"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     }
+    ],
+    "yxIndex": 4.68,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "秋冬新款新品欧美机车夹克 修身短款外套夹克 PU女士皮衣厂家直销",
+    "score": 0.821275,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "8",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01kT0xpd1GmA6XeAr2H_!!9000000000041-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop42",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6178882174309,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"205.625\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"207.5\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "黄色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5506756554959144",
+     "customer_scale": "1996",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "12"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n秋冬新款新品欧美机车夹克 修身短款外套夹克 PU女士皮衣厂家直销  \n</商品标题>\n\n<商品属性>\n面料成分：雪纺（未标注具体纤维比例，但属PU类仿皮材质）；  \n版型设计：修身型，适配修身型与通用型体型；  \n衣长规格：短款（实测衣长52–59cm，属40cm＜衣长≤50cm区间），符合机车夹克典型比例；  \n袖型特征：常规袖、长袖；  \n领型结构：立领；  \n门襟形式：拉链闭合；  \n帽饰配置：无帽子、无毛领；  \n工艺处理：经免烫处理，提升日常穿着便利性与平整度；  \n颜色选择：白色、粉红色、酒红色、黄色、黑色五色可选；  \n风格定位：学院风 × 清新甜美，融合机车文化与轻熟休闲调性。  \n</商品属性>\n\n<公司名称>\nshop42\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "24小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 200,
+    "itemId": 522022663147,
+    "offerTags": "422914;393474;398594;401410;502274;480002;501506;514818;…",
+    "storeAmount": 47950,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/522022663147.html?&object_id=522022663147",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "雪纺"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     }
+    ],
+    "yxIndex": 4.01,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "女士轻便立领飞行员夹克 – 时尚拉链飞行夹克，配有装饰性前袋和",
+    "score": 0.37081640625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "42",
+     "chat_cnt_30d": "14",
+     "puhuo_cnt_30d": "7",
+     "pay_ord_cnt_30d": "43",
+     "favor_cnt_30d": "6",
+     "cart_cnt_30d": "26"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01TTc5MF1p3kHRa4scE_!!9000000000042-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop43",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6110046356987,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.6811594202898551"
+    },
+    "skuTitle": "杏色 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5421628453792209",
+     "customer_scale": "2154",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n女士轻便立领飞行员夹克 – 时尚拉链飞行夹克，配有装饰性前袋和  \n</商品标题>\n\n<商品属性>\n面料成分：聚酰胺纤维（锦纶）；工艺类型：梭织；厚薄：常规；衣长：普通款（50cm＜衣长≤65cm），实测58–62cm；袖型/袖长：常规袖、长袖；领型：立领；版型：常规；风格定位：简约通勤风 × 文艺复古；跨境风格类型：气质优雅；适用性别：女；尺码体系：S/M/L/XL/XXL（含胸围105–127cm、衣长58–62cm具体数据）；颜色选项：墨绿色、杏色、浅蓝色、藏青色、黑色；图案设计：几何图案；吊牌与领标：均无。  \n</商品属性>\n\n<公司名称>\nshop43\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 1063122858950,
+    "offerTags": "180739;422914;522754;677890;553986;595970;649730;483394;…",
+    "storeAmount": 12500,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1063122858950.html?&object_id=1063122858950",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "梭织"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     },
+     {
+      "type": "industryCPV",
+      "value": "常规"
+     }
+    ],
+    "yxIndex": 4.49,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "女士PU皮短款春秋冬季外套翻领斜拉拉链款欧美热销皮衣夹克女皮衣",
+    "score": 0.8606856250000001,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "5"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01GWg18d1Ros4zZUarK_!!9000000000043-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop44",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5523900624903,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "灰色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5088786561815579",
+     "customer_scale": "1309",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n女士PU皮短款春秋冬季外套翻领斜拉拉链款欧美热销皮衣夹克女皮衣  \n</商品标题>\n\n<商品属性>\n**材质成分**：采用PU材质，具备良好的耐磨性和易打理特性。  \n**版型设计**：宽松型剪裁，适合多种身材穿着，提供舒适活动空间。  \n**衣长规格**：短款设计（前衣长47cm），贴合腿部线条，展现利落气质。  \n**袖型细节**：落肩袖设计，增强整体造型感，提升穿着自由度。  \n**领型特征**：翻领+斜拉拉链组合，兼具保暖性与时尚感，适合秋冬季节穿搭。  \n</商品属性>\n\n<公司名称>\nshop44\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 820055232351,
+    "offerTags": "422914;501506;480002;514818;522498;481538;503298;677890;…",
+    "storeAmount": 1200,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/820055232351.html?&object_id=820055232351",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "宽松型"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     }
+    ],
+    "yxIndex": 4.05,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "高版口袋表define nulu立领夹克外套女士休闲运动服修身显瘦上衣",
+    "score": 0.998046875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "80",
+     "chat_cnt_30d": "181",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "81",
+     "favor_cnt_30d": "35",
+     "cart_cnt_30d": "227"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01brljFy263bbRxSTql_!!9000000000044-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "1.23%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop45",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6041127113532,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.6842105263157895"
+    },
+    "skuTitle": "黑色 4",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.423473252955275",
+     "customer_scale": "2953",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n高版口袋表define nulu立领夹克外套女士休闲运动服修身显瘦上衣  \n</商品标题>\n\n<商品属性>\n面料成分：聚酰胺纤维（锦纶）；  \n版型设计：修身+收腰型，弧线收腰剪裁；  \n尺码体系：提供4/6/8三档标准尺码，含详细衣长、肩宽、胸围、腰围、袖长等实测数据（单位：cm），附体重建议区间（如2码适配85–95斤）；  \n厚度指数：常规（明确标注“厚薄：常规”，非加厚亦非薄透）；  \n工艺特征：拼接工艺、满针无痕缝制、拉链门襟、立领设计、口袋表装饰细节。  \n</商品属性>\n\n<公司名称>\nshop45\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 90,
+    "itemId": 1028209894687,
+    "offerTags": "180739;525314;553986;625154;595970;615426;590338;483394;…",
+    "storeAmount": 3271,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1028209894687.html?&object_id=1028209894687",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "运动风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "yxIndex": 4.24,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "现货新款春秋时尚休闲夹克外套女宽松小个子短外套",
+    "score": 0.989265625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "44",
+     "chat_cnt_30d": "115",
+     "puhuo_cnt_30d": "37",
+     "pay_ord_cnt_30d": "45",
+     "favor_cnt_30d": "147",
+     "cart_cnt_30d": "359"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01bombzT1WpOUQFiDjw_!!9000000000045-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop46",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5064609420487,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7333333333333333"
+    },
+    "skuTitle": "图片色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.40635452326415167",
+     "customer_scale": "20850",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n现货新款春秋时尚休闲夹克外套女宽松小个子短外套  \n</商品标题>\n\n<商品属性>\n**面料成分**：采用TR面料制作，具备一定的耐磨性和舒适性。  \n**版型设计**：常规版型，适合日常穿着，兼顾实用性与潮流感。  \n**尺码体系**：提供S、M、L三种尺码选择，适配不同体型需求。  \n**重量与厚度指数**：属于常规厚度，适合春秋季节穿着。  \n</商品属性>\n\n<公司名称>\nshop46\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 80,
+    "itemId": 726118351907,
+    "offerTags": "180739;576067;503298;475650;522754;462850;519170;677890;…",
+    "storeAmount": 6,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/726118351907.html?&object_id=726118351907",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "TR面料"
+     },
+     {
+      "type": "industryCPV",
+      "value": "拼接"
+     },
+     {
+      "type": "industryCPV",
+      "value": "翻领"
+     }
+    ],
+    "yxIndex": 4.42,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "2026秋冬季新款女士皮衣常规款皮夹克外套机车海宁PU皮衣大码女装",
+    "score": 0.89521625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "3",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "19",
+     "pay_ord_cnt_30d": "4",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "5"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01fzBPj21GmA8vwOd7j_!!9000000000041-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop42",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5758607476449,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"205.625\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"207.5\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "黑色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5506756554959144",
+     "customer_scale": "1996",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "12"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2026秋冬季新款女士皮衣常规款皮夹克外套机车海宁PU皮衣大码女装  \n</商品标题>\n\n<商品属性>\n面料成分：PU（聚氨酯人造革）+ 氨纶（提供弹性）；  \n版型设计：修身型，适配修身型与通用型体型；  \n尺码体系：覆盖S至5XL共8个尺码，胸围88–116cm，衣长53–60cm，袖长56–63cm，配套详细身高/体重建议区间（150–175cm）；  \n重量与厚度指数：未明确标注，但属“普通款”衣长（50cm＜衣长≤65cm）及常规袖型，结合PU材质特性，推断为中等厚度、轻量级秋冬外搭单品。  \n</商品属性>\n\n<公司名称>\nshop42\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 80,
+    "itemId": 901899026601,
+    "offerTags": "422914;502274;480002;514818;476930;481538;503298;305410;…",
+    "storeAmount": 37538,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/901899026601.html?&object_id=901899026601",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "氨纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     },
+     {
+      "type": "industryCPV",
+      "value": "压皱"
+     }
+    ],
+    "yxIndex": 4.23,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "小香风女士收腰无领短夹克 牛仔伞状毛边下摆小外套",
+    "score": 0.879795,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "3",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "4",
+     "pay_ord_cnt_30d": "4",
+     "favor_cnt_30d": "16",
+     "cart_cnt_30d": "9"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01bugFN62BZjLzIV1T2_!!9000000000037-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"上市年份/季节\\\",\\\"prop_id\\\":20666,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"201560705\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop38",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5673811609114,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"324.3961904761905\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"253.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "深蓝色 XL",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6372252172030319",
+     "customer_scale": "3577",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "12"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n小香风女士收腰无领短夹克 牛仔伞状毛边下摆小外套  \n</商品标题>\n\n<商品属性>\n**面料成分**：主面料为牛仔布，棉含量介于80%-90%，提供良好的透气性与穿着舒适感。  \n**版型设计**：采用A字型剪裁，修饰身形线条，适合多种身材比例。  \n**衣长规格**：普通款长度（50cm < 衣长 ≤ 65cm），适配日常穿搭需求。  \n**袖型与袖长**：常规长袖设计，兼顾保暖性与时尚感。  \n**领型特征**：无领设计，突出肩颈线条，增强整体造型层次感。  \n</商品属性>\n\n<风格定位>\n**整体风格**：融合都市风与气质通勤元素，兼具休闲与正式场合的兼容性。  \n**目标人群**：面向追求简约优雅、注重细节搭配的女性消费者。  \n**适用场景**：适用于通勤、约会、逛街等城市生活场景，展现成熟干练形象。  \n</风格定位>\n\n<公司名称>\nshop38\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 70,
+    "itemId": 858879423052,
+    "offerTags": "180739;481538;480002;514818;522754;476930;677890;656130;…",
+    "storeAmount": 2385,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/858879423052.html?&object_id=858879423052",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "小香风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "牛仔布"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无领"
+     }
+    ],
+    "yxIndex": 4.03,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "za跨境外贸现货2025款欧美女装秋季时尚拉链刺绣圆领女士夹克外套",
+    "score": 0.9584375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "17",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "18",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01Imv8Q21h5Yrrkk1KE_!!9000000000046-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop47",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5940758641974,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.47058823529411764"
+    },
+    "skuTitle": "象牙白 S",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.533715754846492",
+     "customer_scale": "4464",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\nza跨境外贸现货2025款欧美女装秋季时尚拉链刺绣圆领女士夹克外套  \n</商品标题>\n\n<商品属性>\n**面料成分**：主面料为涤纶（聚酯纤维），含量90%-95%，辅以棉（85%）提升舒适度。  \n**版型设计**：常规版型，适合日常穿着，提供舒适的活动空间。  \n**尺码体系**：包含XS、S、M、L四个尺码，适配不同体型女性。  \n**重量与厚度指数**：轻便常规厚度，适合春秋季节穿着。  \n</商品属性>\n\n<公司名称>\nshop47\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 60,
+    "itemId": 982500948025,
+    "offerTags": "425858;426882;502274;516738;476930;480002;481538;503298;…",
+    "storeAmount": 79992,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/982500948025.html?&object_id=982500948025",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "欧美风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "刺绣"
+     }
+    ],
+    "yxIndex": 4.13,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "2025年新品lu早春宽松户外女士夹克棒球连帽拉链开衫长袖外套",
+    "score": 0.925648125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "13",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "14",
+     "favor_cnt_30d": "20",
+     "cart_cnt_30d": "44"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01lpRPNB25aIBrq1Loz_!!9000000000047-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"1031917\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop48",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5996676867173,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"139.3448275862069\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"50.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "白色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.531276906025296",
+     "customer_scale": "698",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2025年新品lu早春宽松户外女士夹克棒球连帽拉链开衫长袖外套  \n</商品标题>\n\n<商品属性>\n面料成分：锦纶（主料），辅以涤纶（聚酯纤维）；  \n版型设计：宽松型，适配日常活动与轻度户外场景；  \n尺码体系：提供M、L、XL三档常规成人女装尺码；  \n衣长规格：普通款（50cm＜衣长≤65cm）；  \n袖型与袖长：常规袖、长袖；  \n领型与门襟：立领+拉链开合，兼具功能性与视觉层次感；  \n厚薄指数：中等厚度，定位春秋两季穿着；  \n颜色选择：卡其色、白色、紫色、黑色四色可选，另含“MISSING SOKE”系列限定色——象牙白、薰衣草紫、高级黑；  \n风格定位：简约风 × 日韩休闲，强调干净线条与基础穿搭兼容性。  \n</商品属性>\n\n<公司名称>\nshop48\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 50,
+    "itemId": 936953429528,
+    "offerTags": "180739;519170;677890;595970;649730;442434;438850;483394;…",
+    "storeAmount": 99,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/936953429528.html?&object_id=936953429528",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "宽松型"
+     },
+     {
+      "type": "industryCPV",
+      "value": "简约风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "锦纶"
+     }
+    ],
+    "yxIndex": 4.43,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "爱与南希十三行2026秋韩系翻领抽绳收腰工装麂皮夹克外套女04941",
+    "score": 0.99296875,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "79",
+     "chat_cnt_30d": "89",
+     "puhuo_cnt_30d": "17",
+     "pay_ord_cnt_30d": "80",
+     "favor_cnt_30d": "17",
+     "cart_cnt_30d": "138"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01QQ5fxqTeelH1chua_!!9000000000048-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"领型\\\",\\\"prop_id\\\":20602,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":7}\",\"cate_id\":\"125750002\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop49",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6297615206240,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "卡其 均码",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.594710023502007",
+     "customer_scale": "29918",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "9"
+    },
+    "quantityBegin": 3,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n爱与南希十三行2026秋韩系翻领抽绳收腰工装麂皮夹克外套女04941  \n</商品标题>\n\n<商品属性>\n面料成分：95%聚酯纤维 + 5%氨纶；标注“涤纶”为实际主材，属合成纤维混纺；具备柔软、亲肤、抗皱特性；无天然皮革或棉质表述，归类为“工装”风格化命名。  \n版型设计：宽松型+收腰结构，通过可调节抽绳实现自由收紧腰线，兼顾轻量感与轮廓修饰；中长款（衣长77.5–80cm），适配日常通勤与休闲场景。  \n尺码体系：均码设计，对应S码（衣长77.5cm、胸围124cm、袖长54.5cm、下摆128cm），手工测量误差±3cm；强调“宽松型”与“收腰”双重视觉平衡。  \n重量与厚度指数：厚薄标注为“常规”，结合“2026年秋季”上市及“中长款”定位，属春秋过渡季适配厚度，非极寒或酷暑专用。  \n</商品属性>\n\n<公司名称>\nshop49\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 1080937217046,
+    "offerTags": "422914;675842;662530;669186;581122;644098;595970;649730;…",
+    "storeAmount": 1436,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1080937217046.html?&object_id=1080937217046",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "氨纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "涤纶"
+     },
+     {
+      "type": "industryCPV",
+      "value": "裁剪"
+     }
+    ],
+    "yxIndex": 4.52,
+    "newReputationTags": {
+     "favor_uv_7d": "1",
+     "puhuo_uv_7d": "3",
+     "pay_ord_byr_30d": "60",
+     "pay_ord_byr_7d": "12",
+     "poling_dates": "4",
+     "chat_uv_7d": "20",
+     "cart_uv_7d": "26"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_yx_high_score",
+    "title": "2026新款Ac1996同款黑色绵皮衣女立领双排扣宽松廓形夹克机车外套",
+    "score": 0.97657375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "42",
+     "chat_cnt_30d": "64",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "43",
+     "favor_cnt_30d": "26",
+     "cart_cnt_30d": "89"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN019HGdz33PoTC2vHAO_!!9000000000049-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "2.33%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"毛领材质\\\",\\\"prop_id\\\":100281825,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"是否有毛领\\\",\\\"prop_id\\\":100784349,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"皮质分类\\\",\\\"prop_id\\\":101342242,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"版型\\\",\\\"prop_id\\\":42842855,\\\"policy_prop_sort_num\\\":1}\",\"cate_id\":\"1037019\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop50",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6300565338765,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"null\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.2222222222222222"
+    },
+    "skuTitle": "黑色 M",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49143438638808457",
+     "customer_scale": "5300",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2026新款Ac1996同款黑色绵皮衣女立领双排扣宽松廓形夹克机车外套  \n</商品标题>\n\n<商品属性>\n面料成分：PU（聚氨酯合成革）；  \n版型设计：宽松型、立领、单排扣、普通衣长（50cm＜衣长≤65cm）、长袖、无帽、无毛领；  \n尺码体系：提供S/M/L三档常规女装尺码；  \n重量与厚度指数：未明确标注，但基于“绵皮衣”“冬季适配”及“夏季上市（2026年秋季）”背景，推断为中等厚度、轻量级秋冬外搭单品。  \n</商品属性>\n\n<公司名称>\nshop50\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 40,
+    "itemId": 1084197388228,
+    "offerTags": "180739;662530;675842;525314;581122;613378;595970;649730;…",
+    "storeAmount": 3000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1084197388228.html?&object_id=1084197388228",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "宽松型"
+     },
+     {
+      "type": "industryCPV",
+      "value": "无毛领"
+     },
+     {
+      "type": "industryCPV",
+      "value": "免烫处理"
+     }
+    ],
+    "yxIndex": 4.38,
+    "newReputationTags": {
+     "favor_uv_7d": "9",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "37",
+     "pay_ord_byr_7d": "12",
+     "poling_dates": "2",
+     "chat_uv_7d": "18",
+     "cart_uv_7d": "21"
+    }
+   }
+  ],
+  "count": 20,
+  "intent": {
+   "intentType": "TEXT_SEARCH",
+   "searchKeyword": "女士夹克",
+   "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductIntent",
+   "extInfo": {},
+   "rawQuery": "女士夹克"
+  }
+ },
+ "success": true,
+ "requestId": "request-4",
+ "message": "success",
+ "timestamp": 1791368986020
+}
