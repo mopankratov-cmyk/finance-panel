@@ -8,7 +8,9 @@ import { checkCronAuth, writeSyncLog } from "@/lib/sync/helpers";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
-// Страница через Web Unlocker — 4–20 с, до 4 параллельно; новые запросы не начинаем позже BUDGET_MS − таймаут запроса.
+// Страница через Web Unlocker — 4–20 с, до 6 параллельно (ASSORTMENT_SOCIAL_CONCURRENCY, не больше 8); новые запросы не начинаем позже
+// BUDGET_MS − таймаут запроса; есть что мерить — поиск не начинает новых после своей доли этого окна (остаток после оценки времени замера,
+// не меньше половины).
 export const maxDuration = 300;
 
 const JOB = "assortment-social";
@@ -16,15 +18,18 @@ const BUDGET_MS = 240_000;
 const PHASES: readonly SocialPhase[] = ["discover", "measure", "match"];
 
 /**
- * «Залетает в соцсетях» (решение владельца 06.10.2026): рилсы Instagram про Zara и Uniqlo, только женское. Ежедневно:
- * поиск по темам /popular/ и Google — раз в 6+ дней, профили наблюдаемых аккаунтов — когда им пора (раз в 6 дней), замер постов
- * 2–21 дня (первый, на 3-й и 7-й день), база автора, вердикт reels-v1, привязка «залетевших» к модели каталога или карточке бренда.
+ * «Залетает в соцсетях» (решение владельца 06.10.2026): рилсы Instagram про Zara и Uniqlo, только женское. Крон каждые 3 часа
+ * (vercel.json, в 20 минут каждого третьего часа UTC; с 07.10 — раз в сутки поиск занимал всё время прогона, и замер почти не шёл): поиск по темам /popular/ и
+ * Google — раз в 6+ дней (незавершённый — доделывается следующими прогонами), профили наблюдаемых аккаунтов — когда им пора (раз в 6 дней),
+ * замер постов 2–21 дня (первый — каждому, на 3-й и 7-й день — только рилсам с шансом), база автора, вердикт reels-v1, привязка
+ * «залетевших» к модели каталога или карточке бренда. Два прогона разом не идут: замок в учёте (6 мин > maxDuration).
  *
  * Деньги: каждый запрос Bright Data — в учёт assortment_ai_usage (kind brightdata_social); потолки ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN
- * (150) и недельная строка соцсетей ASSORTMENT_SOCIAL_WEEKLY_USD ($3 ≈ 2 000 запросов; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS сведён в
- * неё же) в общем потолке движка проверяются до запроса.
+ * (150), дневная доля (седьмая часть строки в московские сутки — темп) и недельная строка соцсетей ASSORTMENT_SOCIAL_WEEKLY_USD ($3 ≈ 2 000
+ * запросов; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS сведён в неё же) в общем потолке движка проверяются до запроса.
  * Выключатель ASSORTMENT_SOCIAL=off. Ключ BRIGHTDATA_API_TOKEN, зона BRIGHTDATA_UNLOCKER_ZONE (по умолчанию mcp_unlocker).
- * Без миграции 202610060011 — тихо выходит с причиной; без ключа — строка-ошибка в журнале (сторож скажет через три дня).
+ * Без миграции 202610060011 — тихо выходит с причиной; без ключа — строка-ошибка в журнале (сторож скажет через сутки — 8 ошибок подряд).
+ * Прогон без единого запроса пишет метку [stop:idle]: сторож не считает его ни поломкой, ни починкой.
  * Деньги / ключ / зона Bright Data — остановка прогона одной причиной; сбой одной страницы прогон не роняет.
  *
  * `?dryRun=1` — посчитать, что пора делать, ничего не вызывая и не записывая. `?phase=discover|measure|match` — один шаг
@@ -51,7 +56,11 @@ export async function GET(request: NextRequest) {
       dryRun,
       deadlineMs: startedAt.getTime() + BUDGET_MS - UNLOCKER_TIMEOUT_MS,
     });
-    const body = { dryRun, phase, config: { enabled: config.enabled, maxRequestsPerRun: config.maxRequestsPerRun, weeklyRequests: config.weeklyRequests, keyConfigured: Boolean(unlocker.token) }, ...summary };
+    const body = {
+      dryRun, phase,
+      config: { enabled: config.enabled, maxRequestsPerRun: config.maxRequestsPerRun, weeklyRequests: config.weeklyRequests, concurrency: config.concurrency, keyConfigured: Boolean(unlocker.token) },
+      ...summary,
+    };
     if (dryRun) return NextResponse.json({ ok: true, ...body });
     if (summary.skippedBecause === "off") {
       // Выключено намеренно — строка в журнале, чтобы сторож не принял тишину за поломку.

@@ -35,15 +35,171 @@ export const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
 };
 export const ACCOUNT_ORIGIN_LABEL: Record<"seed" | "auto" | "owner", string> = { seed: "стартовый", auto: "найден сбором", owner: "добавлен вручную" };
 
-/** Ежедневный крон сбора (vercel.json «20 6 * * *», UTC) — для строки «следующий прогон». */
-export const SOCIAL_CRON = { path: "/api/sync/assortment-social", schedule: "20 6 * * *", hourUtc: 6, minuteUtc: 20 } as const;
+/**
+ * Крон сбора каждые 3 часа (vercel.json, с 07.10): в 20 минут часов UTC, кратных трём, — 00:20, 03:20 … 21:20; по Москве (UTC+3) те же
+ * восемь отметок. Раз в сутки поиск занимал всё время прогона, и замер почти не шёл; теперь поиск — раз в 6+ дней и доделывается следующими
+ * прогонами, остальные прогоны дня — замер, база авторов и привязка. Для строки «следующий прогон».
+ */
+export const SOCIAL_CRON = { path: "/api/sync/assortment-social", schedule: "20 */3 * * *", everyHours: 3, minuteUtc: 20 } as const;
+export const SOCIAL_RUNS_PER_DAY = 24 / SOCIAL_CRON.everyHours;
 export const SOCIAL_JOB = "assortment-social";
+
+const HOUR_MS = 3600 * 1000;
 
 /** Ближайший прогон крона после `nowMs` (ISO). */
 export function nextSocialRun(nowMs: number): string {
   const d = new Date(nowMs);
-  const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), SOCIAL_CRON.hourUtc, SOCIAL_CRON.minuteUtc);
-  return new Date(today > nowMs ? today : today + 24 * 3600 * 1000).toISOString();
+  const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  let at = dayStart + SOCIAL_CRON.minuteUtc * 60_000;
+  while (at <= nowMs) at += SOCIAL_CRON.everyHours * HOUR_MS;
+  return new Date(at).toISOString();
+}
+
+/** Отметки крона по Москве: «00:20, 03:20 … 21:20». */
+export function socialCronMskTimes(): string[] {
+  const out: number[] = [];
+  for (let h = 0; h < 24; h += SOCIAL_CRON.everyHours) out.push((h + 3) % 24);
+  return out.sort((a, b) => a - b).map((h) => `${String(h).padStart(2, "0")}:${String(SOCIAL_CRON.minuteUtc).padStart(2, "0")}`);
+}
+
+// ---------------------------------------------------------------------------
+// Честные счётчики: найдено, замерено, ждут замера — чтобы «ничего не залетело» не читалось как «нечего мерить»
+
+export interface SocialProgress {
+  /** Период ленты, дни (по дате публикации). */
+  days: number;
+  /**
+   * Рилсы раздела за период: найдено, замерено (есть числа), ждут замера сейчас, из них с шансом «залететь»; ждут базы автора — замерены,
+   * с шансом, а базы автора ещё нет: вердикта у них нет, он впереди.
+   */
+  section: { found: number; measured: number; waiting: number; waitingWithChance: number; awaitingBaseline: number };
+  /**
+   * Рилсы без раздела за период — по всем разделам: ждут замера (найдены Google или в профиле без подписи — раздел станет известен после
+   * замера; часть окажется в этом разделе) и уже замерены, а раздел по подписи не определился (обещания «станет известен» у них нет).
+   */
+  unsorted: { found: number; waiting: number; waitingWithChance: number; measured: number };
+  /** До полного прохода очереди замера (все разделы, рилсы 2–21 дня) — оценка по учёту расхода. null — очередь пуста. */
+  pass: SocialPassPlan | null;
+}
+
+/**
+ * Оценка прохода очереди замера по расписанию крона и учёту: каждый прогон мерит до `perRun` (окно × потоки / время страницы), но в
+ * московские сутки — не больше дневной доли строки, за 7 дней — не больше строки (с уже потраченным). `blockedBy` — почему ближайший
+ * прогон мерить не сможет (и `resumeAt` — когда сможет); `finishAt` null — дольше горизонта (60 суток) или предсказать нельзя.
+ */
+export interface SocialPassPlan {
+  waiting: number;
+  perRun: number;
+  dayShare: number;
+  weeklyRequests: number;
+  runs: number;
+  hours: number;
+  finishAt: string | null;
+  blockedBy: "day_share" | "social_line" | "engine" | "off" | null;
+  resumeAt: string | null;
+}
+
+const HORIZON_SLOTS = SOCIAL_RUNS_PER_DAY * 60;
+const MSK_OFFSET_MS = 3 * HOUR_MS;
+/** Московские сутки (UTC+3 круглый год) времени `ms`: «2026-10-07». */
+const mskDay = (ms: number) => new Date(ms + MSK_OFFSET_MS).toISOString().slice(0, 10);
+const shiftDay = (day: string, n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 24 * HOUR_MS).toISOString().slice(0, 10);
+
+export function socialPassPlan(input: {
+  waiting: number;
+  perRun: number;
+  dayShare: number;
+  weeklyRequests: number;
+  /** Запросы рилсов по московским дням за последние 7 дней (учёт); null — учёта нет. */
+  spentByDay: Readonly<Record<string, number>> | null;
+  /** Остаток общего потолка движка для рилсов, запросов; null — не прочитан (не учитываем). */
+  engineRoomRequests: number | null;
+  nowMs: number;
+}): SocialPassPlan | null {
+  const { waiting, perRun, dayShare, weeklyRequests, nowMs } = input;
+  if (waiting <= 0) return null;
+  const base: SocialPassPlan = { waiting, perRun, dayShare, weeklyRequests, runs: 0, hours: 0, finishAt: null, blockedBy: null, resumeAt: null };
+  if (weeklyRequests <= 0 || dayShare <= 0) return { ...base, blockedBy: "off" };
+  if (input.engineRoomRequests != null && input.engineRoomRequests <= 0) return { ...base, blockedBy: "engine" };
+  const spent: Record<string, number> = { ...(input.spentByDay ?? {}) };
+  let remaining = waiting;
+  let slot = Date.parse(nextSocialRun(nowMs));
+  for (let i = 0; i < HORIZON_SLOTS && remaining > 0; i += 1, slot += SOCIAL_CRON.everyHours * HOUR_MS) {
+    const day = mskDay(slot);
+    let week = 0;
+    for (let d = 0; d < 7; d += 1) week += spent[shiftDay(day, -d)] ?? 0;
+    const dayLeft = dayShare - (spent[day] ?? 0);
+    const weekLeft = weeklyRequests - week;
+    const budget = Math.max(0, Math.min(Math.max(1, perRun), dayLeft, weekLeft));
+    if (budget <= 0) {
+      if (i === 0) base.blockedBy = weekLeft <= 0 ? "social_line" : "day_share";
+      continue;
+    }
+    if (base.blockedBy && !base.resumeAt) base.resumeAt = new Date(slot).toISOString();
+    const take = Math.min(budget, remaining);
+    spent[day] = (spent[day] ?? 0) + take;
+    remaining -= take;
+    base.runs += 1;
+    if (remaining <= 0) {
+      base.finishAt = new Date(slot).toISOString();
+      base.hours = Math.max(1, Math.ceil((slot - nowMs) / HOUR_MS));
+    }
+  }
+  return base;
+}
+
+const reels = (n: number) => plural(n, "рилс", "рилса", "рилсов");
+const num = (n: number) => n.toLocaleString("ru-RU");
+const mskDayTime = (isoTime: string) => new Date(isoTime).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Moscow" }).replace(",", "");
+
+/** Сколько времени до конца прохода словами: «≈15 ч», «≈16 суток», «≈4 недели». */
+function spanText(hours: number): string {
+  if (hours < 24) return `≈${num(hours)} ч`;
+  const days = Math.ceil(hours / 24);
+  if (days <= 21) return `≈${num(days)} ${plural(days, "сутки", "суток", "суток")}`;
+  const weeks = Math.round(days / 7);
+  return `≈${num(weeks)} ${plural(weeks, "неделя", "недели", "недель")}`;
+}
+
+/** Строка прохода очереди: стоит ли замер сейчас и почему, сколько прогонов и времени до конца. null — очередь пуста. */
+export function socialPassText(pass: SocialPassPlan | null): string | null {
+  if (!pass) return null;
+  const queue = `очереди (${num(pass.waiting)} ${reels(pass.waiting)}, все разделы)`;
+  const inQueue = `в очереди ${num(pass.waiting)} ${reels(pass.waiting)} (все разделы)`;
+  if (pass.blockedBy === "off") return `Замер стоит: строка соцсетей выключена (0); ${inQueue}.`;
+  if (pass.blockedBy === "engine") return `Замер стоит: общий потолок движка на неделю выбран (каталоги Zara и Uniqlo в приоритете) — продолжится, когда он освободится; ${inQueue}.`;
+  const stop = pass.blockedBy === "day_share"
+    ? `Замер стоит: дневная доля строки соцсетей (${num(pass.dayShare)} запросов в сутки) на сегодня выбрана — продолжится ${pass.resumeAt ? `${mskDayTime(pass.resumeAt)} МСК` : "завтра"}. `
+    : pass.blockedBy === "social_line"
+      ? `Замер стоит: строка соцсетей недели (${num(pass.weeklyRequests)} запросов) выбрана — продолжится ${pass.resumeAt ? `≈${mskDayTime(pass.resumeAt)} МСК` : "позже"}, когда старые дни выйдут из 7-дневного окна. `
+      : "";
+  const how = `оценка: ~${num(pass.perRun)} замеров за прогон, не больше ${num(pass.dayShare)} запросов в сутки — седьмая часть строки; поиск и база авторов тратят ту же строку`;
+  if (!pass.finishAt) return `${stop}До полного прохода ${queue} — дольше двух месяцев (${how}).`;
+  return `${stop}До полного прохода ${queue} — ≈${num(pass.runs)} ${plural(pass.runs, "прогон", "прогона", "прогонов")}, ${spanText(pass.hours)}, к ${mskDayTime(pass.finishAt)} МСК (${how}).`;
+}
+
+/** Счётчики словами: раздел (одной короткой строкой), рилсы без раздела, проход очереди. */
+export function socialProgressText(p: SocialProgress, sectionLabel: string): { section: string; unsorted: string | null; pass: string | null } {
+  const s = p.section;
+  const section = `${sectionLabel} за ${p.days} дней: найдено рилсов ${num(s.found)}, замерено ${num(s.measured)}, ждут замера ${num(s.waiting)}, из них с шансом ${num(s.waitingWithChance)}`
+    + `${s.awaitingBaseline > 0 ? `, ждут базы автора ${num(s.awaitingBaseline)}` : ""}.`;
+  const u = p.unsorted;
+  let unsorted: string | null = null;
+  if (u.found > 0) {
+    const young = Math.max(0, u.found - u.waiting - u.measured);
+    const parts = [
+      u.waiting > 0 ? `ждут замера ${num(u.waiting)}, из них с шансом ${num(u.waitingWithChance)} — раздел станет известен после замера` : null,
+      u.measured > 0 ? `уже замерены, а раздел по подписи не определился — ${num(u.measured)}` : null,
+      young > 0 ? `моложе 2 суток, мерить рано — ${num(young)}` : null,
+    ].filter(Boolean);
+    unsorted = `Ещё ${num(u.found)} ${reels(u.found)} без раздела — по всем разделам: ${parts.join("; ")}.`;
+  }
+  return { section, unsorted, pass: socialPassText(p.pass) };
+}
+
+/** Есть ли у раздела непройденная очередь (замер или база автора): «ничего не залетело» тогда — «ещё не измерено». */
+export function socialQueuePending(p: SocialProgress | null): boolean {
+  return Boolean(p && (p.section.waiting + p.unsorted.waiting + p.section.awaitingBaseline > 0 || p.pass?.blockedBy));
 }
 
 export type MatchTone = "ok" | "warn" | "muted";

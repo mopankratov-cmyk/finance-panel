@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { Check, ExternalLink, EyeOff, ImageOff, LoaderCircle, Plus, Undo2, UserX } from "lucide-react";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ASSORTMENT_BASE_PATH, type AssortmentDirection } from "@/lib/assortment/constants";
+import { ASSORTMENT_BASE_PATH, DIRECTION_LABEL, type AssortmentDirection } from "@/lib/assortment/constants";
 import {
   ACCOUNT_KIND_LABEL, ACCOUNT_KINDS, ACCOUNT_ORIGIN_LABEL, BRAND_LABEL, cardTitle, catalogTarget, compactRu, DEFAULT_FEED_PERIOD, FEED_PERIODS, importableBrandUrl, isInstagramUrl,
-  KIND_TEXT, matchLabel, sampleLinksFor, SOCIAL_CRON, timesPhrase, VERDICT_LABEL, type FeedPeriod,
+  KIND_TEXT, matchLabel, sampleLinksFor, SOCIAL_CRON, socialCronMskTimes, socialPassText, socialProgressText, socialQueuePending, timesPhrase, VERDICT_LABEL, type FeedPeriod,
+  type SocialProgress,
 } from "@/lib/assortment/socialFeed";
 import type { SocialAccountsResult, SocialAccountView, SocialFeedResult, SocialRunStatus } from "@/lib/assortment/socialFeedStore";
 import type { SocialReelCard } from "@/lib/assortment/socialReelsStore";
@@ -40,8 +41,9 @@ const dmt = (iso: string) => `${dm(iso)} ${new Date(iso).toLocaleTimeString("ru-
 const chip = (active: boolean) => `h-11 shrink-0 rounded-full px-4 text-sm ${active ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`;
 const linkButton = "inline-flex h-11 items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-800 hover:bg-slate-50";
 const kindTag = "text-xs text-slate-400";
-/** Время крона по Москве (UTC+3 круглый год). */
-const CRON_MSK = `${String((SOCIAL_CRON.hourUtc + 3) % 24).padStart(2, "0")}:${String(SOCIAL_CRON.minuteUtc).padStart(2, "0")}`;
+/** Отметки крона по Москве (UTC+3 круглый год): «00:20, 03:20 … 21:20». */
+const CRON_MSK = socialCronMskTimes();
+const CRON_MARKS = `${CRON_MSK[0]}, ${CRON_MSK[1]} … ${CRON_MSK[CRON_MSK.length - 1]} МСК`;
 
 async function send(url: string, method: "POST" | "PATCH", body: unknown): Promise<Record<string, unknown>> {
   const response = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -134,7 +136,7 @@ export function SocialView({ direction }: { direction: AssortmentDirection }) {
       {state.kind === "unavailable" && <SocialUnavailable reason={state.reason} />}
       {state.kind !== "unavailable" && (
         <>
-          {feed && <SocialRunLine run={feed.run} warnings={feed.warnings} />}
+          {feed && <SocialRunLine run={feed.run} warnings={feed.warnings} progress={feed.progress ?? null} sectionLabel={DIRECTION_LABEL[direction]} />}
           <div className="chip-row -mx-3 gap-2 px-3 sm:mx-0 sm:px-0" aria-label="Фильтры ленты">
             <button type="button" aria-pressed={onlyStrong} onClick={() => setOnlyStrong((v) => !v)} className={chip(onlyStrong)}>Только сильные</button>
             {FEED_PERIODS.map((p) => (
@@ -144,7 +146,7 @@ export function SocialView({ direction }: { direction: AssortmentDirection }) {
           {state.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
           {state.kind === "error" && <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{state.message}</div>}
           {feed && feed.cards.length === 0 && (
-            <SocialEmpty days={feed.days} onlyStrong={feed.onlyStrong} measured={feed.measured} onAllVerdicts={() => setOnlyStrong(false)} onWiden={() => setDays(30)} />
+            <SocialEmpty days={feed.days} onlyStrong={feed.onlyStrong} measured={feed.measured} progress={feed.progress ?? null} onAllVerdicts={() => setOnlyStrong(false)} onWiden={() => setDays(30)} />
           )}
           {feed && feed.cards.length > 0 && (
             <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -184,19 +186,37 @@ export function SocialUnavailable({ reason }: { reason: string }) {
   return <div role="status" className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">{reason}</div>;
 }
 
-/** Строка сбора: когда был последний прогон и чем кончился, когда следующий; что не загрузилось — названо. */
-export function SocialRunLine({ run, warnings }: { run: SocialRunStatus | null; warnings: string[] }) {
+/**
+ * Строка сбора: когда был последний прогон и чем кончился, когда следующий; одна короткая строка счётчиков раздела (найдено, замерено,
+ * ждут замера, с шансом, ждут базы автора); расписание, пометка прогона, рилсы без раздела и проход очереди — свёрнуто («Подробнее о
+ * сборе»): на телефоне строка сбора иначе разрасталась до ≈18 строк, и лента уходила за первый экран. Плашка ошибки — только при серии
+ * ошибок (или «нет денег»), а не от одного мелкого прогона; что не загрузилось — названо.
+ */
+export function SocialRunLine({ run, warnings, progress = null, sectionLabel = "Раздел" }: { run: SocialRunStatus | null; warnings: string[]; progress?: SocialProgress | null; sectionLabel?: string }) {
   const last = run?.lastRunAt
-    ? `последний прогон — ${dmt(run.lastRunAt)}${run.lastStatus === "partial" ? " (доделан не весь: упёрся в потолок запросов или время)" : run.lastStatus === "error" ? " — с ошибкой" : ""}`
+    ? `последний прогон — ${dmt(run.lastRunAt)}${run.lastStatus === "partial" ? " (доделан не весь — продолжит следующий)" : run.lastStatus === "error" ? " — с ошибкой" : ""}`
     : "прогонов ещё не было";
+  const counts = progress ? socialProgressText(progress, sectionLabel) : null;
+  const note = run?.lastNote && !run.alert ? run.lastNote : null;
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1">
       <p className="text-sm leading-6 text-slate-600">
-        Сбор ежедневно в {CRON_MSK} МСК, поиск новых рилсов — раз в неделю; {last}{run ? `; следующий — ${dmt(run.nextRunAt)}` : ""}.
-        {run?.lastNote && run.lastStatus !== "error" ? <span className="text-slate-500"> Пометка прогона: {run.lastNote}.</span> : null}
+        Сбор каждые {SOCIAL_CRON.everyHours} часа; {last}{run ? `; следующий — ${dmt(run.nextRunAt)}` : ""}.
       </p>
-      {run?.lastStatus === "error" && run.lastNote && (
-        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Последний прогон с ошибкой: {run.lastNote}</div>
+      {counts && <p className="text-sm leading-6 text-slate-600">{counts.section}</p>}
+      <details className="text-sm text-slate-600">
+        <summary className="flex min-h-11 cursor-pointer items-center text-slate-700 underline decoration-dotted underline-offset-4">Подробнее о сборе</summary>
+        <div className="flex flex-col gap-1 pb-2 leading-6 text-slate-500">
+          <p>Прогоны в {CRON_MARKS}: замер, база авторов, привязка; поиск новых рилсов — раз в 6 дней, доделывается следующими прогонами.</p>
+          {note && <p>Пометка прогона: {note}.</p>}
+          {counts?.unsorted && <p>{counts.unsorted}</p>}
+          {counts?.pass && <p>{counts.pass}</p>}
+        </div>
+      </details>
+      {run?.alert && (
+        <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {run.errorStreak >= 2 ? `Прогонов с ошибкой подряд: ${run.errorStreak}. ` : "Последний прогон с ошибкой: "}{run.alert}
+        </div>
       )}
       {warnings.length > 0 && (
         <div role="alert" className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">Не загрузилось: {warnings.join("; ")}</div>
@@ -205,15 +225,30 @@ export function SocialRunLine({ run, warnings }: { run: SocialRunStatus | null; 
   );
 }
 
-/** За период ничего не залетело: сколько замерено и что попробовать — а не просто пустота. */
-export function SocialEmpty({ days, onlyStrong, measured, onAllVerdicts, onWiden }: { days: number; onlyStrong: boolean; measured: number | null; onAllVerdicts: () => void; onWiden: () => void }) {
+/**
+ * За период ничего не залетело: если очередь не пройдена (ждут замера или базы автора), «ничего не залетело» — это «ещё не измерено», а не
+ * «нечего мерить», и сколько до конца прохода; что попробовать, а не просто пустота. Счётчики раздела — в строке сбора выше, здесь не
+ * повторяются (на телефоне они дублировались).
+ */
+export function SocialEmpty({ days, onlyStrong, measured, progress = null, onAllVerdicts, onWiden }: {
+  days: number;
+  onlyStrong: boolean;
+  measured: number | null;
+  progress?: SocialProgress | null;
+  onAllVerdicts: () => void;
+  onWiden: () => void;
+}) {
+  const pending = socialQueuePending(progress);
+  const pass = pending && progress ? socialPassText(progress.pass) : null;
   return (
     <section className="flex min-h-[200px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-10 text-center">
       <div className="text-base font-semibold text-slate-900">{onlyStrong ? `Сильных залётов за ${days} дней нет` : `За ${days} дней ничего не залетело`}</div>
       <p className="max-w-xl text-sm leading-6 text-slate-600">
-        {measured != null ? `Замерено рилсов раздела за период: ${measured.toLocaleString("ru-RU")}. ` : ""}
+        {!progress && measured != null ? `Замерено рилсов раздела за период: ${measured.toLocaleString("ru-RU")}. ` : ""}
+        {pending ? "Вердикт — после замера и базы автора: пока очередь не пройдена (счётчики — в строке сбора выше), «ничего не залетело» значит «ещё не измерено», а не «нечего мерить». " : ""}
         Правило строгое: лайки в 10 раз выше обычного у автора или комментарии, где половина — «где купить», «цена», «ссылка».
       </p>
+      {pass && <p className="max-w-xl text-xs leading-5 text-slate-500">{pass}</p>}
       <div className="flex flex-wrap justify-center gap-2">
         {onlyStrong && <button type="button" onClick={onAllVerdicts} className={linkButton}>Показать и «залетает»</button>}
         {days < 30 && <button type="button" onClick={onWiden} className={linkButton}>За 30 дней</button>}
@@ -228,7 +263,7 @@ export function SocialRule() {
     <details className="rounded-xl border border-slate-200 bg-white px-4 text-sm text-slate-700">
       <summary className="flex h-11 cursor-pointer items-center font-medium text-slate-900">Как считаем «залетает»</summary>
       <ul className="flex list-disc flex-col gap-1 pb-3 pl-5 leading-6">
-        <li>Рилсу от 2 до 21 дня; замеры — первый, на 3-й и на 7-й день (лайки, комментарии, просмотры — факт площадки, большие числа Instagram округляет).</li>
+        <li>Рилсу от 2 до 21 дня; замер — первый каждому, на 3-й и на 7-й день — только рилсам с шансом (лайков от 1 000, комментариев от 30 или просмотров от 100 000, или уже «залетает»); лайки, комментарии, просмотры — факт площадки, большие числа Instagram округляет.</li>
         <li>«Залетает»: лайков в 10 раз больше обычного у автора (медиана 12 последних постов) и не меньше 1 000 — или комментариев в 5 раз больше, не меньше 30, и половина из них — «где купить», «цена», «ссылка». Оба условия — «сильный залёт».</li>
         <li>У автора меньше 6 постов с видимыми лайками — сравниваем с подписчиками, вердикт «предварительно» (гипотеза), пока вещь не покажет второй автор.</li>
         <li>Модель — по номеру товара из подписи: из нашего каталога или с карточки на сайте бренда; мужское и детское в ленту не попадают.</li>

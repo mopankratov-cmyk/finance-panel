@@ -19,6 +19,10 @@ import { escapeTelegramHtml } from "./freshness";
  * Покупка Bright Data, отложенная потому, что учёт расхода не прочитался (`[stop:engine_read]`), и Zara или Uniqlo, не пущенные общим
  * потолком (`[stop:engine_budget]`), — тоже тревога сразу: они покупаются только по средам, и неделя данных иначе пропала бы молча.
  * Держится до следующей удачной покупки этой задачи.
+ *
+ * Прогон без единого запроса (`[stop:idle]` в конце строки, не «ошибка»: потолок суток или недели выбран, мерить нечего, рилсы ждут суток
+ * после двух неудач) ничего не доказывает — ни поломки, ни починки: в серию ошибок он не идёт и её не рвёт. Иначе при кроне раз в 3 часа
+ * такие прогоны рвали серию из 8 ошибок, и сторож слал «снова работают», хотя ничего не починилось (ревью 07.10). Тишину крона он гасит.
  */
 
 export interface JobRun {
@@ -60,9 +64,9 @@ export const WATCHED_JOBS: readonly JobRule[] = [
   // Крон каждые 2 часа, журнал — только когда была работа: 3 ошибки подряд. Ключ, деньги и настройка останавливают прогон сразу и дают
   // «error», но тревога всё равно после трёх; лимит запросов — «error» лишь без единой разобранной модели, неудачи при разобранных — «partial».
   { job: "assortment-catalog-ai", label: "Признаки каталога по фото (ИИ)", maxSilenceDays: null, maxConsecutiveErrors: 3, billing: "ai", paysProvider: true },
-  // «Залетает в соцсетях»: крон ежедневный и пишет журнал каждым прогоном (выключатель off — тоже, строкой «ok»), поэтому
-  // тишина 3 суток — пропавший крон; 3 ошибки подряд — три дня без ключа или зоны Bright Data; нет денег — сразу.
-  { job: "assortment-social", label: "Залетает в соцсетях: рилсы Instagram (Bright Data)", maxSilenceDays: 3, maxConsecutiveErrors: 3, billing: "brightdata", paysProvider: true },
+  // «Залетает в соцсетях»: крон каждые 3 часа (с 07.10) и пишет журнал каждым прогоном (выключатель off — тоже, строкой «ok»), поэтому
+  // сутки тишины — пропавший крон (8 прогонов без записи); 8 ошибок подряд — сутки без ключа или зоны Bright Data; нет денег — сразу.
+  { job: "assortment-social", label: "Залетает в соцсетях: рилсы Instagram (Bright Data)", maxSilenceDays: 1, maxConsecutiveErrors: 8, billing: "brightdata", paysProvider: true },
   // Bright Data по средам и субботам: запуск и сбор. Прочие сбои видит сторож источников (по last_success_at), здесь — «нет денег» и
   // отложенная покупка (учёт не прочитался, потолок не пустил Zara или Uniqlo): сорванная покупка Zara и Uniqlo — тревога в тот же день,
   // а не через неделю молчания источника.
@@ -95,6 +99,14 @@ const DAY_MS = 24 * 3600 * 1000;
 
 /** Метка остановки в конце строки журнала (stopTag у разбора по фото, Bright Data и рилсов). */
 const STOP_TAG = /\[stop:([a-z_]+)\]\s*$/;
+
+/** Метка прогона без единого запроса (рилсы): та же форма, что у меток остановки, — экраны и Telegram её вырезают. */
+export const IDLE_RUN_TAG = "[stop:idle]";
+
+/** Прогон без работы и без ошибки: ни поломки, ни починки не доказывает. */
+export function idleRun(run: Pick<JobRun, "status" | "error">): boolean {
+  return run.status !== "error" && STOP_TAG.exec(run.error ?? "")?.[1] === "idle";
+}
 
 /** Метка остановки прогона: только у прогона с ошибкой (метка в тексте удачного прогона — не остановка). */
 function stopOf(run: JobRun): string | null {
@@ -136,9 +148,10 @@ export function jobFreshness(rule: JobRule, runs: JobRun[], nowMs = Date.now()):
     });
     if (stop) return { ...base, state: "stalled", reason: rule.stopTags[stopOf(stop)!], lastRunAt: last.started_at, lastError: stop.error };
   }
-  const streak = rule.maxConsecutiveErrors == null ? [] : mine.slice(0, rule.maxConsecutiveErrors);
+  // Прогоны без работы (`[stop:idle]`) серию не рвут и в неё не идут.
+  const streak = rule.maxConsecutiveErrors == null ? [] : mine.filter((r) => !idleRun(r)).slice(0, rule.maxConsecutiveErrors);
   if (rule.maxConsecutiveErrors != null && streak.length === rule.maxConsecutiveErrors && streak.every((r) => r.status === "error")) {
-    return { ...base, state: "stalled", reason: `${rule.maxConsecutiveErrors} прогонов подряд с ошибкой`, lastRunAt: last.started_at, lastError: last.error };
+    return { ...base, state: "stalled", reason: `${rule.maxConsecutiveErrors} прогонов подряд с ошибкой`, lastRunAt: last.started_at, lastError: streak[0].error };
   }
   if (rule.maxSilenceDays != null) {
     const silentDays = Math.floor((nowMs - Date.parse(last.started_at)) / DAY_MS);

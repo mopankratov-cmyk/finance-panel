@@ -1,16 +1,18 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
-import { moscowToday } from "@/lib/sync/moscowDay";
+import { moscowToday, shiftIsoDay } from "@/lib/sync/moscowDay";
 import { zaraModelCode } from "./brightdataCatalog";
 import { googleSearchUrl, isUnlockerStop, type UnlockerFormat, type UnlockerResult } from "./brightdataUnlocker";
 import { rowsByIds } from "./byIds";
 import { thumbUrl } from "./catalog";
 import type { AssortmentDirection } from "./constants";
-import { ENGINE_KIND, engineBudgetConfig, socialRoomUsd, type EngineBudgetConfig } from "./engineBudget";
+import { ENGINE_KIND, engineBudgetConfig, socialRoomUsd, socialWeeklyRequests, type EngineBudgetConfig } from "./engineBudget";
 import { loadEngineWeek } from "./engineBudgetStore";
 import { isMissingAssortmentSchema, isMissingColumnError } from "./errors";
+import { IDLE_RUN_TAG } from "./jobsWatch";
 import {
-  acceptNeighborTopic, cleanHashtags, COMMENTS_MIN, COST_PER_REQUEST_USD, detectBrand, detectDirection, extractRefs, GOOGLE_QUERIES, googleQuery, HISTORY_LIMIT, intentShare,
+  acceptNeighborTopic, cleanHashtags, COMMENTS_MIN, COST_PER_REQUEST_USD, DEFAULT_CONCURRENCY, detectBrand, detectDirection, extractRefs, GOOGLE_QUERIES, googleQuery, hasChance,
+  AVG_REQUEST_S, HISTORY_LIMIT, intentShare, MAX_CONCURRENCY, searchTimeShare, socialDayShare,
   BASELINE_POSTS, looksMenswear, MAX_AGE_DAYS, measureDue, medianBaseline, MIN_AGE_MS, MIN_BASELINE_LIKE_POSTS, parseGoogleReels, parseProfilePage, parseReelPage,
   parseTopicPage, parseUniqloCard, parseZaraCard, passesPrefilter, postUrl, profileUrl, REELS_RULE_VERSION, sanitizeCaption, SEED_ACCOUNTS, SEED_TOPICS,
   shortcodeToDate, SOCIAL_PLATFORM, topicUrl, uniqloCardUrls, verdictV1, withinDiscoveryWindow, zaraCardUrl,
@@ -24,10 +26,15 @@ export { SEED_ACCOUNTS, SEED_TOPICS } from "./socialReels";
  * «Залетает в соцсетях»: база (аккаунты-источники и рилсы), прогон крона и чтение для ленты. Без миграции
  * 202610060011_assortment_social_reels.sql прогон и лента тихо выходят с причиной; без ключа Bright Data прогон не начинается.
  *
- * Прогон: (а) поиск — раз в 6+ дней темы /popular/ и Google, профили наблюдаемых аккаунтов — когда им пора (раз в 6 дней);
- * (б) замер постов 2–21 дня (первый, на 3-й и 7-й день), база автора — по его прошлым постам, вердикт reels-v1;
- * (в) привязка «залетевших» к модели: каталог Zara/Uniqlo по номеру, иначе карточка на сайте бренда.
- * Каждый запрос — в учёт `assortment_ai_usage` (kind brightdata_social), потолки на прогон и на неделю проверяются до запроса.
+ * Прогон (крон каждые 3 часа): (а) поиск — раз в 6+ дней темы /popular/ и Google (незавершённый — с места остановки следующими
+ * прогонами), профили наблюдаемых аккаунтов — когда им пора (раз в 6 дней); если есть что мерить, поиск не начинает новых запросов после
+ * своей доли окна (остаток после оценки времени замера, не меньше половины — `searchTimeShare`); (б) замер постов 2–21 дня (первый — каждому,
+ * на 3-й и 7-й день — только рилсам с шансом; сначала рилсы с шансом и база их авторов, потом первые замеры остальных), база автора — по
+ * его прошлым постам, вердикт reels-v1; (в) привязка «залетевших» к модели: каталог Zara/Uniqlo по номеру,
+ * иначе карточка на сайте бренда. Каждый запрос — в учёт `assortment_ai_usage` (kind brightdata_social), потолки на прогон, на московские
+ * сутки (седьмая часть строки — темп) и на неделю проверяются до запроса (счёт — до запроса, параллельные запросы потолок не пробивают).
+ * Рилс, дважды подряд не замеренный (временный сбой, «отложено», вёрстка без счётчиков), мерим не чаще раза в сутки; после тревоги
+ * вёрстки — только проба из трёх рилсов, пока вёрстка не распознаётся снова.
  */
 
 export const SOCIAL_MIGRATION = "202610060011_assortment_social_reels.sql";
@@ -54,8 +61,6 @@ const APPEARANCE_DAYS = 30;
 /** Новых соседних тем за поиск — не больше 10; всего авто-тем — не больше 40. */
 export const NEW_TOPICS_PER_DISCOVER = 10;
 const AUTO_TOPICS_MAX = 40;
-/** Параллельных запросов к Bright Data — не больше четырёх. */
-export const MAX_PARALLEL = 4;
 /** Привязку «не нашли» / «есть у бренда» перепроверяем раз в неделю: модель могла появиться в каталоге. */
 const MATCH_RECHECK_DAYS = 7;
 /** Номеров одного рилса проверяем на сайте бренда не больше двух (подборка из шести вещей — не одна модель). */
@@ -63,10 +68,29 @@ const BRAND_SITE_REFS = 2;
 /** Тема мёртвая после стольких пустых ответов подряд с распознанной вёрсткой; мёртвую перепроверяем раз в 4 недели. */
 export const TOPIC_DEAD_MISSES = 3;
 export const DEAD_TOPIC_RECHECK_DAYS = 28;
-/** Поиск не дошёл до конца столько прогонов подряд — прогон «ошибка» (сторож скажет): потолок прогона мал или Instagram сбоит. */
-export const DISCOVER_STALL_RUNS = 3;
-/** Доля страниц рилсов без распознанного блока счётчиков, от которой прогон — «ошибка» (вёрстка Instagram изменилась). */
+/**
+ * Поиск не дошёл до конца столько прогонов подряд — прогон «ошибка» (сторож скажет): потолок прогона мал или Instagram сбоит. Крон каждые
+ * 3 часа, поиску — половина окна: обычный поиск занимает 2–3 прогона, 8 — сутки. Прогоны, где поиск стоял из-за выбранной недели
+ * (строка соцсетей или общий потолок движка), в серию не идут: это потолок, а не поломка.
+ */
+export const DISCOVER_STALL_RUNS = 8;
+/**
+ * Тему или запрос Google, которые откладываются (Bright Data: failed_query_rejected; у Google — и любой временный сбой) дольше суток с
+ * первого откладывания, пропускаем до следующего поиска. Сутки, а не число прогонов: адрес Google содержит `after:` и меняется раз в сутки
+ * UTC — новый адрес сбрасывает отказ, а три прогона по 3 часа укладывались в одни сутки с тем же адресом.
+ */
+export const DEFER_MAX_HOURS = 24;
+/** Страниц рилсов без распознанного блока счётчиков, от которых прогон — «ошибка» (вёрстка Instagram изменилась). */
 const LAYOUT_ALARM_MIN = 3;
+/** Столько страниц без счётчиков (и не меньше половины разобранных) — замер в этом прогоне прекращается, не дожидаясь конца очереди. */
+export const LAYOUT_HALT_MIN = 6;
+/** После тревоги вёрстки каждый прогон мерит только пробу из стольких рилсов; распознались — замер продолжается, нет — тревога держится. */
+export const LAYOUT_PROBE = 3;
+/** Попыток замера подряд без засчитанного замера, после которых рилс мерим не чаще раза в MEASURE_MISS_PAUSE_HOURS. */
+export const MEASURE_FREE_MISSES = 2;
+export const MEASURE_MISS_PAUSE_HOURS = 24;
+/** «Все запросы упали» — «ошибка» прогона только от стольких запросов: один рилс, дважды не открывшийся, — не поломка сбора. */
+export const NOTHING_WORKED_MIN = 5;
 
 export type MatchStatus = "catalog" | "brand_site" | "men" | "kids" | "not_found" | "no_ref" | "pending";
 type AccountStatus = "watched" | "seen" | "excluded";
@@ -240,16 +264,23 @@ export async function loadPosts(db: SupabaseClient, sinceMs: number): Promise<Ma
 // ---------------------------------------------------------------------------
 // Учёт запросов и замок прогона (в assortment_ai_usage, как у признаков по фото)
 
-/** Запросов за 7 московских дней; null — таблицы учёта нет (тогда и платить не начинаем). */
-export async function loadWeekRequests(db: SupabaseClient, nowMs: number): Promise<number | null> {
-  const today = moscowToday(nowMs);
-  const since = new Date(Date.parse(`${today}T00:00:00Z`) - 6 * DAY_MS).toISOString().slice(0, 10);
+/** Запросы рилсов по московским дням за 7 дней (сегодня включительно); null — таблицы учёта нет (тогда и платить не начинаем). */
+export async function loadSocialUsageDays(db: SupabaseClient, nowMs: number): Promise<Record<string, number> | null> {
+  const since = shiftIsoDay(moscowToday(nowMs), -6);
   const { data, error } = await db.from(USAGE).select("day,calls").eq("kind", SOCIAL_USAGE_KIND).gte("day", since);
   if (error) {
     if (missing(error)) return null;
     throw new Error(error.message);
   }
-  return ((data ?? []) as Array<{ calls: number | string }>).reduce((sum, r) => sum + (Number(r.calls) || 0), 0);
+  const out: Record<string, number> = {};
+  for (const r of (data ?? []) as Array<{ day: string; calls: number | string }>) out[String(r.day)] = (out[String(r.day)] ?? 0) + (Number(r.calls) || 0);
+  return out;
+}
+
+/** Запросов за 7 московских дней; null — таблицы учёта нет (тогда и платить не начинаем). */
+export async function loadWeekRequests(db: SupabaseClient, nowMs: number): Promise<number | null> {
+  const days = await loadSocialUsageDays(db, nowMs);
+  return days ? Object.values(days).reduce((sum, n) => sum + n, 0) : null;
 }
 
 /** Прибавить запросы к дневной строке учёта; сравнение-и-замена по updated_at — параллельный прогон не перетрёт. */
@@ -280,9 +311,16 @@ export async function addSocialUsage(db: SupabaseClient, nowMs: number, add: { c
   throw new Error("учёт запросов не записался: строку постоянно обновляет другой прогон");
 }
 
+/**
+ * Замок прогона — строка дня в учёте. Крон каждые 3 часа, прогон ≤ 5 мин (maxDuration 300 с), замок держится 6 мин: два прогона разом
+ * не идут. Прогон, начатый до полуночи по Москве, держит вчерашнюю строку — её тоже проверяем (ручной прогон около полуночи).
+ */
 async function acquireLease(db: SupabaseClient, nowMs: number): Promise<string | null> {
   const day = moscowToday(nowMs);
   const stamp = iso(nowMs);
+  const { data: before, error: beforeError } = await db.from(USAGE).select("updated_at").eq("day", shiftIsoDay(day, -1)).eq("kind", LOCK_KIND).maybeSingle();
+  if (beforeError) throw new Error(beforeError.message);
+  if (before && nowMs - Date.parse(String((before as { updated_at: string }).updated_at)) < LEASE_MS) return null;
   const { data, error } = await db.from(USAGE).select("updated_at").eq("day", day).eq("kind", LOCK_KIND).maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) {
@@ -319,6 +357,11 @@ export interface DiscoverProgress {
   newTopics: SeedTopic[];
   /** Тем с рилсами в этом поиске (за все его прогоны): ни одной — разбор сломан или стена входа, поиск не засчитываем. */
   withReels: number;
+  /**
+   * Отложенные темы и запросы Google (Bright Data: failed_query_rejected; у Google — и временный сбой): ключ → когда впервые отложили (ISO).
+   * Не пройдены — повторяем следующими прогонами; отложены дольше DEFER_MAX_HOURS — пропускаем до следующего поиска.
+   */
+  deferred: Record<string, string>;
 }
 
 export interface SocialState {
@@ -329,6 +372,8 @@ export interface SocialState {
   /** Пустых ответов подряд с распознанной вёрсткой (страница темы есть, рилсов нет). Сбой или стена входа не в счёт. */
   topicMisses: Record<string, number>;
   pending: DiscoverProgress | null;
+  /** Тревога вёрстки (блок счётчиков не распознаётся): с этого времени каждый прогон мерит только пробу, пока вёрстка не распознается. */
+  layoutAlarmAt: string | null;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -348,9 +393,14 @@ export function readSocialState(capabilities: unknown): SocialState {
       startedAt: p.startedAt, topics: arr(p.topics), google: arr(p.google), runs: Math.max(0, Math.floor(Number(p.runs) || 0)),
       newTopics: Array.isArray(p.newTopics) ? (p.newTopics as unknown[]).filter((t): t is SeedTopic => isRecord(t) && typeof t.slug === "string" && (t.brand === "zara" || t.brand === "uniqlo")) : [],
       withReels: Math.max(0, Math.floor(Number(p.withReels) || 0)),
+      // Только метки времени: счётчик прогонов (прежний вид ветки, на проде не был) — заново с этого прогона.
+      deferred: isRecord(p.deferred)
+        ? Object.fromEntries(Object.entries(p.deferred).filter((e): e is [string, string] => typeof e[1] === "string" && Number.isFinite(Date.parse(e[1]))))
+        : {},
     }
     : null;
-  return { discoveredAt: typeof raw?.discoveredAt === "string" ? raw.discoveredAt : null, autoTopics: topics, deadTopics, topicMisses, pending };
+  const layoutAlarmAt = typeof raw?.layoutAlarmAt === "string" && Number.isFinite(Date.parse(raw.layoutAlarmAt)) ? raw.layoutAlarmAt : null;
+  return { discoveredAt: typeof raw?.discoveredAt === "string" ? raw.discoveredAt : null, autoTopics: topics, deadTopics, topicMisses, pending, layoutAlarmAt };
 }
 
 async function loadState(db: SupabaseClient): Promise<{ capabilities: Record<string, unknown>; state: SocialState } | null> {
@@ -580,12 +630,16 @@ export function applyMeasurement(post: PostRow, page: ParsedReel, nowMs: number,
 }
 
 /** База автора посчитана (хоть из нуля постов — тогда запасное правило). */
-function hasBaseline(account: AccountRow | undefined): account is AccountRow {
+function hasBaseline<A extends Pick<AccountRow, "baseline_at" | "baseline_posts">>(account: A | undefined): account is A {
   return Boolean(account?.baseline_at) && account?.baseline_posts != null;
 }
 
 /** Рилс с шансом «залететь» ждёт базы автора: замерен, в окне, прошёл предфильтр, а базы ещё нет. */
-export function awaitsBaseline(post: PostRow, account: AccountRow | undefined, nowMs: number): boolean {
+export function awaitsBaseline(
+  post: Pick<PostRow, "hidden_at" | "likes" | "comments" | "views" | "published_at">,
+  account: Pick<AccountRow, "baseline_at" | "baseline_posts"> | undefined,
+  nowMs: number,
+): boolean {
   if (post.hidden_at || (post.likes == null && post.comments == null) || !passesPrefilter(post)) return false;
   const t = ms(post.published_at);
   return Number.isFinite(t) && nowMs - t <= MAX_AGE_DAYS * DAY_MS && !hasBaseline(account);
@@ -623,6 +677,42 @@ export function judgePost(post: PostRow, account: AccountRow | undefined, nowMs:
   const next: PostRow = { ...post, verdict: v.verdict, verdict_preliminary: v.preliminary, rule_version: v.ruleVersion, likes_ratio: v.likesRatio, comments_ratio: v.commentsRatio };
   if (v.verdict === "viral" || v.verdict === "strong") next.history = markFirstViral(post, v.verdict, nowMs);
   return next;
+}
+
+/** Пора ли мерить сохранённый рилс: первый замер — каждому, перезамер на 3-й и 7-й день — только с шансом (`measureDue`). */
+export function postMeasureDue(post: Pick<PostRow, "published_at" | "checks" | "last_checked_at" | "likes" | "comments" | "views" | "verdict">, nowMs: number): boolean {
+  const published = ms(post.published_at);
+  const checked = ms(post.last_checked_at);
+  return measureDue({
+    publishedAtMs: Number.isFinite(published) ? published : null, checks: post.checks, lastCheckedAtMs: Number.isFinite(checked) ? checked : null,
+    likes: post.likes, comments: post.comments, views: post.views, verdict: post.verdict,
+  }, nowMs);
+}
+
+// Попытки замера без засчитанного замера. Отдельной колонки нет (миграций не делаем): счёт и время последней попытки — меткой в конце
+// last_error рилса. Засчитанный замер (и окончательный отказ) пишет last_error заново — метка уходит, счёт с нуля.
+const MISS_MARK = / · без замера (\d+) раз подряд, последняя попытка (\S+)$/;
+
+/** Сколько попыток подряд рилс не замерен (временный сбой, «отложено», вёрстка без счётчиков, мобильная без тел) и когда последняя. */
+export function measureMisses(lastError: string | null | undefined): { count: number; atMs: number | null } {
+  const m = MISS_MARK.exec(lastError ?? "");
+  if (!m) return { count: 0, atMs: null };
+  const at = Date.parse(m[2]);
+  return { count: Number(m[1]) || 0, atMs: Number.isFinite(at) ? at : null };
+}
+
+/** last_error после ещё одной попытки без замера: причина и метка «без замера N раз подряд, последняя попытка …». */
+export function withMeasureMiss(lastError: string | null | undefined, reason: string, nowMs: number): string {
+  return `${reason.replace(MISS_MARK, "")} · без замера ${measureMisses(lastError).count + 1} раз подряд, последняя попытка ${iso(nowMs)}`;
+}
+
+/**
+ * Рилс пропускает прогон: MEASURE_FREE_MISSES попыток подряд без замера — дальше не чаще раза в сутки. Без этого сломанная вёрстка или
+ * мёртвый адрес качались каждым прогоном (до 16 запросов в сутки на рилс при кроне раз в 3 часа) вплоть до 21-го дня.
+ */
+export function measurePaused(post: Pick<PostRow, "last_error">, nowMs: number): boolean {
+  const miss = measureMisses(post.last_error);
+  return miss.count >= MEASURE_FREE_MISSES && miss.atMs != null && nowMs - miss.atMs < MEASURE_MISS_PAUSE_HOURS * 3600 * 1000;
 }
 
 /** Привязку пора делать: «залетел», не скрыт, не мужское; ещё не привязан, или «не нашли / есть у бренда» старше недели. */
@@ -716,8 +806,9 @@ export interface RunSocialOptions {
   phase?: SocialPhase | null;
   dryRun?: boolean;
   now?: () => number;
-  /** Абсолютное время (мс), после которого новые запросы не начинаются. */
+  /** Абсолютное время (мс), после которого новые запросы не начинаются. Поиск при работе для замера — после своей доли окна (`searchTimeShare`). */
   deadlineMs?: number;
+  /** Параллельных запросов; по умолчанию — из настройки (ASSORTMENT_SOCIAL_CONCURRENCY, 6), не больше 8. */
   parallel?: number;
   /** Общий потолок движка (по умолчанию — из окружения). */
   engine?: EngineBudgetConfig;
@@ -730,19 +821,32 @@ export interface SocialRunSummary {
   stopMessage: string | null;
   requests: number;
   failedRequests: number;
+  /** Отложено Bright Data (failed_query_rejected: запрос недавно не удался) — не сбой страницы; повторим следующим прогоном. */
+  deferredRequests: number;
+  /** Параллельных запросов в этом прогоне. */
+  concurrency: number;
+  /** Доля окна, отданная поиску, если есть что мерить (остаток после оценки времени замера, не меньше половины); null — поиску всё окно. */
+  searchShare: number | null;
   weekRequestsBefore: number | null;
   allowed: number;
   /**
    * Во что упирается разрешённое число запросов: run — потолок прогона, social_line — недельная строка соцсетей
    * (ASSORTMENT_SOCIAL_WEEKLY_USD; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS сведён в неё же), engine — общий потолок движка (рилсы
-   * отказывают первыми — резерв под каталоги).
+   * отказывают первыми — резерв под каталоги), day_share — дневная доля строки (темп: седьмая часть строки в московские сутки).
    */
-  capBy: "run" | "social_line" | "engine" | null;
+  capBy: "run" | "social_line" | "engine" | "day_share" | null;
+  /** Дневная доля строки, запросов в московские сутки, и сколько из неё уже потрачено сегодня (до прогона). */
+  dayShare: number;
+  dayRequestsBefore: number;
   /** Остаток общего потолка движка для рилсов на старте, $ (оценка); null — учёт движка не прочитан. */
   engineRoomUsd: number | null;
   /** Запросов, отложенных под замер и базу авторов: поиск их не трогает. */
   reserved: number;
-  due: { discover: boolean; topics: number; google: number; profiles: number; measure: number; baselines: number; match: number };
+  /**
+   * Что пора делать: `measure` — рилсов к замеру, из них `measureWithChance` — с шансом «залететь»; `measurePaused` — к замеру по сроку,
+   * но дважды подряд не замерены и ждут суток (в `measure` их нет).
+   */
+  due: { discover: boolean; topics: number; google: number; profiles: number; measure: number; measureWithChance: number; measurePaused: number; baselines: number; match: number };
   discover: {
     ran: boolean;
     /** Поиск дошёл до конца (метка поиска поставлена); нет — продолжим в следующий прогон с места остановки. */
@@ -758,11 +862,23 @@ export interface SocialRunSummary {
     candidates: number;
     newPosts: number;
     newTopics: number;
+    /**
+     * Тем и запросов Google, отложенных в этом прогоне (Bright Data: failed_query_rejected; Google — и временный сбой; повтор не успел
+     * начаться до конца доли поиска): остаются в незавершённом поиске.
+     */
+    deferred: number;
+    /** Почему поиск уступил замеру: «time» — прошла его доля окна, «requests» — дошёл до резерва запросов замера; null — не уступал. */
+    yielded: "time" | "requests" | null;
   };
   measured: number;
   notFound: number;
   /** Страниц рилсов без распознанного блока счётчиков: замер не засчитан. */
   layoutFailures: number;
+  /**
+   * Предохранитель вёрстки: «probe» — после тревоги мерили только пробу; «recovered» — проба распознана, замер пошёл; «halted» — замер
+   * прекращён посреди прогона (страниц без счётчиков ≥ LAYOUT_HALT_MIN); null — обычный прогон.
+   */
+  layoutGuard: "probe" | "recovered" | "halted" | null;
   /**
    * Замеров без тел комментариев при ≥ 30 комментариях: намерение не измерено (Б — не «нет»). Мобильная вёрстка — замер не засчитан,
    * перемерим; десктоп — засчитан.
@@ -780,10 +896,15 @@ export interface SocialRunSummary {
 
 function emptySummary(): SocialRunSummary {
   return {
-    skipped: null, skippedBecause: null, stoppedBy: null, stopMessage: null, requests: 0, failedRequests: 0, weekRequestsBefore: null, allowed: 0, capBy: null, engineRoomUsd: null, reserved: 0,
-    due: { discover: false, topics: 0, google: 0, profiles: 0, measure: 0, baselines: 0, match: 0 },
-    discover: { ran: false, complete: false, resumed: false, topics: 0, topicsWithReels: 0, topicsUnrecognized: 0, newDeadTopics: 0, google: 0, profiles: 0, candidates: 0, newPosts: 0, newTopics: 0 },
-    measured: 0, notFound: 0, layoutFailures: 0, intentUnmeasured: 0, baselines: 0, awaitingBaseline: 0, judged: { strong: 0, viral: 0, normal: 0 }, matched: {}, errors: [], alarms: [],
+    skipped: null, skippedBecause: null, stoppedBy: null, stopMessage: null, requests: 0, failedRequests: 0, deferredRequests: 0, concurrency: DEFAULT_CONCURRENCY, searchShare: null,
+    weekRequestsBefore: null, allowed: 0, capBy: null, dayShare: 0, dayRequestsBefore: 0, engineRoomUsd: null, reserved: 0,
+    due: { discover: false, topics: 0, google: 0, profiles: 0, measure: 0, measureWithChance: 0, measurePaused: 0, baselines: 0, match: 0 },
+    discover: {
+      ran: false, complete: false, resumed: false, topics: 0, topicsWithReels: 0, topicsUnrecognized: 0, newDeadTopics: 0, google: 0, profiles: 0, candidates: 0, newPosts: 0, newTopics: 0,
+      deferred: 0, yielded: null,
+    },
+    measured: 0, notFound: 0, layoutFailures: 0, layoutGuard: null, intentUnmeasured: 0, baselines: 0, awaitingBaseline: 0, judged: { strong: 0, viral: 0, normal: 0 }, matched: {}, errors: [],
+    alarms: [],
   };
 }
 
@@ -841,19 +962,22 @@ function accountFullPayload(a: AccountRow): Record<string, unknown> {
   return { ...accountMachinePayload(a), kind: a.kind, origin: a.origin, status: a.status, note: a.note, first_seen_at: a.first_seen_at };
 }
 
-const emptyState = (): SocialState => ({ discoveredAt: null, autoTopics: [], deadTopics: {}, topicMisses: {}, pending: null });
+const emptyState = (): SocialState => ({ discoveredAt: null, autoTopics: [], deadTopics: {}, topicMisses: {}, pending: null, layoutAlarmAt: null });
 
 const GOOGLE_KEYS: ReadonlyArray<{ brand: SocialBrand; template: string; key: string }> = (["zara", "uniqlo"] as const)
   .flatMap((brand) => GOOGLE_QUERIES[brand].map((template) => ({ brand, template, key: googleKey(brand, template) })));
 
 type BaselineNeed = { posts: PostRow[]; grid: GridPost[]; awaiting: boolean };
+/** Ответ запроса в прогоне: `retryLater` — временный сбой, повтор которого не успел начаться (доля поиска, время, потолок). */
+type Fetched = UnlockerResult & { retryLater?: boolean };
 
 export async function runSocialReels(db: SupabaseClient, options: RunSocialOptions): Promise<SocialRunSummary> {
   const clock = options.now ?? Date.now;
   const nowMs = clock();
   const summary = emptySummary();
   const config = options.config;
-  const parallel = Math.max(1, Math.min(options.parallel ?? MAX_PARALLEL, MAX_PARALLEL));
+  const parallel = Math.max(1, Math.min(Math.floor(options.parallel ?? config.concurrency ?? DEFAULT_CONCURRENCY) || DEFAULT_CONCURRENCY, MAX_CONCURRENCY));
+  summary.concurrency = parallel;
   if (!config.enabled) return { ...summary, skipped: "выключено (ASSORTMENT_SOCIAL=off)", skippedBecause: "off" };
 
   let accounts: Map<string, AccountRow>;
@@ -866,17 +990,24 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     if (missing(error)) return { ...summary, skipped: `таблицы «Залетает» не созданы — нужна миграция ${SOCIAL_MIGRATION}`, skippedBecause: "no_schema" };
     throw error;
   }
-  const week = await loadWeekRequests(db, nowMs);
-  if (week == null) return { ...summary, skipped: "нет таблицы учёта расхода assortment_ai_usage (миграция 202610050005) — платные запросы не начинаем", skippedBecause: "no_usage" };
-  summary.weekRequestsBefore = week;
+  const usageDays = await loadSocialUsageDays(db, nowMs);
+  if (usageDays == null) return { ...summary, skipped: "нет таблицы учёта расхода assortment_ai_usage (миграция 202610050005) — платные запросы не начинаем", skippedBecause: "no_usage" };
+  summary.weekRequestsBefore = Object.values(usageDays).reduce((sum, n) => sum + n, 0);
   // Недельный потолок рилсов один — строка соцсетей в общем потолке движка (ASSORTMENT_SOCIAL_WEEKLY_USD; явный потолок запросов недели
   // сведён в неё же), и рилсы отказывают первыми: им остаётся то, что не отложено под каталоги. Учёт не прочитался — не платим вслепую.
+  const engineConfig = options.engine ?? engineBudgetConfig();
   const engineWeekNow = await loadEngineWeek(db, nowMs);
-  const room = engineWeekNow ? socialRoomUsd(engineWeekNow, options.engine ?? engineBudgetConfig()) : null;
+  const room = engineWeekNow ? socialRoomUsd(engineWeekNow, engineConfig) : null;
   summary.engineRoomUsd = room?.usd ?? null;
-  const caps: Array<[NonNullable<SocialRunSummary["capBy"]>, number]> = [
+  // Темп: в московские сутки — не больше седьмой части строки. Крон раз в 3 часа без темпа выбирал строку за полтора дня большой очереди,
+  // а потом пять дней не мерил ничего (мимо шли поиск и перезамеры 3-го и 7-го дня).
+  summary.dayShare = socialDayShare(socialWeeklyRequests(engineConfig));
+  summary.dayRequestsBefore = usageDays[moscowToday(nowMs)] ?? 0;
+  type Cap = [NonNullable<SocialRunSummary["capBy"]>, number];
+  const caps: Cap[] = [
     ["run", config.maxRequestsPerRun],
-    ...(room ? [[room.by, Math.floor(room.usd / COST_PER_REQUEST_USD + 1e-6)] as [NonNullable<SocialRunSummary["capBy"]>, number]] : []),
+    ...(room ? [[room.by, Math.floor(room.usd / COST_PER_REQUEST_USD + 1e-6)] as Cap] : []),
+    ["day_share", Math.max(0, summary.dayShare - summary.dayRequestsBefore)],
   ];
   const binding = caps.reduce((a, b) => (b[1] < a[1] ? b : a));
   summary.allowed = Math.max(0, binding[1]);
@@ -897,7 +1028,11 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
   summary.due.topics = summary.due.discover ? activeTopics(state, nowMs).filter((t) => !progressTopics.has(t.slug)).length : 0;
   summary.due.google = summary.due.discover ? GOOGLE_KEYS.filter((q) => !progressGoogle.has(q.key)).length : 0;
   summary.due.profiles = phase === "measure" || phase === "match" ? 0 : [...accounts.values()].filter((a) => profileDue(a, nowMs)).length + seedsMissing.length;
-  summary.due.measure = phase === "discover" || phase === "match" ? 0 : [...posts.values()].filter((p) => !p.hidden_at && !excluded(p.account_handle) && measureDue({ publishedAtMs: ms(p.published_at), checks: p.checks, lastCheckedAtMs: p.last_checked_at ? ms(p.last_checked_at) : null }, nowMs)).length;
+  const dueBySchedule = phase === "discover" || phase === "match" ? [] : [...posts.values()].filter((p) => !p.hidden_at && !excluded(p.account_handle) && postMeasureDue(p, nowMs));
+  const dueMeasure = dueBySchedule.filter((p) => !measurePaused(p, nowMs));
+  summary.due.measure = dueMeasure.length;
+  summary.due.measureWithChance = dueMeasure.filter((p) => hasChance(p)).length;
+  summary.due.measurePaused = dueBySchedule.length - dueMeasure.length;
   summary.due.baselines = phase === "discover" || phase === "match" ? 0 : awaitingAuthors.size;
   summary.due.match = phase === "discover" || phase === "measure" ? 0 : [...posts.values()].filter((p) => matchDue(p, nowMs)).length;
   // Резерв под замер и базу авторов (не больше половины прогона): поиск, упёршийся в потолок, не должен оставить замер без запросов.
@@ -911,6 +1046,14 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
   if (!lease) return { ...summary, skipped: "прогон уже идёт", skippedBecause: "busy" };
 
   const deadline = options.deadlineMs ?? Number.POSITIVE_INFINITY;
+  // Время прогона делится: есть что мерить, считать базой или привязывать — поиск новых запросов после своей доли окна не начинает (первый
+  // живой прогон 07.10 отдал поиску всё время, и замер почти не шёл). Доля — остаток окна после оценки времени этой работы (запросы × ≈9 с
+  // / потоки; повтор за десктопной вёрсткой ≈15%, база — до 13 запросов на автора, привязка — до 2), но не меньше половины: ради одного
+  // рилса поиск не уступает полокна. Работы нет — поиску всё окно.
+  const workRequests = Math.ceil(summary.due.measure * 1.15) + Math.min(summary.due.baselines, config.maxBaselineAuthorsPerRun) * (BASELINE_POSTS + 1) + summary.due.match * 2;
+  const share = phase == null && Number.isFinite(deadline) ? searchTimeShare(workRequests, parallel, Math.max(0, deadline - nowMs)) : 1;
+  const searchDeadline = share < 1 ? nowMs + Math.max(0, deadline - nowMs) * share : deadline;
+  summary.searchShare = share < 1 ? share : null;
   let usageFlushed = 0;
   let failedFlushed = 0;
   const dirtyPosts = new Set<string>();
@@ -919,9 +1062,11 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
   /** Профили, скачанные в этом прогоне (поиск или база автора): второй раз не качаем. null — профиля нет (закрыт, удалён). */
   const profiles = new Map<string, ParsedProfile | null>();
   const stopped = () => summary.stoppedBy != null;
-  /** Потолок шага: поиск не трогает резерв замера. Упёрся — шаг кончился, прогон идёт дальше. */
+  /** Потолок шага: поиск не трогает резерв замера (запросы) и остаток окна после своей доли (время). Упёрся — шаг кончился, прогон идёт дальше. */
   let stepCap = Number.POSITIVE_INFINITY;
+  let stepDeadline = Number.POSITIVE_INFINITY;
   let stepCut = false;
+  let stepCutBy: "time" | "requests" | null = null;
   const stepStopped = () => stopped() || stepCut;
   const note = (text: string) => {
     if (summary.errors.length < 12) summary.errors.push(text.slice(0, 200));
@@ -930,8 +1075,14 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     summary.alarms.push(text.slice(0, 240));
   };
 
-  /** Один запрос с учётом: потолок прогона, недели и шага, дедлайн, остановки. null — не начат (стоп). Временный сбой — один повтор. */
-  const request = async (url: string, format: UnlockerFormat, retry = true): Promise<UnlockerResult | null> => {
+  /**
+   * Один запрос с учётом: потолок прогона, суток, недели и шага, время шага и прогона, остановки. null — не начат (стоп). Счёт — до запроса и
+   * без ожидания между проверкой и прибавлением: параллельные запросы потолок не пробивают. Временный сбой — один повтор; отложенный Bright
+   * Data (failed_query_rejected) — без повтора и не в «сбоях страниц»; `deferTransient` (Google) — и временный сбой сразу «отложен» до
+   * следующего прогона: немедленный повтор того же адреса Bright Data отклоняет как «недавно не удался». Повтор не успел начаться (кончилась
+   * доля поиска, время или потолок) — `retryLater`: не «пройдено», а «повторим следующим прогоном».
+   */
+  const request = async (url: string, format: UnlockerFormat, opts: { retry?: boolean; deferTransient?: boolean } = {}): Promise<Fetched | null> => {
     if (stopped()) return null;
     if (summary.requests >= summary.allowed) {
       summary.stoppedBy = "budget";
@@ -939,16 +1090,25 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
         ? `упёрлись в общий потолок движка (остаток для рилсов ≈$${(summary.engineRoomUsd ?? 0).toFixed(2)}, оценка): соцсети отказывают первыми, каталоги Zara и Uniqlo в приоритете`
         : summary.capBy === "social_line"
           ? `${summary.allowed === 0 ? "строка соцсетей недели выбрана" : "упёрлись в строку соцсетей недели"} (ASSORTMENT_SOCIAL_WEEKLY_USD, остаток ≈$${(summary.engineRoomUsd ?? 0).toFixed(2)}, оценка)`
-          : "достигнут потолок запросов прогона";
+          : summary.capBy === "day_share"
+            ? `${summary.allowed === 0 ? "дневная доля строки соцсетей выбрана" : "упёрлись в дневную долю строки соцсетей"} (${summary.dayShare} запросов в сутки — седьмая часть недельной строки) — продолжим завтра`
+            : "достигнут потолок запросов прогона";
       return null;
     }
     if (summary.requests >= stepCap) {
       stepCut = true;
+      stepCutBy ??= "requests";
       return null;
     }
     if (clock() >= deadline) {
       summary.stoppedBy = "time";
       summary.stopMessage = "кончилось время прогона";
+      return null;
+    }
+    // Доля поиска прошла (дедлайн прогона — нет): поиск уступает остаток окна замеру, прогон идёт дальше.
+    if (clock() >= stepDeadline) {
+      stepCut = true;
+      stepCutBy ??= "time";
       return null;
     }
     summary.requests += 1;
@@ -964,10 +1124,17 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       result = { ok: false, kind: "transient", reason: error instanceof Error ? error.message.slice(0, 160) : "сбой запроса", ms: 0 };
     }
     if (!result.ok) {
+      // Bright Data отказал без попытки («недавно не удался»): повтор сейчас получил бы тот же отказ — повторим следующим прогоном. Google
+      // (адрес с after: меняется раз в сутки) — так же и при временном сбое: немедленный повтор упирался в failed_query_rejected.
+      if (result.deferred || (opts.deferTransient && result.kind === "transient")) {
+        summary.deferredRequests += 1;
+        return { ...result, deferred: true };
+      }
       summary.failedRequests += 1;
-      if (result.kind === "transient" && retry && !stopped()) {
-        const again = await request(url, format, false);
-        return again ?? result;
+      if (result.kind === "transient" && (opts.retry ?? true) && !stopped()) {
+        const again = await request(url, format, { retry: false });
+        if (again) return again;
+        return { ...result, retryLater: true };
       }
     }
     return result;
@@ -978,6 +1145,9 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     accounts.set(handle, newAutoAccount(handle, nowMs));
     newAccounts.add(handle);
   };
+
+  /** Неудачных запросов для учёта: сбои страниц и отложенные Bright Data (в «сбоях страниц» прогона отложенных нет). */
+  const unsuccessful = () => summary.failedRequests + summary.deferredRequests;
 
   const putPost = (post: PostRow) => {
     posts.set(post.code, post);
@@ -994,11 +1164,11 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     dirtyPosts.clear();
     dirtyAccounts.clear();
     newAccounts.clear();
-    const add = { calls: summary.requests - usageFlushed, failed: summary.failedRequests - failedFlushed };
+    const add = { calls: summary.requests - usageFlushed, failed: unsuccessful() - failedFlushed };
     if (add.calls > 0 || add.failed > 0) {
       await addSocialUsage(db, nowMs, add);
       usageFlushed = summary.requests;
-      failedFlushed = summary.failedRequests;
+      failedFlushed = unsuccessful();
     }
   };
 
@@ -1011,6 +1181,9 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
    */
   const computeBaseline = async (author: string, account: AccountRow, need: BaselineNeed): Promise<boolean> => {
     const candidates = new Set(need.posts.map((p) => p.code));
+    /** Страниц сетки без распознанного блока счётчиков: вёрстка сломана — база из них была бы неправдой. */
+    let unreadable = 0;
+    let readable = 0;
     const grid = new Map<string, GridPost>();
     const addGrid = (list: readonly GridPost[]) => {
       for (const g of list) {
@@ -1051,7 +1224,7 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     const fetchGrid = async (): Promise<boolean> => {
       const todo = eligible().filter((g) => !measured.has(g.code));
       let done = 0;
-      await pool(todo, parallel, stopped, async (g) => {
+      await pool(todo, parallel, () => stopped() || layoutHalt, async (g) => {
         const stored = posts.get(g.code);
         // Уже мерили за неделю — берём из базы, страницу не качаем.
         if (stored && stored.checks > 0 && stored.last_checked_at && nowMs - ms(stored.last_checked_at) < BASELINE_FRESH_DAYS * DAY_MS && (stored.likes != null || stored.comments != null)) {
@@ -1064,8 +1237,14 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
         done += 1;
         if (!r.ok) return;
         const page = parseReelPage(r.body);
-        // Без распознанного блока счётчиков лайки не «скрыты», а неизвестны — такой пост в базу не идёт.
+        // Без распознанного блока счётчиков лайки не «скрыты», а неизвестны — такой пост в базу не идёт, а страница — в сбои вёрстки.
+        if (page && !page.countsFound) {
+          unreadable += 1;
+          layoutMiss();
+        }
         if (!page || !page.countsFound) return;
+        readable += 1;
+        layoutParsed += 1;
         measured.set(g.code, { code: g.code, publishedAtMs: ms(g.publishedAt), likes: page.likes, comments: page.comments, owner: page.author ?? author });
         // Свежий пост автора из сетки — сам кандидат (так нашёлся второй залёт jpnbrands).
         if (page.author === author && withinDiscoveryWindow(g.code, nowMs) && g.kind === "reel") {
@@ -1089,11 +1268,57 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       if (!(await fetchGrid())) return false;
       baseline = medianBaseline([...measured.values()], { nowMs, author });
     }
+    // Половина страниц сетки и больше — без счётчиков (вёрстка Instagram изменилась): базу не сохраняем, досчитаем, когда починится.
+    if (unreadable > 0 && unreadable >= readable) return false;
     account.likes_median = baseline.likesMedian;
     account.comments_median = baseline.commentsMedian;
     account.baseline_posts = baseline.likesPosts;
     account.baseline_at = iso(nowMs);
     return true;
+  };
+
+  /** Страницы рилсов, замеренных в этом прогоне: их сетка «More posts from» — посты для базы автора. */
+  const measuredPages = new Map<string, ParsedReel>();
+  // Вёрстка: разобранных страниц рилсов (замер и сетка базы) и сломалась ли она посреди прогона — тогда остальную очередь не качаем
+  // (иначе ≈150 запросов за прогон при нуле замеров).
+  let layoutParsed = 0;
+  let layoutHalt = false;
+  const layoutMiss = () => {
+    summary.layoutFailures += 1;
+    layoutParsed += 1;
+    if (summary.layoutFailures >= LAYOUT_HALT_MIN && summary.layoutFailures * 2 >= layoutParsed) layoutHalt = true;
+  };
+  /**
+   * Кому считать базу: авторам рилсов с шансом, замеренных в этом прогоне, если база старше 7 дней (с сеткой «More posts from» со страниц),
+   * и авторам рилсов, что ждут базы (вердикта нет).
+   */
+  const baselineNeeds = (): Map<string, BaselineNeed> => {
+    const needs = new Map<string, BaselineNeed>();
+    const need = (author: string): BaselineNeed => {
+      let entry = needs.get(author);
+      if (!entry) {
+        entry = { posts: [], grid: [], awaiting: !hasBaseline(accounts.get(author)) };
+        needs.set(author, entry);
+      }
+      return entry;
+    };
+    for (const [code, page] of measuredPages) {
+      const post = posts.get(code);
+      const author = post?.account_handle;
+      if (!post || !author || excluded(author) || !passesPrefilter(post)) continue;
+      const account = accounts.get(author);
+      if (account?.baseline_at && nowMs - ms(account.baseline_at) < BASELINE_FRESH_DAYS * DAY_MS) continue;
+      const entry = need(author);
+      if (!entry.posts.some((p) => p.code === code)) entry.posts.push(post);
+      entry.grid.push(...page.otherPosts.filter((g) => g.owner === author));
+    }
+    for (const post of posts.values()) {
+      const author = post.account_handle;
+      if (!author || excluded(author) || !awaitsBaseline(post, accounts.get(author), nowMs)) continue;
+      const entry = need(author);
+      if (!entry.posts.some((p) => p.code === post.code)) entry.posts.push(post);
+    }
+    return needs;
   };
 
   try {
@@ -1116,16 +1341,34 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       ensureAccount(c.author);
     };
 
-    // (а) Поиск: темы и Google — раз в 6 дней (незавершённый — с места остановки); профили наблюдаемых — по их сроку.
+    // (а) Поиск: темы и Google — раз в 6 дней (незавершённый — с места остановки); профили наблюдаемых — по их сроку. Есть что мерить —
+    // поиск не трогает резерв запросов замера и остаток окна после своей доли.
     if (phase == null || phase === "discover") {
       const counters = { candidates: 0, newPosts: 0 };
       stepCap = summary.allowed - summary.reserved;
+      stepDeadline = searchDeadline;
       if (summary.due.discover) {
         summary.discover.ran = true;
         summary.discover.resumed = state.pending != null;
-        const progress: DiscoverProgress = state.pending ?? { startedAt: iso(nowMs), topics: [], google: [], runs: 0, newTopics: [], withReels: 0 };
+        const progress: DiscoverProgress = state.pending ?? { startedAt: iso(nowMs), topics: [], google: [], runs: 0, newTopics: [], withReels: 0, deferred: {} };
         const doneTopics = new Set(progress.topics);
         const doneGoogle = new Set(progress.google);
+        const deferred: Record<string, string> = { ...progress.deferred };
+        /**
+         * Отложено (Bright Data: failed_query_rejected; Google — и временный сбой): не пройдено и не сбой — повторим следующим прогоном.
+         * Откладывается дольше DEFER_MAX_HOURS с первого раза (адрес Google за это время сменился хотя бы раз) — пропускаем до следующего
+         * поиска, чтобы поиск не стоял на одном запросе.
+         */
+        const defer = (key: string, markDone: () => void, label: string) => {
+          summary.discover.deferred += 1;
+          const first = deferred[key] ?? iso(nowMs);
+          deferred[key] = first;
+          if (nowMs - ms(first) >= DEFER_MAX_HOURS * 3600 * 1000) {
+            markDone();
+            delete deferred[key];
+            note(`${label}: откладывается больше суток (Bright Data не пускает запрос) — пропускаем до следующего поиска`);
+          }
+        };
         const topics = activeTopics(state, nowMs).filter((t) => !doneTopics.has(t.slug));
         const known = new Set([...SEED_TOPICS, ...state.autoTopics, ...progress.newTopics].map((t) => t.slug).concat(Object.keys(state.deadTopics)));
         const found: SeedTopic[] = [...progress.newTopics];
@@ -1145,6 +1388,10 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
         await pool(topics, parallel, stepStopped, async (topic) => {
           const r = await request(topicUrl(topic.slug), "markdown");
           if (!r) return;
+          // Повтор временного сбоя не успел начаться (граница доли поиска, время, потолок): тема не пройдена — повторим следующим прогоном.
+          if (!r.ok && r.retryLater) return;
+          if (!r.ok && r.deferred) return defer(`topic:${topic.slug}`, () => doneTopics.add(topic.slug), `тема ${topic.slug}`);
+          delete deferred[`topic:${topic.slug}`];
           doneTopics.add(topic.slug);
           if (!r.ok) {
             if (r.kind === "failed") {
@@ -1178,8 +1425,13 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
           }
         });
         await pool(GOOGLE_KEYS.filter((q) => !doneGoogle.has(q.key)), parallel, stepStopped, async ({ brand, template, key }) => {
-          const r = await request(googleSearchUrl(googleQuery(template, nowMs)), "parsed_light");
+          // Временный сбой Google — сразу «отложено до следующего прогона», без немедленного повтора: повтор того же адреса Bright Data
+          // отклоняет как «недавно не удался» (первый живой прогон 07.10), а сбой и отказ попадали в «сбои страниц».
+          const r = await request(googleSearchUrl(googleQuery(template, nowMs)), "parsed_light", { deferTransient: true });
           if (!r) return;
+          // «Недавно не удался» — не сбой страницы и не пройден: запрос остаётся в незавершённом поиске до следующего прогона.
+          if (!r.ok && r.deferred) return defer(key, () => doneGoogle.add(key), `Google «${template}»`);
+          delete deferred[key];
           doneGoogle.add(key);
           if (!r.ok) return note(`Google «${template}»: ${r.reason}`);
           summary.discover.google += 1;
@@ -1197,8 +1449,13 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
           alarm(`ни одна тема не дала рилсов: без распознанной вёрстки или со сбоем — ${broken.length}, «страницы нет» — ${gone} — вёрстка Instagram изменилась или стена входа`);
           for (const slug of broken) doneTopics.delete(slug);
         }
-        const remainingTopics = activeTopics(state, nowMs).filter((t) => !doneTopics.has(t.slug)).length;
-        const remainingGoogle = GOOGLE_KEYS.filter((q) => !doneGoogle.has(q.key)).length;
+        const leftTopics = activeTopics(state, nowMs).filter((t) => !doneTopics.has(t.slug));
+        const leftGoogle = GOOGLE_KEYS.filter((q) => !doneGoogle.has(q.key));
+        const remainingTopics = leftTopics.length;
+        const remainingGoogle = leftGoogle.length;
+        // Осталось только отложенное (ждём, пока Bright Data пустит запрос, — не дольше суток): поиск стоит не по своей вине.
+        const onlyDeferredLeft = remainingTopics + remainingGoogle > 0
+          && leftTopics.every((t) => deferred[`topic:${t.slug}`] != null) && leftGoogle.every((q) => deferred[q.key] != null);
         if (!noReels && remainingTopics === 0 && remainingGoogle === 0) {
           summary.discover.complete = true;
           const added = found.slice(0, NEW_TOPICS_PER_DISCOVER);
@@ -1207,8 +1464,12 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
           state.discoveredAt = iso(nowMs);
           state.pending = null;
         } else {
-          // Остановка (потолок, время, деньги) или тревога: пройденное запоминаем — следующий прогон продолжит, а не начнёт заново.
-          state.pending = { startedAt: progress.startedAt, topics: [...doneTopics], google: [...doneGoogle], runs: progress.runs + 1, newTopics: found, withReels };
+          // Остановка (потолок, время, деньги) или тревога: пройденное запоминаем — следующий прогон продолжит, а не начнёт заново. Неделя
+          // или дневная доля выбраны (строка соцсетей, темп или общий потолок движка) либо осталось только отложенное Bright Data — поиск
+          // стоит не по своей вине: прогон в серию «не завершён» не идёт.
+          const weekSpent = summary.stoppedBy === "budget" && summary.capBy !== "run";
+          const notOurFault = weekSpent || (onlyDeferredLeft && !noReels);
+          state.pending = { startedAt: progress.startedAt, topics: [...doneTopics], google: [...doneGoogle], runs: progress.runs + (notOurFault ? 0 : 1), newTopics: found, withReels, deferred };
           if (state.pending.runs >= DISCOVER_STALL_RUNS) {
             alarm(`поиск не завершён прогонов подряд: ${state.pending.runs} (осталось тем: ${remainingTopics}, запросов Google: ${remainingGoogle}) — мал потолок запросов прогона или сбои`);
           }
@@ -1219,6 +1480,8 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       await pool(dueProfiles, parallel, stepStopped, async (account) => {
         const r = await request(profileUrl(account.handle), "markdown");
         if (!r) return;
+        // Отложено Bright Data или повтор не успел начаться — профиль не тронут, срок прежний: повторим следующим прогоном.
+        if (!r.ok && (r.deferred || r.retryLater)) return;
         dirtyAccounts.add(account.handle);
         if (!r.ok) {
           account.last_error = r.reason;
@@ -1247,26 +1510,35 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
       });
       summary.discover.candidates = counters.candidates;
       summary.discover.newPosts = counters.newPosts;
+      summary.discover.yielded = stepCut ? stepCutBy : null;
       stepCap = Number.POSITIVE_INFINITY;
+      stepDeadline = Number.POSITIVE_INFINITY;
       stepCut = false;
+      stepCutBy = null;
       await flush();
     }
 
-    // (б) Замер: посты 2–21 дня — первый замер, затем на 3-й и 7-й день.
-    const measuredPages = new Map<string, ParsedReel>();
+    // (б) Замер: посты 2–21 дня — первый замер каждому, на 3-й и 7-й день — только рилсам с шансом. Сначала рилсы с шансом (перезамеры и
+    // первые замеры с просмотрами ≥ 100 000), затем база их авторов, затем первые замеры остальных.
+    let stateChanged = false;
     if (phase == null || phase === "measure") {
-      const due = [...posts.values()]
-        .filter((p) => !p.hidden_at && !excluded(p.account_handle) && measureDue({ publishedAtMs: ms(p.published_at), checks: p.checks, lastCheckedAtMs: p.last_checked_at ? ms(p.last_checked_at) : null }, nowMs))
-        .sort((a, b) => a.checks - b.checks || (b.views ?? -1) - (a.views ?? -1) || ms(b.published_at) - ms(a.published_at));
-      let parsed = 0;
+      // Внутри группы (с шансом / без — порядок групп ниже): первые замеры раньше перезамеров, потом по просмотрам и свежести.
+      const byPriority = (a: PostRow, b: PostRow) => a.checks - b.checks || (b.views ?? -1) - (a.views ?? -1) || ms(b.published_at) - ms(a.published_at);
+      let queue = [...posts.values()]
+        .filter((p) => !p.hidden_at && !excluded(p.account_handle) && postMeasureDue(p, nowMs) && !measurePaused(p, nowMs))
+        .sort(byPriority);
+      let parsedWithCounts = 0;
       let desktopWithComments = 0;
       let desktopNoBodies = 0;
-      await pool(due, parallel, stopped, async (post) => {
+      const measureStopped = () => stopped() || layoutHalt;
+      const miss = (post: PostRow, reason: string, extra: Partial<PostRow> = {}) => putPost({ ...post, ...extra, last_error: withMeasureMiss(post.last_error, reason, nowMs) });
+      const measureOne = async (post: PostRow) => {
         const r = await request(post.url, "markdown");
         if (!r) return;
         if (!r.ok) {
-          // Окончательный отказ — попытка засчитана (не больше трёх), временный — повторим в следующий прогон.
-          putPost({ ...post, last_error: r.reason, checks: r.kind === "failed" ? post.checks + 1 : post.checks, last_checked_at: r.kind === "failed" ? iso(nowMs) : post.last_checked_at });
+          // Окончательный отказ — попытка засчитана (не больше трёх); временный, «отложено» — повторим, после двух подряд — не чаще раза в сутки.
+          if (r.kind === "failed") putPost({ ...post, last_error: r.reason, checks: post.checks + 1, last_checked_at: iso(nowMs) });
+          else miss(post, r.reason);
           return;
         }
         let page = parseReelPage(r.body);
@@ -1278,7 +1550,7 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
         // Мобильная вёрстка (Bright Data отдаёт её вперемешку с десктопной): тел комментариев нет, подпись обрезана — ещё один
         // запрос за десктопной, если от комментариев (Б) или номера в подписи что-то зависит.
         if (page.layout === "mobile" && ((page.comments ?? 0) >= COMMENTS_MIN || page.captionTruncated)) {
-          const again = await request(post.url, "markdown", false);
+          const again = await request(post.url, "markdown", { retry: false });
           const second = again && again.ok ? parseReelPage(again.body) : null;
           if (second && second.code === page.code && second.layout === "desktop" && second.countsFound) page = second;
         }
@@ -1286,13 +1558,14 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
           putPost({ ...post, account_handle: page.author, last_error: "автор исключён", checks: post.checks + 1, last_checked_at: iso(nowMs) });
           return;
         }
-        parsed += 1;
         if (!page.countsFound) {
           // Рилс есть, а блока «Like / Comment / Share» нет — вёрстка изменилась: числа неизвестны (не 0), замер не засчитан.
-          summary.layoutFailures += 1;
-          putPost({ ...post, account_handle: page.author ?? post.account_handle, last_error: "не распознан блок счётчиков (вёрстка Instagram изменилась) — замер не засчитан" });
+          layoutMiss();
+          miss(post, "не распознан блок счётчиков (вёрстка Instagram изменилась) — замер не засчитан", { account_handle: page.author ?? post.account_handle });
           return;
         }
+        layoutParsed += 1;
+        parsedWithCounts += 1;
         // Комментариев на (Б) хватает, а их тел не видно — намерение не измерено (не «нет»). Мобильная вёрстка (повтор за десктопной
         // не помог) — замер не засчитываем, перемерим следующим прогоном; десктоп без тел — засчитываем, а при массовом сбое — тревога.
         const intentMissing = (page.comments ?? 0) >= COMMENTS_MIN && page.visibleComments.length === 0 && post.intent_total == null;
@@ -1304,57 +1577,73 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
         summary.measured += 1;
         measuredPages.set(post.code, page);
         putPost(applyMeasurement(post, page, nowMs, !intentMissing ? {} : page.layout === "mobile"
-          ? { countCheck: false, note: "мобильная вёрстка: тела комментариев не видны — намерение не измерено, перемерим" }
+          ? { countCheck: false, note: withMeasureMiss(post.last_error, "мобильная вёрстка: тела комментариев не видны — намерение не измерено, перемерим", nowMs) }
           : { note: "тела комментариев не распознаны — намерение не измерено" }));
         ensureAccount(page.author);
-      });
-      if (summary.layoutFailures >= LAYOUT_ALARM_MIN && summary.layoutFailures * 2 >= parsed) {
-        alarm(`у ${summary.layoutFailures} из ${parsed} рилсов не распознан блок счётчиков — вёрстка Instagram изменилась, замеры не засчитаны`);
+      };
+
+      // Предохранитель вёрстки: после тревоги — только проба из LAYOUT_PROBE рилсов. Распознались (счётчики есть хотя бы у одного и сбоев
+      // меньше половины) — тревога снята, замер идёт дальше; нет — остальная очередь ждёт, тревога держится (прогон — «ошибка», и серия
+      // ошибок у сторожа не рвётся, пока вёрстка не починена).
+      if (state.layoutAlarmAt && queue.length > 0) {
+        const probe = queue.slice(0, LAYOUT_PROBE);
+        queue = queue.slice(LAYOUT_PROBE);
+        await pool(probe, parallel, stopped, measureOne);
+        if (parsedWithCounts > 0 && summary.layoutFailures * 2 < layoutParsed) {
+          summary.layoutGuard = "recovered";
+          state.layoutAlarmAt = null;
+          stateChanged = true;
+        } else {
+          summary.layoutGuard = "probe";
+          queue = [];
+          alarm(`замер приостановлен с ${iso(ms(state.layoutAlarmAt) + 3 * 3600 * 1000).slice(0, 16).replace("T", " ")} МСК: вёрстка Instagram изменилась (блок счётчиков не распознан) — каждый прогон пробуем ${LAYOUT_PROBE} рилса, распознаются — замер продолжится сам${layoutParsed === 0 ? "; проба не дала ответа" : `; в пробе без счётчиков ${summary.layoutFailures} из ${layoutParsed}`}`);
+        }
+      }
+      // База автора: сначала авторы рилсов с шансом, что ждут базы (вердикта у них нет), затем устаревшие базы замеренных сейчас; не больше
+      // N авторов за прогон — остальные досчитаются в следующих. База, которую до конца окна не успеть, не начинается: недосчитанная база —
+      // потраченные впустую запросы.
+      let baselineSlots = config.maxBaselineAuthorsPerRun;
+      const baselineTried = new Set<string>();
+      const baselineMs = (Math.ceil(BASELINE_POSTS / parallel) + 2) * AVG_REQUEST_S * 1000;
+      const runBaselines = async () => {
+        // Вёрстка сломана (предохранитель держит или замер остановлен): посты автора не распознаются — база из нуля постов была бы неправдой.
+        if (layoutHalt || summary.layoutGuard === "probe" || (state.layoutAlarmAt && summary.layoutGuard !== "recovered")) return;
+        const topLikes = (entry: BaselineNeed) => Math.max(0, ...entry.posts.map((p) => p.likes ?? 0));
+        const pendingNeeds = [...baselineNeeds().entries()]
+          .filter(([author]) => !baselineTried.has(author))
+          .sort((a, b) => Number(b[1].awaiting) - Number(a[1].awaiting) || topLikes(b[1]) - topLikes(a[1]))
+          .slice(0, Math.max(0, baselineSlots));
+        for (const [author, entry] of pendingNeeds) {
+          if (stopped() || (Number.isFinite(deadline) && deadline - clock() < baselineMs)) break;
+          const account = accounts.get(author);
+          if (!account) continue;
+          baselineTried.add(author);
+          baselineSlots -= 1;
+          if (!(await computeBaseline(author, account, entry))) continue;
+          dirtyAccounts.add(author);
+          summary.baselines += 1;
+        }
+      };
+      // Порядок: рилсы с шансом → база их авторов (без неё вердикта нет, и замер был впустую) → первые замеры остальных → база авторов, у
+      // которых шанс нашёлся только что (если время осталось). Раньше база начиналась лишь после всей очереди замера — вердикты «залетает»
+      // сдвигались на 3–5 прогонов после поиска (ревью 07.10).
+      const withChance = queue.filter((p) => hasChance(p));
+      const plain = queue.filter((p) => !hasChance(p));
+      await pool(withChance, parallel, measureStopped, measureOne);
+      await runBaselines();
+      await pool(plain, parallel, measureStopped, measureOne);
+      if (layoutHalt) summary.layoutGuard = "halted";
+      if (summary.layoutFailures >= LAYOUT_ALARM_MIN && summary.layoutFailures * 2 >= layoutParsed && summary.layoutGuard !== "probe") {
+        alarm(`у ${summary.layoutFailures} из ${layoutParsed} рилсов не распознан блок счётчиков — вёрстка Instagram изменилась, замеры не засчитаны${layoutHalt ? "; замер в прогоне остановлен" : ""}; дальше — проба из ${LAYOUT_PROBE} рилсов каждый прогон`);
+        state.layoutAlarmAt ??= iso(nowMs);
+        stateChanged = true;
       }
       if (desktopNoBodies >= LAYOUT_ALARM_MIN && desktopNoBodies * 2 >= desktopWithComments) {
         alarm(`у ${desktopNoBodies} из ${desktopWithComments} рилсов с комментариями не распознаны тела комментариев — условие Б не измеряется`);
       }
-
-      // База автора: сначала авторы рилсов с шансом, что ждут базы (вердикта у них нет), затем устаревшие базы замеренных сейчас;
-      // не больше N авторов за прогон — остальные досчитаются в следующих.
-      const needs = new Map<string, BaselineNeed>();
-      const need = (author: string): BaselineNeed => {
-        let entry = needs.get(author);
-        if (!entry) {
-          entry = { posts: [], grid: [], awaiting: !hasBaseline(accounts.get(author)) };
-          needs.set(author, entry);
-        }
-        return entry;
-      };
-      for (const [code, page] of measuredPages) {
-        const post = posts.get(code);
-        const author = post?.account_handle;
-        if (!post || !author || excluded(author) || !passesPrefilter(post)) continue;
-        const account = accounts.get(author);
-        if (account?.baseline_at && nowMs - ms(account.baseline_at) < BASELINE_FRESH_DAYS * DAY_MS) continue;
-        const entry = need(author);
-        if (!entry.posts.some((p) => p.code === code)) entry.posts.push(post);
-        entry.grid.push(...page.otherPosts.filter((g) => g.owner === author));
-      }
-      for (const post of posts.values()) {
-        const author = post.account_handle;
-        if (!author || excluded(author) || !awaitsBaseline(post, accounts.get(author), nowMs)) continue;
-        const entry = need(author);
-        if (!entry.posts.some((p) => p.code === post.code)) entry.posts.push(post);
-      }
-      const topLikes = (entry: BaselineNeed) => Math.max(0, ...entry.posts.map((p) => p.likes ?? 0));
-      const queue = [...needs.entries()]
-        .sort((a, b) => Number(b[1].awaiting) - Number(a[1].awaiting) || topLikes(b[1]) - topLikes(a[1]))
-        .slice(0, config.maxBaselineAuthorsPerRun);
-      for (const [author, entry] of queue) {
-        if (stopped()) break;
-        const account = accounts.get(author);
-        if (!account) continue;
-        if (!(await computeBaseline(author, account, entry))) continue;
-        dirtyAccounts.add(author);
-        summary.baselines += 1;
-      }
+      await runBaselines();
     }
+    if (stateChanged && stateRow) await saveState(db, stateRow.capabilities, state);
 
     // Вердикт — по сохранённым числам и текущей базе, без запросов.
     for (const post of [...posts.values()]) {
@@ -1376,7 +1665,6 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
         summary.matched[status] = (summary.matched[status] ?? 0) + 1;
       };
       for (const post of due) {
-        if (stopped() && post.refs.length > 0) break;
         if (looksMenswear(post.caption_excerpt)) {
           putPost({ ...post, match_status: "men", match_checked_at: iso(nowMs) });
           count("men");
@@ -1398,6 +1686,9 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
           count("catalog");
           continue;
         }
+        // Карточка бренда — это запросы: прогон остановлен (время, потолок) — привязка подождёт следующего прогона; каталог (без запросов)
+        // — выше, его не пропускаем.
+        if (stopped()) continue;
         let transient = false;
         let result: { status: MatchStatus; card: { name: string; image: string | null; gender: CardGender }; url: string } | null = null;
         for (const key of post.refs.slice(0, BRAND_SITE_REFS)) {
@@ -1460,7 +1751,7 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
     }
   } finally {
     try {
-      const add = { calls: summary.requests - usageFlushed, failed: summary.failedRequests - failedFlushed };
+      const add = { calls: summary.requests - usageFlushed, failed: unsuccessful() - failedFlushed };
       if (add.calls > 0 || add.failed > 0) await addSocialUsage(db, nowMs, add);
     } finally {
       await releaseLease(db, nowMs, lease);
@@ -1470,25 +1761,33 @@ export async function runSocialReels(db: SupabaseClient, options: RunSocialOptio
 }
 
 /**
- * Строка журнала прогона для сторожа. «error»: остановка по деньгам, ключу или зоне, все запросы упали, или тревога (вёрстка
- * Instagram изменилась, поиск не завершается) — даже если запросы прошли. «partial»: потолок, время или поиск продолжится завтра.
+ * Строка журнала прогона для сторожа. «error»: остановка по деньгам, ключу или зоне, все запросы упали (от NOTHING_WORKED_MIN запросов:
+ * при кроне раз в 3 часа прогон в 1–3 запроса обычен, и одна страница, дважды не открывшаяся, — не поломка), или тревога (вёрстка
+ * Instagram изменилась — и пока предохранитель вёрстки держит замер, поиск не завершается) — даже если запросы прошли. «partial»: потолок,
+ * время или поиск продолжится следующим прогоном. Прогон без единого запроса и без ошибки — метка `[stop:idle]` в конце строки: сторож
+ * не считает его ни поломкой, ни починкой.
  */
 export function socialRunLog(summary: SocialRunSummary): { status: "ok" | "partial" | "error"; note: string | null } {
   const hardStop = summary.stoppedBy === "billing" || summary.stoppedBy === "auth" || summary.stoppedBy === "config";
-  const nothingWorked = summary.requests > 0 && summary.failedRequests >= summary.requests;
+  const nothingWorked = summary.requests >= NOTHING_WORKED_MIN && summary.failedRequests >= summary.requests;
   const alarmed = summary.alarms.length > 0;
   const discoverUnfinished = summary.discover.ran && !summary.discover.complete;
   const unfinished = summary.stoppedBy === "budget" || summary.stoppedBy === "time" || discoverUnfinished;
   const status = hardStop || nothingWorked || alarmed ? "error" : unfinished ? "partial" : "ok";
   const note = [
     alarmed ? summary.alarms.join("; ") : null,
-    discoverUnfinished && !alarmed ? "поиск не дошёл до конца — продолжим в следующий прогон" : null,
+    discoverUnfinished && !alarmed
+      ? summary.discover.yielded === "time" ? "поиск отдал часть времени замеру — продолжим в следующий прогон" : "поиск не дошёл до конца — продолжим в следующий прогон"
+      : null,
     summary.stopMessage,
     summary.failedRequests > 0 ? `сбоев страниц: ${summary.failedRequests} из ${summary.requests}` : null,
+    // Отложенное («запрос недавно не удался» Bright Data; временный сбой Google) — не сбой страницы: повторим следующим прогоном.
+    summary.deferredRequests > 0 ? `отложено до следующего прогона (Google, отказы Bright Data): ${summary.deferredRequests}` : null,
     summary.errors.length ? summary.errors.slice(0, 3).join("; ") : null,
   ].filter(Boolean).join(". ");
-  // «Нет денег» — метка в конце строки: по ней сторож задач шлёт одну тревогу на Bright Data сразу, а не через три дня ошибок.
+  // «Нет денег» — метка в конце строки: по ней сторож задач шлёт одну тревогу на Bright Data сразу, а не через сутки ошибок.
   if (summary.stoppedBy === "billing") return { status, note: `${note || "Bright Data: нет денег или аккаунт не активен (402)"} [stop:billing]` };
+  if (summary.requests === 0 && status !== "error") return { status, note: `${note ? `${note} ` : ""}${IDLE_RUN_TAG}` };
   return { status, note: note || null };
 }
 

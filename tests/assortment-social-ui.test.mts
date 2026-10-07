@@ -15,10 +15,11 @@ import { normalizeProductUrl } from "../lib/assortment/extract.ts";
 import { jobFreshness, WATCHED_JOBS, type JobRun } from "../lib/assortment/jobsWatch.ts";
 import {
   cardTitle, compactRu, firstMeasuredAt, importableBrandUrl, nextSocialRun, parseFeedPeriod, parseHandle, pickSocialDigest, refArticle, sampleLinksFor, SOCIAL_CRON,
-  timesPhrase, type SocialDigestPost,
+  SOCIAL_RUNS_PER_DAY, socialCronMskTimes, socialPassPlan, socialPassText, socialProgressText, socialQueuePending, timesPhrase, type SocialDigestPost, type SocialProgress,
 } from "../lib/assortment/socialFeed.ts";
 import {
-  addSocialAccount, attachSocialFlags, countSocialFeed, loadModelSocial, loadSocialAccountsView, loadSocialFeed, setReelHidden, setSocialAccountStatus,
+  addSocialAccount, attachSocialFlags, countSocialFeed, loadModelSocial, loadSocialAccountsView, loadSocialFeed, loadSocialProgress, loadSocialRunStatus, setReelHidden, setSocialAccountStatus,
+  SOCIAL_ALERT_STREAK,
 } from "../lib/assortment/socialFeedStore.ts";
 import { uniqloCardUrls, zaraCardUrl } from "../lib/assortment/socialReels.ts";
 import type { SocialReelCard } from "../lib/assortment/socialReelsStore.ts";
@@ -200,7 +201,7 @@ test("Лента: период, «только сильные», скрытый 
   assert.deepEqual(feed.cards.map((c) => c.code), ["DdA1111111", "DdB2222222"], "сильный первым; обычный и старше периода — нет");
   assert.equal(feed.measured, 3, "замерено за 14 дней: три рилса раздела (с обычным, без ещё не замеренного)");
   assert.deepEqual([feed.run?.lastStatus, feed.run?.lastNote, feed.run?.lastOkAt], ["partial", "кончилось время прогона", iso(NOW - 3600_000)]);
-  assert.equal(feed.run?.nextRunAt, "2026-10-07T06:20:00.000Z");
+  assert.equal(feed.run?.nextRunAt, "2026-10-06T18:20:00.000Z", "крон каждые 3 часа: после 16:00 UTC — 18:20 UTC");
   const wide = await loadSocialFeed(db, { direction: "jackets", days: 30, onlyStrong: false, nowMs: NOW });
   assert.ok(wide.available && wide.cards.some((c) => c.code === "DdOLD33333"), "30 дней — и старый «залёт» виден");
   const strong = await loadSocialFeed(db, { direction: "jackets", days: 14, onlyStrong: true, nowMs: NOW });
@@ -386,14 +387,37 @@ test("Пустые состояния: без таблиц — одна стро
   assert.match(flat(renderToStaticMarkup(createElement(SocialIntro))), /Лайки и просмотры — не продажи; за рубежом видно/);
 });
 
-test("Строка сбора: последний и следующий прогон; ошибка прогона и не загрузившееся — отдельными строками (role=alert)", () => {
-  const ok = flat(renderToStaticMarkup(createElement(SocialRunLine, { run: { lastRunAt: "2026-10-06T06:20:00Z", lastStatus: "ok", lastNote: null, lastOkAt: "2026-10-06T06:20:00Z", nextRunAt: "2026-10-07T06:20:00.000Z" }, warnings: [] })));
-  assert.match(ok, /Сбор ежедневно в 09:20 МСК, поиск новых рилсов — раз в неделю; последний прогон — 06\.10 09:20; следующий — 07\.10 09:20\./);
-  const bad = renderToStaticMarkup(createElement(SocialRunLine, { run: { lastRunAt: "2026-10-06T06:20:00Z", lastStatus: "error", lastNote: "Bright Data: нет денег на счёте", lastOkAt: null, nextRunAt: "2026-10-07T06:20:00.000Z" }, warnings: ["журнал сбора не загрузился: timeout"] }));
+test("Строка сбора: последний и следующий прогон, счётчики одной строкой, остальное — свёрнуто; плашка — при серии ошибок или «нет денег», не от одного мелкого прогона", () => {
+  const base = { lastRunAt: "2026-10-06T06:20:00Z", lastOkAt: "2026-10-06T06:20:00Z", nextRunAt: "2026-10-06T09:20:00.000Z", errorStreak: 0, alert: null };
+  const ok = flat(renderToStaticMarkup(createElement(SocialRunLine, { run: { ...base, lastStatus: "ok", lastNote: null }, warnings: [] })));
+  assert.match(ok, /^\s*Сбор каждые 3 часа; последний прогон — 06\.10 09:20; следующий — 06\.10 12:20\./);
+  assert.match(ok, /Подробнее о сборе Прогоны в 00:20, 03:20 … 21:20 МСК: замер, база авторов, привязка; поиск новых рилсов — раз в 6 дней, доделывается следующими прогонами\./);
+  const okHtml = renderToStaticMarkup(createElement(SocialRunLine, { run: { ...base, lastStatus: "partial", lastNote: "кончилось время прогона" }, warnings: [] }));
+  assert.match(okHtml, /<details[^>]*><summary[^>]*>Подробнее о сборе<\/summary>.*Пометка прогона: кончилось время прогона\./s, "пометка — внутри свёрнутого блока");
+  // Одна мелкая ошибка (1–3 запроса при кроне раз в 3 часа) — пометкой, без красной плашки.
+  const single = renderToStaticMarkup(createElement(SocialRunLine, { run: { ...base, lastStatus: "error", lastNote: "сбоев страниц: 6 из 6", errorStreak: 1 }, warnings: [] }));
+  assert.equal((single.match(/role="alert"/g) ?? []).length, 0);
+  assert.match(flat(single), /последний прогон — 06\.10 09:20 — с ошибкой.*Пометка прогона: сбоев страниц: 6 из 6\./);
+  const bad = renderToStaticMarkup(createElement(SocialRunLine, { run: { ...base, lastStatus: "error", lastNote: "сбоев страниц: 9 из 9", lastOkAt: null, errorStreak: 3, alert: "сбоев страниц: 9 из 9" }, warnings: ["журнал сбора не загрузился: timeout"] }));
   assert.equal((bad.match(/role="alert"/g) ?? []).length, 2);
-  assert.match(flat(bad), /Последний прогон с ошибкой: Bright Data: нет денег на счёте/);
+  assert.match(flat(bad), /Прогонов с ошибкой подряд: 3\. сбоев страниц: 9 из 9/);
+  assert.doesNotMatch(flat(bad), /Пометка прогона/, "текст ошибки — в плашке, не дважды");
   assert.match(flat(bad), /Не загрузилось: журнал сбора не загрузился: timeout/);
+  const billing = flat(renderToStaticMarkup(createElement(SocialRunLine, { run: { ...base, lastStatus: "error", lastNote: "Bright Data: нет денег на счёте", errorStreak: 1, alert: "Bright Data: нет денег на счёте" }, warnings: [] })));
+  assert.match(billing, /Последний прогон с ошибкой: Bright Data: нет денег на счёте/);
   assert.match(flat(renderToStaticMarkup(createElement(SocialRunLine, { run: null, warnings: [] }))), /прогонов ещё не было/);
+});
+
+test("Ревью 07.10: плашка ошибки по журналу — серия из двух и больше (прогоны без работы её не рвут) или «нет денег» сразу; одна ошибка — нет", async () => {
+  const log = (status: string, hoursAgo: number, error: string | null = null) => ({ job: "assortment-social", status, error, started_at: iso(NOW - hoursAgo * 3600_000), rows_affected: 0 });
+  const status = async (rows: Row[]) => loadSocialRunStatus(fakeDb({ tables: { sync_log: rows } }).db, NOW);
+  const one = await status([log("error", 1, "сбоев страниц: 5 из 5"), log("ok", 4)]);
+  assert.deepEqual([one.errorStreak, one.alert, one.lastNote], [1, null, "сбоев страниц: 5 из 5"]);
+  const two = await status([log("partial", 1, "дневная доля строки соцсетей выбрана [stop:idle]"), log("error", 4, "сбоев страниц: 5 из 5"), log("error", 7, "сбоев страниц: 7 из 7"), log("ok", 10)]);
+  assert.deepEqual([two.errorStreak, two.alert, two.lastStatus, two.lastNote], [2, "сбоев страниц: 5 из 5", "partial", "дневная доля строки соцсетей выбрана"], "прогон без работы серию не рвёт; метка [stop:idle] на вкладке не видна");
+  const money = await status([log("error", 1, "Bright Data: аккаунт не активен (402) [stop:billing]")]);
+  assert.deepEqual([money.errorStreak, money.alert], [1, "Bright Data: аккаунт не активен (402)"]);
+  assert.equal(SOCIAL_ALERT_STREAK, 2);
 });
 
 test("Список аккаунтов: ник со ссылкой, вид, когда проверяли, залёты; «Исключить», «Вернуть» и форма — только директору", () => {
@@ -430,12 +454,124 @@ test("Числа и слова: «1,2 тыс.», «480 тыс.», «1,2 млн»
   assert.equal(sampleLinksFor(card({}, { url: "https://www.instagram.com/p/x/" }))[0].label, "Lyst", "ссылка на Instagram — не «сайт бренда»");
 });
 
-test("Крон сбора: строка расписания совпадает с vercel.json; следующий прогон считается от текущего времени", () => {
+test("Крон сбора каждые 3 часа: строка расписания совпадает с vercel.json; следующий прогон — ближайшая отметка :20 часов UTC, кратных трём", () => {
   const vercel = JSON.parse(read("vercel.json")) as { crons: Array<{ path: string; schedule: string }> };
   assert.deepEqual(vercel.crons.filter((c) => c.path === SOCIAL_CRON.path), [{ path: SOCIAL_CRON.path, schedule: SOCIAL_CRON.schedule }]);
-  assert.equal(SOCIAL_CRON.schedule, `${SOCIAL_CRON.minuteUtc} ${SOCIAL_CRON.hourUtc} * * *`);
+  assert.equal(SOCIAL_CRON.schedule, `${SOCIAL_CRON.minuteUtc} */${SOCIAL_CRON.everyHours} * * *`);
+  assert.equal(SOCIAL_CRON.schedule, "20 */3 * * *");
+  assert.equal(SOCIAL_RUNS_PER_DAY, 8);
+  assert.equal(nextSocialRun(Date.parse("2026-10-06T00:10:00Z")), "2026-10-06T00:20:00.000Z");
   assert.equal(nextSocialRun(Date.parse("2026-10-06T05:00:00Z")), "2026-10-06T06:20:00.000Z");
-  assert.equal(nextSocialRun(Date.parse("2026-10-06T06:20:00Z")), "2026-10-07T06:20:00.000Z");
+  assert.equal(nextSocialRun(Date.parse("2026-10-06T06:20:00Z")), "2026-10-06T09:20:00.000Z", "ровно в момент прогона — следующий");
+  assert.equal(nextSocialRun(Date.parse("2026-10-07T06:20:00Z")), "2026-10-07T09:20:00.000Z", "первый живой прогон 07.10 09:20 МСК — следующий в 12:20 МСК, а не завтра");
+  assert.equal(nextSocialRun(Date.parse("2026-10-06T21:30:00Z")), "2026-10-07T00:20:00.000Z", "через полночь UTC");
+  assert.deepEqual(socialCronMskTimes(), ["00:20", "03:20", "06:20", "09:20", "12:20", "15:20", "18:20", "21:20"]);
+});
+
+test("Честные счётчики: по разделу — найдено, замерено, ждут замера и с шансом; без раздела — по всем разделам; сколько прогонов до полного прохода", async () => {
+  const fresh = (code: string, over: Row = {}) => post(code, { checks: 0, last_checked_at: null, likes: null, comments: null, views: null, verdict: null, likes_ratio: null, ...over });
+  const { db } = fakeDb({ tables: {
+    assortment_social_account: [account("jpnbrands"), account("spam.shop", { status: "excluded" })],
+    assortment_social_post: [
+      post("DdA1111111"),
+      post("DdC3333333", { verdict: "normal", likes: 300, comments: 2, views: 5000 }),
+      fresh("DdW1111111", { views: 150_000 }),
+      fresh("DdW2222222", { views: 2000 }),
+      fresh("DdU1111111", { direction: null }),
+      fresh("DdU2222222", { direction: null, views: 300_000 }),
+      fresh("DdB1111111", { direction: "bags" }),
+      fresh("DdHIDE1111", { hidden_at: iso(NOW - DAY) }),
+      fresh("DdEXCL1111", { account_handle: "spam.shop" }),
+      fresh("DdYOUNG111", { published_at: iso(NOW - DAY) }),
+      fresh("DdOLD11111", { published_at: iso(NOW - 25 * DAY) }),
+    ],
+  } });
+  const progress = await loadSocialProgress(db, { direction: "jackets", days: 14, nowMs: NOW });
+  assert.deepEqual(progress.section, { found: 5, measured: 2, waiting: 2, waitingWithChance: 1, awaitingBaseline: 0 }, "скрытый, исключённый автор, сумки и старше периода — не в счёте; моложе 2 суток — найден, но мерить рано");
+  assert.deepEqual(progress.unsorted, { found: 2, waiting: 2, waitingWithChance: 1, measured: 0 });
+  assert.deepEqual(progress.pass, {
+    waiting: 5, perRun: 60, dayShare: 286, weeklyRequests: 2000, runs: 1, hours: 3, finishAt: "2026-10-06T18:20:00.000Z", blockedBy: null, resumeAt: null,
+  }, "очередь всех разделов, а не только курток");
+  const feed = await loadSocialFeed(db, { direction: "jackets", days: 14, onlyStrong: false, nowMs: NOW });
+  assert.ok(feed.available);
+  assert.deepEqual([feed.measured, feed.progress?.section.found], [2, 5]);
+
+  const text = socialProgressText(progress, "Куртки");
+  assert.equal(text.section, "Куртки за 14 дней: найдено рилсов 5, замерено 2, ждут замера 2, из них с шансом 1.");
+  assert.equal(text.unsorted, "Ещё 2 рилса без раздела — по всем разделам: ждут замера 2, из них с шансом 1 — раздел станет известен после замера.");
+  assert.equal(text.pass, "До полного прохода очереди (5 рилсов, все разделы) — ≈1 прогон, ≈3 ч, к 06.10 21:20 МСК (оценка: ~60 замеров за прогон, не больше 286 запросов в сутки — седьмая часть строки; поиск и база авторов тратят ту же строку).");
+  const long = socialPassText(socialPassPlan({ waiting: 4500, perRun: 60, dayShare: 286, weeklyRequests: 2000, spentByDay: {}, engineRoomRequests: null, nowMs: NOW })) ?? "";
+  assert.match(long, /≈79 прогонов, ≈16 суток, к 22\.10 06:20 МСК/, "упирается в дневную долю: 286 в сутки, а не 60 × 8");
+  assert.equal(socialPassPlan({ waiting: 0, perRun: 60, dayShare: 286, weeklyRequests: 2000, spentByDay: {}, engineRoomRequests: null, nowMs: NOW }), null, "очередь пуста — строки нет");
+
+  // Строка сбора на телефоне: счётчики раздела — одной строкой, без раздела и проход — в свёрнутом блоке.
+  const html = renderToStaticMarkup(createElement(SocialRunLine, { run: null, warnings: [], progress, sectionLabel: "Куртки" }));
+  assert.match(html, /<p[^>]*>Куртки за 14 дней: найдено рилсов 5, замерено 2, ждут замера 2, из них с шансом 1\.<\/p><details/);
+  assert.match(flat(html), /Подробнее о сборе .* Ещё 2 рилса без раздела .* До полного прохода очереди \(5 рилсов, все разделы\) — ≈1 прогон/);
+  const empty = flat(renderToStaticMarkup(createElement(SocialEmpty, { days: 14, onlyStrong: false, measured: 2, progress, onAllVerdicts: noop, onWiden: noop })));
+  assert.match(empty, /За 14 дней ничего не залетело/);
+  assert.doesNotMatch(empty, /[Нн]айдено рилсов|[Зз]амерено/, "счётчики в пустом состоянии не повторяются — они в строке сбора");
+  assert.match(empty, /«ничего не залетело» значит «ещё не измерено», а не «нечего мерить»/);
+  assert.match(empty, /До полного прохода очереди \(5 рилсов, все разделы\) — ≈1 прогон/, "сколько до конца — при пустой ленте");
+  const done: SocialProgress = { days: 14, section: { found: 40, measured: 40, waiting: 0, waitingWithChance: 0, awaitingBaseline: 0 }, unsorted: { found: 0, waiting: 0, waitingWithChance: 0, measured: 0 }, pass: null };
+  const settled = flat(renderToStaticMarkup(createElement(SocialEmpty, { days: 14, onlyStrong: false, measured: 40, progress: done, onAllVerdicts: noop, onWiden: noop })));
+  assert.doesNotMatch(settled, /ещё не измерено/, "всё замерено — «ничего не залетело» правда");
+  const noLine = flat(renderToStaticMarkup(createElement(SocialRunLine, { run: null, warnings: [], progress: done, sectionLabel: "Куртки" })));
+  assert.doesNotMatch(noLine, /До полного прохода|без раздела/);
+});
+
+test("Ревью 07.10: «ждут базы автора» — замерен, с шансом, базы нет: вердикт впереди, «ничего не залетело» — «ещё не измерено»; замеренные без раздела — без обещания «станет известен»", async () => {
+  const { db } = fakeDb({ tables: {
+    assortment_social_account: [account("jpnbrands"), account("hot.author", { origin: "auto", status: "seen", likes_median: null, comments_median: null, baseline_posts: null, baseline_at: null })],
+    assortment_social_post: [
+      // Куртка с шансом: замерена, 8 000 лайков, перезамер 3-го дня уже был, базы автора нет — вердикта нет.
+      post("DdHOT000001", { account_handle: "hot.author", checks: 2, last_checked_at: iso(NOW - 1.5 * DAY), likes: 8000, comments: 40, views: null, verdict: null, likes_ratio: null, comments_ratio: null, rule_version: null }),
+      // Замерены (Google), раздел по подписи не определился.
+      post("DdUNS000001", { direction: null, found_via: ["google"], checks: 1, last_checked_at: iso(NOW - 3 * DAY), likes: 40, comments: 1, views: null, verdict: "normal" }),
+      post("DdUNS000002", { direction: null, found_via: ["google"], checks: 1, last_checked_at: iso(NOW - 3 * DAY), likes: 70, comments: 0, views: null, verdict: "normal" }),
+      // Без раздела, ждёт первого замера; и совсем свежий — мерить рано.
+      post("DdUNS000003", { direction: null, checks: 0, last_checked_at: null, likes: null, comments: null, views: null, verdict: null }),
+      post("DdUNS000004", { direction: null, checks: 0, last_checked_at: null, likes: null, comments: null, views: null, verdict: null, published_at: iso(NOW - DAY) }),
+    ],
+  } });
+  const progress = await loadSocialProgress(db, { direction: "jackets", days: 14, nowMs: NOW });
+  assert.deepEqual(progress.section, { found: 1, measured: 1, waiting: 0, waitingWithChance: 0, awaitingBaseline: 1 });
+  assert.deepEqual(progress.unsorted, { found: 4, waiting: 1, waitingWithChance: 0, measured: 2 });
+  const text = socialProgressText(progress, "Куртки");
+  assert.equal(text.section, "Куртки за 14 дней: найдено рилсов 1, замерено 1, ждут замера 0, из них с шансом 0, ждут базы автора 1.");
+  assert.equal(text.unsorted, "Ещё 4 рилса без раздела — по всем разделам: ждут замера 1, из них с шансом 0 — раздел станет известен после замера; уже замерены, а раздел по подписи не определился — 2; моложе 2 суток, мерить рано — 1.");
+  assert.equal(socialQueuePending(progress), true);
+  const empty = flat(renderToStaticMarkup(createElement(SocialEmpty, { days: 14, onlyStrong: false, measured: 1, progress, onAllVerdicts: noop, onWiden: noop })));
+  assert.match(empty, /Вердикт — после замера и базы автора: пока очередь не пройдена .*«ещё не измерено», а не «нечего мерить»/);
+  // Только ждут базы (очередь замера пуста) — тоже «ещё не измерено».
+  const onlyBase: SocialProgress = { ...progress, unsorted: { found: 0, waiting: 0, waitingWithChance: 0, measured: 0 }, pass: null };
+  assert.equal(socialQueuePending(onlyBase), true);
+  assert.equal(socialQueuePending({ ...onlyBase, section: { ...onlyBase.section, awaitingBaseline: 0 } }), false);
+});
+
+test("Ревью 07.10: «до полного прохода» читает учёт — дневная доля выбрана, строка недели выбрана, общий потолок движка; не обещает «≈15 ч», когда замер стоит", async () => {
+  const queue = Array.from({ length: 300 }, (_, i) => post(`DdQ${String(i).padStart(8, "0")}`, { direction: "bags", checks: 0, last_checked_at: null, likes: null, comments: null, views: null, verdict: null, published_at: iso(NOW - 4 * DAY) }));
+  const progressWith = async (usage: Row[], engine = { weeklyUsd: 30, socialWeeklyUsd: 3 }) =>
+    (await loadSocialProgress(fakeDb({ tables: { assortment_social_account: [account("jpnbrands")], assortment_social_post: queue, assortment_ai_usage: usage } }).db, { direction: "jackets", days: 14, nowMs: NOW, engine })).pass!;
+  const social = (day: string, calls: number) => ({ day, kind: "brightdata_social", calls, cost_usd: calls * 0.0015 });
+  // Строка недели выбрана вчера (2 000 запросов): замер стоит до выхода 05.10 из окна — 12.10 00:20 МСК, а не «≈5 прогонов, ≈15 ч».
+  const week = await progressWith([social("2026-10-05", 2000)]);
+  assert.deepEqual([week.blockedBy, week.resumeAt, week.runs], ["social_line", "2026-10-11T21:20:00.000Z", 6]);
+  assert.match(socialPassText(week) ?? "", /^Замер стоит: строка соцсетей недели \(2\s000 запросов\) выбрана — продолжится ≈12\.10 00:20 МСК, когда старые дни выйдут из 7-дневного окна\. До полного прохода очереди \(300 рилсов, все разделы\) — ≈6 прогонов, ≈7 суток/);
+  // Дневная доля на сегодня выбрана — завтра с 00:20 МСК; 300 рилсов — за двое суток по 286.
+  const day = await progressWith([social("2026-10-06", 286)]);
+  assert.deepEqual([day.blockedBy, day.resumeAt, day.finishAt], ["day_share", "2026-10-06T21:20:00.000Z", "2026-10-07T21:20:00.000Z"]);
+  assert.match(socialPassText(day) ?? "", /^Замер стоит: дневная доля строки соцсетей \(286 запросов в сутки\) на сегодня выбрана — продолжится 07\.10 00:20 МСК\./);
+  // Общий потолок движка выбран (резерв под каталоги) — срок не обещаем.
+  const engine = await progressWith([{ day: "2026-10-06", kind: "catalog_attributes", calls: 3000, cost_usd: 29 }]);
+  assert.deepEqual([engine.blockedBy, engine.finishAt], ["engine", null]);
+  assert.match(socialPassText(engine) ?? "", /общий потолок движка на неделю выбран .* продолжится, когда он освободится; в очереди 300 рилсов/);
+  // Строка выключена владельцем (0).
+  const off = await progressWith([], { weeklyUsd: 30, socialWeeklyUsd: 0 });
+  assert.equal(off.blockedBy, "off");
+  // Учёт пуст — по скорости: 300 рилсов по ~60 за прогон — 5 прогонов (60 сегодня в 21:20 МСК, 240 завтра — в дневной доле 286).
+  const clean = await progressWith([]);
+  assert.deepEqual([clean.blockedBy, clean.runs, clean.finishAt], [null, 5, "2026-10-07T06:20:00.000Z"]);
 });
 
 // ---------------------------------------------------------------------------
@@ -605,15 +741,21 @@ test("Сводка: раздел «Залетает в соцсетях» — б
 // ---------------------------------------------------------------------------
 // Сторож
 
-test("Сторож: «Залетает» — 3 ошибки подряд или 3 суток тишины (крон ежедневный); имя задачи совпадает с кроном", () => {
+test("Сторож: «Залетает» — 8 ошибок подряд (сутки) или сутки тишины (крон каждые 3 часа); имя задачи совпадает с кроном", () => {
   const rule = WATCHED_JOBS.find((j) => j.job === "assortment-social")!;
   assert.ok(rule);
-  const run = (status: JobRun["status"], hoursAgo: number): JobRun => ({ job: rule.job, status, error: status === "error" ? "Bright Data ответил 402" : null, started_at: iso(NOW - hoursAgo * 3600_000) });
-  assert.equal(jobFreshness(rule, [run("error", 1), run("error", 25)], NOW).state, "ok", "две ошибки — ещё не тревога");
-  const stalled = jobFreshness(rule, [run("error", 1), run("error", 25), run("error", 49)], NOW);
+  const run = (status: JobRun["status"], hoursAgo: number): JobRun => ({ job: rule.job, status, error: status === "error" ? "Bright Data ответил 502" : null, started_at: iso(NOW - hoursAgo * 3600_000) });
+  const errors = (n: number) => Array.from({ length: n }, (_, i) => run("error", 1 + i * 3));
+  assert.equal(jobFreshness(rule, errors(7), NOW).state, "ok", "семь ошибок за 21 час — ещё не тревога (при ежедневном пороге 3 это было бы 9 часов)");
+  const stalled = jobFreshness(rule, errors(8), NOW);
   assert.equal(stalled.state, "stalled");
-  assert.match(String(stalled.reason), /3 прогонов подряд/);
-  assert.equal(jobFreshness(rule, [run("ok", 71)], NOW).state, "ok");
-  assert.equal(jobFreshness(rule, [run("ok", 72)], NOW).state, "stalled", "трое суток без записи — крон пропал");
+  assert.match(String(stalled.reason), /8 прогонов подряд/);
+  assert.equal(jobFreshness(rule, [run("ok", 23)], NOW).state, "ok");
+  assert.equal(jobFreshness(rule, [run("ok", 24)], NOW).state, "stalled", "сутки без записи — восемь прогонов пропало, крон пропал");
   assert.equal(/const JOB = "([^"]+)"/.exec(read("app/api/sync/assortment-social/route.ts"))?.[1], rule.job);
+  // Подписи расписания — под крон каждые 3 часа: ни «ежедневно», ни «через три дня» (ревью 07.10).
+  for (const file of ["app/api/sync/assortment-social/route.ts", "lib/assortment/stage6Sources.ts", "lib/assortment/jobsWatch.ts", "components/assortment/SocialView.tsx"]) {
+    assert.doesNotMatch(read(file), /крон ежедневн|сторож скажет через три дня|ежедневно в 09:20/, file);
+  }
+  assert.match(read("app/api/sync/assortment-social/route.ts"), /сторож скажет через сутки — 8 ошибок подряд/);
 });

@@ -201,7 +201,7 @@
     },
     {
       "path": "/api/sync/assortment-social",
-      "schedule": "20 6 * * *"
+      "schedule": "20 */3 * * *"
     },
     {
       "path": "/api/sync/seo-positions",
