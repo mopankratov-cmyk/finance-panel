@@ -37,6 +37,10 @@ export const ENGINE_KIND = {
   social: "brightdata_social",
   /** Зарезервировано: разбор соцфото (Этап 6, не подключён). */
   socialAttributes: "social_attributes",
+  /** «Китай (1688)»: перевод названий карточек на русский (Polza) — факт провайдера. */
+  cnTranslate: "cn_translate",
+  /** «Китай (1688)»: запросы к официальным навыкам 1688 — 0 $, только число запросов (недельный потолок запросов). */
+  cn1688: "cn_1688",
 } as const;
 
 /** Статья Bright Data: раздел бренда, часть раздела или фото Zara. */
@@ -215,6 +219,8 @@ export const ENGINE_KIND_LABEL: Record<string, string> = {
   [ENGINE_KIND.referenceAi]: "старый разбор находок",
   [ENGINE_KIND.social]: "рилсы Instagram",
   [ENGINE_KIND.socialAttributes]: "разбор соцфото",
+  [ENGINE_KIND.cnTranslate]: "перевод названий 1688",
+  [ENGINE_KIND.cn1688]: "запросы 1688",
   [brightdataKind("zara")]: "Zara",
   [brightdataKind("uniqlo")]: "Uniqlo",
   [brightdataKind("asos")]: "ASOS",

@@ -364,6 +364,7 @@ function spendGroup(f: SpendFacts): ReadinessGroup | null {
     ? `Bright Data: ${brightKinds.map((k) => `${ENGINE_KIND_LABEL[k] ?? k.slice("brightdata:".length)} ${usd(spent(k))}`).join(", ")} — оценка по записям`
     : "выборок Bright Data не было");
   if (spent(ENGINE_KIND.social) > 0) parts.push(`рилсы Instagram ${usd(spent(ENGINE_KIND.social))} — оценка по запросам (строка соцсетей ${usd(config.socialWeeklyUsd)})`);
+  if (spent(ENGINE_KIND.cnTranslate) > 0) parts.push(`перевод названий 1688 ${usd(spent(ENGINE_KIND.cnTranslate))} — факт Polza или расчёт по токенам`);
   const lines: ReadinessLine[] = [{ kind: "оценка", text: `Расход недели по статьям (7 дней): ${parts.join("; ")}. Итого ${usd(week.total)} из ${usd(config.weeklyUsd)}.` }];
   const reserve = engineReserveUsd(week, 2);
   const optional = engineRoomUsd(week, CATALOG_AI_KIND, config);

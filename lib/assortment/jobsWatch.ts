@@ -72,6 +72,10 @@ export const WATCHED_JOBS: readonly JobRule[] = [
   // а не через неделю молчания источника.
   { job: "assortment-brightdata-trigger", label: "Bright Data: покупка выборок (Zara, Uniqlo, ASOS, H&M)", maxSilenceDays: null, maxConsecutiveErrors: null, billing: "brightdata", paysProvider: true, stopTags: BRIGHTDATA_TRIGGER_STOPS },
   { job: "assortment-brightdata-collect", label: "Bright Data: сбор оплаченных выборок", maxSilenceDays: null, maxConsecutiveErrors: null, billing: "brightdata" },
+  // «Китай (1688)»: крон дважды в сутки, а журнал пишет, только пока снимок недели не готов (готовый — ответ без строки), то есть хотя бы
+  // раз в неделю, с понедельника. Больше 8 суток без строки — пропущен понедельник и вторник: снимок недели не снимался. Ключ не задан или
+  // отвергнут 1688 — «error» каждым прогоном: 3 подряд (полтора дня) — тревога; лимит 1688 — «partial», не ошибка.
+  { job: "assortment-china", label: "Китай (1688): недельный снимок топа ниш и копий", maxSilenceDays: 8, maxConsecutiveErrors: 3 },
 ];
 
 export const WATCHED_JOB_NAMES: string[] = WATCHED_JOBS.map((j) => j.job);
@@ -202,7 +206,7 @@ export function jobsAlertPlan(freshness: JobsFreshness, openKeys: string[]): Job
   return { send: ours.length ? "recovered" : null, openKey: null, resolveKeys: ours };
 }
 
-export const JOBS_STALL_ACTION = "Проверьте журнал синхронизаций (sync_log) по этим задачам. Спрос WB — квота и токен MPSTATS; признаки по фото — ключ и баланс ИИ-провайдера (Anthropic или Polza, см. текст ошибки выше; провайдер выбирает ASSORTMENT_CATALOG_AI_PROVIDER); рилсы и выборки Bright Data — ключ, баланс и зона Bright Data (BRIGHTDATA_API_TOKEN, BRIGHTDATA_UNLOCKER_ZONE). Оплаченные выборки ждут в очереди: после пополнения их заберёт ближайший сбор (или вручную ?phase=collect).";
+export const JOBS_STALL_ACTION = "Проверьте журнал синхронизаций (sync_log) по этим задачам. Спрос WB — квота и токен MPSTATS; признаки по фото — ключ и баланс ИИ-провайдера (Anthropic или Polza, см. текст ошибки выше; провайдер выбирает ASSORTMENT_CATALOG_AI_PROVIDER); рилсы и выборки Bright Data — ключ, баланс и зона Bright Data (BRIGHTDATA_API_TOKEN, BRIGHTDATA_UNLOCKER_ZONE). Оплаченные выборки ждут в очереди: после пополнения их заберёт ближайший сбор (или вручную ?phase=collect). Китай (1688) — ключ ALI_1688_AK (clawhub.1688.com) и журнал задачи assortment-china.";
 
 export function jobsStallMessage(freshness: JobsFreshness): string {
   return `Остановились задачи движка тенденций (${freshness.stalled.length}): ${freshness.stalled.map((j) => j.label).join("; ")}`;
@@ -234,5 +238,5 @@ export function jobsStallTelegram(freshness: JobsFreshness): string {
 }
 
 export function jobsRecoveredTelegram(): string {
-  return "✅ <b>Задачи движка тенденций снова работают</b>\nСпрос WB, признаки по фото, рилсы и выборки Bright Data идут по расписанию.";
+  return "✅ <b>Задачи движка тенденций снова работают</b>\nСпрос WB, признаки по фото, рилсы, выборки Bright Data и снимок 1688 идут по расписанию.";
 }

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { chinaSourceView, loadChinaSourceFacts, type ChinaSourceFacts } from "./chinaStore";
+import { CHINA_SOURCE_ID } from "./chinaSync";
 import { parseAccessStatus, type AssortmentDirection } from "./constants";
 import { effectiveAccessStatus, sortSources, type AssortmentSource } from "./coverage";
 import { isMissingColumnError } from "./errors";
@@ -57,6 +59,8 @@ export interface LoadSourcesDeps {
   now?: number;
   /** Включён ли сбор рилсов (по умолчанию — ASSORTMENT_SOCIAL из окружения). */
   socialEnabled?: boolean;
+  /** Окружение для строки 1688 (ключ ALI_1688_AK, выключатель ASSORTMENT_CHINA); по умолчанию — process.env. */
+  env?: Record<string, string | undefined>;
 }
 
 export async function loadAssortmentSources(direction: AssortmentDirection | null, deps: LoadSourcesDeps = {}): Promise<LoadSourcesResult> {
@@ -69,6 +73,9 @@ export async function loadAssortmentSources(direction: AssortmentDirection | nul
   const base = "source_id,name,source_group,categories,region,priority,adapter_type,access_status,access_note,last_success_at";
   // Пульс подключённых источников Этапа 6 — из журнала их крона; читаем вместе с паспортом, а не после него (лишний круг к базе).
   const pulsesRead = stage6Pulses(db).catch(() => new Map<string, string>());
+  // 1688 (S104): подключён, нет ключа, последний снимок — по факту «Китай (1688)», а не по паспорту этапа 0. Не прочиталось — названо.
+  const chinaRead: Promise<ChinaSourceFacts | { error: string }> = loadChinaSourceFacts(db, { env: deps.env })
+    .catch((error) => ({ error: (error instanceof Error ? error.message : String(error)).slice(0, 160) }));
   let { data, error } = await run(`${base},last_attempt_at,last_error`);
   // Колонки пульса — из миграции 202610020002; без неё показываем паспорт без них.
   if (error && isMissingColumnError(error)) ({ data, error } = await run(base));
@@ -80,6 +87,7 @@ export async function loadAssortmentSources(direction: AssortmentDirection | nul
   }
   const now = deps.now ?? Date.now();
   const pulses = await pulsesRead;
+  const china = await chinaRead;
   const socialOn = deps.socialEnabled ?? socialConfig().enabled;
   const sources = (data ?? []).map((row): AssortmentSource => {
     const parsed = toSource(row as unknown as Record<string, unknown>);
@@ -87,6 +95,10 @@ export async function loadAssortmentSources(direction: AssortmentDirection | nul
     // итог исследования, а не факт. Отключённый или недоступный по паспорту — как записано.
     const pinned = parsed.accessStatus === "disabled" || parsed.accessStatus === "unavailable";
     if (STAGE6_AWAITING_OWNER.has(parsed.sourceId) && !pinned) return { ...parsed, accessStatus: "not_connected", accessNote: STAGE6_AWAITING_NOTE };
+    if (parsed.sourceId === CHINA_SOURCE_ID && !pinned) {
+      if ("error" in china) return { ...parsed, accessStatus: "partial", accessNote: `1688: состояние недельного снимка не прочиталось — ${china.error}` };
+      return { ...parsed, ...chinaSourceView(china, now) };
+    }
     const connected = STAGE6_CONNECTED[parsed.sourceId];
     if (connected && !pinned) {
       // Подключённый источник Этапа 6 (рилсы) пульс пишет в журнал своего крона, а не в паспорт; выключен настройкой — «Отключён».

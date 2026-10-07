@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import type { CatalogCard } from "./catalog";
+import { loadChinaCopies, type ChinaRefCopies } from "./chinaStore";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
 import type { SocialEvidence } from "./evidence";
@@ -198,13 +199,19 @@ export type SocialFeedResult =
     lastCheckedAt: string | null;
     run: SocialRunStatus | null;
     warnings: string[];
+    /**
+     * «Ставка фабрик»: копии номеров рилсов на 1688 по последнему снимку «Китай (1688)» (ключ — номер «zara:…» / «uniqlo:…»). null — строки
+     * нет: ключа 1688 или таблиц нет, ключ отвергнут, чтение не удалось (тогда — в warnings).
+     */
+    chinaCopies?: Record<string, ChinaRefCopies> | null;
   };
 
 export async function loadSocialFeed(db: SupabaseClient, options: { direction: AssortmentDirection; days: FeedPeriod; onlyStrong: boolean; nowMs: number }): Promise<SocialFeedResult> {
   const feed = await loadViralReels(db, { direction: options.direction, days: options.days, onlyStrong: options.onlyStrong, nowMs: options.nowMs });
   if (!feed) return { available: false, reason: SOCIAL_UNAVAILABLE };
   const warnings = [...feed.warnings];
-  const [progress, run] = await Promise.all([
+  const refs = [...new Set(feed.cards.flatMap((c) => c.refs))];
+  const [progress, run, chinaCopies] = await Promise.all([
     loadSocialProgress(db, { direction: options.direction, days: options.days, nowMs: options.nowMs }).catch((error) => {
       warnings.push(`сколько рилсов найдено и замерено — не посчиталось: ${errorText(error)}`);
       return null;
@@ -213,9 +220,15 @@ export async function loadSocialFeed(db: SupabaseClient, options: { direction: A
       warnings.push(`журнал сбора не загрузился: ${errorText(error)}`);
       return null;
     }),
+    // «Ставка фабрик» второстепенная: её сбой ленту не роняет, а называется строкой.
+    (refs.length ? loadChinaCopies(db, refs, { nowMs: options.nowMs }) : Promise.resolve(null)).catch((error) => {
+      warnings.push(`копии на 1688 не загрузились: ${errorText(error)}`);
+      return null;
+    }),
   ]);
   return {
     available: true, cards: feed.cards, days: options.days, onlyStrong: options.onlyStrong, measured: progress?.section.measured ?? null, progress, lastCheckedAt: feed.lastCheckedAt, run, warnings,
+    chinaCopies,
   };
 }
 

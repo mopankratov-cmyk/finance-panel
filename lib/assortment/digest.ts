@@ -10,10 +10,12 @@
 import { plural } from "@/lib/warehouse/plural";
 import { dm } from "./appearance";
 import type { DigestChanges, DigestChangesBlock } from "./appearanceStore";
+import type { ChinaDigest } from "./chinaStore";
+import { deltaPeriod } from "./chinaUi";
 import type { AssortmentDirection } from "./constants";
 import { DIRECTION_LABEL } from "./constants";
 import { partsCaveat, type HistoryStatus } from "./observationState";
-import { BRAND_LABEL, compactRu, VERDICT_LABEL, type SocialDigest } from "./socialFeed";
+import { BRAND_LABEL, compactRu, refArticle, VERDICT_LABEL, type SocialDigest } from "./socialFeed";
 
 export interface DigestFinding {
   id: string;
@@ -46,6 +48,8 @@ export interface DigestFacts {
   social?: SocialDigest | null;
   /** «Появилось / пропало» по полным прогонам: за неделю, в первое воскресенье месяца — и за месяц; null или нет — ни один источник не готов. */
   changes?: DigestChanges | null;
+  /** «Китай (1688)»: новое в топе ниш и рост копий по номерам из рилсов за неделю; null или нет — раздела нет (нет ключа, таблиц, данных). */
+  china?: ChinaDigest | null;
   baseUrl: string;
 }
 
@@ -106,6 +110,31 @@ function socialLines(social: DigestFacts["social"], base: string): string[] {
   }
   const directions = [...new Set(social.items.map((i) => i.direction))];
   lines.push(`Лента: ${directions.map((d) => `<a href="${base}/assortment-development/${d}?view=social">${DIRECTION_LABEL[d]}</a>`).join(" · ")}`);
+  return lines;
+}
+
+const dmShort = (iso: string) => `${iso.slice(8, 10)}.${iso.slice(5, 7)}`;
+
+/**
+ * Раздел «Китай (1688)»: до пяти «новых в топе» ниш (снимок недели против прошлого снимка ниши — расчёт) и рост копий по номерам из
+ * рилсов (оценка снизу: поиск 1688 находит часть карточек). Только при данных; не загрузилось — строка, а не молчание. Цен нет.
+ */
+function chinaLines(china: DigestFacts["china"], base: string): string[] {
+  if (china?.error) return ["", "<b>Китай (1688)</b>", `⚠️ Не загрузилось: ${telegramEscape(china.error)}`];
+  if (!china || (china.items.length === 0 && china.growth.length === 0)) return [];
+  const lines = ["", "<b>Китай (1688): топ ниш и копии</b>", `Снимок недели с ${dmShort(china.week)}. Оптовые продажи в Китае — не спрос WB; цены не показываем.`];
+  if (china.items.length > 0) {
+    lines.push(`Новое в топе: ${china.newTotal} в ${china.niches} ${plural(china.niches, "нише", "нишах", "нишах")} (к прошлому снимку ниши — расчёт).`);
+    for (const item of china.items) {
+      lines.push(`• ${telegramEscape(item.niche)}: <a href="${telegramEscape(item.url)}">${telegramEscape(item.title.slice(0, 80))}</a> — №${item.rank} в выдаче`);
+    }
+    if (china.newTotal > china.items.length) lines.push(`• и ещё ${china.newTotal - china.items.length}`);
+  }
+  if (china.growth.length > 0) {
+    lines.push("Копий на 1688 стало больше (номера из рилсов; оценка снизу, прирост — расчёт):");
+    for (const g of china.growth) lines.push(`• ${BRAND_LABEL[g.brand]} ${refArticle(g.refKey) ?? g.number} — ${g.offers} ${plural(g.offers, "копия", "копии", "копий")} (+${g.delta} ${deltaPeriod(g.observedOn, g.previousOn)})`);
+  }
+  lines.push(`Смотреть: ${(["bags", "jackets"] as const).map((d) => `<a href="${base}/assortment-development/${d}?view=china">${DIRECTION_LABEL[d]}</a>`).join(" · ")}`);
   return lines;
 }
 
@@ -209,6 +238,8 @@ export function digestMessage(facts: DigestFacts): string {
   if (facts.changes?.week && Object.values(facts.changes.week.directions).some((d) => d && d.sources.length > 0)) anything = true;
   lines.push(...socialLines(facts.social, base));
   if (facts.social?.items.length) anything = true;
+  lines.push(...chinaLines(facts.china, base));
+  if (facts.china && (facts.china.items.length > 0 || facts.china.growth.length > 0)) anything = true;
   if (facts.crawl && (facts.crawl.ok.length > 0 || facts.crawl.failing.length > 0)) {
     lines.push("", "<b>Автообход каталогов</b>");
     if (facts.crawl.ok.length > 0) lines.push(`Работает: ${telegramEscape(facts.crawl.ok.join(", "))}.`);

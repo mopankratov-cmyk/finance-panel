@@ -204,6 +204,10 @@
       "schedule": "20 */3 * * *"
     },
     {
+      "path": "/api/sync/assortment-china",
+      "schedule": "35 5,11 * * *"
+    },
+    {
       "path": "/api/sync/seo-positions",
       "schedule": "13,43 1-4 * * *"
     }

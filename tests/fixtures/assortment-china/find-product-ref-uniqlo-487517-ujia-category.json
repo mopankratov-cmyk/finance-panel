@@ -1,0 +1,1817 @@
+{
+ "traceId": "trace-13",
+ "code": "Success",
+ "codeType": "SUCCESS",
+ "data": {
+  "data": [
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "立领茄克摇粒绒内里女装男装外套夹克2026秋冬新款保暖舒适487517",
+    "score": 0.926989375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "4",
+     "chat_cnt_30d": "7",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "5",
+     "favor_cnt_30d": "7",
+     "cart_cnt_30d": "26"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01W1EDs3u8EHF2BxHU_!!9000000000091-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop92",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6137974269444,
+    "skuTitle": "青绿色 L",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.6666666666666666"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.30149974082413844",
+     "customer_scale": "1391",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n立领茄克摇粒绒内里女装男装外套夹克2026秋冬新款保暖舒适487517  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为聚酰胺纤维（锦纶），里料为聚酯纤维（涤纶）；含摇粒绒内里，具备柔软蓬松触感与基础保温性  \n版型设计：宽松型剪裁，适配都市休闲穿着需求；衣长属普通款（50cm＜衣长≤65cm）  \n尺码体系：覆盖S–XXL五档标准尺码，满足主流成人男性体型区间  \n重量与厚度指数：标注“厚薄：普通”，结合“冬季、秋季”适用季节及“保暖舒适”定位，属中等偏上厚度，非极寒专用但兼顾秋日微凉环境  \n</商品属性>\n\n<公司名称>\nshop92\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1083094378976,
+    "offerTags": "422914;510210;514818;522498;481538;656130;676098;675842;…",
+    "storeAmount": 1493,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1083094378976.html?&object_id=1083094378976",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "普通"
+     },
+     {
+      "type": "industryCPV",
+      "value": "不易变形"
+     }
+    ],
+    "yxIndex": 2.68,
+    "newReputationTags": {
+     "favor_uv_7d": "4",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "4",
+     "pay_ord_byr_7d": "2",
+     "poling_dates": "1",
+     "chat_uv_7d": "2",
+     "cart_uv_7d": "16"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "秋冬保暖男装女装长绒摇粒绒拉链茄克长袖外套460329 440593",
+    "score": 0.473655,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "5"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01KWVsSr1zJu8y5YIIY_!!9000000000092-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop93",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5104433772728,
+    "skuTitle": "黑色 L",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"213.11904761904762\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"170.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4610276221434152",
+     "customer_scale": "8168",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n秋冬保暖男装女装长绒摇粒绒拉链茄克长袖外套460329 440593  \n</商品标题>\n\n<商品属性>\n- **主面料成分**：兔毛（具体比例未标明）  \n- **面料名称**：灯芯绒  \n- **厚度指数**：薄款  \n- **版型设计**：合体型  \n- **尺码体系**：L、M、S、XL  \n- **重量与厚度指数**：轻便  \n</商品属性>\n\n<公司名称>\nshop93\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 740219953609,
+    "offerTags": "422914;480002;510210;475650;501506;514818;522498;476930;…",
+    "storeAmount": 33987,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/740219953609.html?&object_id=740219953609",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "秋冬保暖男装女装长绒摇粒绒拉链茄克长袖外套460329 440593",
+    "score": 0.3642578125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "1"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN015Mq8ST1pBWl9m1wz2_!!9000000000093-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop94",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5336843850200,
+    "skuTitle": "乳白色 S",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49790940161737474",
+     "customer_scale": "7111",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n秋冬保暖男装女装长绒摇粒绒拉链茄克长袖外套460329 440593  \n</商品标题>\n\n<商品属性>\n面料名称：灯芯绒（主面料）；另提及“兔毛”为“主面料成分”，但含量标注为“其他”，存在信息矛盾，实际主料以明确标注的“灯芯绒”为准；里料成分含量未说明；版型为合体型；袖型为常规长袖；领型为立领；下摆设计、工艺、款式细节均标注“其他”；非连帽款（注：商品描述中“是否连帽：连帽”与图片/常规认知及后续“立领”描述存在冲突，但依结构化字段优先采信“是否连帽：连帽”；然结合“立领”与茄克常见设计，此处存疑，故严格按所给字段表述为“连帽”）；门襟为拉链；风格为青春流行；颜色共9色可选（乳白色、军绿色、墨绿色、橙褐色、深灰色、深米色、蓝色、藏青色、黑色）。  \n</商品属性>\n\n<公司名称>\nshop94\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 749426461194,
+    "offerTags": "425858;441218;437634;516738;476930;480002;481538;514818;…",
+    "storeAmount": 17960,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/749426461194.html?&object_id=749426461194",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     }
+    ],
+    "yxIndex": 1.85,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "2025新图火爆奥丽绒双面穿爆款抓绒衣珊瑚绒摇粒绒夹克上衣情侣款",
+    "score": 0.33906250000000004,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01a2goIk1vxyYzHQbsK_!!9000000000094-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop95",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6169732882229,
+    "skuTitle": "黑色【男款】 L",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.28442990941242624",
+     "customer_scale": "5492",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n2025新图火爆奥丽绒双面穿爆款抓绒衣珊瑚绒摇粒绒夹克上衣情侣款  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；里料成分：100%聚酯纤维（涤纶）  \n面料名称：摇粒绒（属抓绒/珊瑚绒类保暖面料）  \n版型设计：合体型  \n尺码体系：覆盖L–5XL共8个常规尺码，适配青年男性及女性（分色标示男女款）  \n厚薄指数：加厚（明确标注“冬季”适用，“保暖、防寒”为核心功能）  \n衣长与袖型：普通款衣长（50cm＜衣长≤65cm），长袖+公主袖设计  \n下摆与口袋：直下摆；拉链挖袋（含口袋装饰细节）  \n领型与门襟：立领；拉链门襟  \n领标与吊牌：有领标、有吊牌  \n</商品属性>\n\n<公司名称>\nshop95\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1007984097909,
+    "offerTags": "425858;441218;422914;484610;477826;516738;500354;476930;…",
+    "storeAmount": 256641,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1007984097909.html?&object_id=1007984097909",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "加厚"
+     },
+     {
+      "type": "industryCPV",
+      "value": "保暖"
+     }
+    ],
+    "yxIndex": 1.39,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "日系男装女装秋冬摇粒绒拉链茄克长袖立领保暖夹克卫衣外套469955",
+    "score": 0.32614375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "7",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "14"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01dBBtCr1zJuHGfaefS_!!9000000000092-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop93",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5666278177165,
+    "skuTitle": "深橙色 L",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"213.11904761904762\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"170.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.25"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4610276221434152",
+     "customer_scale": "8168",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n日系男装女装秋冬摇粒绒拉链茄克长袖立领保暖夹克卫衣外套469955  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为灯芯绒（注：商品信息中明确标注“面料名称：灯芯绒”，虽主成分栏写“兔毛”，但灯芯绒属棉混纺类仿灯芯绒材质，此处以实填为准）；里料成分未提供具体数值；  \n版型设计：宽松型，适配青少年及成人男性体型；  \n尺码体系：覆盖S–XXL五档标准尺码，含详细身宽（1/2胸围）、连肩袖长数据表，具备基础人体工学参考性；  \n厚薄指数：明确标注为“薄款”，定位冬季轻量保暖场景；  \n结构特征：连帽设计、拉链门襟、侧缝插袋、常规长袖、立领造型，兼具功能性与日系休闲感。  \n</商品属性>\n\n<公司名称>\nshop93\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 300,
+    "itemId": 856760527906,
+    "offerTags": "422914;510210;481538;475650;480002;514818;476930;503298;…",
+    "storeAmount": 62,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/856760527906.html?&object_id=856760527906",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "男装女装立领针织摇粒绒拉链茄克/长袖外套夹克25秋冬新款479863",
+    "score": 0.290234375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01qmr01a2FTYYoQ6ZMU_!!9000000000095-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop96",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6123528183924,
+    "skuTitle": "乳白色 M100-120",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"220.67407407407407\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"102.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.46189305771030936",
+     "customer_scale": "12764",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n男装女装立领针织摇粒绒拉链茄克/长袖外套夹克25秋冬新款479863  \n</商品标题>\n\n<商品属性>\n面料成分：大身含再生聚酯纤维（外层70%+30%聚酯纤维），侧袋布全为再生聚酯纤维；主标称“兔毛”与“羊毛”存在信息矛盾，实际成分标注明确为聚酯纤维，无动物毛类成分；里侧为柔软摇粒绒结构。  \n版型设计：宽松型，适配青年男性及中性穿着，支持男女同穿；立领+前襟护领设计增强颈部包裹性与运动防护感。  \n尺码体系：采用身高/胸围复合标法（如165/84A），覆盖S–XXL五档，对应实际衣长66.5–75.5cm、半胸宽54–68cm、连肩袖长80–89cm，属常规成人尺码范围。  \n厚薄指数：标注为“普通”，结合摇粒绒里层与针织外观判断，属秋冬季中等保暖厚度，非极寒场景专用。  \n</商品属性>\n\n<公司名称>\nshop96\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 990262185338,
+    "offerTags": "425858;441218;437634;516738;476930;500354;480002;481538;…",
+    "storeAmount": 1499,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/990262185338.html?&object_id=990262185338",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "羊毛"
+     },
+     {
+      "type": "industryCPV",
+      "value": "普通"
+     },
+     {
+      "type": "industryCPV",
+      "value": "兔毛"
+     }
+    ],
+    "yxIndex": 2.79,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "立领茄克/摇粒绒内里男装外套夹克26秋冬加绒保暖上衣外套R487517",
+    "score": 0.28271484375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "68",
+     "chat_cnt_30d": "28",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "69",
+     "favor_cnt_30d": "38",
+     "cart_cnt_30d": "160"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01o3dVbs20DkH1uKaF_!!9000000000096-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "1.45%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop97",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6133580973397,
+    "skuTitle": "米色 M",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7708333333333334"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49402851606465115",
+     "customer_scale": "1611",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n立领茄克/摇粒绒内里男装外套夹克26秋冬加绒保暖上衣外套R487517  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为涤纶（聚酯纤维），里料同为聚酯纤维；标注“其它”为材质成分，但未明确具体配比；无棉、羊毛等天然纤维提及。  \n版型设计：宽松型剪裁，适配都市休闲穿着需求；非连帽设计，但细节中注明“领型：连帽”，存在表述矛盾——实际应以“领型：连帽”为准，此处按信息冲突处采信“连帽”为功能性特征。  \n尺码体系：提供S/M/L/XL四档常规尺码，附详细三维尺寸表（含后肩衣长、肩宽、身宽、连肩袖长），属标准男装尺码体系。  \n厚薄与季节适配：明确标注“厚薄：薄款”，且适用季节字段误标为“春季”，结合“加绒保暖”“冬季加绒”等关键词及“26秋冬”上市定位，实为春秋季主力单品，非严寒环境专用。  \n</商品属性>\n\n<公司名称>\nshop97\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 1078976931819,
+    "offerTags": "180739;522754;662530;675842;525314;581122;595970;590338;…",
+    "storeAmount": 1833,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1078976931819.html?&object_id=1078976931819",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     },
+     {
+      "type": "industryCPV",
+      "value": "不易变形"
+     }
+    ],
+    "yxIndex": 4.57,
+    "newReputationTags": {
+     "favor_uv_7d": "13",
+     "puhuo_uv_7d": "1",
+     "pay_ord_byr_30d": "39",
+     "pay_ord_byr_7d": "17",
+     "poling_dates": "3",
+     "chat_uv_7d": "17",
+     "cart_uv_7d": "42"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE",
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "【16色】高克重麂皮绒国潮新中式国风盘扣外套男春秋复古立领夹克",
+    "score": 0.26692781250000003,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "5",
+     "chat_cnt_30d": "13",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "6",
+     "favor_cnt_30d": "6",
+     "cart_cnt_30d": "12"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01lNiUtMpTPTL2b8G8_!!9000000000097-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop98",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6122452652817,
+    "skuTitle": "浅蓝色 L",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.6428571428571429"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.42025937712040173",
+     "customer_scale": "2073",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n【16色】高克重麂皮绒国潮新中式国风盘扣外套男春秋复古立领夹克  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为聚酯纤维（可再生）90% + 羽绒绒里料；里料为棉；整体属高克重麂皮绒材质；含刺绣工艺与纽扣装饰；非原创设计，无自有品牌授权。  \n版型与剪裁：宽松型版型，立领+单排扣门襟，常规长袖，普通衣长（50cm＜衣长≤65cm），侧缝插袋；下摆与轮廓强调复古国潮视觉语言。  \n尺码体系：覆盖XS–XXL共6个标准尺码，提供身高/胸围/腰围三维参考表，适配青少年至成年男性体型；误差范围±2cm。  \n厚度与季节适配：标注“加厚”，明确适用于秋冬季，定位为秋冬过渡季及初冬内搭或单穿外套。  \n</商品属性>\n\n<公司名称>\nshop98\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 20,
+    "itemId": 1072086326517,
+    "offerTags": "180739;522754;677890;675842;525314;581122;553986;615426;…",
+    "storeAmount": 15600,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1072086326517.html?&object_id=1072086326517",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "麂皮绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "加厚"
+     },
+     {
+      "type": "industryCPV",
+      "value": "耐磨"
+     }
+    ],
+    "yxIndex": 4.23,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "1",
+     "pay_ord_byr_30d": "5",
+     "pay_ord_byr_7d": "2",
+     "poling_dates": "0",
+     "chat_uv_7d": "1",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "日系男装女装秋冬摇粒绒拉链茄克长袖立领保暖夹克卫衣外套469955",
+    "score": 0.2505859375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01ug6UYs1pBWsL2Yjga_!!9000000000093-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop94",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5855978411179,
+    "skuTitle": "黑色 S",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49790940161737474",
+     "customer_scale": "7111",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n日系男装女装秋冬摇粒绒拉链茄克长袖立领保暖夹克卫衣外套469955  \n</商品标题>\n\n<商品属性>\n面料名称：灯芯绒（主面料成分标注为“兔毛”，但含量标为“其他”，实际主料以页面明确标注的“灯芯绒”为准）；  \n版型设计：宽松型；  \n领型与结构：立领、连帽；  \n门襟方式：拉链；  \n袖型与长度：常规袖型、长袖；  \n下摆与口袋：服装下摆设计为“其他”，口袋为侧缝插袋；  \n厚薄定位：薄款；  \n适用人群：青少年、成人男性（适用性别明确为“男”，适用年龄段含“成人”，但描述中亦提及“男装女装”，存在表述矛盾，以字段“适用性别：男”为准）；  \n尺码体系：S/M/L/XL四码，对应国标体型如165/84A等，含身宽、后肩衣长、连肩袖长具体数据。  \n</商品属性>\n\n<公司名称>\nshop94\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 10,
+    "itemId": 864503348494,
+    "offerTags": "425858;437634;441218;438594;439106;414146;419010;481346;…",
+    "storeAmount": 13971,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/864503348494.html?&object_id=864503348494",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     }
+    ],
+    "yxIndex": 1.61,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "秋冬新款高级感摇粒绒保暖连帽舒适拉链外套男女同款连帽夹克外套",
+    "score": 0.23904031250000002,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01OwS0ei2I4lyRfW4uh_!!9000000000098-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop99",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5951768028203,
+    "skuTitle": "卡其色 L【110-130】",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"236.0650406504065\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"175.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.6666666666666666"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4655812645964732",
+     "customer_scale": "25833",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "4"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n秋冬新款高级感摇粒绒保暖连帽舒适拉链外套男女同款连帽夹克外套  \n</商品标题>\n\n<商品属性>\n面料成分：100%聚酯纤维（涤纶），主面料与里料均为全涤纶；  \n版型设计：宽松型，适配多种体型，强调休闲包容感；  \n尺码体系：覆盖M至4XL共6个尺码，对应体重范围90–220斤，身高适配统一为160–185cm（尺码表显示身高区间一致，体现“均码化”宽松剪裁逻辑）；  \n衣长与廓形：普通款衣长（50cm＜衣长≤65cm），圆下摆设计，立领+连帽结构，强化基础防护与造型完整性；  \n颜色选择：军绿色、卡其色、黑色三色可选，属中性经典色系，适配多场景穿搭。  \n</商品属性>\n\n<公司名称>\nshop99\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 30,
+    "itemId": 988022021906,
+    "offerTags": "425858;441218;422914;437634;515458;477826;516738;476930;…",
+    "storeAmount": 17750,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/988022021906.html?&object_id=988022021906",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "棉类混纺"
+     },
+     {
+      "type": "industryCPV",
+      "value": "普通"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "yxIndex": 2.78,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "男装女装摇粒绒拉链开衫茄克/纯色保暖外套/24秋冬新款E469955",
+    "score": 0.23404578125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0180LMFy1zJuH5ZUyHd_!!9000000000092-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop93",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5825086835083,
+    "skuTitle": "深灰色 S",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"213.11904761904762\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"170.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4610276221434152",
+     "customer_scale": "8168",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n男装女装摇粒绒拉链开衫茄克/纯色保暖外套/24秋冬新款E469955  \n</商品标题>\n\n<商品属性>\n面料名称：灯芯绒（主面料成分标注为“兔毛”，但含量标为“其他”，存在信息矛盾；实际主面料以页面明确标注的“灯芯绒”为准）；  \n版型设计：合体型；  \n尺码体系：L/M/S/XL四档常规成人尺码；  \n厚度指数：薄款；  \n领型：立领；  \n门襟：拉链；  \n是否连帽：连帽；  \n袖长：长袖；  \n穿搭方式：外穿；  \n适用人群：青少年及成人男性（标注“适用性别：男”，“适合人群：青少年”，“适用年龄段：成人”）；  \n上市季节：2024年秋季（但适用季节标注为“冬季”，体现跨季过渡属性）。  \n</商品属性>\n\n<公司名称>\nshop93\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 10,
+    "itemId": 854115715416,
+    "offerTags": "425858;441218;422914;437634;516738;500354;476930;480002;…",
+    "storeAmount": 14000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/854115715416.html?&object_id=854115715416",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     }
+    ],
+    "yxIndex": 2.57,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "宽松立领夹克抓绒衣运动外套同款加厚男女保暖开衫针织情侣款鸟家",
+    "score": 0.23007812500000002,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0174jRAl1DB7Daa79DU_!!9000000000099-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop100",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5758317288552,
+    "skuTitle": "原子灰 S",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4904390472429322",
+     "customer_scale": "2097",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "2"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n宽松立领夹克抓绒衣运动外套同款加厚男女保暖开衫针织情侣款鸟家  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）主面料 + 100%聚酯纤维里料；  \n版型设计：合体型（非宽松，标题中“宽松”为营销话术，实际参数与描述明确标注“合体型”）；  \n尺码体系：覆盖S–3XL共6码，含女码（S/M）、男码（L–3XL），胸围102–130cm，衣长63–74cm；  \n厚薄与季节适配：加厚款，明确适用于春秋季；  \n领型与门襟：立领设计，YKK进口拉链门襟；  \n下摆与口袋：直下摆，侧缝插袋（带口袋装饰细节）；  \n工艺特征：植绒工艺，珍珠机高端压胶工艺。  \n</商品属性>\n\n<公司名称>\nshop100\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 902212549127,
+    "offerTags": "437634;425858;441218;516738;480002;481538;514818;306562;…",
+    "storeAmount": 1520,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/902212549127.html?&object_id=902212549127",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "棉类混纺"
+     },
+     {
+      "type": "industryCPV",
+      "value": "加厚"
+     },
+     {
+      "type": "industryCPV",
+      "value": "耐磨"
+     }
+    ],
+    "yxIndex": 1.8,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "429188 440595 460331冬季男装女装防风羊羔绒摇粒绒茄克加厚外套",
+    "score": 0.228515625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "6"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01NLRGNJ1zJuHAGdVib_!!9000000000092-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop93",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5664082084097,
+    "skuTitle": "深灰色 S",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"213.11904761904762\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"170.0\",\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4610276221434152",
+     "customer_scale": "8168",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n429188 440595 460331冬季男装女装防风羊羔绒摇粒绒茄克加厚外套  \n</商品标题>\n\n<商品属性>\n面料名称：灯芯绒（主面料）；主面料成分标注为“兔毛”，但含量标注为“其他”，实际成分未明确量化；里料成分含量亦为“其他”；整体厚薄标注为“薄款”，与标题中“冬季”“加厚”存在表述矛盾，需以实测或详情为准。  \n版型与剪裁：合体型；立领；连帽设计；拉链门襟；常规长袖；下摆设计为“其他”（未具体说明）；图案为纯色；风格定位为青春流行。  \n尺码体系：覆盖S–2XL共5个常规成人尺码；提供肩宽、胸围、衣长、袖长详细尺寸表（单位：cm），标注手工测量误差±1–3cm；适用人群为青年/成人男性（适用性别明确为“男”，虽标题含“男女”，但属性中仅列“男”）。  \n颜色选择：橄榄色、深灰色、深米、米色、米色（咖绿口袋）、藏青色、黑色共7种配色，部分配色含差异化细节（如咖绿口袋）。  \n</商品属性>\n\n<公司名称>\nshop93\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 10,
+    "itemId": 856790243017,
+    "offerTags": "425858;441218;422914;437634;516738;476930;500354;480002;…",
+    "storeAmount": 24502,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/856790243017.html?&object_id=856790243017",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     }
+    ],
+    "yxIndex": 3.36,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "男装女装同款哈灵顿茄克外套夹克2026春季新款休闲宽松立领484610",
+    "score": 0.19230952880859375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "39",
+     "chat_cnt_30d": "24",
+     "puhuo_cnt_30d": "4",
+     "pay_ord_cnt_30d": "40",
+     "favor_cnt_30d": "11",
+     "cart_cnt_30d": "45"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01t6XHxo218Zo9xNVeM_!!9000000000100-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop101",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6160554719145,
+    "skuTitle": "深米色 M",
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"204.41666666666666\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"153.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.5660377358490566"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.43924758133998365",
+     "customer_scale": "4975",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n男装女装同款哈灵顿茄克外套夹克2026春季新款休闲宽松立领484610  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维）；里料成分：聚酯纤维（涤纶）；非天然纤维，属合成纤维材质。  \n版型设计：合体型，强调轮廓利落与穿着包容性；衣长为普通款（50cm＜衣长≤65cm），实测数据覆盖XS–XL五档尺码，身宽1/2胸围区间明确标注（如160/76A对应55cm、55cm）。  \n尺码体系：提供完整欧码对照表（160/76A至180/108B），含详细三维尺寸参数（衣长、身宽、连肩袖长），误差范围1–3cm，适配青年男性主流体型。  \n重量与厚度指数：厚薄标注为“普通”，结合“春秋季”适用季节及“透气”材质功能，定位为轻量级日常外套，非加厚或保暖向单品。  \n</商品属性>\n\n<公司名称>\nshop101\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     },
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 400,
+    "itemId": 1004634052883,
+    "offerTags": "522754;503298;677890;627202;626690;641026;625154;654850;…",
+    "storeAmount": 2225,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true,
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1004634052883.html?&object_id=1004634052883",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "普通"
+     },
+     {
+      "type": "industryCPV",
+      "value": "透气"
+     },
+     {
+      "type": "industryCPV",
+      "value": "立领"
+     }
+    ],
+    "yxIndex": 4.6,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "防风保暖男装摇粒绒拉茄克夹克外套立领大口袋抓绒拉链长袖429188",
+    "score": 0.18644095703125002,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "25",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "26",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "29"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01h1nqwU1WG8GmhKDu8_!!9000000000101-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "Y"
+    },
+    "company": "shop102",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6046773784471,
+    "skuTitle": "黑色 L",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.7647058823529411"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.41044132825896795",
+     "customer_scale": "448",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n防风保暖男装摇粒绒拉茄克夹克外套立领大口袋抓绒拉链长袖429188  \n</商品标题>\n\n<商品属性>\n面料成分：100%涤纶（聚酯纤维），里料为加绒；  \n厚薄等级：加厚；  \n版型设计：直筒型；  \n领型与门襟：立领、拉链门襟；  \n袖型与长度：常规长袖；  \n颜色选择：军绿色、灰色、米咖、米白色、藏青色、黑色；  \n尺码体系：S/M/L/XL/XXL五档，提供详细尺码表（含后肩衣长、身宽（1/2胸围）、连肩袖长）；  \n风格定位：通勤风，适配青春流行（18–24岁）及日常休闲场景。  \n</商品属性>\n\n<公司名称>\nshop102\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 50,
+    "itemId": 1033348229322,
+    "offerTags": "180739;522754;677890;525314;553986;595970;649730;649218;…",
+    "storeAmount": 1443,
+    "offerICTagInfo": {
+     "isAddSwbpOffer": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1033348229322.html?&object_id=1033348229322",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "加厚"
+     },
+     {
+      "type": "industryCPV",
+      "value": "保暖"
+     }
+    ],
+    "yxIndex": 4.23,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "日单男装/女装秋冬摇粒绒保暖夹克外套拼接抓绒卫衣开衫Y469956",
+    "score": 0.16718750000000002,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "0",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01N0YyBm1pBWs9KrMz0_!!9000000000093-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop94",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5854449194086,
+    "skuTitle": "蓝色 S",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49790940161737474",
+     "customer_scale": "7111",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n日单男装/女装秋冬摇粒绒保暖夹克外套拼接抓绒卫衣开衫Y469956  \n</商品标题>\n\n<商品属性>\n面料名称：灯芯绒（主面料标注为“兔毛”，但含量标为“其他”，实际主材以页面明确标注的“灯芯绒”为准）；里料成分含量：未注明；版型：宽松型；厚薄：薄款；领型：立领；袖长：长袖；是否连帽：连帽；适用性别：男；适用年龄段：成人；适合人群：青年；颜色：橄榄色、浅米色、蓝色、青灰色；风格：简约；产品类别：休闲西服（平台归类，与实际夹克/开衫形态存在品类表述差异）。  \n</商品属性>\n\n<公司名称>\nshop94\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 40,
+    "itemId": 863741787970,
+    "offerTags": "425858;441218;437634;516738;476930;480002;481538;514818;…",
+    "storeAmount": 10000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/863741787970.html?&object_id=863741787970",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     }
+    ],
+    "yxIndex": 3.19,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "日单出品2025春防风立领茄克外套夹克休闲连帽外套男女K475038",
+    "score": 0.16390958251953128,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "5",
+     "chat_cnt_30d": "23",
+     "puhuo_cnt_30d": "2",
+     "pay_ord_cnt_30d": "6",
+     "favor_cnt_30d": "12",
+     "cart_cnt_30d": "24"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01UIimuy1pBWu34UBie_!!9000000000093-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop94",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5752912992861,
+    "skuTitle": "橄榄色 S",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.07142857142857142"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.49790940161737474",
+     "customer_scale": "7111",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n日单出品2025春防风立领茄克外套夹克休闲连帽外套男女K475038  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为兔毛（具体含量未标注），里料为聚酯纤维；实际采用灯芯绒材质，具备防风特性；整体属薄款设计。  \n版型与剪裁：宽松型版型，直下摆，连帽设计，立领造型，拉链门襟，立体贴袋，常规长袖。  \n尺码体系：覆盖S–2XL共5个标准尺码，提供详细三维尺寸表（含后肩衣长、身宽、连肩袖长），适配身高165–185cm、体重84–112kg成人男性群体。  \n颜色选择：提供橄榄色、灰色、藏青色、黑色四色可选，均为纯色设计，符合简约风定位。  \n</商品属性>\n\n<公司名称>\nshop94\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 70,
+    "itemId": 898469327594,
+    "offerTags": "180739;475650;519170;503298;677890;525314;553986;627202;…",
+    "storeAmount": 199753,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/898469327594.html?&object_id=898469327594",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "休闲西服"
+     },
+     {
+      "type": "industryCPV",
+      "value": "薄款"
+     },
+     {
+      "type": "industryCPV",
+      "value": "兔毛"
+     }
+    ],
+    "yxIndex": 4.1,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "雾面扎染立领飞行员夹克男2026秋季短款痞帅廓形外套潮牌上衣服",
+    "score": 0.14315926300048828,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "4",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "34",
+     "pay_ord_cnt_30d": "5",
+     "favor_cnt_30d": "5",
+     "cart_cnt_30d": "5"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01NsnA2eYQI7I1chua_!!9000000000102-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop103",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6292225335743,
+    "skuTitle": "黑色 2XL",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.6666666666666666"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5092005399851689",
+     "customer_scale": "24359",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "10"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n雾面扎染立领飞行员夹克男2026秋季短款痞帅廓形外套潮牌上衣服  \n</商品标题>\n\n<商品属性>\n面料成分：主面料为93.4%涤纶（聚酯纤维），里料为100%聚酯纤维；另含少量PU材质（标注为“面料名称：PU”，但未明确占比及位置，故按实际标注归入复合结构）；整体属合成纤维为主、兼顾挺括感与基础透气性的混纺体系。  \n版型设计：宽松型剪裁，立领+插肩袖+直下摆+罗纹底摆，强调轮廓松弛感与街头廓形感；衣长为普通款（50cm＜衣长≤65cm），适配日常休闲穿着需求。  \n尺码体系：覆盖M–3XL共5个常规尺码，提供身高体重对照表及平铺实测数据（如160–180cm对应160–180cm），误差范围声明为1–3cm，体现标准化生产水准。  \n重量与厚度指数：厚薄标注为“普通”，结合“春秋季”适用季节、“防风”功能及涤纶主体特性，判定为轻量级秋冬过渡季单品，非加厚保暖型。  \n</商品属性>\n\n<公司名称>\nshop103\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 0,
+    "itemId": 1074683155164,
+    "offerTags": "441218;422914;510210;477826;516738;500354;481538;514818;…",
+    "storeAmount": 12204,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1074683155164.html?&object_id=1074683155164",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "普通"
+     },
+     {
+      "type": "industryCPV",
+      "value": "防风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "扎染"
+     }
+    ],
+    "yxIndex": 4.05,
+    "newReputationTags": {
+     "favor_uv_7d": "2",
+     "puhuo_uv_7d": "2",
+     "pay_ord_byr_30d": "4",
+     "pay_ord_byr_7d": "1",
+     "poling_dates": "10",
+     "chat_uv_7d": "1",
+     "cart_uv_7d": "1"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "美式千鸟格PU皮面夹克男款秋季简约皮衣立领格纹金属风哈灵顿外套",
+    "score": 0.13362228759765624,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "25",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "2",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01OMdDnk7QicI32pKq_!!9000000000102-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop103",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6299332922723,
+    "skuTitle": "黑色 M",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5092005399851689",
+     "customer_scale": "24359",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "10"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n美式千鸟格PU皮面夹克男款秋季简约皮衣立领格纹金属风哈灵顿外套  \n</商品标题>\n\n<商品属性>\n面料成分：100%聚酯纤维（涤纶），含PU涂层工艺；里料同为100%聚酯纤维；无天然皮革或棉质标注。  \n版型设计：宽松型，适配青年体型，强调舒适廓形与街头松弛感。  \n尺码体系：覆盖M–3XL共5个常规尺码，误差范围±1–3cm，符合行业标准尺码公差。  \n厚薄与衣长：定位“普通”厚度，衣长属“普通款”（50cm＜衣长≤65cm），实际长度略超此区间（约65–70cm），体现微挺括造型特征。  \n领型与结构：立领设计，搭配拉链门襟，直下摆，常规长袖，无连帽、无装饰配件（如纽扣、蝴蝶结等）。  \n</商品属性>\n\n<公司名称>\nshop103\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "发货保障",
+      "value": "48小时发货"
+     },
+     {
+      "type": "保险",
+      "value": "退货包运费"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1082273533122,
+    "offerTags": "441218;422914;477826;516738;500354;481538;514818;278146;…",
+    "storeAmount": 18311,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1082273533122.html?&object_id=1082273533122",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "普通"
+     },
+     {
+      "type": "industryCPV",
+      "value": "防风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "PU涂层"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "1",
+     "pay_ord_byr_30d": "1",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "4",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "北跨境胸口刺绣标立领全拉链摇粒绒夹克外套保暖内胆户外城市休闲",
+    "score": 0.12368089843750002,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "9",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "2",
+     "cart_cnt_30d": "4"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN016sVNE0F6UzD3thOC_!!9000000000103-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"面料名称\\\",\\\"prop_id\\\":100031521,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"工艺\\\",\\\"prop_id\\\":1085,\\\"policy_prop_sort_num\\\":7},{\\\"prop_name\\\":\\\"主面料成分\\\",\\\"prop_id\\\":117130178,\\\"policy_prop_sort_num\\\":4},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质功能\\\",\\\"prop_id\\\":275945101,\\\"policy_prop_sort_num\\\":6},{\\\"prop_name\\\":\\\"产品类别\\\",\\\"prop_id\\\":364,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"厚薄\\\",\\\"prop_id\\\":7002,\\\"policy_prop_sort_num\\\":3}\",\"cate_id\":\"317\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop104",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6137851973530,
+    "skuTitle": "黑色 M",
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"普票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5963411865520176",
+     "customer_scale": "11032",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n北跨境胸口刺绣标立领全拉链摇粒绒夹克外套保暖内胆户外城市休闲  \n</商品标题>\n\n<商品属性>\n面料成分：主面料及里料均为棉（含量70%），采用摇粒绒材质；  \n版型设计：宽松型，适配青年男性身形，强调舒适廓形与活动自由度；  \n尺码体系：提供S/M/L/XL四档标准尺码，附详细三维尺寸表（后中长、胸围、连肩袖长），误差范围±1cm；  \n衣长与袖型：普通款衣长（50cm＜衣长≤65cm），长袖+常规袖设计，兼顾防风性与实用性；  \n结构细节：立领、全拉链门襟、侧缝插袋、圆下摆，强化都市休闲与轻户外兼容性；  \n颜色选择：咖啡色、灰色、米白色、黑色四色可选，契合美式简约基调。  \n</商品属性>\n\n<公司名称>\nshop104\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1085119924505,
+    "offerTags": "441218;422914;477826;516738;500354;481538;514818;278146;…",
+    "storeAmount": 16000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1085119924505.html?&object_id=1085119924505",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "摇粒绒"
+     },
+     {
+      "type": "industryCPV",
+      "value": "外套"
+     },
+     {
+      "type": "industryCPV",
+      "value": "普通"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "1",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "2",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "5",
+     "chat_uv_7d": "1",
+     "cart_uv_7d": "0"
+    }
+   }
+  ],
+  "count": 40,
+  "intent": {
+   "intentType": "TEXT_SEARCH",
+   "searchKeyword": "U家 487517 立领茄克 摇粒绒内里 女",
+   "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductIntent",
+   "extInfo": {},
+   "rawQuery": "U家 487517 立领茄克 摇粒绒内里 女"
+  }
+ },
+ "success": true,
+ "requestId": "request-14",
+ "message": "success",
+ "timestamp": 1791369114008
+}

@@ -697,6 +697,10 @@ test("Ф2: строка «Расход недели по статьям» — Po
   assert.match(lines(full, "spend"), /Потолок недели \$30,00 выбран: платные запуски ждут/);
   assert.match(lines(full, "spend"), /выборок Bright Data не было|Uniqlo \$11,00/);
   assert.equal(buildReadiness(input({ spend: { week: engineWeek([]), config, aiProvider: "polza" } })).groups.some((g) => g.key === "spend"), false, "за 7 дней расхода нет — блока нет");
+  // «Китай (1688)»: перевод названий — своя статья в строке и в итоге; запросы 1688 (0 $) строку не добавляют.
+  const china = buildReadiness(input({ spend: { week: engineWeek([{ kind: "catalog_attributes", cost_usd: 1 }, { kind: "cn_translate", cost_usd: 0.25 }, { kind: "cn_1688", cost_usd: 0 }]), config, aiProvider: "polza" } }));
+  assert.match(lines(china, "spend"), /перевод названий 1688 \$0,25 — факт Polza или расчёт по токенам\. Итого \$1,25 из \$30,00\./);
+  assert.doesNotMatch(lines(china, "spend"), /запросы 1688/);
 });
 
 test("Ф2: признаки по фото — общий потолок не оставил даже на один вызов: «Сборщик стоит — упёрся в общий потолок движка»; остаток потолка меньше очереди — названо", () => {

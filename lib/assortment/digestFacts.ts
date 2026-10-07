@@ -3,6 +3,7 @@ import { DISAPPEAR_FULL_RUNS } from "./appearance";
 import { loadDigestChanges } from "./appearanceStore";
 import type { Attributes } from "./attributes";
 import { partLabel } from "./brightdataCatalog";
+import { loadChinaDigest } from "./chinaStore";
 import { rowsByIds } from "./byIds";
 import { COLLECTION_STATUS_LABEL } from "./collections";
 import { listCollections } from "./collectionsStore";
@@ -123,8 +124,17 @@ export async function loadDigestFacts(db: SupabaseClient, from: Date, to: Date, 
 
   return {
     from: fromIso, to: toIso, directions, collections, crawl: await loadCrawlHealth(db, fromIso), history: await loadHistoryLine(db, to),
-    changes: await loadDigestChangesSafe(db, to), social: await loadSocialDigestSafe(db, from, to), baseUrl,
+    changes: await loadDigestChangesSafe(db, to), social: await loadSocialDigestSafe(db, from, to), china: await loadChinaDigestSafe(db, to), baseUrl,
   };
+}
+
+/** «Китай (1688)» — второстепенный раздел: его сбой не роняет сводку, а называется строкой в ней. */
+async function loadChinaDigestSafe(db: SupabaseClient, to: Date): Promise<DigestFacts["china"]> {
+  try {
+    return await loadChinaDigest(db, { nowMs: to.getTime() });
+  } catch (error) {
+    return { week: "", items: [], newTotal: 0, niches: 0, growth: [], error: (error instanceof Error ? error.message : String(error)).slice(0, 160) };
+  }
 }
 
 /** «Появилось / пропало» — второстепенный раздел: его сбой не роняет сводку, а называется строкой в ней. */

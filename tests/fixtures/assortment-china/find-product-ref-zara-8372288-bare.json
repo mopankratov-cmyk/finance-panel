@@ -1,0 +1,810 @@
+{
+ "traceId": "trace-7",
+ "code": "Success",
+ "codeType": "SUCCESS",
+ "data": {
+  "data": [
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "情侣葡萄皂礼品送客户开业店庆活动拓客伴手礼企业送员工创意礼品",
+    "score": 0.2084228515625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "12",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "4",
+     "pay_ord_cnt_30d": "13",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "18"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01jc0iwy1Os8D3LB5jW_!!9000000000063-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"是否IP授权\\\",\\\"prop_id\\\":246192626,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201332914\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop64",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6063884908630,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.3225806451612903"
+    },
+    "skuTitle": "玉龙茶香翠绿葡萄皂",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4276378956988487",
+     "customer_scale": "1795",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n情侣葡萄皂礼品送客户开业店庆活动拓客伴手礼企业送员工创意礼品  \n</商品标题>\n\n<商品属性>\n材质：纸制主体，搭配纸质包装；  \n规格形式：礼盒装（含多款组合选项），非单件销售；  \n套装构成：以“水蜜桃葡萄皂”为核心主题，提供多种配饰组合（如圆形、方形、茶香/茶树/金盏花等造型），均含配套护手霜；  \n风格定位：现代简约风；  \n颜色与款式：共15种SKU，涵盖水蜜桃、深紫、茶香翠绿、茉莉、金盏花等植物元素及几何图案设计；  \n计量单位：按“套”计价与交付。  \n</商品属性>\n\n<公司名称>\nshop64\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 300,
+    "itemId": 1044096724865,
+    "offerTags": "180739;2937603;677890;553986;595970;649730;615426;590338;…",
+    "storeAmount": 151447,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1044096724865.html?&object_id=1044096724865",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "礼盒装"
+     }
+    ],
+    "yxIndex": 4.06,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "艾草养生锤礼品定制活动礼品伴手礼实用小礼品国庆伴手礼创意礼品",
+    "score": 0.19806079101562502,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "4",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "5",
+     "favor_cnt_30d": "1",
+     "cart_cnt_30d": "14"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0135AOX81uXa9AnIWzA_!!9000000000064-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201330316\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop65",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6138808852364,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "1.0"
+    },
+    "skuTitle": "福禄安康・青萝 | 医圣祖殿・雅礼手提",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.6038381799978392",
+     "customer_scale": "3791",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n艾草养生锤礼品定制活动礼品伴手礼实用小礼品国庆伴手礼创意礼品  \n</商品标题>\n\n<公司名称>\nshop65\n</公司名称>",
+    "serviceInfos": [
+     {
+      "color": "#22AC60",
+      "type": "质量保障",
+      "value": "官方验货"
+     }
+    ],
+    "soldOut": 90,
+    "itemId": 1084306998456,
+    "offerTags": "180739;438786;675842;581122;564738;613378;649730;619522;…",
+    "storeAmount": 334905,
+    "offerICTagInfo": {
+     "isOfficialInspection": true
+    },
+    "detailUrl": "https://detail.1688.com/offer/1084306998456.html?&object_id=1084306998456",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "中式"
+     }
+    ],
+    "yxIndex": 4.16,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "2",
+     "pay_ord_byr_7d": "1",
+     "poling_dates": "5",
+     "chat_uv_7d": "3",
+     "cart_uv_7d": "1"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "男士轻奢礼品套装皮带手表笔企业年会伴手礼批发情人节送爸爸礼物",
+    "score": 0.190939697265625,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "4",
+     "chat_cnt_30d": "8",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "5",
+     "favor_cnt_30d": "4",
+     "cart_cnt_30d": "4"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01tLL24b1eTt6ciIz2z_!!9000000000065-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "20.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"是否IP授权\\\",\\\"prop_id\\\":246192626,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201332914\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop66",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6094076120830,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"269.8253968253968\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"143.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "黑色（钱包+手表+笔+礼盒）",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "Y",
+     "repeated_rate": "0.5541171218547242",
+     "customer_scale": "5577",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n男士轻奢礼品套装皮带手表笔企业年会伴手礼批发情人节送爸爸礼物  \n</商品标题>\n\n<商品属性>\n**材质构成**：采用纸制材料制作，整体呈现简约商务风格。  \n**规格配置**：包含钱包、手表、笔及礼盒，共四件套组成。  \n**颜色选项**：提供咖色与黑色两种主色调，满足不同审美需求。  \n**风格定位**：主打商务风，适用于正式或半正式场合赠送。  \n</商品属性>\n\n<适用场景>\n**送礼对象广泛**：适合送给同事、同学、夫妻、孩子、恩师、情侣、晚辈、朋友、长辈等多种人际关系。  \n**适用节日多样**：涵盖情人节、七夕、母亲节、父亲节、圣诞节、春节等多个节日，也适用于婚庆、生日、乔迁、毕业、探病慰问等特殊场合。  \n**送礼场合灵活**：可用于商务礼品、促销赠品、广告促销、积分兑换、员工福利、积分换购等多种商业用途。  \n</适用场景>\n\n<公司名称>\nshop66\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 30,
+    "itemId": 1053802886037,
+    "offerTags": "180739;698371;2937603;406018;480002;514818;481538;668162;…",
+    "storeAmount": 1998,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1053802886037.html?&object_id=1053802886037",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "轻奢"
+     },
+     {
+      "type": "industryCPV",
+      "value": "教师节"
+     },
+     {
+      "type": "industryCPV",
+      "value": "礼盒装"
+     }
+    ],
+    "yxIndex": 3.51,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "跨境爆款实用送客户商务礼品套装定制礼盒会议活动纪念伴手礼高档",
+    "score": 0.18517358398437503,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "4",
+     "chat_cnt_30d": "8",
+     "puhuo_cnt_30d": "7",
+     "pay_ord_cnt_30d": "5",
+     "favor_cnt_30d": "7",
+     "cart_cnt_30d": "10"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01hrmJC81JG34yhh7n5_!!9000000000066-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"是否IP授权\\\",\\\"prop_id\\\":246192626,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201332914\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop67",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5487116446661,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.6666666666666666"
+    },
+    "skuTitle": "尊贵灰色杯+笔+本+U盘+电源+鼠标",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5304235458297127",
+     "customer_scale": "3630",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "6"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n跨境爆款实用送客户商务礼品套装定制礼盒会议活动纪念伴手礼高档  \n</商品标题>\n\n<公司名称>\nshop67\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 100,
+    "itemId": 642587492586,
+    "offerTags": "422914;519170;677890;553986;613378;595970;615426;649730;…",
+    "storeAmount": 183096,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/642587492586.html?&object_id=642587492586",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "中式"
+     },
+     {
+      "type": "industryCPV",
+      "value": "教师节"
+     }
+    ],
+    "yxIndex": 4.08,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "源头工厂小单定制音响画企业伴手礼包豪斯风蓝牙夜灯商务礼品套装",
+    "score": 0.175025146484375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "8",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "3",
+     "cart_cnt_30d": "6"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01kvrR7Tm69yF1chua_!!9000000000067-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"是否IP授权\\\",\\\"prop_id\\\":246192626,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201332914\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop68",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6302741310329,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "梦与现实 带线插电款",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5433353180165011",
+     "customer_scale": "2203",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "5"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n源头工厂小单定制音响画企业伴手礼包豪斯风蓝牙夜灯商务礼品套装  \n</商品标题>\n\n<公司名称>\nshop68\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 0,
+    "itemId": 1085856336149,
+    "offerTags": "422914;514818;481538;656130;676098;669186;537090;540930;…",
+    "storeAmount": 4000,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1085856336149.html?&object_id=1085856336149",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "金属"
+     },
+     {
+      "type": "industryCPV",
+      "value": "伴手礼"
+     },
+     {
+      "type": "industryCPV",
+      "value": "日韩风"
+     }
+    ],
+    "yxIndex": 3.71,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "2",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "1",
+     "chat_uv_7d": "3",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "公司送员工实用的伴手礼定制logo企业生日礼物周年庆员工入职礼品",
+    "score": 0.16531311035156254,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "5",
+     "puhuo_cnt_30d": "1",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "4",
+     "cart_cnt_30d": "8"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01TCF7us1MXrMJU4RYg_!!9000000000068-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201330316\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop69",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5843767476028,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.8571428571428571"
+    },
+    "skuTitle": "【生活解压包】套餐十四",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.24627541799616917",
+     "customer_scale": "2718",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "7"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n公司送员工实用的伴手礼定制logo企业生日礼物周年庆员工入职礼品  \n</商品标题>\n\n<商品属性>\n材质：陶瓷（明确标注）；  \n风格：现代简约；  \n类别：创意礼品套装；  \n计量单位：件；  \n货号：其他；  \n品牌：满庭芳；  \n是否IP授权：否；  \n是否专利货源：否；  \n是否属于礼品：是，商务礼品。  \n</商品属性>\n\n<公司名称>\nshop69\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 900,
+    "itemId": 905576506139,
+    "offerTags": "180739;2937603;438786;519170;677890;657922;678402;553986;…",
+    "storeAmount": 157600,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/905576506139.html?&object_id=905576506139",
+    "sellingPoints": [],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [
+     "PRICE"
+    ],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "实用养生按摩梳小礼品套装公司企业送员工客户节日礼物轻奢伴手礼",
+    "score": 0.16392016601562504,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "0",
+     "puhuo_cnt_30d": "4",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN01mxVIdI1d8zP96lXv8_!!9000000000069-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"是否IP授权\\\",\\\"prop_id\\\":246192626,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201332914\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop70",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6051110204107,
+    "serviceTags": {
+     "invoice_content": "{\"avg_invoice_hh\":\"155.90625\",\"min_invoice_hh\":\"0.0\",\"median_invoice_hh\":\"117.0\",\"kp_type\":\"专票\"}",
+     "is_has_inventory": "Y",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.8888888888888888"
+    },
+    "skuTitle": "【马年限定礼盒】套餐二",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.442358559931702",
+     "customer_scale": "1181",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n实用养生按摩梳小礼品套装公司企业送员工客户节日礼物轻奢伴手礼  \n</商品标题>\n\n<商品属性>\n材质：纸制  \n风格设计：中国风、国潮元素（如“马烙”、“吉马驮福来”等吉祥语）  \n包装形式：礼盒装（含高台阶礼盒）  \n尺寸与容量：具体参数详见详情页  \n</商品属性>\n\n<适用场景>\n适用节日：春节、情人节、七夕、圣诞节、元旦、国庆节、母亲节、父亲节、教师节、妇女节、儿童节、万圣节、复活节等全年多个重要节日  \n适用场合：会议礼品、促销赠品、公关礼品、商务礼品、嘉奖纪念、广告促销、广告礼品、福利礼品、节庆礼品  \n送礼对象广泛：适用于同事、同学、孩子、恩师、情侣、晚辈、朋友、长辈等多种人际关系  \n</适用场景>\n\n<公司名称>\nshop70\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 100,
+    "itemId": 1036076025213,
+    "offerTags": "180739;2937603;510210;480002;514818;481538;678146;656130;…",
+    "storeAmount": 171482,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1036076025213.html?&object_id=1036076025213",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "轻奢"
+     },
+     {
+      "type": "industryCPV",
+      "value": "教师节"
+     },
+     {
+      "type": "industryCPV",
+      "value": "礼盒装"
+     }
+    ],
+    "yxIndex": 2.79,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "保温杯伴手礼送客户实用小礼品公司员工礼物企业团购礼品定制logo",
+    "score": 0.14909033203125,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "2",
+     "chat_cnt_30d": "3",
+     "puhuo_cnt_30d": "3",
+     "pay_ord_cnt_30d": "3",
+     "favor_cnt_30d": "5",
+     "cart_cnt_30d": "5"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN011ix5jcu39wG1chua_!!9000000000070-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "Y",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"是否IP授权\\\",\\\"prop_id\\\":246192626,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201332914\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop71",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 6135752124991,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "Y",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "绿色呼吸（小） 绿色环保材质",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.5564066146177012",
+     "customer_scale": "132",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "1"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n生日伴手礼实用小礼品公司送客户员工礼物企业团购送礼品定制logo  \n</商品标题>\n\n<商品属性>\n**材质类型**：天然竹、木、棉麻、可降解材料、咖啡渣  \n**包装形式**：礼盒装  \n**规格分类**：绿色呼吸系列（中/大/小）  \n**风格定位**：清新风  \n**香味特性**：环保无味  \n**尺寸容量**：大容量设计  \n</商品属性>\n\n<公司名称>\nshop71\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 1000,
+    "itemId": 1081131475448,
+    "offerTags": "180739;438786;422914;675842;670722;581122;613378;649730;…",
+    "storeAmount": 7080,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/1081131475448.html?&object_id=1081131475448",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "伴手礼"
+     },
+     {
+      "type": "industryCPV",
+      "value": "清新风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "礼盒装"
+     }
+    ],
+    "yxIndex": 4.0,
+    "newReputationTags": {
+     "favor_uv_7d": "3",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "3",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "1",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "3"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "奥妙洗护清洁套装组合装礼盒公司员工福利集采企业生日伴手礼",
+    "score": 0.14468530273437502,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "1",
+     "chat_cnt_30d": "1",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "2",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "2"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN0128Q3hO2IjXFxm5Zl1_!!9000000000071-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201330316\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop72",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5993244805874,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.5"
+    },
+    "skuTitle": "奥妙炫彩活力礼盒 AM2503",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.39773243434082145",
+     "customer_scale": "1998",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "9"
+    },
+    "quantityBegin": 1,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n奥妙洗护清洁套装组合装礼盒公司员工福利集采企业生日伴手礼  \n</商品标题>\n\n<公司名称>\nshop72\n</公司名称>",
+    "serviceInfos": [],
+    "soldOut": 100,
+    "itemId": 929519215726,
+    "offerTags": "425858;398210;516738;476930;481538;514818;659330;668418;…",
+    "storeAmount": 2178,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/929519215726.html?&object_id=929519215726",
+    "sellingPoints": [],
+    "yxIndex": 0.0,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   },
+   {
+    "promotionTags": [],
+    "priceTags": {
+     "is_price_stable_30d": "PRICE",
+     "is_post_fee_good": "PRICE",
+     "is_old_price_60": "PRICE"
+    },
+    "recallSource": "text_recall_general",
+    "title": "商务礼品套装定制logo公司企业礼品活动年会银行送客户伴手礼套装",
+    "score": 0.136489990234375,
+    "oldReputationTags": {
+     "rebuy_cnt_30d": "0",
+     "chat_cnt_30d": "2",
+     "puhuo_cnt_30d": "0",
+     "pay_ord_cnt_30d": "1",
+     "favor_cnt_30d": "0",
+     "cart_cnt_30d": "0"
+    },
+    "imageUrl": "https://cbu01.alicdn.com/img/ibank/O1CN012wSsXI1W6VnZnJc7E_!!9000000000072-0-cib.jpg",
+    "qualityTags": {
+     "is_yxpzbf": "N",
+     "rfd_quality_rate": "0.0%",
+     "core_decision_attr": "{\"properties_json_array\":\"{\\\"prop_name\\\":\\\"类别\\\",\\\"prop_id\\\":1835,\\\"policy_prop_sort_num\\\":2},{\\\"prop_name\\\":\\\"品牌\\\",\\\"prop_id\\\":2176,\\\"policy_prop_sort_num\\\":3},{\\\"prop_name\\\":\\\"是否IP授权\\\",\\\"prop_id\\\":246192626,\\\"policy_prop_sort_num\\\":5},{\\\"prop_name\\\":\\\"材质\\\",\\\"prop_id\\\":287,\\\"policy_prop_sort_num\\\":1},{\\\"prop_name\\\":\\\"风格\\\",\\\"prop_id\\\":401,\\\"policy_prop_sort_num\\\":4}\",\"cate_id\":\"201332914\",\"cate_type\":\"消费品\"}",
+     "cert_name": "",
+     "no_ip_complaint": "",
+     "is_official_inspect": "N"
+    },
+    "company": "shop73",
+    "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductItem",
+    "skuId": 5673507446614,
+    "serviceTags": {
+     "invoice_content": "{\"kp_type\":\"专票\"}",
+     "is_has_inventory": "N",
+     "is_late_ship_compensate": "N",
+     "lgt_3m_24h_avg": "0.0"
+    },
+    "skuTitle": "两件套【数显商务杯+雨伞】红色",
+    "merchantReputationTags": {
+     "is_factory_verified": "",
+     "is_official_partner": "N",
+     "repeated_rate": "0.4289314849657778",
+     "customer_scale": "1311",
+     "slr_new_item_cnt_180d": "0",
+     "shop_year_count": "3"
+    },
+    "quantityBegin": 2,
+    "currentPrice": "PRICE",
+    "rankedContent": "<商品标题>\n商务礼品套装定制logo公司企业礼品活动年会银行送客户伴手礼套装  \n</商品标题>\n\n<公司名称>\nshop73\n</公司名称>",
+    "serviceInfos": [
+     {
+      "type": "赊账服务",
+      "value": "先采后付"
+     }
+    ],
+    "soldOut": 1000,
+    "itemId": 811482183889,
+    "offerTags": "393986;393474;421122;475650;514818;481538;678146;668418;…",
+    "storeAmount": 119811,
+    "offerICTagInfo": {},
+    "detailUrl": "https://detail.1688.com/offer/811482183889.html?&object_id=811482183889",
+    "sellingPoints": [
+     {
+      "type": "industryCPV",
+      "value": "中国风"
+     },
+     {
+      "type": "industryCPV",
+      "value": "国庆节"
+     }
+    ],
+    "yxIndex": 1.36,
+    "newReputationTags": {
+     "favor_uv_7d": "0",
+     "puhuo_uv_7d": "0",
+     "pay_ord_byr_30d": "0",
+     "pay_ord_byr_7d": "0",
+     "poling_dates": "0",
+     "chat_uv_7d": "0",
+     "cart_uv_7d": "0"
+    }
+   }
+  ],
+  "count": 40,
+  "intent": {
+   "intentType": "TEXT_SEARCH",
+   "searchKeyword": "8372288",
+   "class": "com.alibaba.china.shared.tagspider.client.Model.aifindproduct.AiFindProductIntent",
+   "extInfo": {},
+   "rawQuery": "8372288"
+  }
+ },
+ "success": true,
+ "requestId": "request-8",
+ "message": "success",
+ "timestamp": 1791368993607
+}

@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
+import { CHINA_LINKS_PATH } from "@/lib/assortment/chinaLinks";
 import { ACCESS_STATUS_LABEL, DIRECTION_LABEL, type AccessStatus, type AssortmentDirection } from "@/lib/assortment/constants";
 import { ObservationState } from "./ObservationState";
 import { SourcesList } from "./SourcesList";
@@ -32,6 +34,10 @@ export function AssortmentSources() {
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold text-slate-900">Источники</h1>
           <p className="text-sm text-slate-500">Паспорт источников из ТЗ. Статус доступа — по факту проверки, а не по описанию сайта.</p>
+          {/* Ссылки на китайские площадки по нишам — без сбора и без ключа 1688: доступны всегда. */}
+          <Link href={CHINA_LINKS_PATH} className="inline-flex min-h-11 items-center self-start text-sm font-medium text-violet-700 hover:text-violet-900">
+            Китайские площадки — ссылки по нишам (1688, Taobao, AlphaShop)
+          </Link>
         </header>
 
         <div role="radiogroup" aria-label="Раздел" className="flex gap-2">
