@@ -1,10 +1,11 @@
 
-import Anthropic from "@anthropic-ai/sdk";
-import { ANTHROPIC_MODEL } from "@/lib/ai/models";
+import { POLZA_FINANCE_MODEL, POLZA_FINANCE_FALLBACK_MODEL } from "@/lib/ai/models";
+import { polzaChat, polzaConfigured } from "@/lib/ai/polza";
 import { COMPANY_ALIAS_PROMPT_NOTE } from "@/lib/finance/companyAliases";
 
-// ИИ-распознавание условий кредита по тексту, PDF или картинке. Перенесено из
-// роута /api/opiu/loan-recognize без изменения промпта и логики резерва.
+// ИИ-распознавание условий кредита по тексту, PDF или картинке — через «Пользу»
+// (решение владельца 07.10.2026): главная модель POLZA_FINANCE_MODEL, при сбое —
+// резервная. Промпт и контракт не менялись.
 
 export type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 export type AiRecognitionBody = {
@@ -113,68 +114,38 @@ export function validateAiBody(body: AiRecognitionBody): AiRecognitionBody {
   return result;
 }
 
-async function recognizeWithAnthropic(body: AiRecognitionBody) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY не настроен");
-  const client = new Anthropic({ apiKey, timeout: 55_000, maxRetries: 0 });
-  const content: Anthropic.MessageCreateParams["messages"][number]["content"] = [];
-  if (body.pdfBase64) content.push({ type: "document", source: { type: "base64", media_type: "application/pdf", data: body.pdfBase64 } });
-  if (body.imageBase64 && body.imageMediaType) content.push({ type: "image", source: { type: "base64", media_type: body.imageMediaType, data: body.imageBase64 } });
-  content.push({ type: "text", text: promptFor(body) });
-  // Claude Opus 5 не принимает даже нулевой `temperature`: API отвечает 400.
-  // Детерминированность здесь обеспечивают строгий JSON-контракт и отсутствие
-  // инструментов, поэтому параметр не нужен и не должен блокировать разбор PDF.
-  const response = await client.messages.create({ model: ANTHROPIC_MODEL, max_tokens: 6500, system, messages: [{ role: "user", content }] });
-  return jsonFrom(response.content.filter((item) => item.type === "text").map((item) => item.text).join("\n"));
-}
-
-async function recognizeWithPolza(body: AiRecognitionBody) {
-  const apiKey = process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY;
-  if (!apiKey) throw new Error("POLZA_API_KEY не настроен");
+async function recognizeWithPolza(body: AiRecognitionBody, model: string) {
   const content: Array<Record<string, unknown>> = [{ type: "text", text: promptFor(body) }];
   if (body.pdfBase64) content.push({ type: "file", file: { filename: body.fileName || "loan-document.pdf", file_data: `data:application/pdf;base64,${body.pdfBase64}` } });
   if (body.imageBase64 && body.imageMediaType) content.push({ type: "image_url", image_url: { url: `data:${body.imageMediaType};base64,${body.imageBase64}` } });
-  const response = await fetch("https://polza.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ model: process.env.POLZA_MODEL || "openai/gpt-4o", temperature: 0, max_tokens: 6500, response_format: { type: "json_object" }, messages: [{ role: "system", content: system }, { role: "user", content }] }),
-    signal: AbortSignal.timeout(55_000),
-  });
-  const payload = await response.json().catch(() => null) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } } | null;
-  if (!response.ok) throw new Error(payload?.error?.message || `Polza вернула ошибку ${response.status}`);
-  const text = payload?.choices?.[0]?.message?.content;
-  if (!text) throw new Error("Polza не вернула результат распознавания");
+  const text = await polzaChat({ model, system, content, maxTokens: 6500, timeoutMs: 55_000, label: "Распознавание кредита" });
   return jsonFrom(text);
 }
 
 export function aiConfigured(): boolean {
-  return Boolean(process.env.ANTHROPIC_API_KEY || process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY);
+  return polzaConfigured();
 }
 
 export class LoanAiUnavailableError extends Error {}
 
-/** Основной провайдер, затем резерв. Бросает LoanAiUnavailableError, если оба недоступны или не настроены. */
+/** Всё распознавание — через «Пользу»: главная модель, затем резервная. Бросает LoanAiUnavailableError, если ключа нет или обе модели недоступны. */
 export async function recognizeLoanWithAi(input: AiRecognitionBody): Promise<unknown> {
   const body = validateAiBody(input);
-  const hasPolzaKey = Boolean(process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY);
-  if (!process.env.ANTHROPIC_API_KEY && !hasPolzaKey) throw new LoanAiUnavailableError("ИИ-распознавание не подключено: настройте ANTHROPIC_API_KEY или резервный POLZA_API_KEY");
-  let primaryError = "";
-  if (process.env.ANTHROPIC_API_KEY) {
-    try {
-      return await recognizeWithAnthropic(body);
-    } catch (error) {
-      primaryError = error instanceof Error ? error.message : "ошибка основного ИИ-сервиса";
+  if (!polzaConfigured()) throw new LoanAiUnavailableError("ИИ-распознавание не подключено: настройте POLZA_API_KEY");
+  try {
+    return await recognizeWithPolza(body, POLZA_FINANCE_MODEL);
+  } catch (primary) {
+    const primaryError = primary instanceof Error ? primary.message : "ошибка главной модели";
+    if (POLZA_FINANCE_FALLBACK_MODEL && POLZA_FINANCE_FALLBACK_MODEL !== POLZA_FINANCE_MODEL) {
+      try {
+        return await recognizeWithPolza(body, POLZA_FINANCE_FALLBACK_MODEL);
+      } catch (fallback) {
+        const fallbackError = fallback instanceof Error ? fallback.message : "ошибка резервной модели";
+        console.error("Loan recognition via Polza failed", { model: POLZA_FINANCE_MODEL, primaryError, fallbackModel: POLZA_FINANCE_FALLBACK_MODEL, fallbackError });
+        throw new LoanAiUnavailableError("Не удалось распознать документ ни главной, ни резервной моделью «Пользы». Проверьте баланс и ключ POLZA_API_KEY.");
+      }
     }
+    console.error("Loan recognition via Polza failed", { model: POLZA_FINANCE_MODEL, primaryError });
+    throw new LoanAiUnavailableError("Не удалось распознать документ моделью «Пользы». Проверьте баланс и ключ POLZA_API_KEY.");
   }
-  if (hasPolzaKey) {
-    try {
-      return await recognizeWithPolza(body);
-    } catch (error) {
-      const fallbackError = error instanceof Error ? error.message : "ошибка резервного ИИ-сервиса";
-      console.error("Loan recognition providers failed", { primaryError, fallbackError });
-      throw new LoanAiUnavailableError("Не удалось распознать документ ни основным, ни резервным ИИ-сервисом. Проверьте баланс и ключи сервисов.");
-    }
-  }
-  console.error("Primary loan recognition failed and Polza is not configured", { primaryError });
-  throw new LoanAiUnavailableError("Основной ИИ-сервис недоступен, а резервный POLZA_API_KEY пока не настроен");
 }

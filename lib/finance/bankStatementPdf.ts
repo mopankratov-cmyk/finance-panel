@@ -1,15 +1,16 @@
 
-import Anthropic from "@anthropic-ai/sdk";
 import { createHash } from "node:crypto";
 import type { BankStatement } from "./bankStatementGrid";
-import { ANTHROPIC_MODEL } from "@/lib/ai/models";
+import { POLZA_FINANCE_MODEL, POLZA_FINANCE_FALLBACK_MODEL } from "@/lib/ai/models";
+import { polzaChat, polzaConfigured } from "@/lib/ai/polza";
 import { COMPANY_ALIAS_PROMPT_NOTE } from "@/lib/finance/companyAliases";
 import { extractPdfText } from "@/lib/loans/pdfText";
 import { parseStatementNumber } from "./bankStatementGrid";
 
-// Распознавание PDF-выписки ИИ. Перенесено из роута без изменения логики:
-// провайдеры запускаются одновременно, выбирается результат с наименьшим
-// числом расхождений по контрольным суммам, при равенстве — с большим числом строк.
+// Распознавание PDF-выписки ИИ — через «Пользу» (решение владельца 07.10.2026):
+// главная и резервная модели «Пользы» запускаются одновременно, выбирается
+// результат с наименьшим числом расхождений по контрольным суммам, при равенстве —
+// с большим числом строк. Детерминированный разбор Сбера идёт до ИИ.
 
 type RawRow = {
   id?: string;
@@ -194,74 +195,18 @@ export function normalizeStatement(raw: RawStatement, documentHash: string): Ban
   };
 }
 
-async function withAnthropic(pdf: Buffer, fileName: string, model: string): Promise<RawStatement> {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY не настроен");
-  const client = new Anthropic({ apiKey: key, timeout: 90_000, maxRetries: 0 });
-  const response = await client.messages.create({
+async function withPolza(pdf: Buffer, fileName: string, model: string): Promise<RawStatement> {
+  const content = await polzaChat({
     model,
-    max_tokens: 32_000,
-    temperature: 0,
     system,
-    tools: [{
-      name: "save_bank_statement",
-      description: "Сохранить полностью распознанную банковскую выписку",
-      input_schema: {
-        type: "object",
-        properties: {
-          bank: { type: "string" }, owner: { type: "string" }, ownerInn: { type: "string" },
-          accountNumber: { type: "string" }, dateFrom: { type: "string" }, dateTo: { type: "string" },
-          openingBalance: { type: "number" }, closingBalance: { type: "number" },
-          declaredDebit: { type: "number" }, declaredCredit: { type: "number" },
-          warnings: { type: "array", items: { type: "string" } },
-          rows: { type: "array", items: { type: "object", properties: {
-            id: { type: "string" }, date: { type: "string" }, amount: { type: "number" },
-            counterparty: { type: "string" }, counterpartyInn: { type: "string" },
-            counterpartyAccount: { type: "string" }, purpose: { type: "string" }, documentNumber: { type: "string" },
-          }, required: ["date", "amount"] } },
-        },
-        required: ["rows"],
-      },
-    }],
-    tool_choice: { type: "tool", name: "save_bank_statement" },
-    messages: [{ role: "user", content: [
-      { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf.toString("base64") } },
+    content: [
       { type: "text", text: `Файл: ${fileName}. Распознай выписку полностью.` },
-    ] }],
+      { type: "file", file: { filename: fileName, file_data: `data:application/pdf;base64,${pdf.toString("base64")}` } },
+    ],
+    maxTokens: 16_000,
+    timeoutMs: 90_000,
+    label: "Распознавание выписки",
   });
-  const tool = response.content.find((item) => item.type === "tool_use" && item.name === "save_bank_statement");
-  if (!tool || tool.type !== "tool_use") {
-    if (response.stop_reason === "max_tokens") throw new Error("Anthropic обрезал слишком длинную выписку");
-    throw new Error("Anthropic не вернул структурированную банковскую выписку");
-  }
-  return tool.input as RawStatement;
-}
-
-async function withPolza(pdf: Buffer, fileName: string): Promise<RawStatement> {
-  const key = process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY;
-  if (!key) throw new Error("POLZA_API_KEY не настроен");
-  const response = await fetch("https://polza.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: process.env.POLZA_MODEL || "openai/gpt-4o",
-      temperature: 0,
-      max_tokens: 16_000,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: [
-          { type: "text", text: `Файл: ${fileName}. Распознай выписку полностью.` },
-          { type: "file", file: { filename: fileName, file_data: `data:application/pdf;base64,${pdf.toString("base64")}` } },
-        ] },
-      ],
-    }),
-    signal: AbortSignal.timeout(90_000),
-  });
-  const payload = await response.json().catch(() => null) as { choices?: Array<{ message?: { content?: string } }>; error?: { message?: string } } | null;
-  if (!response.ok) throw new Error(payload?.error?.message || `Polza вернула ошибку ${response.status}`);
-  const content = payload?.choices?.[0]?.message?.content;
-  if (!content) throw new Error("Polza не вернула результат распознавания");
   return extractJson(content);
 }
 
@@ -275,33 +220,29 @@ export async function recognizeBankStatementPdf(pdf: Buffer, fileName: string): 
   const documentHash = createHash("sha256").update(pdf).digest("hex");
   const local=recognizeSberStatementText(extractPdfText(pdf),documentHash);
   if(local)return local;
-  const providers: Array<{ name: string; promise: Promise<RawStatement> }> = [];
-  if (process.env.ANTHROPIC_API_KEY) {
-    // Раньше PDF гоняли на двух моделях (быстрая + точная) и выбирали лучшую.
-    // Теперь обе — одна и та же ANTHROPIC_MODEL, поэтому Anthropic вызывается один
-    // раз; переопределить можно прежними переменными окружения.
-    const fastModel = process.env.BANK_STATEMENT_ANTHROPIC_MODEL || ANTHROPIC_MODEL;
-    const accurateModel = process.env.BANK_STATEMENT_ACCURATE_MODEL || ANTHROPIC_MODEL;
-    providers.push({ name: fastModel, promise: withAnthropic(pdf, fileName, fastModel) });
-    if (accurateModel !== fastModel) providers.push({ name: accurateModel, promise: withAnthropic(pdf, fileName, accurateModel) });
-  }
-  if (process.env.POLZA_API_KEY || process.env.POLZA_AI_API_KEY) providers.push({ name: "polza", promise: withPolza(pdf, fileName) });
-  if (!providers.length) throw new PdfRecognitionError("Распознавание PDF не подключено: отсутствуют ключи Anthropic и Polza", false);
+  if (!polzaConfigured()) throw new PdfRecognitionError("Распознавание PDF не подключено: отсутствует ключ POLZA_API_KEY", false);
+  // Главная и резервная модели «Пользы» одновременно; выбираем результат с
+  // наименьшим расхождением по контрольным суммам, при равенстве — больше строк,
+  // затем предпочитаем главную модель.
+  const models = Array.from(new Set([POLZA_FINANCE_MODEL, POLZA_FINANCE_FALLBACK_MODEL].filter(Boolean)));
+  const providers = models.map((model) => ({ name: model, promise: withPolza(pdf, fileName, model) }));
   const settled = await Promise.allSettled(providers.map((provider) => provider.promise));
   const successful = settled.flatMap((result, index) => result.status === "fulfilled"
     ? [{ name: providers[index].name, statement: normalizeStatement(result.value, documentHash) }]
     : []);
   if (!successful.length) {
     const reasons = settled.flatMap((result) => result.status === "rejected" ? [result.reason instanceof Error ? result.reason.message : String(result.reason)] : []);
-    console.error(`Bank statement recognition failed (${providers.length}): ${reasons.join(" | ")}`);
+    console.error(`Bank statement recognition via Polza failed (${providers.length}): ${reasons.join(" | ")}`);
     const timedOut = reasons.some((reason) => /timed out|timeout|aborted/i.test(reason));
     throw new PdfRecognitionError(timedOut
-      ? "ИИ-сервисы не успели обработать PDF. Повторите загрузку; если банк даёт XLSX, используйте его — он разбирается детерминированно и точнее."
-      : "Не удалось распознать PDF ни основным, ни резервным ИИ-сервисом", timedOut);
+      ? "«Польза» не успела обработать PDF. Повторите загрузку; если банк даёт XLSX, используйте его — он разбирается детерминированно и точнее."
+      : "Не удалось распознать PDF моделями «Пользы»", timedOut);
   }
   const mismatch = (candidate: BankStatement) => candidate.warnings.filter((warning) => /контрольн.*сумм/i.test(warning)).length;
-  successful.sort((left, right) => mismatch(left.statement) - mismatch(right.statement) || right.statement.rows.length - left.statement.rows.length);
+  successful.sort((left, right) => mismatch(left.statement) - mismatch(right.statement)
+    || right.statement.rows.length - left.statement.rows.length
+    || (left.name === POLZA_FINANCE_MODEL ? -1 : right.name === POLZA_FINANCE_MODEL ? 1 : 0));
   const selected = successful[0];
-  console.info(`Bank statement provider selected: ${selected.name}; rows=${selected.statement.rows.length}; controlWarnings=${mismatch(selected.statement)}`);
+  console.info(`Bank statement model selected: ${selected.name}; rows=${selected.statement.rows.length}; controlWarnings=${mismatch(selected.statement)}`);
   return selected.statement;
 }
