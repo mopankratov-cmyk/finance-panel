@@ -7,9 +7,13 @@ const row = (patch: Partial<TransferMatchRow>): TransferMatchRow => ({
   date: "2026-08-01",
   amount: -1000,
   bankAccountNumber: "111",
+  companyId: "company-a",
+  accountId: "account-a",
   ownerInn: "10",
   counterpartyAccount: "222",
   counterpartyInn: "20",
+  category: "Выбытие — Перевод между счетами",
+  purpose: "Перевод собственных средств",
   ...patch,
 });
 
@@ -35,6 +39,40 @@ test("links two accounts of the same owner by owner INN", () => {
     row({ id: "in", amount: 1000, bankAccountNumber: "333", ownerInn: "280888215133", counterpartyAccount: "", counterpartyInn: "" }),
   ]);
   assert.deepEqual(pairs, [{ outgoingId: "out", incomingId: "in" }]);
+});
+
+test("links two mapped accounts of one company without bank requisites", () => {
+  const pairs = findCertainTransferPairs([
+    row({ id: "out", ownerInn: "", counterpartyAccount: "", counterpartyInn: "" }),
+    row({
+      id: "in",
+      amount: 1000,
+      bankAccountNumber: "222",
+      accountId: "account-b",
+      ownerInn: "",
+      counterpartyAccount: "",
+      counterpartyInn: "",
+      category: "Поступление — Перевод между счетами",
+      purpose: "Перевод на карту",
+    }),
+  ]);
+  assert.deepEqual(pairs, [{ outgoingId: "out", incomingId: "in" }]);
+});
+
+test("does not infer a same-company transfer without transfer intent", () => {
+  const pairs = findCertainTransferPairs([
+    row({ id: "out", ownerInn: "", counterpartyAccount: "", counterpartyInn: "", category: "", purpose: "Покупка" }),
+    row({ id: "in", amount: 1000, bankAccountNumber: "222", accountId: "account-b", ownerInn: "", counterpartyAccount: "", counterpartyInn: "", category: "", purpose: "Возврат" }),
+  ]);
+  assert.deepEqual(pairs, []);
+});
+
+test("same-company account mapping only links operations from the same date", () => {
+  const pairs = findCertainTransferPairs([
+    row({ id: "out", ownerInn: "", counterpartyAccount: "", counterpartyInn: "" }),
+    row({ id: "in", date: "2026-08-02", amount: 1000, bankAccountNumber: "222", accountId: "account-b", ownerInn: "", counterpartyAccount: "", counterpartyInn: "" }),
+  ]);
+  assert.deepEqual(pairs, []);
 });
 
 test("does not choose when two incoming operations are equally suitable", () => {

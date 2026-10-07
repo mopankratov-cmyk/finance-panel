@@ -3,9 +3,13 @@ export interface TransferMatchRow {
   date: string;
   amount: number;
   bankAccountNumber: string;
+  companyId: string;
+  accountId: string;
   ownerInn: string;
   counterpartyAccount: string;
   counterpartyInn: string;
+  category: string;
+  purpose: string;
 }
 
 export interface TransferPair {
@@ -15,6 +19,8 @@ export interface TransferPair {
 
 const digits = (value: string) => value.replace(/\D/g, "");
 const cents = (value: number) => Math.round(Math.abs(value) * 100);
+const hasTransferSignal = (row: TransferMatchRow) =>
+  /(перевод|собственн(?:ых|ые) средств|между своими сч[её]тами)/i.test(`${row.category} ${row.purpose}`);
 
 function evidence(left: TransferMatchRow, right: TransferMatchRow) {
   const leftAccount = digits(left.bankAccountNumber);
@@ -29,11 +35,22 @@ function evidence(left: TransferMatchRow, right: TransferMatchRow) {
   // Known account numbers take precedence over INN: one company can own many accounts.
   if (leftCounterpartyAccount && leftCounterpartyAccount !== rightAccount) return false;
   if (rightCounterpartyAccount && rightCounterpartyAccount !== leftAccount) return false;
+  const sameMappedCompanyAccounts = Boolean(
+    left.companyId
+    && left.companyId === right.companyId
+    && left.accountId
+    && right.accountId
+    && left.accountId !== right.accountId
+    && left.date === right.date
+    && hasTransferSignal(left)
+    && hasTransferSignal(right)
+  );
   return (leftCounterpartyAccount && leftCounterpartyAccount === rightAccount)
     || (rightCounterpartyAccount && rightCounterpartyAccount === leftAccount)
     || (leftInn && rightInn && leftInn === rightInn)
     || (leftCounterpartyInn && rightInn && leftCounterpartyInn === rightInn)
-    || (rightCounterpartyInn && leftInn && rightCounterpartyInn === leftInn);
+    || (rightCounterpartyInn && leftInn && rightCounterpartyInn === leftInn)
+    || sameMappedCompanyAccounts;
 }
 
 function daysBetween(left: string, right: string) {
