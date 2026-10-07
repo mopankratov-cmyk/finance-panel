@@ -4,11 +4,14 @@ import type { CatalogCard } from "./catalog";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
 import type { SocialEvidence } from "./evidence";
+import { engineBudgetConfig, socialRoomUsd, socialWeeklyRequests, type EngineBudgetConfig } from "./engineBudget";
+import { loadEngineWeek } from "./engineBudgetStore";
+import { idleRun } from "./jobsWatch";
 import {
-  DEFAULT_FEED_PERIOD, nextSocialRun, pickSocialDigest, SOCIAL_JOB, socialPass, type FeedPeriod, type SocialDigest, type SocialDigestPost, type SocialProgress,
+  DEFAULT_FEED_PERIOD, nextSocialRun, pickSocialDigest, SOCIAL_JOB, socialPassPlan, type FeedPeriod, type SocialDigest, type SocialDigestPost, type SocialProgress,
 } from "./socialFeed";
-import { hasChance, MAX_AGE_DAYS, measuresPerRunEstimate, profileUrl, SOCIAL_PLATFORM, socialConfig, socialRefKeyFromUrl, type AccountKind, type SocialConfig } from "./socialReels";
-import { loadAccounts, loadViralReels, postMeasureDue, SOCIAL_MIGRATION, type PostRow, type SocialReelCard } from "./socialReelsStore";
+import { COST_PER_REQUEST_USD, hasChance, MAX_AGE_DAYS, measuresPerRunEstimate, profileUrl, SOCIAL_PLATFORM, socialConfig, socialDayShare, socialRefKeyFromUrl, type AccountKind, type SocialConfig } from "./socialReels";
+import { awaitsBaseline, loadAccounts, loadSocialUsageDays, loadViralReels, postMeasureDue, SOCIAL_MIGRATION, type AccountRow, type PostRow, type SocialReelCard } from "./socialReelsStore";
 
 /**
  * «Залетает в соцсетях» — чтение и ручные правки для экрана, сводки, каталога и карточки модели. Сбор — в socialReelsStore.ts.
@@ -63,24 +66,28 @@ const PROGRESS_COLUMNS = "code,direction,published_at,checks,last_checked_at,lik
 type ProgressRow = Pick<PostRow, "code" | "direction" | "published_at" | "checks" | "last_checked_at" | "likes" | "comments" | "views" | "verdict" | "hidden_at" | "account_handle">;
 
 /**
- * Честные счётчики вкладки: рилсов раздела за период найдено, замерено, ждут замера и из них с шансом; рилсы без раздела (раздел станет
- * известен после замера) — по всем разделам; сколько прогонов до полного прохода очереди замера (все разделы, окно 2–21 день). Скрытые и
- * рилсы исключённых авторов не в счёте — прогон их не мерит. Чтение листанием (рилсов бывает больше 1 000).
+ * Честные счётчики вкладки: рилсы раздела за период — найдено, замерено, ждут замера (из них с шансом), ждут базы автора (замерены, с
+ * шансом, базы нет — вердикт впереди); рилсы без раздела — по всем разделам: ждут замера (раздел станет известен после него) и уже
+ * замеренные, у которых раздел не определился; проход очереди замера (все разделы, окно 2–21 день) — по учёту расхода: дневная доля и
+ * строка недели с уже потраченным, общий потолок движка. Скрытые рилсы и рилсы исключённых авторов не в счёте — прогон их не мерит.
+ * Чтение листанием (рилсов бывает больше 1 000); учёт не прочитался — проход по одной скорости, без потолков.
  */
-export async function loadSocialProgress(db: SupabaseClient, options: { direction: AssortmentDirection; days: number; nowMs: number; config?: SocialConfig }): Promise<SocialProgress> {
+export async function loadSocialProgress(db: SupabaseClient, options: { direction: AssortmentDirection; days: number; nowMs: number; config?: SocialConfig; engine?: EngineBudgetConfig }): Promise<SocialProgress> {
   const { direction, days, nowMs } = options;
   const config = options.config ?? socialConfig();
+  const engine = options.engine ?? engineBudgetConfig();
   const since = nowMs - Math.max(days, MAX_AGE_DAYS) * DAY_MS;
   const periodFrom = nowMs - days * DAY_MS;
   const rows = await loadAllSupabasePages<ProgressRow>((from, to) => db.from(POSTS).select(PROGRESS_COLUMNS).eq("platform", SOCIAL_PLATFORM)
     .gte("published_at", iso(since)).order("code", { ascending: true }).range(from, to) as unknown as Page<ProgressRow>, { label: "Счётчики «Залетает»" });
-  const excluded = rows.length ? await excludedHandles(db) : new Set<string>();
-  const section = { found: 0, measured: 0, waiting: 0, waitingWithChance: 0 };
-  const unsorted = { found: 0, waiting: 0, waitingWithChance: 0 };
+  const accounts: Map<string, AccountRow> = rows.length ? await loadAccounts(db) : new Map();
+  const section = { found: 0, measured: 0, waiting: 0, waitingWithChance: 0, awaitingBaseline: 0 };
+  const unsorted = { found: 0, waiting: 0, waitingWithChance: 0, measured: 0 };
   let waitingAll = 0;
   for (const raw of rows) {
     const p = { ...raw, checks: Number(raw.checks) || 0, likes: num(raw.likes), comments: num(raw.comments), views: num(raw.views) };
-    if (p.hidden_at || (p.account_handle && excluded.has(p.account_handle))) continue;
+    const account = p.account_handle ? accounts.get(p.account_handle) : undefined;
+    if (p.hidden_at || account?.status === "excluded") continue;
     const due = postMeasureDue(p, nowMs);
     const chance = due && hasChance(p);
     if (due) waitingAll += 1;
@@ -90,14 +97,30 @@ export async function loadSocialProgress(db: SupabaseClient, options: { directio
       if (p.checks > 0 && (p.likes != null || p.comments != null)) section.measured += 1;
       if (due) section.waiting += 1;
       if (chance) section.waitingWithChance += 1;
+      if (p.verdict == null && p.account_handle && awaitsBaseline(p, account, nowMs)) section.awaitingBaseline += 1;
     } else if (p.direction == null) {
       unsorted.found += 1;
       if (due) unsorted.waiting += 1;
       if (chance) unsorted.waitingWithChance += 1;
+      if (!due && p.checks > 0) unsorted.measured += 1;
     }
   }
-  // Оценка по половине окна прогона: пока идёт поиск, замеру — вторая половина (оценка снизу по скорости, а не обещание).
-  return { days, section, unsorted, pass: socialPass(waitingAll, measuresPerRunEstimate(config, true), config.weeklyRequests) };
+  if (waitingAll === 0) return { days, section, unsorted, pass: null };
+  // Учёт расхода: дневная доля и строка недели — с уже потраченным, общий потолок движка — остатком. Не прочитался — оценка по скорости.
+  const [spentByDay, week] = await Promise.all([
+    loadSocialUsageDays(db, nowMs).catch(() => null),
+    loadEngineWeek(db, nowMs).catch(() => null),
+  ]);
+  const room = week ? socialRoomUsd(week, engine) : null;
+  const weeklyRequests = socialWeeklyRequests(engine);
+  return {
+    days, section, unsorted,
+    // Скорость — по половине окна прогона (пока идёт поиск, замеру — не меньше половины): оценка снизу, а не обещание.
+    pass: socialPassPlan({
+      waiting: waitingAll, perRun: measuresPerRunEstimate(config, true), dayShare: socialDayShare(weeklyRequests), weeklyRequests, spentByDay,
+      engineRoomRequests: room && room.by === "engine" ? Math.floor(room.usd / COST_PER_REQUEST_USD + 1e-6) : null, nowMs,
+    }),
+  };
 }
 
 const num = (value: unknown): number | null => (value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value));
@@ -124,7 +147,19 @@ export interface SocialRunStatus {
   lastNote: string | null;
   lastOkAt: string | null;
   nextRunAt: string;
+  /** Прогонов с ошибкой подряд (без прогонов без работы — `[stop:idle]`: они ничего не доказывают). */
+  errorStreak: number;
+  /**
+   * Текст плашки «прогон с ошибкой»: ошибка у SOCIAL_ALERT_STREAK прогонов подряд или «нет денег» сразу; null — плашки нет. Одна мелкая
+   * ошибка (при кроне раз в 3 часа прогоны по 1–3 запроса обычны) — пометкой прогона, а не красной плашкой.
+   */
+  alert: string | null;
 }
+
+/** С какой серии ошибок подряд вкладка показывает плашку (кроме «нет денег» — сразу). */
+export const SOCIAL_ALERT_STREAK = 2;
+
+const cleanNote = (text: string | null | undefined) => (text ? String(text).replace(/\s*\[stop:[a-z_]+\]\s*$/, "").slice(0, 240) || null : null);
 
 /** Последние прогоны крона по журналу синхронизаций — для строки «сбор: последний — …, следующий — …». */
 export async function loadSocialRunStatus(db: SupabaseClient, nowMs: number): Promise<SocialRunStatus> {
@@ -133,13 +168,19 @@ export async function loadSocialRunStatus(db: SupabaseClient, nowMs: number): Pr
   const runs = ((data ?? []) as Array<{ status: string; error: string | null; started_at: string }>).sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)));
   const last = runs[0];
   const status = last && (last.status === "ok" || last.status === "partial" || last.status === "error") ? last.status : null;
+  const real = runs.filter((r) => !idleRun({ status: r.status as "ok" | "partial" | "error", error: r.error }));
+  let errorStreak = 0;
+  while (errorStreak < real.length && real[errorStreak].status === "error") errorStreak += 1;
+  const billing = real[0]?.status === "error" && /\[stop:billing\]\s*$/.test(real[0].error ?? "");
   return {
     lastRunAt: last?.started_at ?? null,
     lastStatus: status,
-    // Метка `[stop:billing]` нужна сторожу задач, на вкладке она лишняя.
-    lastNote: last?.error ? String(last.error).replace(/\s*\[stop:[a-z_]+\]\s*$/, "").slice(0, 240) || null : null,
+    // Метки `[stop:billing]` и `[stop:idle]` нужны сторожу задач, на вкладке они лишние.
+    lastNote: cleanNote(last?.error),
     lastOkAt: runs.find((r) => r.status === "ok" || r.status === "partial")?.started_at ?? null,
     nextRunAt: nextSocialRun(nowMs),
+    errorStreak,
+    alert: errorStreak >= SOCIAL_ALERT_STREAK || billing ? cleanNote(real[0].error) ?? "прогон не удался" : null,
   };
 }
 

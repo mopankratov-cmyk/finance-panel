@@ -204,7 +204,12 @@ test("Этап 6: S067, S069–S083 — «Не подключено: ждёт р
   for (const id of STAGE6_AWAITING_OWNER) assert.equal(effectiveAccessStatus(passport(id), NOW), "not_connected", id);
   assert.equal(ACCESS_STATUS_LABEL.not_connected, "Не подключено: ждёт решения владельца");
   assert.equal(effectiveAccessStatus(passport("S068", "untested", { lastSuccessAt: ago(20 * HOUR) }), NOW), "auto_verified");
-  assert.equal(effectiveAccessStatus(passport("S068", "untested", { lastSuccessAt: ago(3 * DAY) }), NOW), "partial", "крон молчит дольше двух с половиной суток — не «работает»");
+  assert.equal(effectiveAccessStatus(passport("S068", "untested", { lastSuccessAt: ago(3 * DAY) }), NOW), "partial", "крон молчит трое суток — не «работает»");
+  // Крон каждые 3 часа: «работает» — удачный прогон с работой за полтора дня (сутки с запасом на день без работы), а не 2,5 суток.
+  assert.equal(effectiveAccessStatus(passport("S068", "untested", { lastSuccessAt: ago(30 * HOUR) }), NOW), "auto_verified");
+  assert.equal(effectiveAccessStatus(passport("S068", "untested", { lastSuccessAt: ago(40 * HOUR) }), NOW), "partial", "40 часов без работы при кроне раз в 3 часа — не «работает»");
+  assert.match(STAGE6_CONNECTED.S068.note, /крон каждые 3 часа/);
+  assert.doesNotMatch(STAGE6_CONNECTED.S068.note, /ежедневно/);
   assert.equal(effectiveAccessStatus(passport("S068"), NOW), "partial");
   assert.equal(effectiveAccessStatus(passport("S067", "disabled"), NOW), "disabled", "отключённый владельцем остаётся отключённым");
   assert.ok(ids.every((id) => effectiveAccessStatus(passport(id), NOW) !== "untested"), "ни у одной соцстроки нет «Доступ не проверен»");
