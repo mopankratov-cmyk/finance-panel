@@ -6,8 +6,8 @@ import { transferCategories } from "./bankTransferClassification";
 export async function matchBankReviewTransfers() {
   const db = getSupabaseAdmin();
   if (!db) throw new Error("Серверная база не настроена");
-  const rows = await loadAllSupabasePages<{ id: string; date: string; amount: number; bank_account_number: string; owner_inn: string; counterparty_inn: string; reasons: string[]; company_id: string | null; account_id: string | null; status: string; manager_answer: string | null }>((from,to) => db.from("bank_review_items")
-    .select("id,date,amount,bank_account_number,owner_inn,counterparty_inn,reasons,company_id,account_id,status,manager_answer")
+  const rows = await loadAllSupabasePages<{ id: string; date: string; amount: number; bank_account_number: string; owner_inn: string; counterparty_inn: string; reasons: string[]; company_id: string | null; account_id: string | null; category: string | null; purpose: string; status: string; manager_answer: string | null }>((from,to) => db.from("bank_review_items")
+    .select("id,date,amount,bank_account_number,owner_inn,counterparty_inn,reasons,company_id,account_id,category,purpose,status,manager_answer")
     .in("status", ["ready","needs_info","waiting_manager","approved"]).is("matched_transfer_id",null)
     .order("date").order("id").range(from,to), { label: "Встречные операции всех выписок" });
   const companyIds = [...new Set(rows.flatMap(row => row.company_id ? [row.company_id] : []))];
@@ -21,7 +21,19 @@ export async function matchBankReviewTransfers() {
     groupName: String(company.group_name ?? ""),
   }]));
   const byId = new Map(rows.map(row => [row.id,row]));
-  const pairs = findCertainTransferPairs(rows.map(row => ({ id: row.id, date: row.date, amount: Number(row.amount), bankAccountNumber: row.bank_account_number ?? "", ownerInn: row.owner_inn ?? "", counterpartyInn: row.counterparty_inn ?? "", counterpartyAccount: (row.reasons ?? []).find(reason => reason.startsWith("__counterparty_account:"))?.slice("__counterparty_account:".length) ?? "" })));
+  const pairs = findCertainTransferPairs(rows.map(row => ({
+    id: row.id,
+    date: row.date,
+    amount: Number(row.amount),
+    bankAccountNumber: row.bank_account_number ?? "",
+    companyId: row.company_id ?? "",
+    accountId: row.account_id ?? "",
+    ownerInn: row.owner_inn ?? "",
+    counterpartyInn: row.counterparty_inn ?? "",
+    counterpartyAccount: (row.reasons ?? []).find(reason => reason.startsWith("__counterparty_account:"))?.slice("__counterparty_account:".length) ?? "",
+    category: row.category ?? "",
+    purpose: row.purpose ?? "",
+  })));
   let linkedCount = 0;
   for (const pair of pairs) {
     const outgoingCompany = companyById.get(byId.get(pair.outgoingId)?.company_id ?? "");

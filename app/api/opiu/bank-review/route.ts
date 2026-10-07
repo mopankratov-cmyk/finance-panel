@@ -176,7 +176,7 @@ export async function POST(request: Request) {
     const found = await db.from("bank_review_items").select("*").in("id",[text(body.outgoingId,100),text(body.incomingId,100)]);
     if(found.error) return jsonError(found.error.message,500);
     const rows = found.data ?? [];
-    const pair = findCertainTransferPairs(rows.map(row => ({id:row.id,date:row.date,amount:Number(row.amount),bankAccountNumber:row.bank_account_number ?? "",ownerInn:row.owner_inn ?? "",counterpartyInn:row.counterparty_inn ?? "",counterpartyAccount:(Array.isArray(row.reasons)?row.reasons:[]).find((r:string)=>r.startsWith(COUNTERPARTY_ACCOUNT_MARKER))?.slice(COUNTERPARTY_ACCOUNT_MARKER.length) ?? ""})))[0];
+    const pair = findCertainTransferPairs(rows.map(row => ({id:row.id,date:row.date,amount:Number(row.amount),bankAccountNumber:row.bank_account_number ?? "",companyId:row.company_id ?? "",accountId:row.account_id ?? "",ownerInn:row.owner_inn ?? "",counterpartyInn:row.counterparty_inn ?? "",counterpartyAccount:(Array.isArray(row.reasons)?row.reasons:[]).find((r:string)=>r.startsWith(COUNTERPARTY_ACCOUNT_MARKER))?.slice(COUNTERPARTY_ACCOUNT_MARKER.length) ?? "",category:row.category ?? "",purpose:row.purpose ?? ""})))[0];
     if(!pair || pair.outgoingId!==body.outgoingId || pair.incomingId!==body.incomingId) return jsonError("Сумма, даты и реквизиты не подтверждают этот перевод",400);
     const companyIds=[...new Set(rows.flatMap(row=>row.company_id?[String(row.company_id)]:[]))];
     const companies=companyIds.length?await db.from("companies").select("id,name,group_name").in("id",companyIds):{data:[],error:null};
