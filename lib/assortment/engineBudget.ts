@@ -41,6 +41,12 @@ export const ENGINE_KIND = {
   cnTranslate: "cn_translate",
   /** «Китай (1688)»: запросы к официальным навыкам 1688 — 0 $, только число запросов (недельный потолок запросов). */
   cn1688: "cn_1688",
+  /**
+   * «Фабрики сумок (1688)»: запросы поиска фабрик и проверки компании (88查) — 0 $, только число запросов (дневной потолок раздела).
+   * Отдельной статьёй от cn_1688: поиск по кнопке не должен выбирать недельный потолок снимка трендов, а понедельничный снимок —
+   * дневной потолок закупщика.
+   */
+  cn1688Factory: "cn_1688_factory",
 } as const;
 
 /** Статья Bright Data: раздел бренда, часть раздела или фото Zara. */
@@ -221,6 +227,7 @@ export const ENGINE_KIND_LABEL: Record<string, string> = {
   [ENGINE_KIND.socialAttributes]: "разбор соцфото",
   [ENGINE_KIND.cnTranslate]: "перевод названий 1688",
   [ENGINE_KIND.cn1688]: "запросы 1688",
+  [ENGINE_KIND.cn1688Factory]: "запросы 1688: фабрики сумок",
   [brightdataKind("zara")]: "Zara",
   [brightdataKind("uniqlo")]: "Uniqlo",
   [brightdataKind("asos")]: "ASOS",

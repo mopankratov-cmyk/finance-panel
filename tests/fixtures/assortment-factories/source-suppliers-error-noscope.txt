@@ -1,0 +1,1 @@
+{"success": false, "code": "1688_no_scope_specified", "message": "no scope"}

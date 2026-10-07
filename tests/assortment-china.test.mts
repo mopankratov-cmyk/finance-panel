@@ -362,11 +362,13 @@ function migrationColumns(table: string): Set<string> {
 }
 
 test("миграция: один новый файл со свободным номером, три таблицы, ключи как в спецификации, RLS и revoke у каждой", () => {
-  const files = readdirSync(join(root, "supabase/migrations")).filter((f) => f.startsWith("2026100700") || /assortment_china|assortment_cn/.test(f));
+  // Номер 202610070001 параллельно занял чужой модуль (банковская сверка, #1562), а у «Фабрик сумок» — свой файл 202610070010
+  // (сторож — в assortment-factories.test.mts): здесь сверяется только миграция трендов «Китай (1688)» и номера модуля.
+  const files = readdirSync(join(root, "supabase/migrations")).filter((f) => /assortment_china/.test(f));
   assert.deepEqual(files, [MIGRATION_FILE]);
   const number = MIGRATION_FILE.slice(0, 12);
   assert.ok(!(number >= "202610060006" && number <= "202610060011"), "не номера 202610060006–0011");
-  assert.equal(readdirSync(join(root, "supabase/migrations")).filter((f) => f.startsWith(`${number}_`)).length, 1, "номер не занят другим файлом");
+  assert.equal(readdirSync(join(root, "supabase/migrations")).filter((f) => f.startsWith(`${number}_`) && /assortment/.test(f)).length, 1, "номер не занят другим файлом модуля");
   const tables = [...sql.matchAll(/create table if not exists public\.(\w+)/g)].map((m) => m[1]);
   assert.deepEqual(tables, ["assortment_cn_offer_snapshot", "assortment_cn_article_snapshot", "assortment_cn_trend_snapshot"]);
   for (const t of tables) {

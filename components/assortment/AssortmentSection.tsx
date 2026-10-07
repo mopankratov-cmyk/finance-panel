@@ -12,6 +12,7 @@ import {
 } from "@/lib/assortment/constants";
 import { CHINA_LINKS_PATH } from "@/lib/assortment/chinaLinks";
 import { CHINA_TAB_LABEL } from "@/lib/assortment/chinaUi";
+import { FACTORIES_TAB_LABEL } from "@/lib/assortment/factoryUi";
 import { summarizeCoverage } from "@/lib/assortment/coverage";
 import { plural } from "@/lib/warehouse/plural";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
@@ -22,6 +23,7 @@ import { isSectionMenuTarget, onMenuNavigate } from "@/lib/assortment/menuSignal
 import { CatalogView } from "./CatalogView";
 import { ChangesView } from "./ChangesView";
 import { ChinaView } from "./ChinaView";
+import { FactoriesView } from "./FactoriesView";
 import { FormsView } from "./FormsView";
 import { FeedGrid } from "./FeedGrid";
 import { SocialView } from "./SocialView";
@@ -53,7 +55,7 @@ const MAX_COMPARE = 6;
 /** Раздел модуля «Разработка ассортимента»: лента находок. */
 export function AssortmentSection({
   direction,
-  initialView = "new",
+  initialView: requestedView = "new",
   initialCatalogFilters = DEFAULT_CATALOG_FILTERS,
   rejectedForm = null,
 }: {
@@ -67,6 +69,8 @@ export function AssortmentSection({
   const sources = useAssortmentSources(direction);
   // Вкладка и фильтры каталога живут здесь: возвращаясь на вкладку, человек попадает на то же место (а не к начальным из адреса, из-за
   // чего сброшенная форма «залипала» и возвращалась); переходы — чистые функции catalogNav.
+  // «Фабрики (1688)» — только у сумок: у курток такой вкладки нет, и вид из адреса открывает «Новинки».
+  const initialView: SectionView = requestedView === "factories" && direction !== "bags" ? "new" : requestedView;
   const [nav, setNav] = useState<CatalogNav>(() => initialNav(initialView, initialCatalogFilters, rejectedForm));
   const view = nav.view;
   const [catalogTotal, setCatalogTotal] = useState<number | null>(null);
@@ -170,6 +174,29 @@ export function AssortmentSection({
       cancelled = true;
     };
   }, [direction]);
+  // «Фабрики (1688)»: вкладка — только в «Сумках» (сумки закупаем в Китае, куртки — нет) и только с ключом 1688; лёгкий count=1 без базы.
+  // В «Куртках» запроса нет вовсе. Не посчиталось — вкладка без проверки (сбой назовёт сама вкладка).
+  const [factoriesVisible, setFactoriesVisible] = useState(false);
+  const [factoriesCountFailed, setFactoriesCountFailed] = useState(false);
+  useEffect(() => {
+    setFactoriesVisible(false);
+    setFactoriesCountFailed(false);
+    if (direction !== "bags") return;
+    let cancelled = false;
+    fetch(`/api/assortment-development/factories/shortlist?direction=bags&count=1`)
+      .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => null) }))
+      .then(({ ok, body }) => {
+        if (cancelled) return;
+        if (ok && typeof body?.tab?.visible === "boolean") setFactoriesVisible(body.tab.visible);
+        else setFactoriesCountFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setFactoriesCountFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [direction]);
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -264,6 +291,8 @@ export function AssortmentSection({
     ...(changesVisible || changesCountFailed || view === "changes" ? [{ id: "changes" as const, label: "Изменения" }] : []),
     // «Китай (1688)» — когда недельный снимок раздела записан; без ключа, миграции и снимка вкладки нет (прячем, а не серим).
     ...(chinaVisible || chinaCountFailed || view === "china" ? [{ id: "china" as const, label: CHINA_TAB_LABEL }] : []),
+    // «Фабрики (1688)» — только в «Сумках» и только с ключом 1688 (без ключа вкладки нет — прячем, а не серим).
+    ...(direction === "bags" && (factoriesVisible || factoriesCountFailed || view === "factories") ? [{ id: "factories" as const, label: FACTORIES_TAB_LABEL }] : []),
   ];
   // На телефоне ряд вкладок едет вбок: выбранная (например «Изменения», открытые по ссылке из сводки) не должна остаться за краем.
   // С sm ряд переносится на вторую строку и прокрутки нет — там это ничего не делает.
@@ -330,6 +359,7 @@ export function AssortmentSection({
         {view === "social" && <SocialView key={direction} direction={direction} />}
         {view === "changes" && <ChangesView key={direction} direction={direction} />}
         {view === "china" && <ChinaView key={direction} direction={direction} />}
+        {view === "factories" && direction === "bags" && <FactoriesView />}
         {isFeedView(view) && shownFeed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
         {isFeedView(view) && shownFeed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{shownFeed.message}</div>

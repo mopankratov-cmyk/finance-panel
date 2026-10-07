@@ -1,0 +1,47 @@
+{
+ "success": true,
+ "msgCode": "200",
+ "data": {
+  "total": 3,
+  "totalPage": 1,
+  "data": [
+   {
+    "ent_name": "广州市花都区狮岭镇<em>明辉皮具</em>有限公司",
+    "legal_name": "张测试",
+    "ent_status": "存续（在营、开业、在册）",
+    "reg_cap": "500万",
+    "currencyType": "人民币",
+    "social_credit_code": "91440114MA59ABCD1X",
+    "es_date": "2016-05-20",
+    "ent_type": "有限责任公司(自然人投资或控股)",
+    "address": "广东省广州市花都区狮岭镇芙蓉大道18号3栋201",
+    "companyId": "100001",
+    "ability_label_outside": "ZM$生产;加工",
+    "phone": "13800000000",
+    "email": "test@example.com"
+   },
+   {
+    "ent_name": "<em>明辉皮具</em>有限公司",
+    "legal_name": "王测试",
+    "ent_status": "注销",
+    "reg_cap": "10万人民币",
+    "social_credit_code": "91330782MA28XYZW0K",
+    "es_date": 1420070400000,
+    "ent_type": "有限责任公司",
+    "address": "浙江省金华市义乌市稠城街道工人北路1号",
+    "companyId": "100002"
+   },
+   {
+    "ent_name": "广州市花都区狮岭镇<em>明辉皮具</em>店",
+    "legal_name": "李测试",
+    "ent_status": "存续",
+    "reg_cap": "",
+    "social_credit_code": "92440114MA5ZZZZZ9Q",
+    "es_date": "2021-01-05",
+    "ent_type": "个体工商户",
+    "address": "广东省广州市花都区狮岭镇金狮大道8号",
+    "companyId": "100003"
+   }
+  ]
+ }
+}
