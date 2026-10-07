@@ -10,6 +10,8 @@ import {
   DIRECTION_LABEL,
   type AssortmentDirection,
 } from "@/lib/assortment/constants";
+import { CHINA_LINKS_PATH } from "@/lib/assortment/chinaLinks";
+import { CHINA_TAB_LABEL } from "@/lib/assortment/chinaUi";
 import { summarizeCoverage } from "@/lib/assortment/coverage";
 import { plural } from "@/lib/warehouse/plural";
 import type { FeedCard, FeedView } from "@/lib/assortment/feed";
@@ -19,6 +21,7 @@ import { initialNav, navAfterMenu, navDismissRejected, navOpenWholeCatalog, navS
 import { isSectionMenuTarget, onMenuNavigate } from "@/lib/assortment/menuSignal";
 import { CatalogView } from "./CatalogView";
 import { ChangesView } from "./ChangesView";
+import { ChinaView } from "./ChinaView";
 import { FormsView } from "./FormsView";
 import { FeedGrid } from "./FeedGrid";
 import { SocialView } from "./SocialView";
@@ -145,6 +148,28 @@ export function AssortmentSection({
       cancelled = true;
     };
   }, [direction]);
+  // «Китай (1688)»: вкладка — только когда ключ задан, таблицы есть и снимок раздела записан (иначе её нет); не посчиталось — вкладка
+  // без проверки (сбой назовёт сама вкладка).
+  const [chinaVisible, setChinaVisible] = useState(false);
+  const [chinaCountFailed, setChinaCountFailed] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/assortment-development/china?direction=${direction}&count=1`)
+      .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => null) }))
+      .then(({ ok, body }) => {
+        if (cancelled) return;
+        if (ok && typeof body?.visible === "boolean") {
+          setChinaVisible(body.visible);
+          setChinaCountFailed(false);
+        } else setChinaCountFailed(true);
+      })
+      .catch(() => {
+        if (!cancelled) setChinaCountFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [direction]);
   const [feed, setFeed] = useState<FeedState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -237,6 +262,8 @@ export function AssortmentSection({
     ...(social?.collected || socialCountFailed || view === "social" ? [{ id: "social" as const, label: social?.total ? `Залетает · ${social.total.toLocaleString("ru-RU")}` : "Залетает" }] : []),
     // «Изменения» — когда «появилось/пропало» где-то уже наблюдение (и после 28 дней, при «динамике», тоже); журнала нет — вкладки нет.
     ...(changesVisible || changesCountFailed || view === "changes" ? [{ id: "changes" as const, label: "Изменения" }] : []),
+    // «Китай (1688)» — когда недельный снимок раздела записан; без ключа, миграции и снимка вкладки нет (прячем, а не серим).
+    ...(chinaVisible || chinaCountFailed || view === "china" ? [{ id: "china" as const, label: CHINA_TAB_LABEL }] : []),
   ];
   // На телефоне ряд вкладок едет вбок: выбранная (например «Изменения», открытые по ссылке из сводки) не должна остаться за краем.
   // С sm ряд переносится на вторую строку и прокрутки нет — там это ничего не делает.
@@ -278,6 +305,8 @@ export function AssortmentSection({
             {coverage.manual.length > 0 && ` Только вручную: ${coverage.manual.join(", ")}.`}
             {" "}
             <Link href={`${ASSORTMENT_BASE_PATH}/sources`} className="font-medium text-violet-700 hover:text-violet-900">Все источники</Link>
+            {" · "}
+            <Link href={`${CHINA_LINKS_PATH}?direction=${direction}`} className="font-medium text-violet-700 hover:text-violet-900">Китайские площадки — ссылки</Link>
           </p>
         )}
 
@@ -300,6 +329,7 @@ export function AssortmentSection({
         {view === "forms" && <FormsView direction={direction} onShowModels={showModels} />}
         {view === "social" && <SocialView key={direction} direction={direction} />}
         {view === "changes" && <ChangesView key={direction} direction={direction} />}
+        {view === "china" && <ChinaView key={direction} direction={direction} />}
         {isFeedView(view) && shownFeed.kind === "loading" && <div className="text-sm text-slate-500">Загружаем ленту…</div>}
         {isFeedView(view) && shownFeed.kind === "error" && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{shownFeed.message}</div>

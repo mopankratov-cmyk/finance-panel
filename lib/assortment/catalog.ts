@@ -279,20 +279,23 @@ export function rejectedFormFrom(params: PageParams, direction: AssortmentDirect
   return /^[a-z0-9_-]{1,40}$/i.test(raw) ? raw : "";
 }
 
-/** Вид раздела: лента находок, «Каталоги брендов», «Формы» (разбор каталога по формам), «Залетает» (рилсы Instagram) или «Изменения» (появилось / пропало). */
-export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms" | "social" | "changes";
+/**
+ * Вид раздела: лента находок, «Каталоги брендов», «Формы» (разбор каталога по формам), «Залетает» (рилсы Instagram), «Изменения»
+ * (появилось / пропало) или «Китай (1688)» (недельный снимок топа ниш 1688).
+ */
+export type SectionView = "new" | "work" | "retail" | "ru" | "hidden" | "catalog" | "forms" | "social" | "changes" | "china";
 
 export function sectionViewFrom(params: PageParams): SectionView {
   const view = one(params, "view");
-  return view === "catalog" || view === "forms" || view === "social" || view === "changes" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
+  return view === "catalog" || view === "forms" || view === "social" || view === "changes" || view === "china" || view === "work" || view === "retail" || view === "ru" || view === "hidden" ? view : "new";
 }
 
 /**
- * Вкладка — лента находок (грузит /references?view=…). Каталог, «Формы», «Залетает» и «Изменения» — свои экраны: запрос ленты для них
- * роут молча превратил бы в «Новинки», и под чужим названием показалось бы «Находок пока нет».
+ * Вкладка — лента находок (грузит /references?view=…). Каталог, «Формы», «Залетает», «Изменения» и «Китай (1688)» — свои экраны: запрос
+ * ленты для них роут молча превратил бы в «Новинки», и под чужим названием показалось бы «Находок пока нет».
  */
 export function isFeedView(view: SectionView): boolean {
-  return view !== "catalog" && view !== "forms" && view !== "social" && view !== "changes";
+  return view !== "catalog" && view !== "forms" && view !== "social" && view !== "changes" && view !== "china";
 }
 
 /**

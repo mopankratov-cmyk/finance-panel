@@ -1,9 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
 import { shiftIsoDay } from "@/lib/sync/moscowDay";
+import { rowsByIds } from "./byIds";
 import { CHINA_NICHES, CHINA_NICHES_VERSION, CHINA_STOP_WORDS, chinaKeyConfigured, parseRefKey, type ChinaBrand } from "./china1688";
-import { CHINA_MIGRATION, chinaWeekOf, loadChinaState, type ChinaState } from "./chinaSync";
-import type { AssortmentDirection } from "./constants";
+import { CHINA_MIGRATION, chinaConfig, chinaWeekOf, loadChinaState, type ChinaState } from "./chinaSync";
+import type { AccessStatus, AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
 import type { NumberKind } from "./socialReelsStore";
 
@@ -90,6 +91,7 @@ export interface ChinaMarket {
 
 export interface ChinaNicheBlock {
   key: string;
+  direction: AssortmentDirection;
   ru: string;
   zh: string;
   clerin: boolean;
@@ -301,6 +303,7 @@ export function buildNicheBlocks(direction: AssortmentDirection, offers: readonl
     const market = marketRows.length ? parseMarketValue(marketRows[0].value_text, marketRows[0].observed_on, marketRows[0].keyword_zh) : null;
     blocks.push({
       key: niche.key,
+      direction: niche.direction,
       ru: niche.ru,
       zh: niche.zh[0],
       clerin: niche.clerin === true,
@@ -348,6 +351,30 @@ export function chinaStatusLine(state: ChinaState | null, week: string, latestOn
   return null;
 }
 
+/** Причина «блок скрыт» без миграции. */
+export const CHINA_MIGRATION_REASON = `таблицы «Китай (1688)» не созданы — нужна миграция ${CHINA_MIGRATION}`;
+/** Причина «блок скрыт» до первого снимка раздела. */
+export const CHINA_NO_SNAPSHOT_REASON = "первого недельного снимка 1688 ещё нет";
+
+const OFFER_COLUMNS = "niche_key,direction,observed_on,rank,offer_id,title_zh,title_ru,image_url,category,sold_text,sold_min,orders_30d,sellers,is_new,tags";
+const ARTICLE_COLUMNS = "ref_key,observed_on,direction,offers,sellers,sample_offer_ids";
+
+/** Карточки топа ниш с `since` (раздел или оба) — листанием: строк недели бывает больше 1 000. */
+function readOffers(db: SupabaseClient, since: string, direction: AssortmentDirection | null): Promise<OfferRow[]> {
+  return loadAllSupabasePages<OfferRow>((from, to) => {
+    const query = db.from(OFFERS).select(OFFER_COLUMNS).gte("observed_on", since);
+    return (direction ? query.eq("direction", direction) : query)
+      .order("observed_on", { ascending: true }).order("niche_key", { ascending: true }).order("offer_id", { ascending: true }).range(from, to) as unknown as Page<OfferRow>;
+  }, { label: "Китай (1688): топ ниш" });
+}
+
+function readArticles(db: SupabaseClient, since: string): Promise<ArticleRow[]> {
+  return loadAllSupabasePages<ArticleRow>((from, to) => db.from(ARTICLES).select(ARTICLE_COLUMNS).gte("observed_on", since)
+    .order("ref_key", { ascending: true }).order("observed_on", { ascending: true }).range(from, to) as unknown as Page<ArticleRow>, { label: "Китай (1688): копии по номерам" });
+}
+
+const readSince = (nowMs: number) => shiftIsoDay(chinaWeekOf(nowMs), -7 * (CHINA_READ_WEEKS - 1));
+
 export interface LoadChinaOptions {
   direction: AssortmentDirection;
   nowMs?: number;
@@ -363,25 +390,20 @@ export async function loadChinaView(db: SupabaseClient, options: LoadChinaOption
   if (!chinaKeyConfigured(env)) return { available: false, reason: CHINA_STOP_WORDS.no_key };
   const nowMs = options.nowMs ?? Date.now();
   const week = chinaWeekOf(nowMs);
-  const since = shiftIsoDay(week, -7 * (CHINA_READ_WEEKS - 1));
+  const since = readSince(nowMs);
   let offers: OfferRow[];
   let articles: ArticleRow[];
   let trends: TrendRow[];
   try {
     [offers, articles, trends] = await Promise.all([
-      loadAllSupabasePages<OfferRow>((from, to) => db.from(OFFERS)
-        .select("niche_key,direction,observed_on,rank,offer_id,title_zh,title_ru,image_url,category,sold_text,sold_min,orders_30d,sellers,is_new,tags")
-        .eq("direction", options.direction).gte("observed_on", since)
-        .order("observed_on", { ascending: true }).order("niche_key", { ascending: true }).order("offer_id", { ascending: true }).range(from, to) as unknown as Page<OfferRow>, { label: "Китай (1688): топ ниш" }),
-      loadAllSupabasePages<ArticleRow>((from, to) => db.from(ARTICLES)
-        .select("ref_key,observed_on,direction,offers,sellers,sample_offer_ids").gte("observed_on", since)
-        .order("ref_key", { ascending: true }).order("observed_on", { ascending: true }).range(from, to) as unknown as Page<ArticleRow>, { label: "Китай (1688): копии по номерам" }),
+      readOffers(db, since, options.direction),
+      readArticles(db, since),
       loadAllSupabasePages<TrendRow>((from, to) => db.from(TRENDS)
         .select("list_key,observed_on,rank,keyword_zh,keyword_ru,value_text,direction").eq("direction", options.direction).gte("observed_on", since)
         .order("list_key", { ascending: true }).order("observed_on", { ascending: true }).order("rank", { ascending: true }).range(from, to) as unknown as Page<TrendRow>, { label: "Китай (1688): тренды" }),
     ]);
   } catch (error) {
-    if (missing(error)) return { available: false, reason: `таблицы «Китай (1688)» не созданы — нужна миграция ${CHINA_MIGRATION}` };
+    if (missing(error)) return { available: false, reason: CHINA_MIGRATION_REASON };
     throw error;
   }
   const loaded = await loadChinaState(db).catch(() => null);
@@ -390,7 +412,7 @@ export async function loadChinaView(db: SupabaseClient, options: LoadChinaOption
   const niches = buildNicheBlocks(options.direction, offers, trends);
   if (niches.length === 0) {
     const running = state?.week === week && !state.completedAt;
-    return { available: false, reason: running ? "первый недельный снимок 1688 снимается — блок появится, когда он запишется" : "первого недельного снимка 1688 ещё нет" };
+    return { available: false, reason: running ? "первый недельный снимок 1688 снимается — блок появится, когда он запишется" : CHINA_NO_SNAPSHOT_REASON };
   }
   const latestOn = niches.reduce<string | null>((max, n) => (max == null || n.observedOn > max ? n.observedOn : max), null);
   return {
@@ -405,4 +427,205 @@ export async function loadChinaView(db: SupabaseClient, options: LoadChinaOption
     kinds: CHINA_NUMBER_KINDS,
     disclaimer: CHINA_DISCLAIMER,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Вкладка раздела: есть, только когда таблицы есть и снимок раздела записан
+
+export type ChinaTab = { visible: false; reason: string } | { visible: true; reason: null };
+
+/**
+ * Видна ли вкладка «Китай (1688)» в разделе — без чтения всего снимка: ключ, таблицы, хоть одна карточка топа раздела за окно чтения и
+ * ключ не отвергнут 1688. Не видна — причина одной строкой (экран её показывает, только если вкладку открыли по адресу).
+ */
+export async function loadChinaTab(db: SupabaseClient, options: LoadChinaOptions): Promise<ChinaTab> {
+  const env = options.env ?? process.env;
+  if (!chinaKeyConfigured(env)) return { visible: false, reason: CHINA_STOP_WORDS.no_key };
+  const { data, error } = await db.from(OFFERS).select("observed_on").eq("direction", options.direction).gte("observed_on", readSince(options.nowMs ?? Date.now())).limit(1);
+  if (error) {
+    if (missing(error)) return { visible: false, reason: CHINA_MIGRATION_REASON };
+    throw new Error(error.message);
+  }
+  if (!data || data.length === 0) return { visible: false, reason: CHINA_NO_SNAPSHOT_REASON };
+  const loaded = await loadChinaState(db).catch(() => null);
+  if (loaded?.state.stop?.reason === "auth") return { visible: false, reason: CHINA_STOP_WORDS.auth };
+  return { visible: true, reason: null };
+}
+
+// ---------------------------------------------------------------------------
+// «Ставка фабрик» в карточке рилса: копии номера на 1688 и прирост за неделю
+
+export interface ChinaRefCopies {
+  refKey: string;
+  /** Карточек 1688 с номером в названии (поиск смысловой, полнота 6–8%) — оценка, нижняя граница. */
+  offers: number;
+  sellers: number;
+  /** Прирост к прошлому снимку номера — расчёт; null — прошлого снимка нет. */
+  delta: number | null;
+  observedOn: string;
+  previousOn: string | null;
+}
+
+/**
+ * Копии номеров товаров (refs рилсов «zara:…» / «uniqlo:…») по последнему снимку и прирост к прошлому. null — строки нет вовсе: ключа нет,
+ * таблиц нет или ключ отвергнут 1688 (как и блок раздела). Номеров много — чтение пачками по id с листанием.
+ */
+export async function loadChinaCopies(db: SupabaseClient, refKeys: readonly string[], options: { nowMs?: number; env?: Record<string, string | undefined> } = {}): Promise<Record<string, ChinaRefCopies> | null> {
+  const env = options.env ?? process.env;
+  if (!chinaKeyConfigured(env)) return null;
+  const keys = [...new Set(refKeys.map((k) => parseRefKey(String(k))?.key).filter((k): k is string => Boolean(k)))].sort();
+  if (keys.length === 0) return {};
+  const since = readSince(options.nowMs ?? Date.now());
+  let rows: ArticleRow[];
+  try {
+    rows = await rowsByIds<ArticleRow>(keys, "Китай (1688): копии по номерам рилсов", (part, from, to) => db.from(ARTICLES).select(ARTICLE_COLUMNS)
+      .in("ref_key", part).gte("observed_on", since).order("ref_key", { ascending: true }).order("observed_on", { ascending: true }).range(from, to) as unknown as Page<ArticleRow>);
+  } catch (error) {
+    if (missing(error)) return null;
+    throw error;
+  }
+  if (rows.length === 0) return {};
+  const loaded = await loadChinaState(db).catch(() => null);
+  if (loaded?.state.stop?.reason === "auth") return null;
+  const out: Record<string, ChinaRefCopies> = {};
+  for (const c of articleCards(rows)) out[c.refKey] = { refKey: c.refKey, offers: c.offers, sellers: c.sellers, delta: c.delta, observedOn: c.observedOn, previousOn: c.previousOn };
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Воскресная сводка: новое в топе ниш и рост копий по номерам из рилсов
+
+export const CHINA_DIGEST_MAX_ITEMS = 5;
+export const CHINA_DIGEST_MAX_GROWTH = 5;
+
+export interface ChinaDigestItem {
+  direction: AssortmentDirection;
+  niche: string;
+  title: string;
+  rank: number;
+  url: string;
+}
+
+export interface ChinaDigestGrowth {
+  refKey: string;
+  brand: ChinaBrand;
+  number: string;
+  offers: number;
+  delta: number;
+}
+
+export interface ChinaDigest {
+  /** Неделя снимка (понедельник). */
+  week: string;
+  /** До CHINA_DIGEST_MAX_ITEMS «новых в топе» — по одной лучшей карточке ниши по кругу, ниши с бо́льшим числом новых — первыми. */
+  items: ChinaDigestItem[];
+  /** «Новых в топе» всего и в скольких нишах (снимок недели против прошлого снимка ниши). */
+  newTotal: number;
+  niches: number;
+  /** Номера, у которых копий на 1688 за неделю стало больше. */
+  growth: ChinaDigestGrowth[];
+  /** Раздел не загрузился — строкой в сводке. */
+  error?: string;
+}
+
+/**
+ * Раздел сводки из блоков ниш обоих разделов и копий по номерам (чистая функция): только снимок ЭТОЙ недели против прошлого снимка ниши
+ * (до сравнения — ни «нового», ни роста) и только рост копий. Нечего сказать — null (раздела в сводке нет).
+ */
+export function pickChinaDigest(week: string, blocks: readonly ChinaNicheBlock[], articles: readonly ChinaArticleCard[]): ChinaDigest | null {
+  const compared = blocks.filter((b) => b.observedOn === week && b.previousOn != null && b.newInTop > 0)
+    .sort((a, b) => b.newInTop - a.newInTop || a.key.localeCompare(b.key));
+  const queues = compared.map((b) => b.offers.filter((o) => o.change?.kind === "new").sort((x, y) => x.rank - y.rank).map((o): ChinaDigestItem => ({
+    direction: b.direction, niche: b.ru, title: o.titleRu?.trim() || o.titleZh, rank: o.rank, url: o.url,
+  })));
+  const items: ChinaDigestItem[] = [];
+  for (let round = 0; items.length < CHINA_DIGEST_MAX_ITEMS && queues.some((q) => q.length > round); round += 1) {
+    for (const q of queues) {
+      if (items.length >= CHINA_DIGEST_MAX_ITEMS) break;
+      if (q[round]) items.push(q[round]);
+    }
+  }
+  const growth = articles.filter((a) => a.observedOn === week && a.delta != null && a.delta > 0)
+    .sort((a, b) => (b.delta ?? 0) - (a.delta ?? 0) || b.offers - a.offers || a.refKey.localeCompare(b.refKey))
+    .slice(0, CHINA_DIGEST_MAX_GROWTH)
+    .map((a): ChinaDigestGrowth => ({ refKey: a.refKey, brand: a.brand, number: a.number, offers: a.offers, delta: a.delta ?? 0 }));
+  if (items.length === 0 && growth.length === 0) return null;
+  return { week, items, newTotal: compared.reduce((n, b) => n + b.newInTop, 0), niches: compared.length, growth };
+}
+
+/** Раздел сводки «Китай (1688)»: null — ключа или таблиц нет, ключ отвергнут или за неделю нечего сказать. */
+export async function loadChinaDigest(db: SupabaseClient, options: { nowMs: number; env?: Record<string, string | undefined> }): Promise<ChinaDigest | null> {
+  const env = options.env ?? process.env;
+  if (!chinaKeyConfigured(env)) return null;
+  const since = readSince(options.nowMs);
+  let offers: OfferRow[];
+  let articles: ArticleRow[];
+  try {
+    [offers, articles] = await Promise.all([readOffers(db, since, null), readArticles(db, since)]);
+  } catch (error) {
+    if (missing(error)) return null;
+    throw error;
+  }
+  if (offers.length === 0 && articles.length === 0) return null;
+  const loaded = await loadChinaState(db).catch(() => null);
+  if (loaded?.state.stop?.reason === "auth") return null;
+  const blocks = (["bags", "jackets"] as const).flatMap((d) => buildNicheBlocks(d, offers, []));
+  return pickChinaDigest(chinaWeekOf(options.nowMs), blocks, articleCards(articles));
+}
+
+// ---------------------------------------------------------------------------
+// Экран «Источники»: строка 1688 (S104) — подключён, нет ключа, последний снимок
+
+export interface ChinaSourceFacts {
+  enabled: boolean;
+  keyConfigured: boolean;
+  migrationMissing: boolean;
+  /** Неделя последнего снимка топа ниш (любой раздел); null — снимков нет. */
+  latestOn: string | null;
+  /** Ниш в последнем снимке. */
+  niches: number;
+  stop: ChinaState["stop"];
+}
+
+const dmy = (iso: string) => iso.split("-").reverse().join(".");
+
+/**
+ * Статус S104 для экрана «Источники» — по факту, а не по паспорту этапа 0 («Кандидат; доступ не проверен»): выключен, нет ключа, нет
+ * миграции, ключ отвергнут, снимка ещё нет, свежий снимок (эта или прошлая неделя) или давно не снимался. Чистая функция.
+ */
+export function chinaSourceView(facts: ChinaSourceFacts, nowMs: number): { accessStatus: AccessStatus; accessNote: string } {
+  const manual = "Вручную — страница «Китайские площадки — ссылки».";
+  if (!facts.enabled) return { accessStatus: "disabled", accessNote: `«Китай (1688)» выключен настройкой ASSORTMENT_CHINA=off: 1688 не спрашиваем. ${manual}` };
+  if (!facts.keyConfigured) return { accessStatus: "not_connected", accessNote: `1688: нет ключа — задайте ALI_1688_AK (выдаётся на clawhub.1688.com); недельный снимок не снимается. ${manual}` };
+  if (facts.migrationMissing) return { accessStatus: "partial", accessNote: `1688: ключ задан, но таблиц снимка нет — нужна миграция ${CHINA_MIGRATION}.` };
+  if (facts.stop?.reason === "auth") return { accessStatus: "unavailable", accessNote: `1688: ${CHINA_STOP_WORDS.auth} — перевыпустите ключ на clawhub.1688.com; вкладка «Китай (1688)» скрыта.` };
+  const limit = facts.stop?.reason === "rate_limit" ? `; ${CHINA_STOP_WORDS.rate_limit}` : "";
+  if (!facts.latestOn) return { accessStatus: "partial", accessNote: `1688 подключён (официальные навыки 1688): первого недельного снимка ещё нет — снимок недели начинается в понедельник${limit}.` };
+  const fresh = facts.latestOn >= shiftIsoDay(chinaWeekOf(nowMs), -7);
+  if (!fresh) return { accessStatus: "partial", accessNote: `1688 подключён, но свежего снимка нет: последний — неделя с ${dmy(facts.latestOn)}; смотрите журнал задачи assortment-china${limit}.` };
+  return {
+    accessStatus: "auto_verified",
+    accessNote: `1688 подключён (официальные навыки 1688): последний снимок — неделя с ${dmy(facts.latestOn)}, ниш ${facts.niches} из ${CHINA_NICHES.length}; вкладка «Китай (1688)» в «Куртках» и «Сумках»${limit}.`,
+  };
+}
+
+/** Факты для строки S104: без ключа и выключенный — без чтения базы; сбой чтения — исключение (загрузчик паспорта его глотает). */
+export async function loadChinaSourceFacts(db: SupabaseClient, options: { env?: Record<string, string | undefined> } = {}): Promise<ChinaSourceFacts> {
+  const env = options.env ?? process.env;
+  const base: ChinaSourceFacts = { enabled: chinaConfig(env).enabled, keyConfigured: chinaKeyConfigured(env), migrationMissing: false, latestOn: null, niches: 0, stop: null };
+  if (!base.enabled || !base.keyConfigured) return base;
+  const { data, error } = await db.from(OFFERS).select("observed_on").order("observed_on", { ascending: false }).limit(1);
+  if (error) {
+    if (missing(error)) return { ...base, migrationMissing: true };
+    throw new Error(error.message);
+  }
+  const latestOn = (data?.[0] as { observed_on?: string } | undefined)?.observed_on ?? null;
+  const [niches, loaded] = await Promise.all([
+    latestOn
+      ? loadAllSupabasePages<{ niche_key: string }>((from, to) => db.from(OFFERS).select("niche_key").eq("observed_on", latestOn)
+        .order("niche_key", { ascending: true }).order("offer_id", { ascending: true }).range(from, to) as unknown as Page<{ niche_key: string }>, { label: "Китай (1688): ниши снимка" })
+      : Promise.resolve([]),
+    loadChinaState(db).catch(() => null),
+  ]);
+  return { ...base, latestOn, niches: new Set(niches.map((r) => r.niche_key)).size, stop: loaded?.state.stop ?? null };
 }

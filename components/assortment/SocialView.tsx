@@ -10,6 +10,8 @@ import {
   type SocialProgress,
 } from "@/lib/assortment/socialFeed";
 import type { SocialAccountsResult, SocialAccountView, SocialFeedResult, SocialRunStatus } from "@/lib/assortment/socialFeedStore";
+import type { ChinaRefCopies } from "@/lib/assortment/chinaStore";
+import { chinaCopiesFor, copiesLine } from "@/lib/assortment/chinaUi";
 import type { SocialReelCard } from "@/lib/assortment/socialReelsStore";
 import type { AccountKind } from "@/lib/assortment/socialReels";
 import { plural } from "@/lib/warehouse/plural";
@@ -154,6 +156,7 @@ export function SocialView({ direction }: { direction: AssortmentDirection }) {
                 <SocialReelCardView
                   key={card.code}
                   card={card}
+                  china={chinaCopiesFor(card.refs, feed.chinaCopies)}
                   local={local[card.code] ?? {}}
                   onPick={() => onPick(card)}
                   onHideModel={() => onHideModel(card)}
@@ -305,8 +308,10 @@ function ModelPhoto({ card }: { card: SocialReelCard }) {
 const TONE_CLASS = { ok: "text-emerald-700", warn: "text-amber-800", muted: "text-slate-500" } as const;
 
 /** Карточка рилса: модель, числа с происхождением, привязка, ссылки и действия. Чистая разметка — проверяется статическим рендером. */
-export function SocialReelCardView({ card, local, onPick, onHideModel, onHideReel, onRestore, onAdd }: {
+export function SocialReelCardView({ card, china = null, local, onPick, onHideModel, onHideReel, onRestore, onAdd }: {
   card: SocialReelCard;
+  /** «Ставка фабрик»: копии номера на 1688 по снимку «Китай (1688)»; null — строки нет (снимка нет или ключа нет). */
+  china?: ChinaRefCopies | null;
   local: CardLocal;
   onPick: () => void;
   onHideModel: () => void;
@@ -344,6 +349,7 @@ export function SocialReelCardView({ card, local, onPick, onHideModel, onHideRee
   ].filter(Boolean);
   const intentPct = card.intent?.share != null ? Math.round(card.intent.share * 100) : null;
   const authors = card.sameRefAuthors14d;
+  const copies = china ? copiesLine(china) : null;
   return (
     <li className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-3">
       <div className="flex gap-3">
@@ -391,6 +397,11 @@ export function SocialReelCardView({ card, local, onPick, onHideModel, onHideRee
           <li>
             {authors >= 2 ? `Вещь показали ${authors} ${plural(authors, "автор", "автора", "авторов")} за 14 дней` : "Пока вещь показал один автор (за 14 дней)"}{" "}
             <span className={kindTag}>— {KIND_TEXT.calc} по номеру товара</span>
+          </li>
+        )}
+        {copies && (
+          <li>
+            {copies.text} <span className={kindTag}>— {copies.note}</span>
           </li>
         )}
         <li className="text-xs text-slate-500">
