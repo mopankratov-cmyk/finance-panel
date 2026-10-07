@@ -3,6 +3,7 @@ import test from "node:test";
 import type { ScheduleRowRecord } from "../../lib/loans/scheduleRows";
 import type { Loan, Payment } from "../../lib/types";
 import {
+  cashLoanContractOptions,
   cashLoanScheduleOptions,
   closestCashLoanScheduleOption,
   isLoanRepaymentCategory,
@@ -85,4 +86,10 @@ test("точный контрагент выбирает один договор
   assert.equal(suggestedCashLoanScheduleOption(options, "2026-09-11", 6_800, "Сбербанк", "Перевод процентов")?.loanId, "sber");
   assert.deepEqual(relevantCashLoanScheduleOptions(options, "ООО ДЖЕТЛЕНД", "Пополнение счёта заёмщика").map((item) => item.loanId), ["jet-1", "jet-2"]);
   assert.equal(suggestedCashLoanScheduleOption(options, "2026-09-18", 50_000, "ООО ДЖЕТЛЕНД", "Пополнение счёта заёмщика"), undefined);
+});
+
+test("договор остаётся доступен для выбора без открытой строки графика", () => {
+  const contracts = cashLoanContractOptions({ loans: [loan], payments: [], paymentCompanies: new Map() });
+  assert.equal(contracts.length, 1);
+  assert.equal(contracts[0].loanId, loan.id);
 });

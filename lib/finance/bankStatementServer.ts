@@ -8,6 +8,7 @@ import { statementFromGrid, type BankStatement } from "./bankStatementGrid";
 import { cleanPdf, recognizeBankStatementPdf } from "./bankStatementPdf";
 import { xlsxGrid, xlsxText } from "./xlsxGrid";
 import { bankNameFromWalletName } from "./bankNames";
+import { trustedBankCounterparty } from "@/components/payments/bankCounterparty";
 
 // Выписку разбирает сервер целиком: файл → операции → предложения по компании,
 // кошельку и статье. Раньше XLSX и классификация жили в браузере, и результат
@@ -85,8 +86,12 @@ export async function suggestForStatement(db: SupabaseClient, statement: BankSta
     accountId: String(row.account_id),
   }));
   const exactAccount = exactBankStatementAccount(statement, accountList, mappingList);
+  const reviewStatement = {
+    ...statement,
+    rows: statement.rows.map((row) => ({ ...row, counterparty: trustedBankCounterparty(row) })),
+  };
   return {
-    suggestions: matchInternalTransfers(classifyBankStatement(statement, accountList, companyList, history, mappingList)),
+    suggestions: matchInternalTransfers(classifyBankStatement(reviewStatement, accountList, companyList, history, mappingList)),
     // Совпадение только по названию банка и владельцу полезно как подсказка,
     // но не доказывает, что это тот же расчётный счёт.
     accountNumberKnown: Boolean(statement.accountNumber && exactAccount),

@@ -970,6 +970,14 @@ function LoanDetails({ loan, company, companyId, schedule, payments, companyByPa
   const balance = actualLoanBalance(loan.principalAmount, schedule, todayISO());
   const projectedBalances = new Map(projectedLoanBalances(loan.principalAmount, schedule).map((item) => [item.rowId, item.balanceAfter]));
   const originalPrincipal = Number(commentValue(firstLoanComment(payments, loan.id), "principal-original")) || loan.principalAmount;
+  const allocatedPaymentIds = new Set(scheduleRows
+    .filter((row) => row.loanId === loan.id && row.paidByPaymentId)
+    .map((row) => row.paidByPaymentId!));
+  const unallocatedPayments = linkedRows(payments, loan.id).filter((payment) =>
+    payment.status === "done"
+    && payment.amount < 0
+    && payment.comment?.includes(`[loan:${loan.id}:payment]`)
+    && !allocatedPaymentIds.has(payment.id));
   useEffect(() => {
     let active = true;
     setDocumentsLoading(true);
@@ -1017,6 +1025,7 @@ function LoanDetails({ loan, company, companyId, schedule, payments, companyByPa
             <div className="flex shrink-0 gap-2"><button type="button" onClick={() => openListedLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 px-3 font-semibold text-violet-700"><ExternalLink className="h-4 w-4" />Открыть</button><button type="button" onClick={() => downloadLoanDocument(document)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-slate-200 px-3 font-semibold text-slate-700"><Download className="h-4 w-4" />Скачать</button></div>
           </div>)}</div>}
         </section>
+        {unallocatedPayments.length > 0 && <section className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Платежи без распределения по графику</h3><p className="mt-1 text-sm text-amber-900">Кредит уже выбран. Чтобы распределить платёж, нажмите сумму нужной строки графика и выберите его в списке фактов.</p><div className="mt-3 space-y-2">{unallocatedPayments.map((payment) => <div key={payment.id} className="flex flex-col gap-1 rounded-lg bg-white p-3 text-sm sm:flex-row sm:items-center sm:justify-between"><span>{formatDate(payment.date)} · {payment.name}</span><b className="tabular-nums">{formatMoney(Math.abs(payment.amount))}</b></div>)}</div></section>}
         <div className="scroll-x mt-5 rounded-xl border"><table className="w-full min-w-[1000px] text-sm"><thead className="bg-slate-50 text-left text-xs text-slate-500"><tr><th className="p-3">Дата</th>{currency !== "RUB" && <th className="p-3 text-right">В валюте договора</th>}<th className="p-3 text-right">Тело</th><th className="p-3 text-right">Проценты</th><th className="p-3 text-right">Пени</th><th className="p-3 text-right">Штрафы</th><th className="p-3 text-right">Всего к оплате</th><th className="p-3">Статус</th><th className="p-3 text-right">Остаток после оплаты</th></tr></thead><tbody>{schedule.map((row) => {
           const overdue = row.status === "planned" && row.date < todayISO();
           const originalTotal = Number(row.principalOriginal || 0) + Number(row.interestOriginal || 0) + Number(row.penaltyOriginal || 0) + Number(row.fineOriginal || 0);

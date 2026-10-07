@@ -19,6 +19,7 @@ import { withPaymentComment } from "@/lib/opiu/bankReviewMetadata";
 import { isLoanRepaymentCategory } from "@/components/payments/cashLoanScheduleLink";
 import { isTransferCategory } from "@/lib/finance/categories";
 import { bankNameFromWalletName } from "@/lib/finance/bankNames";
+import { trustedBankCounterparty } from "@/components/payments/bankCounterparty";
 import { submittedCategoryIsConfirmed } from "@/lib/opiu/bankImportConfirmation";
 
 type ReviewStatus = "ready" | "needs_info" | "waiting_manager" | "approved" | "rejected";
@@ -239,6 +240,11 @@ export async function POST(request: Request) {
     const date = text(row?.date, 10);
     const amount = Number(row?.amount);
     if (!externalId || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(amount) || amount === 0) return [];
+    const counterparty = trustedBankCounterparty({
+      amount,
+      counterparty: text(row?.counterparty),
+      purpose: text(row?.purpose, 5_000),
+    });
     const operationIdentity = bankOperationIdentity({
       bankAccountNumber,
       date,
@@ -260,7 +266,7 @@ export async function POST(request: Request) {
       owner_inn: ownerInn,
       company_id: text(suggestion.companyId, 100) || null,
       account_id: text(suggestion.accountId, 100) || null,
-      counterparty: text(row?.counterparty),
+      counterparty,
       counterparty_inn: text(row?.counterpartyInn, 20).replace(/\D/g, ""),
       purpose: text(row?.purpose, 5_000),
       category: mandatoryBankCategory({
@@ -558,7 +564,7 @@ export async function PATCH(request: Request) {
   if (body.action === "remember_counterparty") {
     const id = text(body.id, 100);
     const counterparty = text((body as { counterparty?: unknown }).counterparty);
-    if (!id || !counterparty) return jsonError("Не указан платёж или контрагент", 400);
+    if (!id) return jsonError("Не указан платёж", 400);
     const source = await db.from("bank_review_items")
       .select("id,counterparty")
       .eq("id", id)
@@ -566,12 +572,15 @@ export async function PATCH(request: Request) {
       .maybeSingle();
     if (source.error) return jsonError(source.error.message, 500);
     if (!source.data) return jsonError("Платёж на проверке не найден", 404);
-    const query = db.from("bank_review_items")
+    // Отображаемое имя не является устойчивым ключом. Раньше исправление
+    // одной строки меняло все активные операции с тем же текстом, поэтому
+    // ошибочно распознанные ФИО размазывались по выписке. Пустое значение тоже
+    // является осознанным выбором пользователя и должно сохраняться.
+    const updated = await db.from("bank_review_items")
       .update({ counterparty, updated_at: new Date().toISOString() })
-      .in("status", ACTIVE_STATUSES);
-    const updated = source.data.counterparty.trim()
-      ? await query.eq("counterparty", source.data.counterparty).select("id")
-      : await query.eq("id", id).select("id");
+      .eq("id", id)
+      .in("status", ACTIVE_STATUSES)
+      .select("id");
     if (updated.error) return jsonError(updated.error.message, 500);
     return NextResponse.json({ updatedIds: (updated.data ?? []).map((row) => String(row.id)) });
   }
