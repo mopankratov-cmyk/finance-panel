@@ -8,8 +8,8 @@ import { engineBudgetConfig } from "../lib/assortment/engineBudget.ts";
 import { pickSocialDigest } from "../lib/assortment/socialFeed.ts";
 import { GOOGLE_QUERIES, googleQuery, HISTORY_LIMIT, parseReelPage, profileUrl, SEED_ACCOUNTS, SEED_TOPICS, shortcodeToDate, socialConfig, topicUrl, uniqloCardUrls, type SocialConfig } from "../lib/assortment/socialReels.ts";
 import {
-  activeTopics, applyMeasurement, countAppearances, judgePost, loadPosts, loadViralReels, matchDue, mergeCandidate, nextAccountStatus, pushHistory, readSocialState, runSocialReels,
-  SOCIAL_USAGE_KIND, socialRunLog, type AccountRow, type PostRow, type RunSocialOptions,
+  activeTopics, applyMeasurement, countAppearances, DEFER_MAX_RUNS, DISCOVER_STALL_RUNS, judgePost, loadPosts, loadViralReels, matchDue, mergeCandidate, nextAccountStatus, postMeasureDue,
+  pushHistory, readSocialState, runSocialReels, SOCIAL_USAGE_KIND, socialRunLog, type AccountRow, type PostRow, type RunSocialOptions,
 } from "../lib/assortment/socialReelsStore.ts";
 
 /**
@@ -24,6 +24,7 @@ const MIGRATION = "supabase/migrations/202610060011_assortment_social_reels.sql"
 const sql = readFileSync(join(root, MIGRATION), "utf8");
 const NOW = Date.parse("2026-10-06T16:00:00Z");
 const DAY = 24 * 3600 * 1000;
+const HOUR = 3600 * 1000;
 const iso = (ms: number) => new Date(ms).toISOString();
 
 type Row = Record<string, unknown>;
@@ -650,7 +651,7 @@ test("Миграция «Залетает»: одна новая, без цен,
   assert.match(sql, /char_length\(caption_excerpt\) <= 500/);
 });
 
-test("Крон: GET, checkCronAuth, журнал под именем сторожа, ежедневно 06:20 UTC; путь не под assortment-brightdata", () => {
+test("Крон: GET, checkCronAuth, журнал под именем сторожа, каждые 3 часа в :20 UTC; путь не под assortment-brightdata", () => {
   const route = readFileSync(join(root, "app/api/sync/assortment-social/route.ts"), "utf8");
   assert.match(route, /export async function GET\(request: NextRequest\)/);
   assert.match(route, /const authError = await checkCronAuth\(request\);\s*if \(authError\) return authError;/);
@@ -659,8 +660,10 @@ test("Крон: GET, checkCronAuth, журнал под именем сторо�
   assert.match(route, /const JOB = "assortment-social";/);
   assert.match(route, /writeSyncLog\(JOB/);
   const vercel = JSON.parse(readFileSync(join(root, "vercel.json"), "utf8")) as { crons: Array<{ path: string; schedule: string }> };
-  assert.deepEqual(vercel.crons.filter((c) => c.path.startsWith("/api/sync/assortment-social")), [{ path: "/api/sync/assortment-social", schedule: "20 6 * * *" }]);
+  assert.deepEqual(vercel.crons.filter((c) => c.path.startsWith("/api/sync/assortment-social")), [{ path: "/api/sync/assortment-social", schedule: "20 */3 * * *" }]);
   const store = readFileSync(join(root, "lib/assortment/socialReelsStore.ts"), "utf8");
+  // Прогон ≤ maxDuration 300 с, замок 6 мин, между прогонами 3 часа: два прогона разом не идут.
+  assert.match(store, /const LEASE_MS = 6 \* 60 \* 1000;/);
   assert.doesNotMatch(store, /\.limit\(/, "чтение — листанием, не .limit()");
 });
 
@@ -837,7 +840,7 @@ test("Тема «0 reels» мёртвая после трёх пустых от�
   assert.ok(activeTopics(legacy, NOW).some((t) => t.slug === "zara-jackets"), "дата неизвестна — перепроверяем");
 });
 
-test("Поиск упёрся в потолок прогона: замер идёт из резерва, пройденное запоминается и завтра продолжается с места; не завершён 3 прогона — тревога", async () => {
+test("Поиск упёрся в потолок прогона: замер идёт из резерва, пройденное запоминается и следующим прогоном продолжается с места; не завершён 8 прогонов (сутки) — тревога", async () => {
   const cand = codeAt(NOW - 4 * DAY, 5);
   const pages: Record<string, Page> = { [reelUrl(cand)]: reelPage({ code: cand, author: "by.annamirabelle", likes: 100, comments: 2 }) };
   for (const t of SEED_TOPICS) pages[topicUrl(t.slug)] = emptyTopic(t.slug);
@@ -856,13 +859,14 @@ test("Поиск упёрся в потолок прогона: замер ид�
   assert.equal(day1.calls.filter((u) => u.includes("/popular/")).length, 0, "пройденные темы не повторяем");
   assert.equal(day1.calls.length, SEED_TOPICS.length + 20 - 39, "только оставшиеся запросы Google");
   assert.deepEqual([out1.discover.resumed, out1.discover.complete, stateOf(tables).pending, stateOf(tables).discoveredAt], [true, true, null, iso(NOW + DAY)]);
-  // Потолок 10: поиск не успевает три прогона подряд — тревога.
+  // Потолок 5: поиск не успевает 8 прогонов подряд — сутки при кроне раз в 3 часа — тревога; раньше — нет (поиск идёт 2–3 прогона).
+  assert.equal(DISCOVER_STALL_RUNS, 8);
   const small = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
   const runs = [];
-  for (let day = 0; day < 3; day += 1) runs.push(await run(small.db, fakeWeb(pages), { config: cfg({ maxRequestsPerRun: 10 }), now: () => NOW + day * DAY }));
-  assert.deepEqual(runs.map((r) => r.alarms.length > 0), [false, false, true]);
-  assert.match(runs[2].alarms[0], /поиск не завершён прогонов подряд: 3/);
-  assert.equal(socialRunLog(runs[2]).status, "error");
+  for (let i = 0; i < DISCOVER_STALL_RUNS; i += 1) runs.push(await run(small.db, fakeWeb(pages), { config: cfg({ maxRequestsPerRun: 5 }), now: () => NOW + i * 3 * HOUR }));
+  assert.deepEqual(runs.map((r) => r.alarms.length > 0), [false, false, false, false, false, false, false, true]);
+  assert.match(runs[7].alarms[0], /поиск не завершён прогонов подряд: 8/);
+  assert.equal(socialRunLog(runs[7]).status, "error");
 });
 
 test("Мобильная вёрстка: при ≥ 30 комментариях — повтор за десктопной; снова мобильная — замер не засчитан, Б «не измерено» (не «обычно»); назавтра десктоп — «залетает»", async () => {
@@ -1012,4 +1016,201 @@ test("Ф2, «нет денег» у рилсов: в журнале — метк
   const syncLog = { from: () => { const q: Record<string, unknown> = { select: () => q, eq: () => q, order: () => q, limit: () => Promise.resolve({ data: [{ status: "error", error: log.note, started_at: iso(NOW) }], error: null }) }; return q; } } as never;
   const status = await loadSocialRunStatus(syncLog, NOW);
   assert.equal(status.lastNote, "Bright Data: аккаунт не активен или нет средств (402)");
+});
+
+// --- 07.10: первый живой прогон упёрся во время (поиск занял всё окно, замер почти не шёл) ---
+
+/** Часы идут вперёд на каждый запрос: страница через Web Unlocker «занимает» stepMs. Запоминаем, на какой секунде прогона ушёл запрос. */
+function tickingWeb(pages: Record<string, Page>, stepMs: number) {
+  let t = NOW;
+  const base = fakeWeb(pages);
+  const calls: Array<{ url: string; at: number }> = [];
+  return {
+    now: () => t,
+    calls,
+    fetchPage: async (url: string, format: UnlockerFormat): Promise<UnlockerResult> => {
+      calls.push({ url, at: t - NOW });
+      t += stepMs;
+      return base.fetchPage(url, format);
+    },
+  };
+}
+
+test("Время прогона делится: есть что мерить — поиск не начинает новых запросов после половины окна, замер идёт во второй половине; мерить нечего — поиск берёт всё окно", async () => {
+  const cand = codeAt(NOW - 4 * DAY, 7);
+  const pages: Record<string, Page> = { [reelUrl(cand)]: reelPage({ code: cand, author: "by.annamirabelle", likes: 100, comments: 2 }) };
+  for (const t of SEED_TOPICS) pages[topicUrl(t.slug)] = emptyTopic(t.slug);
+  const window = 180_000;
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: quietSeeds(), assortment_social_post: [post(cand, { published_at: iso(NOW - 4 * DAY), account_handle: "by.annamirabelle" })] } });
+  const web = tickingWeb(pages, 10_000);
+  const out = await run(db, web, { now: web.now, deadlineMs: NOW + window, parallel: 1 });
+  assert.equal(out.searchShare, 0.5);
+  const search = web.calls.filter((c) => !c.url.includes("/reel/"));
+  assert.equal(search.length, 9, "поиску — 90 с по 10 с на страницу");
+  assert.ok(search.every((c) => c.at < window / 2), `поиск — только в первой половине: ${search.map((c) => c.at / 1000).join(", ")}`);
+  assert.ok(web.calls.some((c) => c.url === reelUrl(cand) && c.at >= window / 2), "замер — во второй половине");
+  assert.equal(tables.assortment_social_post.find((r) => r.code === cand)!.checks, 1, "рилс замерен");
+  assert.deepEqual([out.discover.yielded, out.discover.complete, out.stoppedBy, out.measured], ["time", false, null, 1]);
+  const log = socialRunLog(out);
+  assert.equal(log.status, "partial");
+  assert.match(String(log.note), /поиск отдал вторую половину времени замеру — продолжим в следующий прогон/);
+  assert.equal(stateOf(tables).pending?.topics.length, 9, "пройденное — в незавершённом поиске, следующий прогон продолжит");
+
+  // Мерить нечего — поиску всё окно (до общего дедлайна), как раньше.
+  const empty = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
+  const solo = tickingWeb(pages, 10_000);
+  const all = await run(empty.db, solo, { now: solo.now, deadlineMs: NOW + window, parallel: 1 });
+  assert.equal(all.searchShare, null);
+  assert.equal(solo.calls.length, 18, "180 с по 10 с — всё окно поиску");
+  assert.deepEqual([all.stoppedBy, all.discover.yielded], ["time", null]);
+});
+
+test("Параллельно 6 запросов по умолчанию (ASSORTMENT_SOCIAL_CONCURRENCY, предел 8): потолки прогона и недели не пробиваются — счёт до запроса", async () => {
+  const mk = () => Array.from({ length: 30 }, (_, i) => post(`DdPAR${String(i).padStart(6, "0")}`, { published_at: iso(NOW - 5 * DAY) }));
+  const pages = Object.fromEntries(mk().map((p) => [p.url as string, reelPage({ code: p.code as string, author: "x.blog", likes: 10, comments: 1 })])) as Record<string, Page>;
+  const slow = () => {
+    const base = fakeWeb(pages);
+    const stat = { max: 0, calls: 0, inFlight: 0 };
+    return {
+      stat,
+      fetchPage: async (url: string, format: UnlockerFormat): Promise<UnlockerResult> => {
+        stat.calls += 1;
+        stat.inFlight += 1;
+        stat.max = Math.max(stat.max, stat.inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 2 + (stat.calls % 3)));
+        stat.inFlight -= 1;
+        return base.fetchPage(url, format);
+      },
+    };
+  };
+  const runCap = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: mk() } });
+  const web = slow();
+  const out = await run(runCap.db, web, { phase: "measure", config: cfg({ maxRequestsPerRun: 10 }) });
+  assert.equal(out.concurrency, 6);
+  assert.equal(web.stat.max, 6, "шесть запросов разом");
+  assert.equal(web.stat.calls, 10, "потолок прогона 10 — ровно 10, хотя шесть потоков ждали ответа разом");
+  assert.deepEqual([out.requests, out.stoppedBy, out.capBy], [10, "budget", "run"]);
+  assert.equal(runCap.tables.assortment_ai_usage.find((u) => u.kind === SOCIAL_USAGE_KIND)?.calls, 10);
+  // Строка недели: остаток 7 запросов ($0,0105) — ровно 7 при шести потоках.
+  const weekCap = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: mk() } });
+  const web7 = slow();
+  const out7 = await run(weekCap.db, web7, { phase: "measure", engine: { weeklyUsd: 30, socialWeeklyUsd: 0.0105 } });
+  assert.deepEqual([out7.allowed, out7.capBy, web7.stat.calls, out7.stoppedBy], [7, "social_line", 7, "budget"]);
+  // Настройка выше предела — 8.
+  const wide = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: mk() } });
+  const web8 = slow();
+  const out8 = await run(wide.db, web8, { phase: "measure", config: cfg({ concurrency: 12 }) });
+  assert.deepEqual([out8.concurrency, web8.stat.max, web8.stat.calls], [8, 8, 30]);
+});
+
+test("Перезамер в прогоне — только рилсам с шансом: обычный рилс после первого замера больше не качаем; с 150 000 просмотров и «залетает» — на 3-й день; первый замер — всем", async () => {
+  const pub = NOW - 3.2 * DAY;
+  const measured = { published_at: iso(pub), checks: 1, last_checked_at: iso(pub + 2.1 * DAY), account_handle: "x.blog", likes: 120, comments: 3 };
+  const quiet = post("DdQUIET0000", { ...measured, views: 9000 });
+  const loud = post("DdLOUD00000", { ...measured, views: 150_000 });
+  const viral = post("DdVIRAL0000", { ...measured, likes: 600, verdict: "viral" });
+  const fresh = post("DdFRESH0000", { published_at: iso(pub), account_handle: "x.blog", views: 50 });
+  const accounts = [...allSeeds(), { platform: "instagram", handle: "x.blog", kind: "blogger", origin: "auto", status: "seen", likes_median: 100, comments_median: 3, baseline_posts: 9, baseline_at: iso(NOW - DAY), appearances: 0 }];
+  const { db } = fakeDb({ tables: { assortment_social_account: accounts, assortment_social_post: [quiet, loud, viral, fresh] } });
+  const pages = Object.fromEntries([quiet, loud, viral, fresh].map((p) => [p.url as string, reelPage({ code: p.code as string, author: "x.blog", likes: 130, comments: 3 })])) as Record<string, Page>;
+  const dry = await run(db, fakeWeb(pages), { dryRun: true, phase: "measure" });
+  assert.deepEqual([dry.due.measure, dry.due.measureWithChance], [3, 2], "к замеру: первый у свежего и перезамеры у двух с шансом");
+  assert.equal(postMeasureDue(quiet as unknown as PostRow, NOW), false);
+  assert.equal(postMeasureDue(loud as unknown as PostRow, NOW), true);
+  const web = fakeWeb(pages);
+  await run(db, web, { phase: "measure" });
+  assert.deepEqual([...web.calls].sort(), [fresh.url, loud.url, viral.url].sort());
+  // Первый замер — сначала рилсам с шансом: числа с прошлой (не засчитанной, мобильной) попытки весомее просмотров темы.
+  const plain = post("DdPLAIN0000", { published_at: iso(pub), account_handle: "x.blog", views: 50 });
+  const known = post("DdKNOWN0000", { published_at: iso(pub), account_handle: "x.blog", likes: 2000, comments: 200, views: null });
+  const order = fakeDb({ tables: { assortment_social_account: accounts, assortment_social_post: [plain, known] } });
+  const one = fakeWeb({ [plain.url as string]: reelPage({ code: "DdPLAIN0000", author: "x.blog", likes: 5, comments: 0 }), [known.url as string]: reelPage({ code: "DdKNOWN0000", author: "x.blog", likes: 2100, comments: 210 }) });
+  await run(order.db, one, { phase: "measure", config: cfg({ maxRequestsPerRun: 1 }) });
+  assert.deepEqual(one.calls, [known.url], "потолок в один запрос — его получает рилс с шансом");
+});
+
+test("Google «запрос недавно не удался» (failed_query_rejected): не сбой страницы и без повтора в этом прогоне; запрос и тема остаются в незавершённом поиске и повторяются следующим прогоном", async () => {
+  const rejected: UnlockerResult = { ok: false, kind: "transient", reason: "отложено Bright Data: failed_query_rejected (This query recently failed and cannot be attempted at this time)", ms: 0, deferred: true };
+  const googleUrl = (template: string, at = NOW) => googleSearchUrl(googleQuery(template, at));
+  const key = GOOGLE_QUERIES.zara[1];
+  const pages = (deferGoogle: boolean, deferTopic: boolean): Record<string, Page> => {
+    const out: Record<string, Page> = {};
+    for (const t of SEED_TOPICS) out[topicUrl(t.slug)] = emptyTopic(t.slug);
+    out[topicUrl("zara-viral-jacket")] = deferTopic ? rejected : fixture("topic-zara-viral-jacket.md");
+    for (const brand of ["zara", "uniqlo"] as const) for (const template of GOOGLE_QUERIES[brand]) out[googleUrl(template)] = fixture("google-reel-zara-ref.json");
+    if (deferGoogle) out[googleUrl(key)] = rejected;
+    return out;
+  };
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
+  const first = fakeWeb(pages(true, true));
+  const out = await run(db, first, { phase: "discover" });
+  assert.equal(first.calls.filter((u) => u === googleUrl(key)).length, 1, "в этом прогоне не повторяем — повтор получил бы тот же отказ");
+  assert.equal(first.calls.filter((u) => u === topicUrl("zara-viral-jacket")).length, 1);
+  assert.deepEqual([out.deferredRequests, out.failedRequests, out.discover.deferred, out.discover.complete], [2, 0, 2, false]);
+  const log = socialRunLog(out);
+  assert.equal(log.status, "partial", "не тревога");
+  assert.doesNotMatch(String(log.note), /сбоев страниц|failed_query_rejected/, "в «сбоях страниц» и в списке ошибок его нет");
+  assert.match(String(log.note), /отложено Bright Data до следующего прогона: 2/);
+  const usage = tables.assortment_ai_usage.find((u) => u.kind === SOCIAL_USAGE_KIND)!;
+  assert.deepEqual([usage.calls, usage.failed_calls], [first.calls.length, 2], "в учёте — как неудачный запрос");
+  const pending = stateOf(tables).pending!;
+  assert.ok(!pending.google.includes(`zara:${key}`) && !pending.topics.includes("zara-viral-jacket"), "не пройдены");
+  assert.deepEqual(pending.deferred, { [`zara:${key}`]: 1, "topic:zara-viral-jacket": 1 });
+
+  // Следующий прогон (через 3 часа): повторяются только отложенные — и проходят.
+  const second = fakeWeb(pages(false, false));
+  const out2 = await run(db, second, { phase: "discover", now: () => NOW + 3 * HOUR });
+  assert.deepEqual([...second.calls].sort(), [googleUrl(key, NOW + 3 * HOUR), topicUrl("zara-viral-jacket")].sort());
+  assert.deepEqual([out2.discover.complete, stateOf(tables).pending], [true, null]);
+
+  // Откладывает DEFER_MAX_RUNS прогонов подряд — пропускаем до следующего поиска, поиск не стоит на одном запросе.
+  assert.equal(DEFER_MAX_RUNS, 3);
+  const stuck = fakeDb({ tables: { assortment_social_account: quietSeeds() } });
+  const outs = [];
+  for (let i = 0; i < DEFER_MAX_RUNS; i += 1) outs.push(await run(stuck.db, fakeWeb(pages(true, false)), { phase: "discover", now: () => NOW + i * 3 * HOUR }));
+  assert.deepEqual(outs.map((o) => o.discover.complete), [false, false, true]);
+  assert.match(outs[2].errors.join(" "), /откладывает запрос 3 прогона подряд — пропускаем до следующего поиска/);
+});
+
+test("Замок: два прогона разом не идут — второй «прогон уже идёт» без запросов; прогон, начатый до полуночи по Москве, держит вчерашнюю строку", async () => {
+  const p = post("DdLOCK00000", { published_at: iso(NOW - 5 * DAY) });
+  const pages = { [p.url as string]: reelPage({ code: "DdLOCK00000", author: "x.blog", likes: 10, comments: 1 }) };
+  const { db } = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_social_post: [p] } });
+  const web = fakeWeb(pages);
+  const both = await Promise.all([run(db, web, { phase: "measure" }), run(db, web, { phase: "measure" })]);
+  assert.deepEqual(both.map((o) => o.skippedBecause).sort(), ["busy", null]);
+  assert.equal(web.calls.length, 1, "запросы — только у одного прогона");
+  // 00:01 по Москве 07.10: прогон, начатый в 23:59 06.10, держит строку 06.10 — новый ждёт.
+  const midnight = Date.parse("2026-10-06T21:01:00Z");
+  const lock = (ago: number) => ({ day: "2026-10-06", kind: `lock:${SOCIAL_USAGE_KIND}`, updated_at: iso(midnight - ago) });
+  const held = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_ai_usage: [lock(2 * 60_000)] } });
+  assert.equal((await run(held.db, fakeWeb({}), { phase: "measure", now: () => midnight })).skippedBecause, "busy");
+  const expired = fakeDb({ tables: { assortment_social_account: allSeeds(), assortment_ai_usage: [lock(7 * 60_000)] } });
+  assert.equal((await run(expired.db, fakeWeb({}), { phase: "measure", now: () => midnight })).skippedBecause, null, "замок старше 6 минут — истёк");
+});
+
+test("Неделя выбрана (строка соцсетей): поиск стоит не по своей вине — такие прогоны в серию «не завершён» не идут, тревоги нет", async () => {
+  const pages: Record<string, Page> = {};
+  for (const t of SEED_TOPICS) pages[topicUrl(t.slug)] = emptyTopic(t.slug);
+  const usage = [{ day: "2026-10-05", kind: SOCIAL_USAGE_KIND, calls: 2000, failed_calls: 0, cost_usd: 3, updated_at: iso(NOW - DAY) }];
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: quietSeeds(), assortment_ai_usage: usage } });
+  const runs = [];
+  for (let i = 0; i < DISCOVER_STALL_RUNS + 2; i += 1) runs.push(await run(db, fakeWeb(pages), { now: () => NOW + i * 3 * HOUR, engine: { weeklyUsd: 30, socialWeeklyUsd: 3 } }));
+  assert.ok(runs.every((r) => r.discover.ran && r.stoppedBy === "budget" && r.capBy === "social_line" && r.requests === 0));
+  assert.ok(runs.every((r) => r.alarms.length === 0 && socialRunLog(r).status === "partial"), "потолок — не поломка");
+  assert.equal(stateOf(tables).pending?.runs, 0);
+});
+
+test("Профиль, отложенный Bright Data (failed_query_rejected): не сбой и не ошибка аккаунта — срок прежний, следующим прогоном профиль запрашивается снова", async () => {
+  const rejected: UnlockerResult = { ok: false, kind: "transient", reason: "отложено Bright Data: failed_query_rejected", ms: 0, deferred: true };
+  const accounts = [...quietSeeds(), { platform: "instagram", handle: "late.blog", kind: "unknown", origin: "auto", status: "watched", appearances: 2, last_checked_at: null, last_error: null }];
+  const state = { social: { discoveredAt: iso(NOW - DAY), autoTopics: [], deadTopics: {} } };
+  const { db, tables } = fakeDb({ tables: { assortment_social_account: accounts, assortment_sources: [{ source_id: "S068", capabilities: state }] } });
+  const out = await run(db, fakeWeb({ [profileUrl("late.blog")]: rejected }), {});
+  assert.deepEqual([out.deferredRequests, out.failedRequests, out.errors.length], [1, 0, 0]);
+  const acc = tables.assortment_social_account.find((a) => a.handle === "late.blog")!;
+  assert.deepEqual([acc.last_checked_at, acc.last_error], [null, null]);
+  const next = fakeWeb({ [profileUrl("late.blog")]: fixture("profile-jpnbrands.md") });
+  await run(db, next, { now: () => NOW + 3 * HOUR });
+  assert.deepEqual(next.calls, [profileUrl("late.blog")]);
 });

@@ -35,15 +35,82 @@ export const ACCOUNT_KIND_LABEL: Record<AccountKind, string> = {
 };
 export const ACCOUNT_ORIGIN_LABEL: Record<"seed" | "auto" | "owner", string> = { seed: "стартовый", auto: "найден сбором", owner: "добавлен вручную" };
 
-/** Ежедневный крон сбора (vercel.json «20 6 * * *», UTC) — для строки «следующий прогон». */
-export const SOCIAL_CRON = { path: "/api/sync/assortment-social", schedule: "20 6 * * *", hourUtc: 6, minuteUtc: 20 } as const;
+/**
+ * Крон сбора каждые 3 часа (vercel.json, с 07.10): в 20 минут часов UTC, кратных трём, — 00:20, 03:20 … 21:20; по Москве (UTC+3) те же
+ * восемь отметок. Раз в сутки поиск занимал всё время прогона, и замер почти не шёл; теперь поиск — раз в 6+ дней и доделывается следующими
+ * прогонами, остальные прогоны дня — замер, база авторов и привязка. Для строки «следующий прогон».
+ */
+export const SOCIAL_CRON = { path: "/api/sync/assortment-social", schedule: "20 */3 * * *", everyHours: 3, minuteUtc: 20 } as const;
+export const SOCIAL_RUNS_PER_DAY = 24 / SOCIAL_CRON.everyHours;
 export const SOCIAL_JOB = "assortment-social";
+
+const HOUR_MS = 3600 * 1000;
 
 /** Ближайший прогон крона после `nowMs` (ISO). */
 export function nextSocialRun(nowMs: number): string {
   const d = new Date(nowMs);
-  const today = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), SOCIAL_CRON.hourUtc, SOCIAL_CRON.minuteUtc);
-  return new Date(today > nowMs ? today : today + 24 * 3600 * 1000).toISOString();
+  const dayStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  let at = dayStart + SOCIAL_CRON.minuteUtc * 60_000;
+  while (at <= nowMs) at += SOCIAL_CRON.everyHours * HOUR_MS;
+  return new Date(at).toISOString();
+}
+
+/** Отметки крона по Москве: «00:20, 03:20 … 21:20». */
+export function socialCronMskTimes(): string[] {
+  const out: number[] = [];
+  for (let h = 0; h < 24; h += SOCIAL_CRON.everyHours) out.push((h + 3) % 24);
+  return out.sort((a, b) => a - b).map((h) => `${String(h).padStart(2, "0")}:${String(SOCIAL_CRON.minuteUtc).padStart(2, "0")}`);
+}
+
+// ---------------------------------------------------------------------------
+// Честные счётчики: найдено, замерено, ждут замера — чтобы «ничего не залетело» не читалось как «нечего мерить»
+
+export interface SocialProgress {
+  /** Период ленты, дни (по дате публикации). */
+  days: number;
+  /** Рилсы раздела за период: найдено, замерено (есть числа), ждут замера сейчас, из них с шансом «залететь». */
+  section: { found: number; measured: number; waiting: number; waitingWithChance: number };
+  /**
+   * Рилсы без раздела за период — по всем разделам: найдены Google или в профиле без подписи, раздел станет известен после замера.
+   * Часть из них окажется в этом разделе.
+   */
+  unsorted: { found: number; waiting: number; waitingWithChance: number };
+  /**
+   * До полного прохода очереди замера (все разделы, рилсы 2–21 дня) — оценка: прогонов по ~perRun замеров, часов (прогон каждые 3 часа),
+   * недель по недельной строке соцсетей. null — очередь пуста.
+   */
+  pass: { waiting: number; perRun: number; runs: number; hours: number; weeklyRequests: number; weeks: number } | null;
+}
+
+/** Оценка полного прохода очереди замера: прогонов, часов и недель (по недельной строке; поиск и база авторов её тоже тратят). */
+export function socialPass(waiting: number, perRun: number, weeklyRequests: number): SocialProgress["pass"] {
+  if (waiting <= 0) return null;
+  const runs = Math.ceil(waiting / Math.max(1, perRun));
+  const weeks = weeklyRequests > 0 ? Math.ceil(waiting / weeklyRequests) : Number.POSITIVE_INFINITY;
+  return { waiting, perRun, runs, hours: runs * SOCIAL_CRON.everyHours, weeklyRequests, weeks };
+}
+
+const reels = (n: number) => plural(n, "рилс", "рилса", "рилсов");
+const num = (n: number) => n.toLocaleString("ru-RU");
+
+/** Счётчики словами: раздел, рилсы без раздела, сколько прогонов (и недель) до полного прохода. */
+export function socialProgressText(p: SocialProgress, sectionLabel: string): { section: string; unsorted: string | null; pass: string | null } {
+  const s = p.section;
+  const section = `${sectionLabel} за ${p.days} дней: найдено рилсов ${num(s.found)}, замерено ${num(s.measured)}, ждут замера ${num(s.waiting)}, из них с шансом ${num(s.waitingWithChance)}.`;
+  const u = p.unsorted;
+  const unsorted = u.found > 0
+    ? `Ещё ${num(u.found)} ${reels(u.found)} без раздела — по всем разделам, раздел станет известен после замера: ждут замера ${num(u.waiting)}, из них с шансом ${num(u.waitingWithChance)}.`
+    : null;
+  let pass: string | null = null;
+  if (p.pass) {
+    const { runs, hours, weeks, perRun, weeklyRequests, waiting } = p.pass;
+    const time = hours < 24 ? `≈${hours} ч` : `≈${num(Math.ceil(hours / 24))} ${plural(Math.ceil(hours / 24), "сутки", "суток", "суток")}`;
+    pass = `До полного прохода очереди (${num(waiting)} ${reels(waiting)}, все разделы) — ≈${num(runs)} ${plural(runs, "прогон", "прогона", "прогонов")}, ${time} (оценка: ~${num(perRun)} замеров за прогон)`;
+    pass += weeks > 1 && Number.isFinite(weeks)
+      ? `; упирается в недельный потолок рилсов (${num(weeklyRequests)} запросов) — ≈${num(weeks)} ${plural(weeks, "неделя", "недели", "недель")}.`
+      : !Number.isFinite(weeks) ? "; недельная строка соцсетей выключена (0) — замер стоит." : ".";
+  }
+  return { section, unsorted, pass };
 }
 
 export type MatchTone = "ok" | "warn" | "muted";

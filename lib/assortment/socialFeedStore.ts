@@ -4,9 +4,11 @@ import type { CatalogCard } from "./catalog";
 import type { AssortmentDirection } from "./constants";
 import { isMissingAssortmentSchema } from "./errors";
 import type { SocialEvidence } from "./evidence";
-import { DEFAULT_FEED_PERIOD, nextSocialRun, pickSocialDigest, SOCIAL_JOB, type FeedPeriod, type SocialDigest, type SocialDigestPost } from "./socialFeed";
-import { profileUrl, SOCIAL_PLATFORM, socialRefKeyFromUrl, type AccountKind } from "./socialReels";
-import { loadAccounts, loadViralReels, SOCIAL_MIGRATION, type SocialReelCard } from "./socialReelsStore";
+import {
+  DEFAULT_FEED_PERIOD, nextSocialRun, pickSocialDigest, SOCIAL_JOB, socialPass, type FeedPeriod, type SocialDigest, type SocialDigestPost, type SocialProgress,
+} from "./socialFeed";
+import { hasChance, MAX_AGE_DAYS, measuresPerRunEstimate, profileUrl, SOCIAL_PLATFORM, socialConfig, socialRefKeyFromUrl, type AccountKind, type SocialConfig } from "./socialReels";
+import { loadAccounts, loadViralReels, postMeasureDue, SOCIAL_MIGRATION, type PostRow, type SocialReelCard } from "./socialReelsStore";
 
 /**
  * «Залетает в соцсетях» — чтение и ручные правки для экрана, сводки, каталога и карточки модели. Сбор — в socialReelsStore.ts.
@@ -51,14 +53,54 @@ async function excludedHandles(db: SupabaseClient): Promise<Set<string>> {
 export type SocialCount = { available: false; reason: string } | { available: true; total: number; collected: number };
 
 /** Всего рилсов в базе (любой раздел): от первой записи вкладка видна. Не HEAD: у HEAD нет тела, ошибку «таблицы нет» не узнать. */
-async function countPosts(db: SupabaseClient, direction?: AssortmentDirection, sinceMs?: number): Promise<number> {
-  let q = db.from(POSTS).select("code", { count: "exact" }).eq("platform", SOCIAL_PLATFORM);
-  if (direction) q = q.eq("direction", direction).gte("checks", 1);
-  if (sinceMs != null) q = q.gte("published_at", iso(sinceMs));
-  const { count, error } = await q.limit(1);
+async function countPosts(db: SupabaseClient): Promise<number> {
+  const { count, error } = await db.from(POSTS).select("code", { count: "exact" }).eq("platform", SOCIAL_PLATFORM).limit(1);
   if (error) throw error;
   return count ?? 0;
 }
+
+const PROGRESS_COLUMNS = "code,direction,published_at,checks,last_checked_at,likes,comments,views,verdict,hidden_at,account_handle";
+type ProgressRow = Pick<PostRow, "code" | "direction" | "published_at" | "checks" | "last_checked_at" | "likes" | "comments" | "views" | "verdict" | "hidden_at" | "account_handle">;
+
+/**
+ * Честные счётчики вкладки: рилсов раздела за период найдено, замерено, ждут замера и из них с шансом; рилсы без раздела (раздел станет
+ * известен после замера) — по всем разделам; сколько прогонов до полного прохода очереди замера (все разделы, окно 2–21 день). Скрытые и
+ * рилсы исключённых авторов не в счёте — прогон их не мерит. Чтение листанием (рилсов бывает больше 1 000).
+ */
+export async function loadSocialProgress(db: SupabaseClient, options: { direction: AssortmentDirection; days: number; nowMs: number; config?: SocialConfig }): Promise<SocialProgress> {
+  const { direction, days, nowMs } = options;
+  const config = options.config ?? socialConfig();
+  const since = nowMs - Math.max(days, MAX_AGE_DAYS) * DAY_MS;
+  const periodFrom = nowMs - days * DAY_MS;
+  const rows = await loadAllSupabasePages<ProgressRow>((from, to) => db.from(POSTS).select(PROGRESS_COLUMNS).eq("platform", SOCIAL_PLATFORM)
+    .gte("published_at", iso(since)).order("code", { ascending: true }).range(from, to) as unknown as Page<ProgressRow>, { label: "Счётчики «Залетает»" });
+  const excluded = rows.length ? await excludedHandles(db) : new Set<string>();
+  const section = { found: 0, measured: 0, waiting: 0, waitingWithChance: 0 };
+  const unsorted = { found: 0, waiting: 0, waitingWithChance: 0 };
+  let waitingAll = 0;
+  for (const raw of rows) {
+    const p = { ...raw, checks: Number(raw.checks) || 0, likes: num(raw.likes), comments: num(raw.comments), views: num(raw.views) };
+    if (p.hidden_at || (p.account_handle && excluded.has(p.account_handle))) continue;
+    const due = postMeasureDue(p, nowMs);
+    const chance = due && hasChance(p);
+    if (due) waitingAll += 1;
+    if (!(Date.parse(String(p.published_at)) >= periodFrom)) continue;
+    if (p.direction === direction) {
+      section.found += 1;
+      if (p.checks > 0 && (p.likes != null || p.comments != null)) section.measured += 1;
+      if (due) section.waiting += 1;
+      if (chance) section.waitingWithChance += 1;
+    } else if (p.direction == null) {
+      unsorted.found += 1;
+      if (due) unsorted.waiting += 1;
+      if (chance) unsorted.waitingWithChance += 1;
+    }
+  }
+  // Оценка по половине окна прогона: пока идёт поиск, замеру — вторая половина (оценка снизу по скорости, а не обещание).
+  return { days, section, unsorted, pass: socialPass(waitingAll, measuresPerRunEstimate(config, true), config.weeklyRequests) };
+}
+
+const num = (value: unknown): number | null => (value == null || value === "" || !Number.isFinite(Number(value)) ? null : Number(value));
 
 /** Для вкладки: таблицы есть и хоть одна запись — вкладка видна; total — «залетевших» раздела за 14 дней (число на вкладке). */
 export async function countSocialFeed(db: SupabaseClient, direction: AssortmentDirection, nowMs: number): Promise<SocialCount> {
@@ -110,6 +152,8 @@ export type SocialFeedResult =
     onlyStrong: boolean;
     /** Замерено рилсов раздела за период — чтобы «ничего не залетело» не читалось как «ничего не собрано». null — не посчиталось. */
     measured: number | null;
+    /** Найдено, замерено, ждут замера (с шансом), без раздела, до полного прохода. null — не посчиталось (причина в warnings). */
+    progress: SocialProgress | null;
     lastCheckedAt: string | null;
     run: SocialRunStatus | null;
     warnings: string[];
@@ -119,9 +163,9 @@ export async function loadSocialFeed(db: SupabaseClient, options: { direction: A
   const feed = await loadViralReels(db, { direction: options.direction, days: options.days, onlyStrong: options.onlyStrong, nowMs: options.nowMs });
   if (!feed) return { available: false, reason: SOCIAL_UNAVAILABLE };
   const warnings = [...feed.warnings];
-  const [measured, run] = await Promise.all([
-    countPosts(db, options.direction, options.nowMs - options.days * DAY_MS).catch((error) => {
-      warnings.push(`сколько рилсов замерено — не посчиталось: ${errorText(error)}`);
+  const [progress, run] = await Promise.all([
+    loadSocialProgress(db, { direction: options.direction, days: options.days, nowMs: options.nowMs }).catch((error) => {
+      warnings.push(`сколько рилсов найдено и замерено — не посчиталось: ${errorText(error)}`);
       return null;
     }),
     loadSocialRunStatus(db, options.nowMs).catch((error) => {
@@ -129,7 +173,9 @@ export async function loadSocialFeed(db: SupabaseClient, options: { direction: A
       return null;
     }),
   ]);
-  return { available: true, cards: feed.cards, days: options.days, onlyStrong: options.onlyStrong, measured, lastCheckedAt: feed.lastCheckedAt, run, warnings };
+  return {
+    available: true, cards: feed.cards, days: options.days, onlyStrong: options.onlyStrong, measured: progress?.section.measured ?? null, progress, lastCheckedAt: feed.lastCheckedAt, run, warnings,
+  };
 }
 
 /** «Не интересен рилс»: своя отметка рилса (модель в каталоге этим не скрывается). */

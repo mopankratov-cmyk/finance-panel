@@ -4,7 +4,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  DEFAULT_UNLOCKER_ZONE, googleSearchUrl, isAllowedUnlockerUrl, unlockerConfig, unlockerFetch, UnlockerStopError, UnlockerUrlError, type UnlockerResult,
+  DEFAULT_UNLOCKER_ZONE, DEFERRED_ERROR_CODE, googleSearchUrl, isAllowedUnlockerUrl, isDeferredRejection, unlockerConfig, unlockerFetch, UnlockerStopError, UnlockerUrlError,
+  type UnlockerResult,
 } from "../lib/assortment/brightdataUnlocker.ts";
 
 /**
@@ -86,6 +87,20 @@ test("HTTP 200 с пустым телом и x-brd-error-code (proxy_timeout, к
   assert.deepEqual([captcha.ok, !captcha.ok && captcha.kind], [false, "transient"]);
   const empty = await unlockerFetch("https://www.instagram.com/jpnbrands/", "markdown", { config, fetchImpl: status(200, "  ") });
   assert.deepEqual([empty.ok, !empty.ok && empty.kind], [false, "transient"], "пустое тело без заголовков — тоже сбой");
+});
+
+test("«This query recently failed» (failed_query_rejected, первый живой прогон 07.10, Google) — не сбой страницы, а «отложено»: повторим следующим прогоном", async () => {
+  const url = "https://www.google.com/search?q=site%3Ainstagram.com%2Freel+zara+reference+jacket&hl=en&num=20&gl=us&brd_json=1";
+  const why = "This query recently failed and cannot be attempted at this time. Please try again later";
+  const header = await unlockerFetch(url, "parsed_light", { config, fetchImpl: status(200, "", { "x-brd-error-code": DEFERRED_ERROR_CODE, "x-brd-error": why }) });
+  assert.deepEqual([header.ok, !header.ok && header.kind, !header.ok && header.deferred], [false, "transient", true]);
+  assert.match(!header.ok ? header.reason : "", /^отложено Bright Data: failed_query_rejected \(This query recently failed/);
+  const body = await unlockerFetch(url, "parsed_light", { config, fetchImpl: status(400, why) });
+  assert.deepEqual([body.ok, !body.ok && body.kind, !body.ok && body.deferred], [false, "transient", true], "тот же отказ телом 400 — тоже «отложено», а не «страницы нет»");
+  const timeout = await unlockerFetch(url, "parsed_light", { config, fetchImpl: replay("error-google-captcha-empty.json") });
+  assert.equal(!timeout.ok && timeout.deferred, undefined, "капча — обычный временный сбой");
+  assert.equal(isDeferredRejection("FAILED_QUERY_REJECTED"), true);
+  assert.equal(isDeferredRejection("proxy_timeout", "timeout"), false);
 });
 
 test("Неверная зона (400 «zone … not found») — ошибка настройки: прогон стоп", async () => {

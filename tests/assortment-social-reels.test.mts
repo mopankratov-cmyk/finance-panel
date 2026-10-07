@@ -4,7 +4,8 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
-  acceptNeighborTopic, cleanHashtags, detectBrand, detectDirection, extractRefs, intentShare, isEmptyReelShell, looksMenswear, measureDue, medianBaseline, parseAltDate,
+  acceptNeighborTopic, cleanHashtags, DEFAULT_CONCURRENCY, detectBrand, detectDirection, extractRefs, hasChance, intentShare, isEmptyReelShell, looksMenswear, MAX_CONCURRENCY, measureDue,
+  measuresPerRunEstimate, medianBaseline, parseAltDate,
   parseCount, parseGoogleReels, parseProfilePage, parseReelPage, parseTopicPage, parseUniqloCard, parseZaraCard, passwordWords, REELS_RULE_VERSION,
   sanitizeCaption, SEED_ACCOUNTS, SEED_TOPICS, shortcodeToDate, socialConfig, socialRefKeyFromUrl, uniqloCardUrls, verdictV1, withinDiscoveryWindow, zaraCardUrl,
   type BaselinePost, type VerdictInput,
@@ -428,33 +429,74 @@ test("Пороги main-правила на границе: 10× и 1 000 лай
   assert.equal(verdictV1({ ...base, baseline: { ...baseline, commentsMedian: 1 }, likes: 10, comments: 29, intent: { count: 1, total: 1 } }).b, false, "меньше 30");
 });
 
-test("Замеры: первый в окне 2–21 день, затем на 3-й и на 7-й день, не больше трёх", () => {
+test("Замеры: первый в окне 2–21 день, затем на 3-й и на 7-й день (у рилса с шансом), не больше трёх", () => {
   const pub = CAPTURE - 10 * DAYMS;
+  // Перезамер — только рилсу с шансом: здесь лайков 1 500 (≥ 1 000).
+  const chance = { likes: 1500, comments: 4, views: null };
   assert.equal(measureDue({ publishedAtMs: CAPTURE - DAYMS, checks: 0, lastCheckedAtMs: null }, CAPTURE), false, "моложе 48 ч");
   assert.equal(measureDue({ publishedAtMs: CAPTURE - 22 * DAYMS, checks: 0, lastCheckedAtMs: null }, CAPTURE), false, "старше 21 дня");
   assert.equal(measureDue({ publishedAtMs: pub, checks: 0, lastCheckedAtMs: null }, CAPTURE), true);
   const p2 = CAPTURE - 2.5 * DAYMS;
-  assert.equal(measureDue({ publishedAtMs: p2, checks: 1, lastCheckedAtMs: CAPTURE }, CAPTURE), false, "только что мерили");
-  assert.equal(measureDue({ publishedAtMs: p2, checks: 1, lastCheckedAtMs: p2 + 2.1 * DAYMS }, p2 + 3 * DAYMS), true, "3-й день");
-  assert.equal(measureDue({ publishedAtMs: p2, checks: 2, lastCheckedAtMs: p2 + 3 * DAYMS }, p2 + 5 * DAYMS), false, "между 3-м и 7-м");
-  assert.equal(measureDue({ publishedAtMs: p2, checks: 2, lastCheckedAtMs: p2 + 3 * DAYMS }, p2 + 7 * DAYMS), true, "7-й день");
-  assert.equal(measureDue({ publishedAtMs: p2, checks: 3, lastCheckedAtMs: p2 + 7 * DAYMS }, p2 + 15 * DAYMS), false, "три замера");
-  assert.equal(measureDue({ publishedAtMs: p2, checks: 3, lastCheckedAtMs: p2 + 3.5 * DAYMS }, p2 + 8 * DAYMS), false, "три замера — и на 7-й день больше не мерим");
-  assert.equal(measureDue({ publishedAtMs: pub, checks: 1, lastCheckedAtMs: pub + 10 * DAYMS }, pub + 12 * DAYMS), false, "первый замер поздно — повторов нет");
+  assert.equal(measureDue({ publishedAtMs: p2, checks: 1, lastCheckedAtMs: CAPTURE, ...chance }, CAPTURE), false, "только что мерили");
+  assert.equal(measureDue({ publishedAtMs: p2, checks: 1, lastCheckedAtMs: p2 + 2.1 * DAYMS, ...chance }, p2 + 3 * DAYMS), true, "3-й день");
+  assert.equal(measureDue({ publishedAtMs: p2, checks: 2, lastCheckedAtMs: p2 + 3 * DAYMS, ...chance }, p2 + 5 * DAYMS), false, "между 3-м и 7-м");
+  assert.equal(measureDue({ publishedAtMs: p2, checks: 2, lastCheckedAtMs: p2 + 3 * DAYMS, ...chance }, p2 + 7 * DAYMS), true, "7-й день");
+  assert.equal(measureDue({ publishedAtMs: p2, checks: 3, lastCheckedAtMs: p2 + 7 * DAYMS, ...chance }, p2 + 15 * DAYMS), false, "три замера");
+  assert.equal(measureDue({ publishedAtMs: p2, checks: 3, lastCheckedAtMs: p2 + 3.5 * DAYMS, ...chance }, p2 + 8 * DAYMS), false, "три замера — и на 7-й день больше не мерим");
+  assert.equal(measureDue({ publishedAtMs: pub, checks: 1, lastCheckedAtMs: pub + 10 * DAYMS, ...chance }, pub + 12 * DAYMS), false, "первый замер поздно — повторов нет");
   assert.equal(withinDiscoveryWindow("Dd4Is8To7B0", at("2026-10-06T00:00:00Z")), true);
   assert.equal(withinDiscoveryWindow("DTfauF8CL-J", at("2026-10-06T00:00:00Z")), false, "январский рилс в теме не берём");
+});
+
+test("Перезамер на 3-й и 7-й день — только рилсу с шансом (решение владельца 07.10): лайки ≥ 1 000, комментарии ≥ 30, просмотры ≥ 100 000 или уже «залетает»", () => {
+  const pub = CAPTURE - 10 * DAYMS;
+  const third = { publishedAtMs: pub, checks: 1, lastCheckedAtMs: pub + 2.1 * DAYMS };
+  const day3 = pub + 3 * DAYMS;
+  const seventh = { publishedAtMs: pub, checks: 2, lastCheckedAtMs: pub + 3 * DAYMS };
+  const day7 = pub + 7 * DAYMS;
+  for (const [label, numbers] of [
+    ["лайки 1 000", { likes: 1000, comments: 2, views: null }],
+    ["комментарии 30", { likes: 120, comments: 30, views: null }],
+    ["просмотры 100 000 (со страницы темы)", { likes: null, comments: null, views: 100_000 }],
+    ["уже «залетает»", { likes: 400, comments: 5, views: null, verdict: "viral" }],
+    ["уже «сильный»", { likes: 400, comments: 5, views: null, verdict: "strong" }],
+  ] as const) {
+    assert.equal(hasChance(numbers), true, label);
+    assert.equal(measureDue({ ...third, ...numbers }, day3), true, `${label}: 3-й день`);
+    assert.equal(measureDue({ ...seventh, ...numbers }, day7), true, `${label}: 7-й день`);
+  }
+  for (const [label, numbers] of [
+    ["лайки 999, комментарии 29, просмотры 99 999", { likes: 999, comments: 29, views: 99_999 }],
+    ["«обычно»", { likes: 300, comments: 4, views: 20_000, verdict: "normal" }],
+    ["чисел нет (страницы нет — попытка засчитана)", { likes: null, comments: null, views: null }],
+    ["чисел не передали", {}],
+  ] as const) {
+    assert.equal(hasChance(numbers), false, label);
+    assert.equal(measureDue({ ...third, ...numbers }, day3), false, `${label}: одного замера хватает`);
+    assert.equal(measureDue({ ...seventh, ...numbers }, day7), false, `${label}: и на 7-й день не мерим`);
+  }
+  assert.equal(measureDue({ publishedAtMs: pub, checks: 0, lastCheckedAtMs: null, likes: 3, comments: 0, views: 10 }, day3), true, "первый замер — каждому, шанс не нужен");
 });
 
 // --- настройки и стартовые источники ---
 
 test("Настройки: 150 запросов за прогон; в неделю — сколько даёт строка соцсетей ($3 ≈ 2 000 запросов), явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS — ограничение сверху; выключатель off", () => {
-  assert.deepEqual(socialConfig({}), { enabled: true, maxRequestsPerRun: 150, weeklyRequests: 2000, maxBaselineAuthorsPerRun: 4 });
+  assert.deepEqual(socialConfig({}), { enabled: true, maxRequestsPerRun: 150, concurrency: 6, weeklyRequests: 2000, maxBaselineAuthorsPerRun: 4 });
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL: " OFF " }).enabled, false);
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN: "40", ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "300" }).maxRequestsPerRun, 40);
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "300" }).weeklyRequests, 300, "явный потолок запросов строже строки — он");
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "5000" }).weeklyRequests, 2000, "явный потолок шире строки — строка");
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_USD: "6" }).weeklyRequests, 4000, "владелец поднял строку — запросов больше");
   assert.equal(socialConfig({ ASSORTMENT_SOCIAL_WEEKLY_REQUESTS: "abc" }).weeklyRequests, 2000);
+});
+
+test("Параллельность ASSORTMENT_SOCIAL_CONCURRENCY: по умолчанию 6, предел 8, мусор и 0 — по умолчанию; оценка замеров за прогон", () => {
+  assert.deepEqual([DEFAULT_CONCURRENCY, MAX_CONCURRENCY], [6, 8]);
+  assert.deepEqual(["", "3", "8", "12", "0", "-2", "abc", "6.9"].map((v) => socialConfig({ ASSORTMENT_SOCIAL_CONCURRENCY: v }).concurrency), [6, 3, 8, 8, 6, 6, 6, 6]);
+  // Половина окна (90 с) × 6 потоков / 9 с на страницу = 60; без поиска — всё окно, 120; не больше потолка прогона.
+  assert.equal(measuresPerRunEstimate({ concurrency: 6, maxRequestsPerRun: 150 }, true), 60);
+  assert.equal(measuresPerRunEstimate({ concurrency: 6, maxRequestsPerRun: 150 }, false), 120);
+  assert.equal(measuresPerRunEstimate({ concurrency: 8, maxRequestsPerRun: 50 }, false), 50);
 });
 
 test("Стартовые источники: ≈25 аккаунтов (официальный @zara — «без номеров»), темы женских курток и сумок по обоим брендам", () => {

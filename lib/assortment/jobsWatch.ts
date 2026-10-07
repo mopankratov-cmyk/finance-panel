@@ -60,9 +60,9 @@ export const WATCHED_JOBS: readonly JobRule[] = [
   // Крон каждые 2 часа, журнал — только когда была работа: 3 ошибки подряд. Ключ, деньги и настройка останавливают прогон сразу и дают
   // «error», но тревога всё равно после трёх; лимит запросов — «error» лишь без единой разобранной модели, неудачи при разобранных — «partial».
   { job: "assortment-catalog-ai", label: "Признаки каталога по фото (ИИ)", maxSilenceDays: null, maxConsecutiveErrors: 3, billing: "ai", paysProvider: true },
-  // «Залетает в соцсетях»: крон ежедневный и пишет журнал каждым прогоном (выключатель off — тоже, строкой «ok»), поэтому
-  // тишина 3 суток — пропавший крон; 3 ошибки подряд — три дня без ключа или зоны Bright Data; нет денег — сразу.
-  { job: "assortment-social", label: "Залетает в соцсетях: рилсы Instagram (Bright Data)", maxSilenceDays: 3, maxConsecutiveErrors: 3, billing: "brightdata", paysProvider: true },
+  // «Залетает в соцсетях»: крон каждые 3 часа (с 07.10) и пишет журнал каждым прогоном (выключатель off — тоже, строкой «ok»), поэтому
+  // сутки тишины — пропавший крон (8 прогонов без записи); 8 ошибок подряд — сутки без ключа или зоны Bright Data; нет денег — сразу.
+  { job: "assortment-social", label: "Залетает в соцсетях: рилсы Instagram (Bright Data)", maxSilenceDays: 1, maxConsecutiveErrors: 8, billing: "brightdata", paysProvider: true },
   // Bright Data по средам и субботам: запуск и сбор. Прочие сбои видит сторож источников (по last_success_at), здесь — «нет денег» и
   // отложенная покупка (учёт не прочитался, потолок не пустил Zara или Uniqlo): сорванная покупка Zara и Uniqlo — тревога в тот же день,
   // а не через неделю молчания источника.

@@ -36,7 +36,22 @@ export const FALLBACK_FOLLOWER_SHARE = 0.2;
 export const FALLBACK_LIKES_MIN = 5000;
 /** Страницы прошлых постов автора скачиваем только ради кандидатов, у которых есть шанс: лайки, комментарии или просмотры. */
 export const PREFILTER = { likes: 1000, comments: 30, views: 100_000 } as const;
-/** Замеры: первый, затем на 3-й и на 7-й день; не больше трёх. */
+/**
+ * Замеры: первый — каждому рилсу; на 3-й и на 7-й день — только рилсу с шансом (`hasChance`: предфильтр PREFILTER — лайки ≥ 1 000,
+ * комментарии ≥ 30 или просмотры ≥ 100 000 — или уже «залетает» / «сильный»); не больше трёх. Решение владельца 07.10: рилс без шанса
+ * «залёта» не даст и на 7-й день (А требует ≥ 1 000 лайков, Б — ≥ 30 комментариев), а три замера на каждый съедали недельную строку.
+ *
+ * Недельный объём запросов на типичный поиск (оценка 07.10, запросы Web Unlocker; потолок недели — строка соцсетей, по умолчанию $3 ≈
+ * 2 000 запросов, считаем и против прежних 1 500):
+ * - поиск раз в 6 дней: темы ≈30 + Google 20 + профили ≈25 = 75 запросов, со сбоями и повторами ≈90 → ≈105 в неделю;
+ * - кандидатов за поиск: темы 30 × 12 карточек (моложе 21 дня ≈ треть) ≈120, Google ≈5 свежих на запрос ≈100, профили 25 × 12 (свежих
+ *   рилсов автора ≈4) ≈100 — без повторов ≈300; верхняя граница (всё свежее и разное) 360 + 200 + 300 = 860;
+ * - замер: первый — 300, перезамеры только с шансом (≈30% → 90 × 2 = 180), повтор за десктопной вёрсткой ≈15% → ≈550 за поиск,
+ *   ≈640 в неделю; база авторов ≈15 новых авторов × 13 ≈200 в неделю;
+ * - итого ≈950 в неделю: в 1 500 помещается с запасом ≈⅓, в 2 000 — вдвое. Прежние три замера каждому: 300 × 3 + повторы ≈1 040 за поиск
+ *   (≈1 210 в неделю), с поиском и базой ≈1 520 в неделю — больше 1 500. Верхняя граница (860 свежих): ≈1 900 за поиск даже с перезамером только «с шансом» — тогда упираемся
+ *   в строку недели, первые замеры ждут (окно рилса — до 21 дня), а на вкладке видно, сколько ждут и сколько прогонов до полного прохода.
+ */
 export const RECHECK_AGES_DAYS = [3, 7] as const;
 export const MAX_CHECKS = 3;
 export const HISTORY_LIMIT = 10;
@@ -51,10 +66,33 @@ export type AccountKind = "stylist" | "buyer" | "reseller" | "brand" | "blogger"
 // ---------------------------------------------------------------------------
 // Настройки
 
+/** Параллельных запросов к Web Unlocker: по умолчанию 6 (ASSORTMENT_SOCIAL_CONCURRENCY), не больше 8. */
+export const DEFAULT_CONCURRENCY = 6;
+export const MAX_CONCURRENCY = 8;
+
+/**
+ * Доля окна новых запросов прогона, после которой поиск (темы, Google, профили) новых запросов не начинает, если есть что мерить, считать
+ * базой или привязывать: вторая половина — замеру. Первый живой прогон 07.10 отдал поиску всё время, и замер почти не шёл. Замерять
+ * нечего — поиск берёт всё окно.
+ */
+export const SEARCH_TIME_SHARE = 0.5;
+/** Окно новых запросов прогона, с: бюджет крона 240 с минус таймаут запроса 60 с (app/api/sync/assortment-social). */
+export const RUN_WINDOW_S = 180;
+/** Страница через Web Unlocker на один поток, с (оценка по первому живому прогону 07.10: 83 запроса за ≈180 с при 4 параллельно). */
+export const AVG_REQUEST_S = 9;
+
+/** Замеров за прогон — оценка для «до полного прохода»: окно замера × параллельность / время страницы, не больше потолка прогона. */
+export function measuresPerRunEstimate(config: Pick<SocialConfig, "concurrency" | "maxRequestsPerRun">, searching: boolean): number {
+  const seconds = RUN_WINDOW_S * (searching ? 1 - SEARCH_TIME_SHARE : 1);
+  return Math.max(1, Math.min(config.maxRequestsPerRun || 1, Math.floor((seconds / AVG_REQUEST_S) * Math.max(1, config.concurrency))));
+}
+
 export interface SocialConfig {
   enabled: boolean;
   /** Потолок запросов за один прогон крона. */
   maxRequestsPerRun: number;
+  /** Параллельных запросов к Web Unlocker (ASSORTMENT_SOCIAL_CONCURRENCY, 1–8, по умолчанию 6). Потолки считаются до запроса. */
+  concurrency: number;
   /**
    * Запросов за 7 дней — справочно: столько даёт действующая строка соцсетей в общем потолке движка (ASSORTMENT_SOCIAL_WEEKLY_USD, по
    * умолчанию $3 ≈ 2 000; явный ASSORTMENT_SOCIAL_WEEKLY_REQUESTS — ограничение сверху). Отдельным потолком не проверяется: потолок один.
@@ -73,6 +111,7 @@ export function socialConfig(env: Record<string, string | undefined> = process.e
   return {
     enabled: (env.ASSORTMENT_SOCIAL ?? "").trim().toLowerCase() !== "off",
     maxRequestsPerRun: positiveInt(env.ASSORTMENT_SOCIAL_MAX_REQUESTS_PER_RUN, 150),
+    concurrency: Math.min(MAX_CONCURRENCY, Math.max(1, positiveInt(env.ASSORTMENT_SOCIAL_CONCURRENCY, DEFAULT_CONCURRENCY) || DEFAULT_CONCURRENCY)),
     weeklyRequests: socialWeeklyRequests(engineBudgetConfig(env)),
     maxBaselineAuthorsPerRun: positiveInt(env.ASSORTMENT_SOCIAL_BASELINE_AUTHORS, 4),
   };
@@ -988,12 +1027,31 @@ export function passesPrefilter(p: { likes: number | null; comments: number | nu
   return (p.likes ?? 0) >= PREFILTER.likes || (p.comments ?? 0) >= PREFILTER.comments || (p.views ?? 0) >= PREFILTER.views;
 }
 
-/** Пора ли мерить пост: первый замер в окне 2–21 день, затем на 3-й и на 7-й день; не больше трёх замеров. */
-export function measureDue(post: { publishedAtMs: number | null; checks: number; lastCheckedAtMs: number | null }, nowMs: number): boolean {
+/** Шанс «залететь»: прошёл предфильтр (лайки ≥ 1 000, комментарии ≥ 30 или просмотры ≥ 100 000) или уже «залетает» / «сильный». */
+export function hasChance(p: { likes?: number | null; comments?: number | null; views?: number | null; verdict?: string | null }): boolean {
+  return p.verdict === "viral" || p.verdict === "strong" || passesPrefilter({ likes: p.likes ?? null, comments: p.comments ?? null, views: p.views ?? null });
+}
+
+export interface MeasureDueInput {
+  publishedAtMs: number | null;
+  checks: number;
+  lastCheckedAtMs: number | null;
+  likes?: number | null;
+  comments?: number | null;
+  views?: number | null;
+  verdict?: string | null;
+}
+
+/**
+ * Пора ли мерить пост: первый замер в окне 2–21 день; перезамер на 3-й и на 7-й день — только рилсу с шансом (`hasChance`), остальным
+ * хватает одного; не больше трёх замеров.
+ */
+export function measureDue(post: MeasureDueInput, nowMs: number): boolean {
   if (post.publishedAtMs == null) return false;
   const age = nowMs - post.publishedAtMs;
   if (age < MIN_AGE_MS || age > MAX_AGE_DAYS * DAY_MS || post.checks >= MAX_CHECKS) return false;
   if (post.checks <= 0 || post.lastCheckedAtMs == null) return true;
+  if (!hasChance(post)) return false;
   const lastAge = post.lastCheckedAtMs - post.publishedAtMs;
   return RECHECK_AGES_DAYS.some((day) => age >= day * DAY_MS && lastAge < day * DAY_MS);
 }

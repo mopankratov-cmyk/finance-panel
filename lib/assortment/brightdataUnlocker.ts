@@ -9,7 +9,10 @@
  * - сбой цели — HTTP 200 с ПУСТЫМ телом и заголовками x-brd-error-code (proxy_timeout, captcha) и x-brd-status-code 502: временный сбой;
  * - неверная зона — HTTP 400 «zone "…" not found»: ошибка настройки, прогон останавливается;
  * - 401/403 — ключ; 402 и «Customer is not active» / баланс — деньги: прогон останавливается одной причиной;
- * - 429, 5xx, таймаут, обрыв сети — временный сбой этого запроса, прогон идёт дальше.
+ * - 429, 5xx, таймаут, обрыв сети — временный сбой этого запроса, прогон идёт дальше;
+ * - `failed_query_rejected` («This query recently failed and cannot be attempted at this time», первый живой прогон 07.10, Google) —
+ *   Bright Data не пробует адрес, который недавно не открылся: не сбой страницы, а «отложено» (`deferred`): в этом прогоне не повторяем
+ *   (повтор получил бы тот же отказ), повторяем в следующем.
  */
 
 const ENDPOINT = "https://api.brightdata.com/request";
@@ -52,7 +55,33 @@ export class UnlockerUrlError extends Error {}
 
 export type UnlockerResult =
   | { ok: true; body: string; ms: number }
-  | { ok: false; kind: "transient" | "failed"; reason: string; ms: number };
+  | {
+    ok: false;
+    kind: "transient" | "failed";
+    reason: string;
+    ms: number;
+    /**
+     * Отложено Bright Data (`failed_query_rejected`: адрес недавно не открылся, сейчас его не пробуют). Это временный отказ, но не сбой
+     * страницы: в этом прогоне не повторяем и в «сбоях страниц» не считаем — повторяем следующим прогоном.
+     */
+    deferred?: boolean;
+  };
+
+/** Код отказа Bright Data «запрос недавно не удался — пока не пробуем». */
+export const DEFERRED_ERROR_CODE = "failed_query_rejected";
+
+/** Отказ «недавно не удался, попробуйте позже»: по коду x-brd-error-code или по тексту (на случай, если придёт телом, а не заголовком). */
+export function isDeferredRejection(code: string | null | undefined, text: string | null | undefined = ""): boolean {
+  return (code ?? "").trim().toLowerCase() === DEFERRED_ERROR_CODE || /failed_query_rejected|query recently failed/i.test(text ?? "");
+}
+
+const deferredResult = (why: string, ms: number): UnlockerResult => ({
+  ok: false,
+  kind: "transient",
+  reason: `отложено Bright Data: ${DEFERRED_ERROR_CODE}${why ? ` (${why.replace(/\s+/g, " ").trim().slice(0, 80)})` : ""}`,
+  ms,
+  deferred: true,
+});
 
 const INSTAGRAM_HOSTS = new Set(["www.instagram.com", "instagram.com"]);
 /** Служебные разделы Instagram, которые профилем не являются. */
@@ -134,6 +163,7 @@ export async function unlockerFetch(
   if (!response.ok) {
     const stop = stopFor(response.status, text);
     if (stop) throw stop;
+    if (isDeferredRejection(response.headers.get("x-brd-error-code"), `${response.headers.get("x-brd-error") ?? ""} ${text}`)) return deferredResult(response.headers.get("x-brd-error") ?? text, ms);
     if (response.status === 429 || response.status >= 500 || response.status === 408) return { ok: false, kind: "transient", reason: `Bright Data ответил ${response.status}`, ms };
     return { ok: false, kind: "failed", reason: `Bright Data ответил ${response.status}: ${text.replace(/\s+/g, " ").slice(0, 120)}`, ms };
   }
@@ -145,6 +175,7 @@ export async function unlockerFetch(
     // Деньги и ключ бывают и здесь — тогда прогон стоп.
     const stop = stopFor(0, `${errorCode} ${why}`);
     if (stop && stop.code === "billing") throw stop;
+    if (isDeferredRejection(errorCode, why)) return deferredResult(why, ms);
     return { ok: false, kind: "transient", reason: `сбой страницы: ${errorCode}${why ? ` (${why.slice(0, 80)})` : ""}`, ms };
   }
   if (targetStatus === 404 || targetStatus === 410) return { ok: false, kind: "failed", reason: `страницы нет (${targetStatus})`, ms };
