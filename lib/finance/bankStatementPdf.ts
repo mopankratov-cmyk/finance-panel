@@ -125,6 +125,13 @@ export function recognizeSberStatementText(text: string, documentHash: string): 
   },documentHash);
 }
 
+// Предупреждения о несведении чисел. По ним отбирается лучшая из моделей
+// «Пользы», поэтому запись и отбор используют ОДНУ константу — иначе текст и
+// фильтр разъезжаются (была мёртвая regex-проверка `/контрольн.*сумм/i`, которая
+// не матчила ни одно реальное предупреждение, и отбор по сверке не работал).
+export const CONTROL_SUM_MISMATCH = "Суммы распознанных операций не совпали с контрольными итогами банка";
+export const HEADER_BALANCE_MISMATCH = "Начальный остаток, обороты и конечный остаток в распознанной шапке не сходятся";
+
 export function normalizeStatement(raw: RawStatement, documentHash: string): BankStatement {
   const parsedRows = (raw.rows ?? []).flatMap((row) => {
     const date = normalizeDate(row.date);
@@ -162,8 +169,8 @@ export function normalizeStatement(raw: RawStatement, documentHash: string): Ban
   const debit = parsedRows.reduce((sum, row) => sum + Math.max(0, -row.amount), 0);
   const credit = parsedRows.reduce((sum, row) => sum + Math.max(0, row.amount), 0);
   const controlMismatch = hasDeclaredTotals && !totalsMatch(debit, credit);
-  if (controlMismatch) warnings.push("Суммы распознанных операций не совпали с контрольными итогами банка");
-  if (hasBothBalances && hasDeclaredTotals && !declaredBalancesReconcile) warnings.push("Начальный остаток, обороты и конечный остаток в распознанной шапке не сходятся");
+  if (controlMismatch) warnings.push(CONTROL_SUM_MISMATCH);
+  if (hasBothBalances && hasDeclaredTotals && !declaredBalancesReconcile) warnings.push(HEADER_BALANCE_MISMATCH);
   const fingerprintOccurrences = new Map<string, number>();
   const rows = parsedRows.map((row) => {
     const fingerprint = createHash("sha256")
@@ -222,8 +229,8 @@ export async function recognizeBankStatementPdf(pdf: Buffer, fileName: string): 
   if(local)return local;
   if (!polzaConfigured()) throw new PdfRecognitionError("Распознавание PDF не подключено: отсутствует ключ POLZA_API_KEY", false);
   // Главная и резервная модели «Пользы» одновременно; выбираем результат с
-  // наименьшим расхождением по контрольным суммам, при равенстве — больше строк,
-  // затем предпочитаем главную модель.
+  // наименьшим числом несведений (контрольная сумма и шапка), при равенстве —
+  // больше строк, затем предпочитаем главную модель.
   const models = Array.from(new Set([POLZA_FINANCE_MODEL, POLZA_FINANCE_FALLBACK_MODEL].filter(Boolean)));
   const providers = models.map((model) => ({ name: model, promise: withPolza(pdf, fileName, model) }));
   const settled = await Promise.allSettled(providers.map((provider) => provider.promise));
@@ -238,11 +245,11 @@ export async function recognizeBankStatementPdf(pdf: Buffer, fileName: string): 
       ? "«Польза» не успела обработать PDF. Повторите загрузку; если банк даёт XLSX, используйте его — он разбирается детерминированно и точнее."
       : "Не удалось распознать PDF моделями «Пользы»", timedOut);
   }
-  const mismatch = (candidate: BankStatement) => candidate.warnings.filter((warning) => /контрольн.*сумм/i.test(warning)).length;
-  successful.sort((left, right) => mismatch(left.statement) - mismatch(right.statement)
+  const reconIssues = (candidate: BankStatement) => candidate.warnings.filter((w) => w === CONTROL_SUM_MISMATCH || w === HEADER_BALANCE_MISMATCH).length;
+  successful.sort((left, right) => reconIssues(left.statement) - reconIssues(right.statement)
     || right.statement.rows.length - left.statement.rows.length
     || (left.name === POLZA_FINANCE_MODEL ? -1 : right.name === POLZA_FINANCE_MODEL ? 1 : 0));
   const selected = successful[0];
-  console.info(`Bank statement model selected: ${selected.name}; rows=${selected.statement.rows.length}; controlWarnings=${mismatch(selected.statement)}`);
+  console.info(`Bank statement model selected: ${selected.name}; rows=${selected.statement.rows.length}; reconIssues=${reconIssues(selected.statement)}`);
   return selected.statement;
 }
