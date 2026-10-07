@@ -5,10 +5,11 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { ENGINE_KIND, ENGINE_KIND_LABEL, isEngineKind } from "../lib/assortment/engineBudget.ts";
 import { China1688Error } from "../lib/assortment/china1688.ts";
-import { cha88Payload, readSupplierStream, type FactoryCallers } from "../lib/assortment/factories1688.ts";
+import { cha88Payload, makeFactoryCallers, readSupplierStream, type FactoryCallers } from "../lib/assortment/factories1688.ts";
 import {
-  cacheable, candidateRelay, composeQuery, FACTORY_CALLS_PER_SEARCH, FACTORY_DAILY_CALLS, FACTORY_QUERY_PROMPT, FACTORY_UNVERIFIED_NOTE, FACTORY_USAGE_KIND, factoryCapRefusal,
-  factoryQueryKey, factoryTranslatorFromEnv, normalizeQueryZh, NO_USAGE_WORDS, runCompanyRisk, runCompanySearch, runFactorySearch, translateFactoryQuery,
+  cacheable, CANDIDATE_TOKEN_TTL_MS, candidateRelay, composeQuery, FACTORY_CALLS_PER_SEARCH, FACTORY_DAILY_CALLS, FACTORY_QUERY_PROMPT, FACTORY_UNVERIFIED_NOTE, FACTORY_USAGE_KIND,
+  factoryCapRefusal, factoryQueryKey, factorySellerKey, factoryTranslatorFromEnv, normalizeQueryZh, NO_USAGE_WORDS, runCompanyRisk, runCompanySearch, runFactorySearch,
+  translateFactoryQuery, UNVERIFIED_CANDIDATE_WORDS, type CheckedCandidate,
 } from "../lib/assortment/factorySearch.ts";
 import {
   addToShortlist, canEditFactories, checklistValue, contactProblem, factoriesTab, FACTORY_CHECKLIST, FACTORY_EDIT_ROLES, FACTORY_MIGRATION_WORDS, FACTORY_STATUSES, loadShortlist,
@@ -79,6 +80,17 @@ function violates(table: string, row: Row): string | null {
 }
 
 const KEYS: Record<string, string[]> = { assortment_ai_usage: ["day", "kind"], assortment_cn_factory: ["factory_key"], assortment_cn_factory_search: ["id"] };
+/** Уникальные индексы миграции сверх ключа: «Фабрика N» — одна на шорт-лист (partial unique: null не считается). Имя — как у Postgres. */
+const UNIQUE: Record<string, Array<{ column: string; name: string }>> = {
+  assortment_cn_factory: [{ column: "factory_key", name: "assortment_cn_factory_factory_key_key" }, { column: "pseudonym", name: "assortment_cn_factory_pseudonym_uidx" }],
+};
+function duplicate(table: string, rows: Row[], row: Row, self: Row | null = null): { code: string; message: string } | null {
+  for (const u of UNIQUE[table] ?? []) {
+    if (row[u.column] == null) continue;
+    if (rows.some((r) => r !== self && r[u.column] === row[u.column])) return { code: "23505", message: `duplicate key value violates unique constraint "${u.name}"` };
+  }
+  return null;
+}
 
 interface FakeInit {
   tables?: Record<string, Row[]>;
@@ -115,6 +127,7 @@ function fakeDb(init: FakeInit = {}) {
     gte(c: string, v: unknown) { this.filters.push((r) => r[c] != null && String(r[c]) >= String(v)); return this; }
     lt(c: string, v: unknown) { this.filters.push((r) => r[c] != null && String(r[c]) < String(v)); return this; }
     in(c: string, vs: unknown[]) { this.filters.push((r) => vs.includes(r[c])); return this; }
+    overlaps(c: string, vs: unknown[]) { this.filters.push((r) => Array.isArray(r[c]) && (r[c] as unknown[]).some((v) => vs.includes(v))); return this; }
     is(c: string, v: unknown) { this.filters.push((r) => (r[c] ?? null) === v); return this; }
     not(c: string, operator: string, v: unknown) {
       if (operator !== "is" || v !== null) throw new Error(`подставка: not(${operator})`);
@@ -147,6 +160,11 @@ function fakeDb(init: FakeInit = {}) {
         if (v) return { data: null, error: { code: "23514", message: `check: ${v}` } };
         const k = KEYS[table];
         if (k && (tables[table] ?? []).some((r) => k.every((c) => r[c] === this.values[c]))) return { data: null, error: { code: "23505", message: "duplicate key" } };
+        const dup = duplicate(table, tables[table] ?? [], this.values);
+        if (dup) {
+          log.push({ table, op: "insert-rejected" });
+          return { data: null, error: dup };
+        }
         (tables[table] ??= []).push(structuredClone(this.values));
         log.push({ table, op: "insert" });
         return { data: null, error: null };
@@ -158,6 +176,8 @@ function fakeDb(init: FakeInit = {}) {
         for (const r of hit) {
           const v = violates(table, { ...r, ...this.values });
           if (v) return { data: null, error: { code: "23514", message: `check: ${v}` } };
+          const dup = duplicate(table, tables[table] ?? [], { ...r, ...this.values }, r);
+          if (dup) return { data: null, error: dup };
         }
         for (const r of hit) Object.assign(r, structuredClone(this.values));
         log.push({ table, op: "update" });
@@ -186,7 +206,7 @@ function fakeDb(init: FakeInit = {}) {
 
 type Fail = Partial<Record<keyof FactoryCallers, Error>>;
 
-function fakeCallers(fail: Fail = {}) {
+function fakeCallers(fail: Fail = {}, over: { products?: unknown } = {}) {
   const served: Array<{ skill: keyof FactoryCallers; arg: string }> = [];
   const run = async <T,>(skill: keyof FactoryCallers, arg: string, value: () => T): Promise<T> => {
     served.push({ skill, arg });
@@ -195,7 +215,7 @@ function fakeCallers(fail: Fail = {}) {
   };
   const callers: FactoryCallers = {
     suppliers: (q) => run("suppliers", q, () => readSupplierStream(text("source-suppliers-single-json.txt"))),
-    products: (q) => run("products", q, () => PRODUCTS),
+    products: (q) => run("products", q, () => over.products ?? PRODUCTS),
     companySearch: (n) => run("companySearch", n, () => cha88Payload(text("cha88-company-search.json"))),
     companyRisk: (c) => run("companyRisk", c, () => cha88Payload(text("cha88-company-risk.json"))),
   };
@@ -206,6 +226,10 @@ const usage = (tables: Record<string, Row[]>, kind: string = FACTORY_USAGE_KIND)
 const usageRow = (calls: number, kind: string = FACTORY_USAGE_KIND): Row => ({ day: TODAY, kind, calls, failed_calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, updated_at: "2026-10-07T08:00:00Z" });
 const deps = (callers: FactoryCallers, over: Record<string, unknown> = {}) => ({ env: ENV, callers, clock: () => NOW, ...over });
 const SEARCH = { queryZh: "女包 工厂", queryRu: "женские сумки фабрика", cluster: "shiling" as const, who: WHO };
+/** Выдача товаров без части карточек — «тот же продавец, другой запрос». */
+const productsWithout = (...offerIds: string[]) => ({ ...(PRODUCTS as Record<string, unknown>), data: ((PRODUCTS as { data: Array<{ itemId: unknown }> }).data).filter((r) => !offerIds.includes(String(r.itemId))) });
+/** Кандидат 88查, как экран передаёт его на шаг «риски»: факты и подпись сервера (плюс то, что сервер не принимает, — имя). */
+const relay = (c: CheckedCandidate, over: Record<string, unknown> = {}) => ({ status: c.status, establishedOn: c.establishedOn, entType: c.entType, regCapText: c.regCapText, area: c.area, token: c.token, ...over });
 
 // ---------------------------------------------------------------------------
 // Поиск
@@ -315,16 +339,46 @@ test("дневной потолок: два запроса поиска долж
   assert.equal(factoryCapRefusal(null, 2), NO_USAGE_WORDS);
 });
 
-test("поиск поставщиков недоступен ключу — продавцы из выдачи товаров всё равно показаны, причина словами; такой ответ кэшируется", async () => {
-  const { db, tables } = fakeDb();
-  const f = fakeCallers({ suppliers: new China1688Error("1688: параметры запроса не приняты (APIUnsupported)", "param", "APIUnsupported") });
-  const r = await runFactorySearch(db, SEARCH, deps(f.callers));
-  assert.equal(r.ok, true);
-  assert.deepEqual(r.sources.suppliers, { status: "unavailable", reason: "этот навык 1688 нашим ключом недоступен", count: null });
-  assert.equal(r.factories.length, 0);
-  assert.equal(r.sellers.length, 6, "все продавцы — блоком «Продавцы из выдачи товаров»");
-  assert.deepEqual(usage(tables).map((u) => [u.calls, u.failed_calls]), [[2, 1]], "неудачный запрос — тоже запрос");
-  assert.equal(tables.assortment_cn_factory_search.length, 1);
+test("поиск поставщиков недоступен ключу — продавцы из выдачи товаров всё равно показаны, причина словами; такой ответ НЕ кэшируется: право выдадут — повтор спросит 1688", async () => {
+  for (const error of [new China1688Error("1688: параметры запроса не приняты (APIUnsupported)", "param", "APIUnsupported"), new China1688Error("ключ", "auth", null, 401)]) {
+    const { db, tables } = fakeDb();
+    const f = fakeCallers({ suppliers: error });
+    const r = await runFactorySearch(db, SEARCH, deps(f.callers));
+    assert.equal(r.ok, true);
+    assert.deepEqual(r.sources.suppliers, { status: "unavailable", reason: "этот навык 1688 нашим ключом недоступен", count: null });
+    assert.equal(r.factories.length, 0);
+    assert.equal(r.sellers.length, 6, "все продавцы — блоком «Продавцы из выдачи товаров»");
+    assert.deepEqual(usage(tables).map((u) => [u.calls, u.failed_calls]), [[2, 1]], "неудачный запрос — тоже запрос");
+    assert.ok(r.searchId, "«В шорт-лист» из неполной выдачи — можно");
+    assert.equal(tables.assortment_cn_factory_search.length, 1);
+    assert.notEqual(tables.assortment_cn_factory_search[0].query_key, factoryQueryKey("女包 工厂 狮岭"), "«недоступен» — не под ключом запроса");
+    // Владелец выдал ключу право на навык — через 6 дней тот же запрос идёт в 1688, а не отвечает «недоступен» из кэша.
+    const ok = fakeCallers();
+    const later = await runFactorySearch(db, SEARCH, deps(ok.callers, { clock: () => NOW + 6 * DAY }));
+    assert.equal(later.fromCache, false, `${error.message}: не из кэша`);
+    assert.equal(ok.served.length, 2);
+    assert.equal(later.sources.suppliers.status, "ok");
+    assert.equal(later.factories.length, 5);
+  }
+});
+
+test("ответ поиска поставщиков без success:true — ошибка словами, а не «1688 не нашёл фабрик»; в кэш под ключом запроса не кладётся", async () => {
+  const route = (suppliersBody: string) => (async (url: string) => {
+    const body = url.startsWith("https://skills-gateway.1688.com/") ? suppliersBody : JSON.stringify({ success: true, data: PRODUCTS });
+    return { status: 200, ok: true, text: async () => body, json: async () => JSON.parse(body) } as Response;
+  }) as unknown as typeof fetch;
+  for (const [body, status, reason] of [
+    [text("source-suppliers-no-success.txt"), "unavailable", "этот навык 1688 нашим ключом недоступен"],
+    ['{"result":{"items":[]}}', "error", "1688: ответ поиска поставщиков без признака успеха"],
+    ['data: {"message":"busy"}\n\n', "error", "1688: ответ поиска поставщиков без признака успеха"],
+  ] as const) {
+    const { db, tables } = fakeDb();
+    const r = await runFactorySearch(db, SEARCH, deps(makeFactoryCallers({ env: ENV, fetchImpl: route(body) })));
+    assert.deepEqual([r.sources.suppliers.status, r.sources.suppliers.reason], [status, reason], body);
+    assert.equal(r.sources.products.status, "ok");
+    assert.deepEqual(usage(tables).map((u) => [u.calls, u.failed_calls]), [[2, 1]], `${body}: неудачный запрос`);
+    assert.ok(tables.assortment_cn_factory_search.every((row) => row.query_key !== factoryQueryKey("女包 工厂 狮岭")), `${body}: не в кэш на неделю`);
+  }
 });
 
 test("лимит 1688 (429 / Qos) — не повторяем и не кэшируем; оба источника не ответили — поиск не состоялся, в кэше пусто", async () => {
@@ -341,8 +395,9 @@ test("лимит 1688 (429 / Qos) — не повторяем и не кэшир
   const retry = await runFactorySearch(db, SEARCH, deps(limited.callers));
   assert.equal(retry.fromCache, false, "лимит — не кэшируем: повтор спросит 1688 снова");
   assert.equal(limited.served.length, 4);
-  assert.equal(cacheable({ suppliers: { status: "unavailable", reason: null, count: null }, products: { status: "ok", reason: null, count: 1 } }), true);
+  assert.equal(cacheable({ suppliers: { status: "unavailable", reason: null, count: null }, products: { status: "ok", reason: null, count: 1 } }), false, "«недоступен» — не кэшируем");
   assert.equal(cacheable({ suppliers: { status: "error", reason: null, count: null }, products: { status: "ok", reason: null, count: 1 } }), false);
+  assert.equal(cacheable({ suppliers: { status: "ok", reason: null, count: 0 }, products: { status: "ok", reason: null, count: 1 } }), true, "оба ответили — кэшируем");
 
   const both = fakeCallers({ suppliers: new China1688Error("k", "auth"), products: new China1688Error("k", "auth") });
   const { db: db2, tables: t2 } = fakeDb();
@@ -374,13 +429,26 @@ test("перевод запроса: Polza по вопросу «с русско
   const { db, tables } = fakeDb();
   const t = fakeTranslator();
   const r = await translateFactoryQuery(db, "тоут, вельвет", { translator: t.setup, env: ENV, clock: () => NOW });
-  assert.deepEqual(r, { queryZh: "女包 托特包 灯芯绒", reason: null, costUsd: 0.00002 });
+  assert.deepEqual(r, { queryZh: "女包 托特包 灯芯绒", draftZh: null, reason: null, costUsd: 0.00002 });
   assert.deepEqual(t.asked, [["тоут, вельвет"]]);
   assert.deepEqual(usage(tables, ENGINE_KIND.cnTranslate).map((u) => [u.calls, u.cost_usd]), [[1, 0.00002]]);
   assert.match(FACTORY_QUERY_PROMPT, /с русского на китайский/);
   const bad = await translateFactoryQuery(db, "тоут", { translator: fakeTranslator("tote bag").setup, env: ENV, clock: () => NOW });
   assert.equal(bad.queryZh, null);
+  assert.equal(bad.draftZh, null);
   assert.match(String(bad.reason), /напишите запрос по-китайски/);
+});
+
+test("перевод длиннее 60 знаков оплачен — отдаётся для правки с просьбой сократить, а не выбрасывается", async () => {
+  const { db, tables } = fakeDb();
+  const long = "女".repeat(61);
+  const r = await translateFactoryQuery(db, "очень длинный запрос", { translator: fakeTranslator(long).setup, env: ENV, clock: () => NOW });
+  assert.equal(r.queryZh, null, "искать по нему нельзя — 1688 получит до 60 знаков");
+  assert.equal(r.draftZh, long);
+  assert.match(String(r.reason), /длиннее 60 знаков \(61\) — сократите/);
+  assert.equal(r.costUsd, 0.00002);
+  assert.deepEqual(usage(tables, ENGINE_KIND.cnTranslate).map((u) => u.calls), [1]);
+  assert.match(FACTORY_QUERY_PROMPT, /не длиннее 60 знаков/);
 });
 
 test("перевод уходит в Polza с вопросом «с русского на китайский» (а не вопросом трендов) и тем же форматом ответа; ключ Polza — только в заголовке", async () => {
@@ -453,11 +521,15 @@ test("88查, риски: код из 18 знаков; ИП — отказ без
 
   const search = await runFactorySearch(db, SEARCH, deps(f.callers));
   const added = await addToShortlist(db, { searchId: search.searchId as string, key: search.factories[0].key as string, who: WHO, nowMs: NOW });
-  const candidate = { status: "存续（在营、开业、在册）", establishedOn: "2016-05-20", entType: "有限责任公司(自然人投资或控股)", regCapText: "500万 (人民币)", area: "广东省广州市花都区", name: "张测试" };
-  const r = await runCompanyRisk(db, { creditCode: "91440114MA59ABCD1X", candidate, factoryId: added.item.id, who: WHO }, deps(f.callers, { clock: () => NOW + 1000 }));
+  const found = await runCompanySearch(db, { name: "广州市花都区狮岭镇明辉皮具有限公司", who: WHO }, deps(f.callers));
+  const picked = found.candidates[0];
+  assert.match(String(picked.token), /^\d{13}\.[A-Za-z0-9_-]{43}$/, "кандидат юрлица — с подписью сервера");
+  assert.equal(found.candidates.find((c) => c.entity === "individual")?.token, null, "у ИП подписи нет — риски по нему не проверяются");
+  const r = await runCompanyRisk(db, { creditCode: "91440114MA59ABCD1X", candidate: relay(picked, { name: "张测试" }), factoryId: added.item.id, who: WHO }, deps(f.callers, { clock: () => NOW + 1000 }));
   assert.equal(r.ok, true);
   assert.equal(r.calls, 1);
   assert.deepEqual(r.facts?.flags.map((x) => x.key), ["registry_dishonest", "registry_abnormal"]);
+  assert.equal(r.facts?.status, "存续（在营、开业、在册）", "статус — тот, что сервер получил от 88查");
   assert.equal(r.savedTo, added.item.id);
   const row = tables.assortment_cn_factory[0];
   assert.equal(row.credit_code, "91440114MA59ABCD1X", "у юрлица код сохраняется");
@@ -467,7 +539,47 @@ test("88查, риски: код из 18 знаков; ИП — отказ без
   assert.equal((row.registry as { checkedBy: string }).checkedBy, WHO);
   assert.equal(candidateRelay({ entType: "个体工商户" })?.entity, "individual", "вид лица — по типу реестра, не со слов экрана");
   assert.equal(candidateRelay({ status: "注销", entity: "company" })?.active, false);
-  assert.equal(usage(tables)[0].calls, 3, "поиск (2) + риски (1)");
+  assert.equal(usage(tables)[0].calls, 4, "поиск (2) + 88查: поиск (1) и риски (1)");
+});
+
+test("88查, риски: факты «Р» — только с подписью сервера: без неё, с подменённым статусом, чужим кодом или старше часа — отказ без запроса к 1688", async () => {
+  const { db, tables } = fakeDb();
+  const f = fakeCallers();
+  const found = await runCompanySearch(db, { name: "广州市花都区狮岭镇明辉皮具有限公司", who: WHO }, deps(f.callers));
+  const picked = found.candidates[0];
+  const namesake = found.candidates[1];
+  const code = picked.creditCode as string;
+  const refusedCases: Array<[string, Record<string, unknown>, unknown]> = [
+    ["без подписи", { creditCode: code, candidate: relay(picked, { token: undefined }) }, NOW],
+    ["без кандидата", { creditCode: code }, NOW],
+    ["ликвидированную выдали за действующую", { creditCode: code, candidate: relay(picked, { status: "存续" }) }, NOW],
+    ["капитал подменён", { creditCode: code, candidate: relay(picked, { regCapText: "5000万" }) }, NOW],
+    ["подпись тёзки к чужому коду", { creditCode: code, candidate: relay(namesake) }, NOW],
+    ["старая вкладка (дольше часа)", { creditCode: code, candidate: relay(picked) }, NOW + CANDIDATE_TOKEN_TTL_MS + 1],
+  ];
+  for (const [what, input, at] of refusedCases) {
+    const r = await runCompanyRisk(db, { ...input, who: WHO } as Parameters<typeof runCompanyRisk>[1], deps(f.callers, { clock: () => at }));
+    assert.deepEqual([r.ok, r.refused, r.reason], [false, "unverified", UNVERIFIED_CANDIDATE_WORDS], what);
+  }
+  assert.deepEqual(f.served.map((s) => s.skill), ["companySearch"], "риски по неподтверждённому кандидату 1688 не спрашивали");
+  assert.equal(usage(tables)[0].calls, 1);
+  const ok = await runCompanyRisk(db, { creditCode: code, candidate: relay(picked), who: WHO }, deps(f.callers, { clock: () => NOW + CANDIDATE_TOKEN_TTL_MS - 1000 }));
+  assert.equal(ok.ok, true, "в пределах часа — проверка идёт");
+  const otherKey = await runCompanyRisk(db, { creditCode: code, candidate: relay(picked), who: WHO }, deps(f.callers, { env: { ALI_1688_AK: Buffer.from(`${"Q".repeat(32)}otherkeyid0000001`, "utf8").toString("base64url") } }));
+  assert.equal(otherKey.refused, "unverified", "подпись — секретом сервера: другой ключ её не примет");
+});
+
+test("88查, риски: дневной потолок проверяется и на шаге «риски» — при 60 из 60 запроса нет", async () => {
+  const { db, tables } = fakeDb({ tables: { assortment_ai_usage: [usageRow(FACTORY_DAILY_CALLS - 1)] } });
+  const f = fakeCallers();
+  const found = await runCompanySearch(db, { name: "广州市花都区狮岭镇明辉皮具有限公司", who: WHO }, deps(f.callers));
+  assert.equal(found.ok, true);
+  assert.equal(found.callsToday, FACTORY_DAILY_CALLS);
+  const r = await runCompanyRisk(db, { creditCode: found.candidates[0].creditCode, candidate: relay(found.candidates[0]), who: WHO }, deps(f.callers));
+  assert.deepEqual([r.ok, r.refused], [false, "daily_cap"]);
+  assert.match(String(r.reason), /60 из 60/);
+  assert.deepEqual(f.served.map((s) => s.skill), ["companySearch"]);
+  assert.equal(usage(tables)[0].calls, FACTORY_DAILY_CALLS);
 });
 
 test("реестр сказал «ИП» — запись шорт-листа становится ИП: название и код стираются, остаётся псевдоним", async () => {
@@ -600,6 +712,141 @@ test("шорт-лист читается целиком листанием (бо
   const list = await loadShortlist(db);
   assert.equal(list.items.length, 1005);
   assert.equal(list.items[1004].displayName, "Фабрика 1005");
+});
+
+test("один продавец из разных поисков — одна запись шорт-листа: ИП с разными карточками в выдаче — тот же псевдоним; юрлицо из поиска поставщиков и из выдачи товаров — тот же ключ", async () => {
+  const { db, tables } = fakeDb();
+  const sellerKey = factorySellerKey(ENV);
+  const first = await runFactorySearch(db, SEARCH, deps(fakeCallers({}, { products: productsWithout("923330629237") }).callers));
+  const second = await runFactorySearch(db, { ...SEARCH, queryZh: "女包 批发", cluster: null },
+    deps(fakeCallers({ suppliers: new China1688Error("k", "param", "APIUnsupported") }, { products: productsWithout("925926365867") }).callers));
+  const ipOf = (r: typeof first) => r.sellers.find((c) => c.offers.some((o) => ["925926365867", "923330629237"].includes(o.offerId))) as FactoryCard;
+  const a = ipOf(first);
+  const b = ipOf(second);
+  assert.deepEqual([a.offers.map((o) => o.offerId), b.offers.map((o) => o.offerId)], [["925926365867"], ["923330629237"]], "в выдачах — разные карточки продавца");
+  assert.equal(a.key, b.key, "ключ продавца не зависит от карточек в выдаче");
+  assert.equal(a.key, sellerKey?.("陈测试"), "ключ — псевдоним-HMAC нормализованного названия");
+  assert.ok(!String(a.key).includes("陈测试"));
+  const one = await addToShortlist(db, { searchId: first.searchId as string, key: a.key as string, who: WHO, nowMs: NOW });
+  const two = await addToShortlist(db, { searchId: second.searchId as string, key: b.key as string, who: "director@example.test", nowMs: NOW + 1 });
+  assert.deepEqual([one.created, two.created, two.item.id, two.item.displayName], [true, false, one.item.id, "Фабрика 1"]);
+
+  const mhFactory = first.factories.find((c) => c.name === "广州市花都区狮岭镇明辉皮具有限公司") as FactoryCard;
+  const mhSeller = second.sellers.find((c) => c.name === "广州市花都区狮岭镇明辉皮具有限公司") as FactoryCard;
+  assert.deepEqual([mhFactory.origin, mhSeller.origin], ["both", "products"]);
+  assert.equal(mhFactory.key, mhSeller.key, "юрлицо — по названию, откуда бы ни пришло");
+  assert.equal(mhFactory.key, "name:广州市花都区狮岭镇明辉皮具有限公司");
+  const c1 = await addToShortlist(db, { searchId: first.searchId as string, key: mhFactory.key as string, who: WHO, nowMs: NOW });
+  const c2 = await addToShortlist(db, { searchId: second.searchId as string, key: mhSeller.key as string, who: WHO, nowMs: NOW });
+  assert.deepEqual([c1.created, c2.created, c2.item.id], [true, false, c1.item.id]);
+  assert.equal(c1.item.shopUrl, "https://sale.1688.com/factory/card.html?memberId=b2b-0000000001", "ссылка на магазин — отдельно от ключа");
+  assert.equal(tables.assortment_cn_factory.length, 2);
+});
+
+test("отклонённая фабрика, найденная снова, — та же запись со статусом и причиной, а не «новая»; под прежним ключом — узнаётся по общей карточке 1688", async () => {
+  const { db, tables } = fakeDb();
+  const first = await runFactorySearch(db, SEARCH, deps(fakeCallers().callers));
+  const ip = first.sellers.find((c) => c.offers.some((o) => o.offerId === "925926365867")) as FactoryCard;
+  const { item } = await addToShortlist(db, { searchId: first.searchId as string, key: ip.key as string, who: WHO, nowMs: NOW });
+  await patchShortlist(db, { id: item.id, patch: { status: "rejected", reason: "перепродавец" }, who: WHO, nowMs: NOW + 10 });
+  const again = await runFactorySearch(db, { ...SEARCH, queryZh: "女包 批发", cluster: null }, deps(fakeCallers({}, { products: productsWithout("925926365867") }).callers, { clock: () => NOW + DAY }));
+  const same = again.sellers.find((c) => c.offers.some((o) => o.offerId === "923330629237")) as FactoryCard;
+  const back = await addToShortlist(db, { searchId: again.searchId as string, key: same.key as string, who: WHO, nowMs: NOW + DAY });
+  assert.deepEqual([back.created, back.item.id, back.item.status, back.item.rejectReason], [false, item.id, "rejected", "перепродавец"]);
+  // Запись под другим ключом (например, ключ 1688 сменили), но с той же карточкой — это тот же продавец.
+  tables.assortment_cn_factory[0].factory_key = `ps:${"0".repeat(64)}`;
+  const byOffer = await addToShortlist(db, { searchId: first.searchId as string, key: ip.key as string, who: WHO, nowMs: NOW + 2 });
+  assert.deepEqual([byOffer.created, byOffer.item.id], [false, item.id]);
+  assert.equal(tables.assortment_cn_factory.length, 1);
+});
+
+test("псевдоним «Фабрика N» не достаётся двоим: два одновременных «В шорт-лист» разных ИП — разные номера (уникальный индекс и повтор)", async () => {
+  const { db, tables, log, search, card } = await withSearch();
+  const [a, b] = await Promise.all([
+    addToShortlist(db, { searchId: search.searchId as string, key: card("Фабрика 6").key as string, who: WHO, nowMs: NOW }),
+    addToShortlist(db, { searchId: search.searchId as string, key: card("Фабрика 4").key as string, who: "director@example.test", nowMs: NOW }),
+  ]);
+  assert.deepEqual([a.created, b.created], [true, true]);
+  assert.deepEqual([a.item.pseudonym, b.item.pseudonym].sort(), ["Фабрика 1", "Фабрика 2"]);
+  assert.ok(log.some((l) => l.op === "insert-rejected"), "гонка была: второй получил отказ индекса и взял следующий номер");
+  assert.equal(new Set(tables.assortment_cn_factory.map((r) => r.pseudonym)).size, 2);
+  assert.match(sql, /create unique index if not exists assortment_cn_factory_pseudonym_uidx\s+on public\.assortment_cn_factory \(pseudonym\) where pseudonym is not null;/);
+});
+
+test("кредитный код пишется только юрлицу: у неясного (…厂) и ИП — нет, даже если 88查 назвал его юрлицом", async () => {
+  const { db, tables, search, card } = await withSearch();
+  const unknown = card("Фабрика 2");
+  assert.equal(unknown.entity, "unknown");
+  const { item } = await addToShortlist(db, { searchId: search.searchId as string, key: unknown.key as string, who: WHO, nowMs: NOW });
+  const facts = { checkedOn: TODAY, entity: "company" as const, status: "存续", active: true, establishedOn: null, ageYears: null, entType: "有限责任公司", regCapText: null, area: null, risks: null, indicators: [], flags: [] };
+  assert.deepEqual(await saveRegistryCheck(db, { id: item.id, creditCode: "91440114MA59ABCD1X", who: WHO, nowMs: NOW + 1, facts }), { saved: true, reason: null });
+  const row = tables.assortment_cn_factory[0];
+  assert.deepEqual([row.entity, row.credit_code, row.pseudonym], ["unknown", null, "Фабрика 1"]);
+});
+
+test("реестр сказал «ИП» у записи-юрлица — название уходит и из ключа: name:<название> заменяется псевдонимом-HMAC", async () => {
+  const { db, tables, search, card } = await withSearch();
+  const company = card("东莞市鑫源皮具有限公司");
+  const { item } = await addToShortlist(db, { searchId: search.searchId as string, key: company.key as string, who: WHO, nowMs: NOW });
+  assert.equal(tables.assortment_cn_factory[0].factory_key, "name:东莞市鑫源皮具有限公司");
+  const facts = { checkedOn: TODAY, entity: "individual" as const, status: "存续", active: true, establishedOn: null, ageYears: null, entType: "个体工商户", regCapText: null, area: null, risks: null, indicators: [], flags: [] };
+  const sellerKey = factorySellerKey(ENV);
+  assert.deepEqual(await saveRegistryCheck(db, { id: item.id, creditCode: null, who: WHO, nowMs: NOW + 1, facts, sellerKey }), { saved: true, reason: null });
+  const row = tables.assortment_cn_factory[0];
+  assert.equal(row.factory_key, sellerKey?.("东莞市鑫源皮具有限公司"));
+  assert.ok(!JSON.stringify(row).includes("东莞市鑫源皮具有限公司"), "название ИП не осталось ни в одной колонке");
+});
+
+test("просроченные выдачи стираются в начале каждого поиска — и при попадании в кэш, и при отказе по потолку; вкладка тоже стирает", async () => {
+  const stale = (id: string): Row => ({
+    id, direction: "bags", query_key: "a".repeat(64), query_zh: "旧", query_ru: null, cluster_key: null, result: { factories: [], sellers: [], sources: {} }, calls: 2,
+    created_by: WHO, created_at: new Date(NOW - 9 * DAY).toISOString(), expires_at: new Date(NOW - 2 * DAY).toISOString(),
+  });
+  const { db, tables } = fakeDb();
+  const f = fakeCallers();
+  const first = await runFactorySearch(db, SEARCH, deps(f.callers));
+  tables.assortment_cn_factory_search.push(stale("00000000-0000-4000-8000-0000000000aa"));
+  const hit = await runFactorySearch(db, SEARCH, deps(f.callers, { clock: () => NOW + DAY }));
+  assert.equal(hit.fromCache, true);
+  assert.deepEqual(tables.assortment_cn_factory_search.map((r) => r.id), [first.searchId], "попадание в кэш стёрло чужую просроченную выдачу");
+
+  const capped = fakeDb({ tables: { assortment_ai_usage: [usageRow(FACTORY_DAILY_CALLS)], assortment_cn_factory_search: [stale("00000000-0000-4000-8000-0000000000bb")] } });
+  const refused = await runFactorySearch(capped.db, SEARCH, deps(fakeCallers().callers));
+  assert.equal(refused.refused, "daily_cap");
+  assert.deepEqual(capped.tables.assortment_cn_factory_search, [], "отказ по потолку — тоже уборка");
+
+  const route = read(`${ROUTES}/shortlist/route.ts`);
+  const get = route.slice(route.indexOf("export async function GET("), route.indexOf("export async function POST("));
+  assert.ok(get.indexOf("purgeExpiredSearches(db") > 0 && get.indexOf("purgeExpiredSearches(db") < get.indexOf("loadShortlist(db)"), "открытие вкладки стирает просроченные выдачи");
+});
+
+test("дневной потолок держится и при параллельных поисках: при 58 из 60 два одновременных поиска делают два запроса, а не четыре", async () => {
+  const { db, tables } = fakeDb({ tables: { assortment_ai_usage: [usageRow(FACTORY_DAILY_CALLS - 2)] } });
+  const f = fakeCallers();
+  const results = await Promise.all([
+    runFactorySearch(db, SEARCH, deps(f.callers)),
+    runFactorySearch(db, { ...SEARCH, queryZh: "女包 批发", cluster: null }, deps(f.callers)),
+  ]);
+  assert.deepEqual(results.map((r) => r.ok).sort(), [false, true]);
+  assert.equal(results.find((r) => !r.ok)?.refused, "daily_cap");
+  assert.equal(f.served.length, 2, "к 1688 — ровно два запроса");
+  assert.equal(usage(tables)[0].calls, FACTORY_DAILY_CALLS);
+});
+
+test("заметка: номер карточки 1688, трек-номер образца и партия — не телефон; телефоны КНР и РФ — отказ", async () => {
+  for (const ok of ["образец заказан по карточке 975160314318", "трек SF1234567890123", "трек 773012345678901", "партия 1000 2000 3000 шт", "offer 1049007222156, 966297601427", "заказ №1234567890123"]) {
+    assert.equal(contactProblem(ok), null, ok);
+  }
+  // 11 цифр с 7 или 8 похожи на номер РФ — но после «карточка / артикул / заказ / трек» это номер карточки или посылки, а не телефон.
+  for (const ok of ["карточка 78123456789", "артикул: 81234567890", "трек № 79001234567"]) assert.equal(contactProblem(ok), null, ok);
+  assert.equal(contactProblem("тел 78123456789"), "похоже на номер телефона", "то же число без такого слова — телефон");
+  for (const phone of ["13800000000", "+86 138 0000 0000", "86-139-1234-5678", "8 (999) 123-45-67", "+7 999 123 45 67", "020-8888-8888", "партия 300 13912345678"]) {
+    assert.equal(contactProblem(phone), "похоже на номер телефона", phone);
+  }
+  const { db, search, card } = await withSearch();
+  const { item } = await addToShortlist(db, { searchId: search.searchId as string, key: card("东莞市鑫源皮具有限公司").key as string, who: WHO, nowMs: NOW });
+  const noted = await patchShortlist(db, { id: item.id, patch: { status: "sample_ordered", note: "образец заказан по карточке 893598870921, трек SF1234567890123" }, who: WHO, nowMs: NOW + 1 });
+  assert.equal(noted.note, "образец заказан по карточке 893598870921, трек SF1234567890123");
 });
 
 // ---------------------------------------------------------------------------

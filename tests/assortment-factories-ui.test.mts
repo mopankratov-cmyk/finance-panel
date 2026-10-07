@@ -15,11 +15,11 @@ import { CHINA_STOP_WORDS } from "../lib/assortment/china1688.ts";
 import { cha88Payload, FACTORY_WORDS, parseCompanyRisk, parseCompanySearch, parseFactoryProducts, parseSourceSuppliers, readSupplierStream } from "../lib/assortment/factories1688.ts";
 import { buildFactoryResult, FACTORY_SORTS, registryFacts, registryIndicators, sortFactoryCards, type FactoryCard, type FactoryIndicator } from "../lib/assortment/factoryCards.ts";
 import { FACTORY_DISCLAIMER, FACTORY_PRICE_CAPTION, FACTORY_READING_GUIDE, FACTORY_SOURCE_LABEL, FACTORY_WAIT_TEXT, factoryQuestionsText, riskTypeLabel } from "../lib/assortment/factoryGuide.ts";
-import { FACTORY_DAILY_CALLS, FACTORY_UNVERIFIED_NOTE, type CompanySearchResponse, type FactorySearchResponse } from "../lib/assortment/factorySearch.ts";
+import { FACTORY_DAILY_CALLS, FACTORY_UNVERIFIED_NOTE, factorySellerKey, type CompanySearchResponse, type FactorySearchResponse } from "../lib/assortment/factorySearch.ts";
 import { FACTORY_MIGRATION_WORDS, snapshotOf, type ShortlistItem, type ShortlistView, type StoredRegistry } from "../lib/assortment/factoryShortlist.ts";
 import {
   CHECKLIST_VALUES, dateRu, dateTimeRu, FACTORIES_TAB_LABEL, FACTORY_CHECKLIST, FACTORY_READ_ONLY_WORDS, FACTORY_STATUS_LABEL, FACTORY_STATUSES, MAIN_INDICATORS, OWN_PLACE_INDICATORS,
-  priceTiersText, SOURCE_LEGEND, sourceStateLine, splitIndicators, statusEditState,
+  priceTiersText, shortlistMatch, SOURCE_LEGEND, sourceStateLine, splitIndicators, statusEditState,
 } from "../lib/assortment/factoryUi.ts";
 
 /**
@@ -47,7 +47,9 @@ const SCORE_RE = /\d\s*балл|из\s*10\b|из\s*100\b|\/\s*10\b|\/\s*100\b|р
 
 const SUPPLIERS = parseSourceSuppliers(readSupplierStream(text("source-suppliers-single-json.txt")));
 const OFFERS = parseFactoryProducts((JSON.parse(text("find-product-factories-bags.json")) as { data: unknown }).data);
-const RESULT = buildFactoryResult(SUPPLIERS, OFFERS);
+/** Псевдонимы ИП считает сервер (HMAC с секретом); здесь — тот же расчёт с тестовым ключом. */
+const SELLER_KEY = factorySellerKey({ ALI_1688_AK: Buffer.from(`${"T".repeat(32)}testkeyid000000001`, "utf8").toString("base64url") });
+const RESULT = buildFactoryResult(SUPPLIERS, OFFERS, { sellerKey: SELLER_KEY });
 const COMPANY = RESULT.factories[0];
 const IP = RESULT.factories.find((c) => c.entity === "individual") as FactoryCard;
 const UNKNOWN = RESULT.factories.find((c) => c.entity === "unknown") as FactoryCard;
@@ -55,7 +57,9 @@ const UNKNOWN = RESULT.factories.find((c) => c.entity === "unknown") as FactoryC
 const SUPPLIER_ONLY = RESULT.factories.find((c) => c.origin === "suppliers" && c.entity === "company") as FactoryCard;
 const TIERED = [...RESULT.factories, ...RESULT.sellers].find((c) => (c.prices?.tiers.length ?? 0) > 0) as FactoryCard;
 const SEARCH_ID = "11111111-2222-4333-8444-555555555555";
-const CANDIDATES = parseCompanySearch(cha88Payload(text("cha88-company-search.json")));
+const PARSED_CANDIDATES = parseCompanySearch(cha88Payload(text("cha88-company-search.json")));
+/** Кандидаты, как их отдаёт сервер: у юрлиц с кодом — подпись (token), у ИП — нет. */
+const CANDIDATES = { ...PARSED_CANDIDATES, candidates: PARSED_CANDIDATES.candidates.map((c) => ({ ...c, token: c.entity === "company" && c.creditCode ? "1791363600000.test-signature-test-signature-test-signature" : null })) };
 const RISK = parseCompanyRisk(cha88Payload(text("cha88-company-risk.json")));
 const FACTS = registryFacts(CANDIDATES.candidates[0], RISK, "2026-10-07");
 
@@ -113,7 +117,7 @@ const cardHtml = (card: FactoryCard, over: Partial<Parameters<typeof FactoryCard
   card, canEdit: true, searchId: SEARCH_ID, shortlisted: null, adding: false, addError: null, onAdd: noop, onRegistrySaved: noop, ...over,
 }));
 const resultsHtml = (resp: FactorySearchResponse, over: Partial<Parameters<typeof FactoryResults>[0]> = {}) => html(createElement(FactoryResults, {
-  resp, canEdit: true, shortlistAvailable: true, shortlisted: new Map(), onAdd: noop, onRegistrySaved: noop, ...over,
+  resp, canEdit: true, shortlistAvailable: true, shortlisted: [], onAdd: noop, onRegistrySaved: noop, ...over,
 }));
 
 /** Ячейка показателя: подпись и рядом — метка её источника (буква и расшифровка). */
@@ -203,9 +207,22 @@ test("кнопки карточки — только у того, кто мож�
   assert.doesNotMatch(cardHtml(COMPANY, { searchId: null }), />В шорт-лист</, "без кэша поиска (нет миграции) — кнопки нет");
   const done = cardHtml(UNKNOWN, { shortlisted: REJECTED });
   assert.doesNotMatch(done, />В шорт-лист</);
-  assert.match(done, new RegExp(`href="#cn-factory-${REJECTED.id}"[^>]*>В шорт-листе как «Фабрика 1» · Отклонена<`), "псевдоним шорт-листа назван, если он другой");
+  assert.match(done, new RegExp(`href="#cn-factory-${REJECTED.id}"[^>]*>В шорт-листе как «Фабрика 1» · Отклонена: перепродавец: те же фото у десятка магазинов<`),
+    "псевдоним шорт-листа назван, если он другой; у отклонённой — причина");
   assert.match(cardHtml(COMPANY, { adding: true }), /aria-busy="true"[^>]*>Добавляем…</);
   assert.match(flat(cardHtml(COMPANY, { addError: "результат поиска не найден или старше 7 дней — повторите поиск" })), /Результат поиска не найден или старше 7 дней/);
+});
+
+test("уже в шорт-листе — узнаётся и в другой выдаче: по ключу фабрики, а под прежним ключом — по общей карточке 1688; отклонённая — с причиной, а не «В шорт-лист»", () => {
+  const ip = RESULT.sellers.find((c) => c.offers.some((o) => o.offerId === "925926365867")) as FactoryCard;
+  const stored = shortItem(ip, { id: "aaaaaaaa-0000-4000-8000-000000000009", factoryKey: `ps:${"0".repeat(64)}`, status: "rejected", statusLabel: "Отклонена", rejectReason: "перепродавец" });
+  assert.equal(shortlistMatch(ip, [stored]), stored, "другой ключ, та же карточка 1688 — та же запись");
+  assert.equal(shortlistMatch({ ...ip, key: stored.factoryKey, offers: [] }, [stored]), stored, "по ключу");
+  assert.equal(shortlistMatch({ ...ip, offers: [{ offerId: "1" }] }, [stored]), null);
+  const out = resultsHtml(searchResp(), { shortlisted: [stored] });
+  assert.match(out, new RegExp(`href="#cn-factory-${stored.id}"[^>]*>В шорт-листе как «Фабрика 1» · Отклонена: перепродавец<`));
+  const card = out.slice(out.lastIndexOf("<li", out.indexOf(`#cn-factory-${stored.id}`)), out.indexOf("</li>", out.indexOf(`#cn-factory-${stored.id}`)));
+  assert.doesNotMatch(card, />В шорт-лист</, "отклонённую не предлагаем добавить как новую");
 });
 
 // ---------------------------------------------------------------------------
@@ -403,6 +420,16 @@ test("88查 на экране: кандидаты — у ИП ни назван�
   assert.match(reg, /Уставный капитал Р 500万 \(人民币\) легко подогнать — не опора/);
 });
 
+test("88查 на экране: на шаг «риски» уходят факты кандидата вместе с подписью сервера (token) — без неё сервер не проверяет; неполная выдача рисков — жёлтым чипом", () => {
+  const src = read("components/assortment/FactoriesView.tsx");
+  const check = src.slice(src.indexOf("export function CompanyCheck("), src.indexOf("export function CompanyCandidates("));
+  assert.match(check, /candidate: \{ status: candidate\.status, establishedOn: candidate\.establishedOn, entType: candidate\.entType, regCapText: candidate\.regCapText, area: candidate\.area, token: candidate\.token \}/);
+  const page = Array.from({ length: 20 }, () => ({ subType: "被执行人", time: "2025-01-01" }));
+  const partial = registryFacts(CANDIDATES.candidates[0], parseCompanyRisk({ data: { total: 45, riskMap: { 司法风险: page } } }), "2026-10-07");
+  const reg = flat(html(createElement(RegistryView, { indicators: partial.indicators, flags: partial.flags, caption: "проверено 07.10.2026" })));
+  assert.match(reg, /▲ рисков в реестре больше, чем прочитано \(20 из 45\).*проверьте вручную Р/);
+});
+
 test("«Вопросы фабрике»: текст на китайском с русским переводом и кнопка «Скопировать»; отправляет человек сам — экран ничего не шлёт", () => {
   const { zh, ru } = factoryQuestionsText();
   const out = html(createElement(FactoryQuestions));
@@ -438,6 +465,13 @@ test("форма поиска: «Перевести» — когда есть р
   assert.match(zh, /<input lang="zh"[^>]*value="女包 真皮"/, "китайский запрос виден и правится");
   assert.doesNotMatch(html(createElement(FactorySearchForm, { busy: true, onSearch: noop, initial: { queryZh: "女包" } })), /type="submit"/, "пока ищем — второй поиск не запускается");
   assert.doesNotMatch(html(createElement(FactorySearchForm, { busy: false, onSearch: noop, initial: { queryZh: "bag" } })), /type="submit"/, "латиница — не запрос для 1688");
+  // Перевод длиннее 60 знаков оплачен — он в поле для правки; «Найти» — когда сократят.
+  const long = html(createElement(FactorySearchForm, { busy: false, onSearch: noop, initial: { queryZh: "女".repeat(61) } }));
+  assert.doesNotMatch(long, /type="submit"/);
+  assert.match(flat(long), /Запрос для 1688 — до 60 знаков, сейчас 61: сократите — появится «Найти»/);
+  assert.match(long, new RegExp(`<input lang="zh"[^>]*value="${"女".repeat(61)}"`), "длинный перевод виден и правится");
+  const src = read("components/assortment/FactoriesView.tsx");
+  assert.match(src, /if \(typeof res\.body\.draftZh === "string" && res\.body\.draftZh\) setQueryZh\(res\.body\.draftZh\);/, "черновик перевода — в поле");
 });
 
 // ---------------------------------------------------------------------------

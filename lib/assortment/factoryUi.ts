@@ -37,6 +37,28 @@ export function parseFactoryStatus(value: unknown): FactoryStatus | null {
 }
 
 /**
+ * Запись шорт-листа для карточки выдачи: по ключу фабрики (он один для всех поисков), иначе — по общей карточке 1688 (тот же продавец,
+ * записанный под прежним ключом). Отклонённая находится так же — и экран показывает её статус и причину, а не «новую» фабрику.
+ */
+export function shortlistMatch<T extends { factoryKey: string; offerIds: readonly string[] }>(
+  card: { key: string | null; offers: ReadonlyArray<{ offerId: string }> }, items: readonly T[],
+): T | null {
+  if (card.key) {
+    const byKey = items.find((i) => i.factoryKey === card.key);
+    if (byKey) return byKey;
+  }
+  const offers = new Set(card.offers.map((o) => o.offerId));
+  return offers.size ? items.find((i) => i.offerIds.some((id) => offers.has(id))) ?? null : null;
+}
+
+/** Подпись «уже в шорт-листе» на карточке выдачи: псевдоним записи (если другой), статус, у отклонённой — причина. */
+export function shortlistedLabel(item: { displayName: string; statusLabel: string; status: FactoryStatus; rejectReason: string | null }, cardName: string): string {
+  const as = item.displayName !== cardName ? ` как «${item.displayName}»` : "";
+  const reason = item.status === "rejected" && item.rejectReason ? `: ${item.rejectReason}` : "";
+  return `В шорт-листе${as} · ${item.statusLabel}${reason}`;
+}
+
+/**
  * Смена статуса на экране: «Сохранить статус» есть, только когда есть что сохранить (прячем, а не серим); «Отклонена» — только с причиной
  * (без неё кнопки нет, а есть подсказка).
  */

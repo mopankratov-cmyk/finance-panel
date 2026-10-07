@@ -4,7 +4,8 @@
 -- Две новые таблицы, ничего существующего не меняется:
 --   * assortment_cn_factory_search — кэш поиска фабрик на 7 дней (повтор того же запроса — из кэша, без запросов к 1688). В кэше —
 --     разобранная выдача: показатели и цены карточек; название фабрики — только у юрлиц (有限公司), у ИП (个体工商户) и неясных —
---     псевдоним «Фабрика N» и ссылка. Старше 7 дней строки стираются следующим поиском.
+--     псевдоним «Фабрика N» и ссылка. Кэшируется (под ключом запроса) только полная выдача — оба источника ответили. Строки старше 7 дней
+--     стираются в начале каждого поиска и при открытии вкладки.
 --   * assortment_cn_factory — шорт-лист: ТОЛЬКО то, что человек сам отправил кнопкой «В шорт-лист». У юрлица — название, ссылка и
 --     кредитный код (если проверяли в 88查), у ИП — псевдоним и ссылка. Снимок показателей и цен на дату добавления, статус с историей
 --     (кто и когда), ручной чек-лист (пункты раздельно, без суммы), заметка, последняя проверка в реестре (без имён и текстов дел).
@@ -39,10 +40,12 @@ create index if not exists assortment_cn_factory_search_expires_idx
 create table if not exists public.assortment_cn_factory (
   id             uuid primary key default gen_random_uuid(),
   direction      text not null default 'bags' check (direction = 'bags'),
-  -- url:<магазин 1688> | name:<нормализованное название юрлица> | offer:<номер карточки> (у ИП без ссылки — по карточке, не по имени).
+  -- Один и тот же для всех поисков: name:<нормализованное название юрлица> | ps:<HMAC-SHA256 нормализованного названия ИП / неясного
+  -- продавца> — псевдоним: имя не хранится, а продавец узнаётся в следующих поисках. Ссылка на магазин — отдельно (shop_url).
   factory_key    text not null unique check (char_length(factory_key) between 5 and 420),
   entity         text not null check (entity in ('company', 'individual', 'unknown')),
   company_name   text check (company_name is null or (entity = 'company' and char_length(company_name) <= 120)),
+  -- «Фабрика N» уникальна (индекс ниже): два одновременных «В шорт-лист» не получат один номер.
   pseudonym      text check (pseudonym is null or pseudonym ~ '^Фабрика [0-9]{1,5}$'),
   shop_url       text check (shop_url is null or shop_url ~ '^https://([a-z0-9-]+\.)*1688\.com(/|$)'),
   credit_code    text check (credit_code is null or (entity = 'company' and credit_code ~ '^[0-9A-Z]{18}$')),
@@ -74,6 +77,9 @@ create table if not exists public.assortment_cn_factory (
 
 create index if not exists assortment_cn_factory_status_idx
   on public.assortment_cn_factory (status, updated_at desc);
+
+create unique index if not exists assortment_cn_factory_pseudonym_uidx
+  on public.assortment_cn_factory (pseudonym) where pseudonym is not null;
 
 alter table public.assortment_cn_factory_search enable row level security;
 revoke all on public.assortment_cn_factory_search from anon, authenticated;

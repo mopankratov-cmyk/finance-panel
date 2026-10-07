@@ -42,7 +42,7 @@ export interface FactoryIndicator {
 
 export type FlagKey =
   | "young_shop" | "quality_refunds" | "foreign_brands" | "trader_breadth" | "resellers_top" | "no_vat_invoice" | "outside_clusters"
-  | "registry_not_active" | "registry_dishonest" | "registry_abnormal" | "registry_young";
+  | "registry_not_active" | "registry_dishonest" | "registry_abnormal" | "registry_young" | "registry_incomplete";
 
 export interface FactoryFlag {
   key: FlagKey;
@@ -69,8 +69,10 @@ export interface FactoryOfferCard {
 
 export interface FactoryCard {
   /**
-   * Ключ фабрики для шорт-листа: url:<магазин> | name:<юрлицо> | offer:<карточка> (у ИП без ссылки — по карточке, а не по имени). null — не
-   * за что зацепиться (ИП без ссылки и без карточек): такую фабрику в шорт-лист не добавить.
+   * Ключ фабрики для шорт-листа — один и тот же, откуда бы карточка ни пришла и каким бы запросом ни нашлась: у юрлица — name:<нормализованное
+   * название>, у ИП и неясных — ps:<HMAC нормализованного названия продавца> (псевдоним: имя не хранится, а продавец узнаётся в следующих
+   * поисках; функцию даёт сервер — FactoryBuildOptions.sellerKey). Ссылка на магазин — отдельно (shopUrl). null — ключа не дали (нет функции
+   * псевдонима): такую фабрику в шорт-лист не добавить.
    */
   key: string | null;
   /** Номер карточки в этой выдаче (с 1) — им же назван псевдоним «Фабрика N». */
@@ -129,12 +131,13 @@ export function normalizeCompanyName(name: string | null | undefined): string {
 
 /**
  * Четверть значения внутри выдачи: доля значений СТРОГО меньше его — <25% → 1, <50% → 2, <75% → 3, иначе 4. Равные значения попадают в
- * нижнюю из возможных четвертей (осторожно для флагов «верхняя четверть»). Меньше 4 значений — null: четверти не из чего считать.
+ * нижнюю из возможных четвертей (осторожно для флагов «верхняя четверть»). Меньше `min` значений (по умолчанию 4) — null: четверти не из
+ * чего считать.
  */
-export function quartileOf(value: number | null | undefined, values: readonly number[]): Quartile | null {
+export function quartileOf(value: number | null | undefined, values: readonly number[], min = 4): Quartile | null {
   if (value == null || !Number.isFinite(value)) return null;
   const list = values.filter((v) => Number.isFinite(v));
-  if (list.length < 4) return null;
+  if (list.length < Math.max(4, min)) return null;
   const below = list.filter((v) => v < value).length / list.length;
   return below < 0.25 ? 1 : below < 0.5 ? 2 : below < 0.75 ? 3 : 4;
 }
@@ -219,6 +222,13 @@ export const TRADER_GROUPS_MIN = 3;
 export const QUALITY_MIN_ORDERS = 30;
 export const QUALITY_RED_PCT = 3;
 export const YOUNG_SHOP_YEARS = 2;
+/**
+ * «Много перепродавцов» (铺货): четверть считается, только если значение есть хотя бы у стольких продавцов выдачи (на 4–7 продавцах
+ * «верхняя четверть» — это один-два магазина), а флаг ставится только от стольких размещений за 30 дней (1 размещение — не «много»).
+ * На малой выборке — число без четверти и без чипа.
+ */
+export const RESELLERS_MIN_SELLERS = 8;
+export const RESELLERS_MIN_PUHUO = 20;
 
 // ---------------------------------------------------------------------------
 // Сведение источников и карточки
@@ -254,12 +264,20 @@ const puhuoMax = (offers: readonly FactoryOffer[]): number | null => {
   return values.length ? Math.max(...values) : null;
 };
 
+export interface FactoryBuildOptions {
+  /**
+   * Псевдоним продавца-ИП (и неясного) для ключа шорт-листа: нормализованное название → «ps:<hex>». Это HMAC с секретом сервера
+   * (factorySearch.factorySellerKey), поэтому модуль экрана его не считает (без node:crypto). Нет функции — у ИП и неясных ключа нет.
+   */
+  sellerKey?: ((normalizedName: string) => string | null) | null;
+}
+
 /**
  * Две выдачи → карточки. Поиск поставщиков даёт фабрики по своему порядку; продавцы из выдачи товаров с тем же нормализованным названием
  * присоединяются к ним (одна карточка), остальные — отдельным блоком «Продавцы из выдачи товаров» по лучшей позиции. Четверти — по всем
  * карточкам этой выдачи.
  */
-export function buildFactoryResult(suppliers: readonly SupplierFactory[], offers: readonly FactoryOffer[]): FactoryResult {
+export function buildFactoryResult(suppliers: readonly SupplierFactory[], offers: readonly FactoryOffer[], options: FactoryBuildOptions = {}): FactoryResult {
   const groups = groupOffersBySeller(offers);
   const byNorm = new Map(groups.map((g) => [g.norm, g]));
   const used = new Set<string>();
@@ -278,22 +296,28 @@ export function buildFactoryResult(suppliers: readonly SupplierFactory[], offers
     const p = puhuoMax(d.offers);
     if (p != null) stats.puhuo.push(p);
   }
-  const built = all.map((d, i) => buildCard(d, i + 1, stats));
+  const built = all.map((d, i) => buildCard(d, i + 1, stats, options.sellerKey ?? null));
   return { factories: built.slice(0, factoryDrafts.length), sellers: built.slice(factoryDrafts.length) };
 }
 
-function factoryKey(d: Draft, entity: EntityKind): string | null {
-  if (d.supplier?.companyUrl) return `url:${d.supplier.companyUrl}`;
-  if (entity === "company") return `name:${normalizeCompanyName(d.name)}`.slice(0, 400);
-  const first = [...d.offers].sort((a, b) => a.position - b.position)[0];
-  return first ? `offer:${first.offerId}` : null;
+/**
+ * Ключ фабрики не зависит от источника и запроса: юрлицо — по нормализованному названию, ИП и неясные — псевдоним по нормализованному
+ * названию продавца (HMAC, имя не хранится). Тот же продавец из другого поиска (другие карточки, поиск поставщиков вместо выдачи товаров)
+ * попадает в ту же запись шорт-листа.
+ */
+export function factoryKeyOf(name: string, entity: EntityKind, sellerKey: FactoryBuildOptions["sellerKey"] = null): string | null {
+  const norm = normalizeCompanyName(name);
+  if (!norm) return null;
+  if (entity === "company") return `name:${norm}`.slice(0, 400);
+  const key = sellerKey?.(norm) ?? null;
+  return key && /^ps:[0-9a-f]{32,128}$/.test(key) ? key : null;
 }
 
 const ind = (key: IndicatorKey, label: string, source: FactorySource, text: string | null, value: number | null = null, extra: Partial<FactoryIndicator> = {}): FactoryIndicator => ({
   key, label, source, text: text ?? NO_DATA, value: text == null ? null : value, empty: text == null, ...extra,
 });
 
-function buildCard(d: Draft, n: number, stats: ResultStats): FactoryCard {
+function buildCard(d: Draft, n: number, stats: ResultStats, sellerKey: FactoryBuildOptions["sellerKey"]): FactoryCard {
   const s = d.supplier;
   const entity = entityFromName(d.name);
   const offers = [...d.offers].sort((a, b) => a.position - b.position);
@@ -337,7 +361,7 @@ function buildCard(d: Draft, n: number, stats: ResultStats): FactoryCard {
   if (shopYears != null && shopYears < YOUNG_SHOP_YEARS) flags.push({ key: "young_shop", level: "yellow", source: "Ф", text: `молодой магазин: ${years(shopYears)} на 1688` });
 
   const puhuo = puhuoMax(offers);
-  const puhuoQ = quartileOf(puhuo, stats.puhuo);
+  const puhuoQ = quartileOf(puhuo, stats.puhuo, RESELLERS_MIN_SELLERS);
   const repeat = shop?.repeatRate ?? null;
   const repeatQ = quartileOf(repeat, stats.repeat);
   indicators.push(ind("repeatRate", "Доля повторных покупателей (回头率)", "Ф", repeat != null ? `${pct(repeat)}${repeatQ ? ` · ${QUARTILE_WORDS[repeatQ]}` : ""}` : null, repeat, {
@@ -390,9 +414,12 @@ function buildCard(d: Draft, n: number, stats: ResultStats): FactoryCard {
     basis: orders != null ? `по ${cards(orderValues.length)} — нижняя граница` : null,
   }));
   indicators.push(ind("puhuo", "Размещения у перепродавцов за 30 дней (铺货)", "Ф", puhuo != null ? `${fmtNum(puhuo)}${puhuoQ ? ` · ${QUARTILE_WORDS[puhuoQ]}` : ""}` : null, puhuo, {
-    quartile: puhuoQ, basis: puhuo != null ? "наибольшее по карточкам продавца" : null, note: "четверть — наша оценка внутри выдачи",
+    quartile: puhuoQ, basis: puhuo != null ? "наибольшее по карточкам продавца" : null,
+    note: puhuoQ ? "четверть — наша оценка внутри выдачи" : `четверть — только при ${RESELLERS_MIN_SELLERS}+ продавцах со значением в выдаче`,
   }));
-  if (puhuoQ === 4 && (puhuo ?? 0) > 0) flags.push({ key: "resellers_top", level: "yellow", source: "О", text: "много перепродавцов (铺货 — верхняя четверть выдачи)" });
+  if (puhuoQ === 4 && puhuo != null && puhuo >= RESELLERS_MIN_PUHUO) {
+    flags.push({ key: "resellers_top", level: "yellow", source: "О", text: `много перепродавцов: ${fmtNum(puhuo)} размещений 铺货 за 30 дней — верхняя четверть выдачи` });
+  }
 
   // Наши расчёты по названиям карточек
   const groups = [...new Set(offers.map((o) => categoryGroup(o.titleZh)).filter((g): g is string => Boolean(g)))];
@@ -433,7 +460,7 @@ function buildCard(d: Draft, n: number, stats: ResultStats): FactoryCard {
   }));
 
   return {
-    key: factoryKey(d, entity),
+    key: factoryKeyOf(d.name, entity, sellerKey),
     n,
     origin: s && offers.length ? "both" : s ? "suppliers" : "products",
     entity,
@@ -560,7 +587,8 @@ export function registryIndicators(r: Pick<RegistrySummary, "entity" | "status" 
 /**
  * Факты реестра для карточки: статус, возраст, юрлицо или ИП, капитал (с пометкой «легко подогнать»), риски по типам и дата последнего.
  * Флаги: статус не «действует» и «недобросовестный должник» (失信被执行人) — красные; «нарушения в деятельности» (经营异常) за последний
- * год — красный; компании меньше года — жёлтый.
+ * год — красный; компании меньше года — жёлтый. Рисков в реестре больше, чем прочитано, — жёлтый «проверьте вручную»: отсутствие
+ * красного флага по неполной странице не значит «должником не числится».
  */
 export function registryFacts(candidate: Partial<CompanyCandidate> | null, risk: CompanyRisk | null, today: string): RegistryFacts {
   const status = candidate?.status ?? null;
@@ -581,6 +609,12 @@ export function registryFacts(candidate: Partial<CompanyCandidate> | null, risk:
     if (risk.dishonest > 0) flags.push({ key: "registry_dishonest", level: "red", source: "Р", text: "недобросовестный должник (失信被执行人)" });
     if (risk.abnormal.lastOn && dayMs(today) - dayMs(risk.abnormal.lastOn) <= 365 * DAY_MS) {
       flags.push({ key: "registry_abnormal", level: "red", source: "Р", text: `нарушения в деятельности (经营异常) за последний год: ${risk.abnormal.lastOn}` });
+    }
+    if (!complete) {
+      flags.push({
+        key: "registry_incomplete", level: "yellow", source: "Р",
+        text: `рисков в реестре больше, чем прочитано (${fmtNum(risk.fetched)} из ${fmtNum(risk.total ?? 0)}): «недобросовестный должник» (失信) и «нарушения» (经营异常) могли не попасть — проверьте вручную`,
+      });
     }
   }
   const summary: RegistrySummary = {

@@ -30,8 +30,12 @@ export const SUPPLIERS_TIMEOUT_MS = 60_000;
 export const CHA88_TIMEOUT_MS = 30_000;
 /** Поиск товаров для фабрик: как в пробе (40 карточек по продажам), без повторов — на поиск не больше двух запросов 1688. */
 export const FACTORY_PRODUCTS_PAGE = 40;
-/** Риски компании за один запрос (официальный клиент по умолчанию берёт 10; больше — счёт по типам полнее). */
-export const RISK_PAGE_SIZE = 20;
+/**
+ * Риски компании за один запрос: официальный клиент по умолчанию берёт 10 и предлагает листать дальше, мы — 50 одним запросом (на проверку
+ * — не больше двух запросов). Предел 88查 по pageSize не документирован и вживую не проверен: если 88查 урежет страницу, «рисков больше, чем
+ * прочитано» покажет жёлтый чип (registryFacts), а не отсутствие флага.
+ */
+export const RISK_PAGE_SIZE = 50;
 
 // ---------------------------------------------------------------------------
 // Ошибки: одной строкой
@@ -174,7 +178,9 @@ export function splitJsonObjects(text: string): unknown[] {
 
 /**
  * Поток source_suppliers → один объект ответа. Как у официального клиента: все куски склеиваются и разбираются одним JSON. Не разобрался
- * (куски SSE «data: …» или объекты подряд) — фазы собираются в originResponses; кусок с success:false — ответ-ошибка.
+ * (куски SSE «data: …» или объекты подряд) — фазы собираются в originResponses; кусок с success:false — ответ-ошибка. Признак успеха у
+ * склейки кусков ставится, только если пришла хоть одна фаза или кусок с success:true: иначе отдаётся первый кусок как есть — и вызывающий
+ * (makeFactoryCallers) считает его ошибкой, а не «1688 не нашёл фабрик».
  */
 export function readSupplierStream(raw: string): Record<string, unknown> {
   const trimmed = raw.trim();
@@ -195,7 +201,19 @@ export function readSupplierStream(raw: string): Record<string, unknown> {
       if (Array.isArray(list)) phases.push(...list);
     }
   }
+  if (phases.length === 0 && !objects.some((o) => o.success === true)) return objects.find((o) => o.code != null || o.msgCode != null) ?? objects[0];
   return { success: true, originResponses: phases };
+}
+
+/**
+ * Ответ поиска поставщиков без success:true — ошибка, как у официального клиента (`if not result.get("success")` → ServiceError): код
+ * шлюза («1688_no_scope_specified», «APIUnsupported», 401…) — по нему; кода нет — «ответ без признака успеха». Такой ответ не становится
+ * «1688 не нашёл фабрик» и не кладётся в кэш.
+ */
+export function supplierResultOrThrow(result: Record<string, unknown>): Record<string, unknown> {
+  if (result.success === true) return result;
+  if (result.success === false || result.code != null || result.msgCode != null) throw classifyBizError(result);
+  throw new China1688Error("1688: ответ поиска поставщиков без признака успеха", "service");
 }
 
 /** Фаза RETRIEVAL с непустым списком (как _find_retrieval_data). */
@@ -772,14 +790,12 @@ export interface FactoryCallers {
   companyRisk(creditCode: string): Promise<Record<string, unknown>>;
 }
 
-/** Настоящие вызовы с ключом из окружения. Ответ success:false поиска поставщиков — бизнес-ошибка (как у официального клиента). */
+/** Настоящие вызовы с ключом из окружения. Ответ поиска поставщиков без success:true — ошибка (как у официального клиента). */
 export function makeFactoryCallers(options: SkillsGatewayOptions = {}): FactoryCallers {
   return {
     async suppliers(queryZh) {
       const raw = await callSkillsGateway(SOURCE_SUPPLIERS_PATH, { query: queryZh }, { ...options, timeoutMs: options.timeoutMs ?? SUPPLIERS_TIMEOUT_MS });
-      const result = readSupplierStream(raw);
-      if (result.success === false) throw classifyBizError(result);
-      return result;
+      return supplierResultOrThrow(readSupplierStream(raw));
     },
     products: (queryZh) => call1688("gateway", FIND_PRODUCT_PATH, factoryProductsBody(queryZh), { env: options.env, fetchImpl: options.fetchImpl, now: options.now, nonce: options.nonce, retries: 0 }),
     async companySearch(name) {

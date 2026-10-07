@@ -22,6 +22,10 @@
    "shape": "success:false — 401, APIUnsupported, 1688_no_scope_specified, QosApiFrequencyLimit"
   },
   {
+   "file": "source-suppliers-no-success.txt",
+   "shape": "ответ без поля success (код шлюза 1688_no_scope_specified): официальный клиент считает такой ответ ошибкой — и мы тоже"
+  },
+  {
    "file": "cha88-company-search.json",
    "shape": "companySearch: юрлицо, тёзка в другом городе (注销), ИП (个体工商户); legal_name, телефон и почта — для проверки вырезания"
   },

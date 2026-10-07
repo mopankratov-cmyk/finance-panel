@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Role } from "@/lib/auth/permissions";
 import { loadAllSupabasePages } from "@/lib/supabase/loadAllPages";
@@ -98,14 +98,38 @@ export function checklistValue(key: string, value: unknown): string | number | n
   return value;
 }
 
+/** Слова перед числом, после которых это не телефон: номер карточки 1688, трек образца, номер заказа, артикул. */
+const NOT_PHONE_CONTEXT = /(?:карточк\S*|offer\S*|оффер\S*|трек\S*|track\S*|заказ\S*|order\S*|артикул\S*|арт\.|накладн\S*|№|#)\s*[:：]?\s*$/i;
+
+/**
+ * Похоже ли на номер телефона: КНР — мобильный 1[3-9] + 9 цифр (с +86 / 86 спереди или без), городской 0 + код + номер (10–12 цифр); РФ —
+ * +7 / 7 / 8 и 10 цифр; любой номер, записанный с «+», — 10–15 цифр. Номера карточек 1688 (12–13 цифр), трек-номера (SF…, 12–15 цифр),
+ * партии «1000 2000 3000» и даты — не телефоны.
+ */
+function looksLikePhone(raw: string): boolean {
+  const digits = raw.replace(/\D/g, "");
+  if (raw.trim().startsWith("+")) return digits.length >= 10 && digits.length <= 15;
+  return /^(?:86)?1[3-9]\d{9}$/.test(digits) || /^(?:86)?0[1-9]\d{8,10}$/.test(digits) || /^[78]\d{10}$/.test(digits);
+}
+
 /**
  * Телефоны, WeChat и почта в заметке или причине — нельзя (решение владельца: контакты людей не храним). Ответ — что найдено, или null.
+ * Номером считается только то, что похоже на телефон КНР или РФ (looksLikePhone); цепочка цифр вплотную к буквам (SF1234567890123) и число
+ * после слов «карточка / offer / трек / заказ / артикул / №» — не телефон: это то, что закупщик пишет на шагах «образец заказан / получен».
  */
 export function contactProblem(text: string): string | null {
-  // Номер — одна цепочка цифр (с пробелами, скобками, дефисами) из 10–15 цифр; даты «2026-10-07» и короткие числа — не номер.
-  for (const m of text.matchAll(/\+?\d[\d\s()-]{6,}\d/g)) {
-    const digits = m[0].replace(/\D/g, "").length;
-    if (digits >= 10 && digits <= 15) return "похоже на номер телефона";
+  // Цепочка цифр с пробелами, скобками и дефисами; внутри — окна из соседних групп: «партия 300 13800000000» — телефон во втором окне.
+  for (const m of text.matchAll(/(?<![\p{L}\d])\+?\d[\d\s()-]{6,}\d(?![\p{L}\d])/gu)) {
+    const start = m.index ?? 0;
+    const groups = [...m[0].matchAll(/\+?\d+/g)].map((g) => ({ text: g[0], at: start + (g.index ?? 0) }));
+    for (let i = 0; i < groups.length; i += 1) {
+      if (NOT_PHONE_CONTEXT.test(text.slice(Math.max(0, groups[i].at - 24), groups[i].at))) continue;
+      let joined = "";
+      for (let j = i; j < groups.length && j < i + 6; j += 1) {
+        joined += groups[j].text;
+        if (looksLikePhone(joined)) return "похоже на номер телефона";
+      }
+    }
   }
   if (/微信|wechat|weixin|(?<![a-z])(?:vx|wx)\s*[:：号]/i.test(text)) return "похоже на WeChat";
   if (/[^\s@]+@[^\s@]+\.[a-z]{2,}/i.test(text)) return "похоже на почту";
@@ -272,7 +296,23 @@ async function loadRow(db: SupabaseClient, column: "id" | "factory_key", value: 
   return (data as Row | null) ?? null;
 }
 
-/** Следующий номер псевдонима: «Фабрика N» — больше всех занятых. */
+/**
+ * Стереть выдачи старше 7 дней (решение владельца: «поиск — кэш 7 дней»; в кэше — названия юрлиц, ссылки на магазины и адреса фото).
+ * Зовётся в начале каждого поиска (и при попадании в кэш) и при открытии вкладки — не только после записи новой выдачи. Без миграции и при
+ * сбое — тихо: уборка не должна ронять поиск.
+ */
+export async function purgeExpiredSearches(db: SupabaseClient, nowMs: number): Promise<void> {
+  try {
+    await db.from(FACTORY_SEARCH_TABLE).delete().lt("expires_at", new Date(nowMs).toISOString());
+  } catch {
+    // уборка — по возможности
+  }
+}
+
+/** 23505 по уникальному псевдониму (а не по ключу фабрики): «Фабрику N» успел занять другой — берём следующий номер. */
+const pseudonymTaken = (error: { code?: string; message?: string } | null | undefined) => error?.code === "23505" && /pseudonym/i.test(error.message ?? "");
+
+/** Следующий номер псевдонима: «Фабрика N» — больше всех занятых (уникальность держит индекс миграции, гонку — повтор при 23505). */
 async function nextPseudonym(db: SupabaseClient): Promise<string> {
   const rows = await loadAllSupabasePages<{ pseudonym: string | null }>((from, to) => db.from(SHORTLIST_TABLE).select("id,pseudonym").not("pseudonym", "is", null)
     .order("id", { ascending: true }).range(from, to) as unknown as Page<{ pseudonym: string | null }>, { label: "Псевдонимы фабрик" });
@@ -299,9 +339,21 @@ export function snapshotOf(card: FactoryCard): ShortlistSnapshot {
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
+/** Запись шорт-листа с любой из этих карточек 1688: карточка принадлежит одному продавцу, значит это он же (под старым ключом). */
+async function loadByOffers(db: SupabaseClient, offerIds: readonly string[]): Promise<Row | null> {
+  if (offerIds.length === 0) return null;
+  const { data, error } = await db.from(SHORTLIST_TABLE).select(COLUMNS).overlaps("offer_ids", [...offerIds]).order("created_at", { ascending: true }).limit(1);
+  if (error) {
+    if (missing(error)) throw new FactoryTableMissingError();
+    throw new Error(`${SHORTLIST_TABLE}: ${error.message}`);
+  }
+  return ((data ?? []) as Row[])[0] ?? null;
+}
+
 /**
  * «В шорт-лист» { searchId, key }: карточка берётся из кэша поиска на сервере (не старше 7 дней), снимок — на сегодня. Фабрика уже в
- * шорт-листе — возвращается существующая запись (created: false), снимок не переписывается.
+ * шорт-листе — возвращается существующая запись (created: false; у отклонённой — со статусом и причиной), снимок не переписывается. «Уже в
+ * шорт-листе» — по ключу фабрики (он один для всех поисков: юрлицо — по названию, ИП — псевдоним-HMAC) или по общей карточке 1688.
  */
 export async function addToShortlist(
   db: SupabaseClient, input: { searchId: string; key: string; who: string; nowMs?: number },
@@ -320,7 +372,9 @@ export async function addToShortlist(
   const card = cards.find((c) => isRecord(c) && c.key === input.key);
   if (!card || !card.key) throw new FactoryInputError("этой фабрики нет в результате поиска");
 
-  const existing = await loadRow(db, "factory_key", card.key);
+  const offerIds = card.offers.slice(0, 20).map((o) => o.offerId);
+  const already = async () => (await loadRow(db, "factory_key", card.key as string)) ?? (await loadByOffers(db, offerIds));
+  const existing = await already();
   if (existing) return { item: toItem(existing), created: false };
 
   const company = card.entity === "company" && Boolean(card.name);
@@ -335,7 +389,7 @@ export async function addToShortlist(
     province: card.province,
     city: card.city,
     cluster_key: card.cluster,
-    offer_ids: card.offers.slice(0, 20).map((o) => o.offerId),
+    offer_ids: offerIds,
     query_zh: search.query_zh,
     snapshot: snapshotOf(card),
     snapshot_on: moscowToday(nowMs),
@@ -350,17 +404,18 @@ export async function addToShortlist(
     updated_by: input.who.slice(0, 200),
     updated_at: nowIso,
   };
-  const { error: insertError } = await db.from(SHORTLIST_TABLE).insert(row);
-  if (insertError) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const { error: insertError } = await db.from(SHORTLIST_TABLE).insert(row);
+    if (!insertError) return { item: toItem(row), created: true };
     if (missing(insertError)) throw new FactoryTableMissingError();
-    if ((insertError as { code?: string }).code === "23505") {
-      // Её только что добавил другой человек — отдаём его запись.
-      const raced = await loadRow(db, "factory_key", card.key);
-      if (raced) return { item: toItem(raced), created: false };
-    }
-    throw new Error(`${SHORTLIST_TABLE}: ${insertError.message}`);
+    if ((insertError as { code?: string }).code !== "23505") throw new Error(`${SHORTLIST_TABLE}: ${insertError.message}`);
+    // Её только что добавил другой человек — отдаём его запись; «Фабрику N» занял другой ИП — следующий номер.
+    const raced = await already();
+    if (raced) return { item: toItem(raced), created: false };
+    if (!pseudonymTaken(insertError) || row.pseudonym == null) throw new Error(`${SHORTLIST_TABLE}: ${insertError.message}`);
+    row.pseudonym = await nextPseudonym(db);
   }
-  return { item: toItem(row), created: true };
+  throw new Error(`${SHORTLIST_TABLE}: псевдоним не выдался — повторите`);
 }
 
 // ---------------------------------------------------------------------------
@@ -428,33 +483,52 @@ export async function patchShortlist(db: SupabaseClient, input: { id: string; pa
 
 /**
  * Сохранить проверку 88查 в запись шорт-листа: факты реестра без имён и текстов дел. Кредитный код — только у юрлица. Реестр сказал «ИП» —
- * запись становится ИП: название и код стираются, остаётся псевдоним. Без миграции или без записи — { saved: false, reason }.
+ * запись становится ИП: название и код стираются, остаётся псевдоним, а ключ «name:<название>» заменяется псевдонимом-HMAC (sellerKey; без
+ * него — случайным): название ИП не остаётся и в ключе. Без миграции или без записи — { saved: false, reason }.
  */
 export async function saveRegistryCheck(
-  db: SupabaseClient, input: { id: string; facts: RegistryFacts; creditCode: string | null; who: string; nowMs?: number },
+  db: SupabaseClient,
+  input: { id: string; facts: RegistryFacts; creditCode: string | null; who: string; nowMs?: number; sellerKey?: ((normalizedName: string) => string | null) | null },
 ): Promise<{ saved: boolean; reason: string | null }> {
   const nowIso = new Date(input.nowMs ?? Date.now()).toISOString();
-  let row: Row | null;
-  try {
-    row = await loadRow(db, "id", input.id);
-  } catch (error) {
-    if (error instanceof FactoryTableMissingError) return { saved: false, reason: FACTORY_MIGRATION_WORDS };
-    throw error;
-  }
-  if (!row) return { saved: false, reason: "фабрики нет в шорт-листе — проверка не сохранена" };
   const { indicators: _indicators, ...facts } = input.facts;
   const registry: StoredRegistry = { ...facts, checkedBy: input.who.slice(0, 200), checkedAt: nowIso };
-  const update: Partial<Row> = { registry, updated_by: input.who.slice(0, 200), updated_at: nowIso };
-  if (facts.entity === "individual") {
-    update.entity = "individual";
-    update.company_name = null;
-    update.credit_code = null;
-    update.pseudonym = row.pseudonym ?? await nextPseudonym(db);
-  } else if (row.entity === "company" && input.creditCode && /^[0-9A-Z]{18}$/.test(input.creditCode)) {
-    update.credit_code = input.creditCode;
+  let pseudonym: string | null = null;
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    let row: Row | null;
+    try {
+      row = await loadRow(db, "id", input.id);
+    } catch (error) {
+      if (error instanceof FactoryTableMissingError) return { saved: false, reason: FACTORY_MIGRATION_WORDS };
+      throw error;
+    }
+    if (!row) return { saved: false, reason: "фабрики нет в шорт-листе — проверка не сохранена" };
+    const update: Partial<Row> = { registry, updated_by: input.who.slice(0, 200), updated_at: nowIso };
+    if (facts.entity === "individual") {
+      update.entity = "individual";
+      update.company_name = null;
+      update.credit_code = null;
+      pseudonym = row.pseudonym ?? pseudonym ?? await nextPseudonym(db);
+      update.pseudonym = pseudonym;
+      if (row.factory_key.startsWith("name:")) {
+        const norm = row.factory_key.slice(5);
+        const key = input.sellerKey?.(norm) ?? null;
+        update.factory_key = key && /^ps:[0-9a-f]{32,128}$/.test(key) ? key : `ps:${createHash("sha256").update(randomUUID()).digest("hex")}`;
+      }
+    } else if (row.entity === "company" && input.creditCode && /^[0-9A-Z]{18}$/.test(input.creditCode)) {
+      update.credit_code = input.creditCode;
+    }
+    const { data, error } = await db.from(SHORTLIST_TABLE).update(update).eq("id", row.id).eq("updated_at", row.updated_at).select("id");
+    if (error) {
+      if (pseudonymTaken(error) && row.pseudonym == null) {
+        pseudonym = await nextPseudonym(db);
+        continue;
+      }
+      if ((error as { code?: string }).code === "23505") return { saved: false, reason: "этот продавец уже есть в шорт-листе другой записью — проверка не сохранена" };
+      throw new Error(`${SHORTLIST_TABLE}: ${error.message}`);
+    }
+    if (!data || (data as unknown[]).length === 0) return { saved: false, reason: "запись шорт-листа изменили во время проверки — проверка не сохранена, повторите" };
+    return { saved: true, reason: null };
   }
-  const { data, error } = await db.from(SHORTLIST_TABLE).update(update).eq("id", row.id).eq("updated_at", row.updated_at).select("id");
-  if (error) throw new Error(`${SHORTLIST_TABLE}: ${error.message}`);
-  if (!data || (data as unknown[]).length === 0) return { saved: false, reason: "запись шорт-листа изменили во время проверки — проверка не сохранена, повторите" };
-  return { saved: true, reason: null };
+  return { saved: false, reason: "псевдоним не выдался — проверка не сохранена, повторите" };
 }

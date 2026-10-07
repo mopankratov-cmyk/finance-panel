@@ -7,12 +7,14 @@ import { China1688Error, contentMd5, FIND_PRODUCT_PATH, parseFindProduct } from 
 import {
   areaOf, callSkillsGateway, cha88Payload, companyRiskBody, companySearchBody, COMPANY_RISK_PATH, COMPANY_SEARCH_PATH, countOf, factoryErrorState, FACTORY_WORDS,
   factoryProductsBody, isoDayOf, listField, makeFactoryCallers, parseCompanyRisk, parseCompanySearch, parseFactoryProducts, parseSourceSuppliers, priceRangeOf,
-  priceTiersOf, readSupplierStream, satisfiedOf, shopUrlOf, SOURCE_SUPPLIERS_PATH, splitJsonObjects, supplierRecords,
+  priceTiersOf, readSupplierStream, RISK_PAGE_SIZE, satisfiedOf, shopUrlOf, SOURCE_SUPPLIERS_PATH, splitJsonObjects, supplierRecords, supplierResultOrThrow,
+  type FactoryOffer,
 } from "../lib/assortment/factories1688.ts";
 import {
-  brandMentions, buildFactoryResult, categoryGroup, FACTORY_SORTS, fullYears, normalizeCompanyName, parseSortKey, quartileOf, registryFacts, sortFactoryCards,
-  type FactoryCard,
+  brandMentions, buildFactoryResult, categoryGroup, FACTORY_SORTS, factoryKeyOf, fullYears, normalizeCompanyName, parseSortKey, quartileOf, registryFacts,
+  RESELLERS_MIN_PUHUO, RESELLERS_MIN_SELLERS, sortFactoryCards, type FactoryCard,
 } from "../lib/assortment/factoryCards.ts";
+import { factorySellerKey } from "../lib/assortment/factorySearch.ts";
 import {
   clusterOf, entityFromName, FACTORY_CLUSTER_CHIPS, FACTORY_DISCLAIMER, FACTORY_QUESTIONS, FACTORY_READING_GUIDE, FACTORY_SOURCE_LABEL, factoryQuestionsText, outsideBagProvinces,
   parseClusterKey, regionLabel, tagLabel,
@@ -45,6 +47,7 @@ const isKind = (kind: string) => (e: unknown) => (e as { name?: string } | null)
 
 const suppliers = () => parseSourceSuppliers(readSupplierStream(text("source-suppliers-single-json.txt")));
 const offers = () => parseFactoryProducts(PRODUCTS);
+const SELLER_KEY = factorySellerKey(ENV);
 
 // ---------------------------------------------------------------------------
 // Поток поиска поставщиков
@@ -177,13 +180,26 @@ test("вызовы фабрик: поиск товаров без повтора
   assert.deepEqual(JSON.parse(String(f.calls[0].init.body)), factoryProductsBody("女包 工厂"));
   assert.deepEqual(factoryProductsBody("x"), { query: "x", pageSize: 40, purchaseAmount: 1, sortType: "sold_desc", scoreLevel: "high", tags: "4306497" });
   assert.deepEqual(companySearchBody("某公司"), { query: "某公司", pageNo: 1, pageSize: 10 });
-  assert.deepEqual(companyRiskBody("91440114MA59ABCD1X"), { companyId: "", pageSize: "20", page: "1", socialCreditCode: "91440114MA59ABCD1X" });
+  assert.deepEqual(companyRiskBody("91440114MA59ABCD1X"), { companyId: "", pageSize: "50", page: "1", socialCreditCode: "91440114MA59ABCD1X" });
+  assert.equal(RISK_PAGE_SIZE, 50, "риски — 50 одной страницей (официальный клиент берёт 10)");
 
   const s = fakeFetch([{ status: 200, body: text("source-suppliers-error-unsupported.txt") }]);
   await assert.rejects(makeFactoryCallers({ env: ENV, fetchImpl: s.impl }).suppliers("女包"), (e: unknown) => factoryErrorState(e).status === "unavailable");
   const r = fakeFetch([{ status: 200, body: text("cha88-company-risk.json") }]);
   const risk = await makeFactoryCallers({ env: ENV, fetchImpl: r.impl }).companyRisk("91440114MA59ABCD1X");
   assert.equal(parseCompanyRisk(risk).total, 5);
+});
+
+test("поиск поставщиков: ответ без success:true — ошибка, как у официального клиента (код шлюза — по нему, без кода — «без признака успеха»), а не пустая выдача", async () => {
+  const noScope = fakeFetch([{ status: 200, body: text("source-suppliers-no-success.txt") }]);
+  await assert.rejects(makeFactoryCallers({ env: ENV, fetchImpl: noScope.impl }).suppliers("女包"), (e: unknown) => factoryErrorState(e).status === "unavailable");
+  const junk = fakeFetch([{ status: 200, body: '{"result":{"items":[]}}' }]);
+  await assert.rejects(makeFactoryCallers({ env: ENV, fetchImpl: junk.impl }).suppliers("女包"), (e: unknown) => isKind("service")(e) && /без признака успеха/.test((e as Error).message));
+  assert.throws(() => supplierResultOrThrow(readSupplierStream('data: {"note":"busy"}\n\ndata: {"x":1}\n')), /без признака успеха/, "куски без фаз и без success — не успех");
+  assert.throws(() => supplierResultOrThrow(readSupplierStream('data: {"code":"QosApiFrequencyLimit","message":"m"}\n')), isKind("rate_limit"));
+  assert.equal(supplierResultOrThrow(readSupplierStream(text("source-suppliers-sse.txt"))).success, true, "куски с фазами — успех");
+  const empty = { success: true, originResponses: [] };
+  assert.deepEqual(parseSourceSuppliers(supplierResultOrThrow(empty)), [], "success:true без фабрик — честное «1688 не нашёл»");
 });
 
 // ---------------------------------------------------------------------------
@@ -224,6 +240,51 @@ test("карточки для фабрик: строки SKU сворачива�
   assert.equal(real.length, 40, "живой образец разбирается");
   assert.ok(real.every((o) => o.priceMin == null), "в обезличенном живом образце цен нет (PRICE)");
   assert.ok(real.every((o) => o.shop && o.shop.years != null), "свойства магазина читаются из живого ответа");
+});
+
+test("передача курьеру за 24 ч: поля нет — null, а не 0; 0 у 1688 не отличить от «нет данных» — на карточке «нет данных», а не 0%", () => {
+  const rows = (PRODUCTS as { data: Array<Record<string, unknown>> }).data;
+  const strip = (row: Record<string, unknown>, lgt: unknown) => ({ ...row, serviceTags: { ...(row.serviceTags as Record<string, unknown>), lgt_3m_24h_avg: lgt } });
+  const parsed = parseFactoryProducts({ data: [strip(rows[0], undefined), strip(rows[2], "0")] });
+  assert.deepEqual(parsed.map((o) => o.ship24h), [null, 0], "нет поля — null; «0» — как дал 1688");
+  const card = buildFactoryResult([], parsed).sellers[0];
+  const ship = card.indicators.find((i) => i.key === "ship24h");
+  assert.deepEqual([ship?.empty, ship?.text, ship?.value], [true, "нет данных", null], "0 и null — «нет данных», а не 0%");
+  const real = buildFactoryResult([], parseFactoryProducts({ data: [strip(rows[0], "0.5"), strip(rows[2], "0")] })).sellers[0];
+  assert.equal(real.indicators.find((i) => i.key === "ship24h")?.text, "50%", "медиана — только по значениям больше нуля");
+});
+
+test("много перепродавцов (铺货): четверть — только при 8+ продавцах со значением, флаг — только от 20 размещений; 1 размещение — не «много»", () => {
+  const base = offers()[0];
+  const mk = (i: number, puhuo: number | null): FactoryOffer => ({ ...base, offerId: String(1000000000 + i), position: i + 1, seller: `某${"甲乙丙丁戊己庚辛壬癸"[i]}皮具有限公司`, puhuo30d: puhuo, titleZh: "托特包" });
+  const small = buildFactoryResult([], [0, 0, 0, 1].map((v, i) => mk(i, v))).sellers;
+  assert.deepEqual(small.flatMap((c) => c.flags.map((f) => f.key)).filter((k) => k === "resellers_top"), [], "4 продавца, у лидера 1 размещение — флага нет");
+  assert.equal(small[3].indicators.find((i) => i.key === "puhuo")?.text, "1", "без четверти на малой выборке");
+  assert.equal(quartileOf(1, [0, 0, 0, 1], RESELLERS_MIN_SELLERS), null);
+  assert.equal(quartileOf(1, [0, 0, 0, 1]), 4, "у остальных показателей порог прежний — 4 значения");
+  const eight = (top: number) => buildFactoryResult([], [0, 1, 2, 3, 4, 5, 6, top].map((v, i) => mk(i, v))).sellers[7];
+  assert.equal(RESELLERS_MIN_SELLERS, 8);
+  assert.equal(RESELLERS_MIN_PUHUO, 20);
+  assert.deepEqual(eight(19).flags.map((f) => f.key), [], "верхняя четверть, но 19 размещений — не «много»");
+  assert.match(eight(19).indicators.find((i) => i.key === "puhuo")?.text ?? "", /^19 · верхняя четверть выдачи$/);
+  const many = eight(25);
+  assert.deepEqual(many.flags.map((f) => [f.key, f.level, f.source]), [["resellers_top", "yellow", "О"]]);
+  assert.match(many.flags[0].text, /25 размещений 铺货 за 30 дней — верхняя четверть выдачи/);
+  const live = buildFactoryResult([], parseFactoryProducts(JSON.parse(read("tests/fixtures/assortment-china/find-product-niche-nvshi-jiake-sold-desc.json")).data));
+  const flagged = [...live.factories, ...live.sellers].filter((c) => c.flags.some((f) => f.key === "resellers_top"));
+  assert.ok(flagged.every((c) => (c.indicators.find((i) => i.key === "puhuo")?.value ?? 0) >= RESELLERS_MIN_PUHUO), "живой образец курток: флаг не ставится на 9 размещениях");
+});
+
+test("ключ фабрики один для всех поисков: юрлицо — по нормализованному названию, ИП — псевдоним-HMAC с секретом сервера (имени в ключе нет)", () => {
+  assert.equal(factoryKeyOf("广州市（花都）皮具 有限公司", "company"), factoryKeyOf("广州市(花都)皮具有限公司", "company"));
+  assert.equal(factoryKeyOf("陈测试", "individual", SELLER_KEY), factoryKeyOf(" 陈测试 ", "individual", SELLER_KEY), "тот же продавец — тот же ключ");
+  assert.notEqual(factoryKeyOf("陈测试", "individual", SELLER_KEY), factoryKeyOf("王测试", "individual", SELLER_KEY));
+  assert.equal(factoryKeyOf("陈测试", "individual", null), null, "без секрета — без ключа");
+  assert.equal(factoryKeyOf("陈测试", "individual", () => "陈测试"), null, "функция, вернувшая имя, ключом не станет");
+  const other = factorySellerKey({ ALI_1688_AK: Buffer.from(`${"Q".repeat(32)}otherkeyid0000001`, "utf8").toString("base64url") });
+  assert.notEqual(other?.("陈测试"), SELLER_KEY?.("陈测试"), "псевдоним — с секретом: по словарю имён его не подобрать");
+  assert.equal(factorySellerKey({ ...ENV, ASSORTMENT_FACTORY_SALT: "salt-1" })?.("陈测试"), factorySellerKey({ ASSORTMENT_FACTORY_SALT: "salt-1", ALI_1688_AK: "x" })?.("陈测试"), "своя соль — ключ 1688 можно менять");
+  assert.equal(factorySellerKey({}), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -286,10 +347,24 @@ test("факты реестра: статус не «действует», 失�
   assert.match(partial.indicators.find((i) => i.key === "regRisks")?.basis ?? "", /первые 5 из 30/);
 });
 
+test("рисков в 88查 больше, чем прочитано: отсутствие 失信 на странице — не «чисто», а жёлтый чип «проверьте вручную»", () => {
+  const { candidates } = parseCompanySearch(cha88Payload(text("cha88-company-search.json")));
+  const page = Array.from({ length: 20 }, (_, i) => ({ subType: "被执行人", time: `2025-0${1 + (i % 9)}-01`, contentChinese: "{\"name\":\"张测试\"}" }));
+  const risk = parseCompanyRisk({ data: { total: 45, riskMap: { 司法风险: page } } });
+  assert.deepEqual([risk.total, risk.fetched, risk.dishonest], [45, 20, 0]);
+  const facts = registryFacts(candidates[0], risk, "2026-10-07");
+  assert.deepEqual(facts.flags.map((f) => [f.key, f.level, f.source]), [["registry_incomplete", "yellow", "Р"]]);
+  assert.match(facts.flags[0].text, /рисков в реестре больше, чем прочитано \(20 из 45\).*失信.*проверьте вручную/);
+  const withDishonest = registryFacts(candidates[0], parseCompanyRisk({ data: { total: 45, riskMap: { 司法风险: [...page.slice(1), { subType: "失信被执行人", time: "2026-01-01" }] } } }), "2026-10-07");
+  assert.deepEqual(withDishonest.flags.map((f) => f.key), ["registry_dishonest", "registry_incomplete"]);
+  const complete = registryFacts(candidates[0], parseCompanyRisk({ data: { total: 20, riskMap: { 司法风险: page } } }), "2026-10-07");
+  assert.deepEqual(complete.flags.map((f) => f.key), [], "все прочитаны и 失信 нет — флага нет");
+});
+
 // ---------------------------------------------------------------------------
 // Карточки: сведение, показатели, флаги
 
-const result = () => buildFactoryResult(suppliers(), offers());
+const result = () => buildFactoryResult(suppliers(), offers(), { sellerKey: SELLER_KEY });
 const byKey = (cards: FactoryCard[], name: string) => cards.find((c) => c.displayName === name);
 const indicator = (card: FactoryCard | undefined, key: string) => card?.indicators.find((i) => i.key === key);
 
@@ -306,7 +381,7 @@ test("сведение источников: совпавшие по норма�
   assert.deepEqual([...r.factories, ...r.sellers].map((c) => c.n), [1, 2, 3, 4, 5, 6, 7, 8]);
 });
 
-test("люди: у ИП и неясных — псевдоним «Фабрика N», их названий нет нигде в выдаче; у юрлиц — название; ключ ИП без ссылки — по карточке, а не по имени", () => {
+test("люди: у ИП и неясных — псевдоним «Фабрика N», их названий нет нигде в выдаче; у юрлиц — название; ключ ИП — псевдоним-HMAC, а не имя", () => {
   const r = result();
   const out = JSON.stringify(r);
   for (const p of PEOPLE) assert.ok(!out.includes(p), `в выдаче нет «${p}»`);
@@ -315,11 +390,17 @@ test("люди: у ИП и неясных — псевдоним «Фабрик�
     ["company", "广州市花都区狮岭镇明辉皮具有限公司"], ["unknown", "Фабрика 2"], ["company", "苏州市吴中区雅致箱包有限公司"], ["individual", "Фабрика 4"],
     ["company", "义乌市晨光包袋有限公司"], ["unknown", "Фабрика 6"], ["individual", "Фабрика 7"], ["company", "东莞市鑫源皮具有限公司"],
   ]);
-  assert.equal(r.factories[0].key, "url:https://sale.1688.com/factory/card.html?memberId=b2b-0000000001");
+  assert.equal(r.factories[0].key, "name:广州市花都区狮岭镇明辉皮具有限公司", "юрлицо — по названию, а не по ссылке (ссылка — отдельно)");
+  assert.equal(r.factories[0].shopUrl, "https://sale.1688.com/factory/card.html?memberId=b2b-0000000001");
   assert.equal(r.factories[4].key, "name:义乌市晨光包袋有限公司");
-  assert.equal(r.sellers[0].key, "offer:925926365867");
-  assert.equal(r.sellers[1].key, "offer:725895604172");
+  assert.equal(r.sellers[0].key, SELLER_KEY?.("陈测试"));
+  assert.equal(r.sellers[1].key, SELLER_KEY?.(normalizeCompanyName("深圳市福田区优品服饰商行")));
+  assert.equal(r.factories[1].key, SELLER_KEY?.("白沟新城华美箱包厂"), "неясный (…厂) — тоже псевдоним, хоть и со ссылкой");
   assert.equal(r.sellers[2].key, "name:东莞市鑫源皮具有限公司");
+  for (const c of [...r.factories, ...r.sellers].filter((x) => x.entity !== "company")) assert.match(String(c.key), /^ps:[0-9a-f]{64}$/);
+  assert.ok(!JSON.stringify([...r.factories, ...r.sellers].map((c) => c.key)).match(/陈测试|华美|优品|李明/), "в ключах нет названий ИП");
+  const bare = buildFactoryResult(suppliers(), offers());
+  assert.deepEqual([...bare.factories, ...bare.sellers].filter((c) => c.entity !== "company").map((c) => c.key), [null, null, null, null], "без секрета сервера у ИП ключа нет — «В шорт-лист» не показывается");
   assert.equal(entityFromName("广州市XX皮具有限公司（个体工商户）"), "individual");
   assert.equal(entityFromName("某某箱包厂"), "unknown");
   assert.equal(entityFromName("张三"), "unknown");
@@ -373,7 +454,8 @@ test("флаги: отдельными чипами, без счётчика —
   assert.deepEqual(flags(r.factories[1]), ["young_shop:yellow", "no_vat_invoice:yellow"], "1 год на 1688; единственная карточка — 普票");
   assert.deepEqual(flags(r.factories[2]), ["outside_clusters:yellow"], "Цзянсу");
   assert.deepEqual(flags(r.factories[4]), ["no_vat_invoice:yellow"]);
-  assert.deepEqual(flags(r.sellers[0]), ["no_vat_invoice:yellow", "resellers_top:yellow"], "122 размещения — верхняя четверть");
+  assert.deepEqual(flags(r.sellers[0]), ["no_vat_invoice:yellow"], "122 размещения, но значение есть лишь у 6 продавцов — четверти и чипа нет");
+  assert.equal(indicator(r.sellers[0], "puhuo")?.text, "122", "на малой выборке — только число");
   assert.deepEqual(flags(r.sellers[1]), ["no_vat_invoice:yellow", "trader_breadth:yellow"], "только 普票; куртка + обувь + чехол");
   assert.deepEqual(flags(r.sellers[2]), ["quality_refunds:red"], "4,2% при 45 заказах");
   assert.ok(!JSON.stringify(r).match(/flagsCount|flagCount|redCount/), "счётчика флагов нет");
@@ -432,7 +514,9 @@ test("сортировка — по одному выбранному показ
 test("кластеры и регион: город → кластер (оценка), чипы — три (Шилин, Байгоу, Гуанчжоу) и дописываются к запросу; провинции вне сумок — флаг", () => {
   assert.deepEqual(FACTORY_CLUSTER_CHIPS.map((c) => [c.key, c.query]), [["shiling", "狮岭"], ["baigou", "白沟"], ["guangzhou", "广州 桂花岗"]]);
   assert.equal(clusterOf({ province: "广东省", city: "广州市", hint: "广州市花都区狮岭镇X有限公司" }), "shiling");
-  assert.equal(clusterOf({ province: "广东省", city: "广州市" }), "guangzhou");
+  assert.equal(clusterOf({ province: "广东省", city: "广州市" }), "canton", "один город: Шилин — тоже Гуанчжоу, не различить");
+  assert.equal(clusterOf({ province: "广东省", city: "广州市", hint: "广州市白云区X皮具有限公司" }), "guangzhou", "оптовые ряды — только по явному 白云 / 桂花岗");
+  assert.equal(clusterOf({ province: "广东省", city: "深圳市", hint: "广州市白云区X有限公司" }), null, "название не перебивает другой город");
   assert.equal(clusterOf({ province: "河北省", city: "保定市" }), "baigou");
   assert.equal(clusterOf({ province: "浙江省", city: "嘉兴市" }), "pinghu");
   assert.equal(clusterOf({ province: "江苏省", city: "苏州市" }), null);
@@ -440,6 +524,17 @@ test("кластеры и регион: город → кластер (оцен�
   assert.equal(outsideBagProvinces("广东省"), false);
   assert.equal(outsideBagProvinces(null), false, "регион не известен — флага нет");
   assert.equal(regionLabel("河北省", "保定市"), "Хэбэй, Баодин");
+  // Название ИП в оценку кластера не идёт: ИП «…白云区…» или «…狮岭…» в Гуанчжоу — «Гуанчжоу: не различить».
+  const ipCard = (companyName: string) => buildFactoryResult([{ ...suppliers()[0], companyName, city: "广州市", province: "广东省" }], []).factories[0];
+  for (const name of ["广州市白云区李明皮具商行", "狮岭镇某某皮具店"]) {
+    const card = ipCard(name);
+    assert.equal(card.entity, "individual", name);
+    assert.equal(card.cluster, "canton", name);
+  }
+  assert.equal(ipCard("广州市花都区狮岭镇某某皮具有限公司").cluster, "shiling", "у юрлица название — подсказка");
+  const unclear = ipCard("花都区某某皮具厂");
+  assert.equal(unclear.cluster, "canton", "неясный (…厂) в Гуанчжоу — не «оптовые ряды»");
+  assert.equal(unclear.indicators.find((i) => i.key === "cluster")?.text, "Гуанчжоу — Шилин (Хуаду) или оптовые ряды — по региону регистрации не различить");
   assert.equal(regionLabel(null, null), null);
   assert.equal(parseClusterKey("pinghu"), null, "Пинху — не чип");
   assert.equal(tagLabel("源头工厂"), "源头工厂 — «фабрика-первоисточник» (метка 1688)");

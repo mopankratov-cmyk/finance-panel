@@ -18,8 +18,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * «Проверить компанию» (88查) — по кнопке, по одному запросу к 1688 на шаг, только юрлица (у ИП название не храним):
  * - { direction: "bags", step: "search", name } → кандидаты (у юрлиц — название и код, у ИП — только регион и статус; тёзок сверяет
  *   человек по городу) и exactIndex — полное совпадение названия;
- * - { direction: "bags", step: "risk", creditCode, candidate?, factoryId? } → статус, возраст, юрлицо или ИП, капитал, риски по типам и
- *   дата последнего, флаги; с factoryId — сохраняется в запись шорт-листа (без имён и текстов дел).
+ * - { direction: "bags", step: "risk", creditCode, candidate, factoryId? } → статус, возраст, юрлицо или ИП, капитал, риски по типам и
+ *   дата последнего, флаги; с factoryId — сохраняется в запись шорт-листа (без имён и текстов дел). candidate — кандидат первого шага с
+ *   подписью сервера (token): без неё или старше часа — отказ без запроса к 1688 (факты «Р» не пишутся со слов клиента).
  * legal_name (законный представитель), тексты дел и адрес дальше района не читаются вовсе. Закупщик и директор.
  */
 export async function POST(request: Request) {
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
       if (body.factoryId != null && !factoryId) return NextResponse.json({ error: "Неверная запись шорт-листа" }, { status: 400 });
       const result = await runCompanyRisk(db, { creditCode: body.creditCode, candidate: body.candidate, factoryId, who });
       if (result.savedTo) await audit(request, session, { action: "assortment.update", subject: `cn-factory:${result.savedTo}`, after: { registryCheck: result.facts?.checkedOn ?? null } });
-      return NextResponse.json(result, { status: result.refused === "bad_input" || result.refused === "not_company" ? 400 : 200, headers: NO_STORE });
+      return NextResponse.json(result, { status: result.refused === "bad_input" || result.refused === "not_company" || result.refused === "unverified" ? 400 : 200, headers: NO_STORE });
     }
     return NextResponse.json({ error: "step — search или risk" }, { status: 400 });
   } catch (error) {

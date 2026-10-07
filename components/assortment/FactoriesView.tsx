@@ -2,7 +2,6 @@
 
 import { ClipboardCopy, ExternalLink, ImageOff, Search } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import type { CompanyCandidate } from "@/lib/assortment/factories1688";
 import {
   FACTORY_SORTS, registryIndicators, sortFactoryCards,
   type FactoryCard, type FactoryFlag, type FactoryIndicator, type FactorySortKey,
@@ -11,11 +10,12 @@ import {
   clusterByKey, FACTORY_CLUSTER_CHIPS, FACTORY_DISCLAIMER, FACTORY_PRICE_CAPTION, FACTORY_READING_GUIDE, FACTORY_WAIT_TEXT, factoryQuestionsText,
   type FactoryClusterKey, type FactorySource,
 } from "@/lib/assortment/factoryGuide";
-import type { CompanyRiskResponse, CompanySearchResponse, FactorySearchResponse } from "@/lib/assortment/factorySearch";
+import type { CheckedCandidate, CompanyRiskResponse, CompanySearchResponse, FactorySearchResponse } from "@/lib/assortment/factorySearch";
 import type { ShortlistItem, ShortlistView } from "@/lib/assortment/factoryShortlist";
 import {
   CHECKLIST_VALUES, checklistValueText, dateRu, dateTimeRu, FACTORY_CHECKLIST, FACTORY_READ_ONLY_WORDS, FACTORY_STATUS_LABEL, FACTORY_STATUSES, factoriesCount,
-  indicatorOf, offerPriceText, priceTiersText, sellersCount, SOURCE_LEGEND, sourceStateLine, sourceTitle, splitIndicators, statusEditState, type FactoryStatus,
+  indicatorOf, offerPriceText, priceTiersText, sellersCount, shortlistedLabel, shortlistMatch, SOURCE_LEGEND, sourceStateLine, sourceTitle, splitIndicators,
+  statusEditState, type FactoryStatus,
 } from "@/lib/assortment/factoryUi";
 
 /**
@@ -32,6 +32,8 @@ const API = "/api/assortment-development/factories";
 /** Сколько карточек блока видно сразу; дальше — «Показать ещё». */
 export const FACTORY_PAGE = 6;
 const HAN_RE = /\p{Script=Han}/u;
+/** Китайский запрос для 1688 — не длиннее (как FACTORY_QUERY_MAX на сервере). */
+const QUERY_ZH_MAX = 60;
 
 const button = "inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-800 hover:bg-slate-50";
 const primary = "inline-flex h-11 items-center justify-center gap-1.5 rounded-xl bg-violet-700 px-4 text-sm font-medium text-white hover:bg-violet-800";
@@ -171,7 +173,6 @@ export function FactoriesBody({ view, onReload, initialSearch = null }: { view: 
     }
   };
 
-  const byKey = new Map(items.map((i) => [i.factoryKey, i]));
   return (
     <>
       {view.canEdit ? (
@@ -186,7 +187,7 @@ export function FactoriesBody({ view, onReload, initialSearch = null }: { view: 
           resp={search.resp}
           canEdit={view.canEdit}
           shortlistAvailable={view.shortlist.available}
-          shortlisted={byKey}
+          shortlisted={items}
           adding={adding}
           addError={addError}
           onAdd={add}
@@ -214,7 +215,8 @@ export function FactorySearchForm({ busy, onSearch, initial }: {
   const [cluster, setCluster] = useState<FactoryClusterKey | null>(initial?.cluster ?? null);
   const [translating, setTranslating] = useState(false);
   const [translateNote, setTranslateNote] = useState<string | null>(null);
-  const canSearch = HAN_RE.test(queryZh) && !busy;
+  const tooLong = queryZh.trim().length > QUERY_ZH_MAX;
+  const canSearch = HAN_RE.test(queryZh) && !tooLong && !busy;
   const added = clusterByKey(cluster)?.query?.split(" ").filter((w) => w && !queryZh.includes(w)) ?? [];
 
   const translate = async () => {
@@ -224,7 +226,11 @@ export function FactorySearchForm({ busy, onSearch, initial }: {
     try {
       const res = await postJson("search", { direction: "bags", mode: "translate", queryRu });
       if (typeof res.body.queryZh === "string" && res.body.queryZh) setQueryZh(res.body.queryZh);
-      else setTranslateNote(cap(String(res.body.reason ?? errorText(res.body, "перевод не получился — напишите запрос по-китайски"))));
+      else {
+        // Перевод длиннее 60 знаков оплачен — отдаём его в поле для правки, а не выбрасываем.
+        if (typeof res.body.draftZh === "string" && res.body.draftZh) setQueryZh(res.body.draftZh);
+        setTranslateNote(cap(String(res.body.reason ?? errorText(res.body, "перевод не получился — напишите запрос по-китайски"))));
+      }
     } catch {
       setTranslateNote("Нет связи с сервером — напишите запрос по-китайски");
     } finally {
@@ -252,10 +258,11 @@ export function FactorySearchForm({ busy, onSearch, initial }: {
         </label>
         <label className="flex min-w-0 flex-col gap-1 text-sm text-slate-700">
           Запрос для 1688 — по-китайски (можно поправить)
-          <input lang="zh" value={queryZh} onChange={(e) => setQueryZh(e.target.value)} maxLength={60} placeholder="女包 真皮" className={field} />
+          <input lang="zh" value={queryZh} onChange={(e) => setQueryZh(e.target.value)} maxLength={tooLong ? undefined : QUERY_ZH_MAX} placeholder="女包 真皮" className={field} />
         </label>
       </div>
       {translateNote && <p role="status" className="text-sm text-amber-900">{translateNote}</p>}
+      {tooLong && <p role="status" className="text-sm text-amber-900">Запрос для 1688 — до {QUERY_ZH_MAX} знаков, сейчас {queryZh.trim().length}: сократите — появится «Найти».</p>}
       <div className="flex flex-col gap-1">
         <span className="text-sm text-slate-700">Кластер — по желанию, дописывается к запросу:</span>
         <div className="chip-row -mx-3 gap-2 px-3 sm:mx-0 sm:flex-wrap sm:px-0" aria-label="Кластеры">
@@ -299,7 +306,8 @@ export function FactoryResults({
   resp: FactorySearchResponse;
   canEdit: boolean;
   shortlistAvailable: boolean;
-  shortlisted: ReadonlyMap<string, ShortlistItem>;
+  /** Записи шорт-листа: карточка выдачи узнаёт свою по ключу фабрики или по общей карточке 1688. */
+  shortlisted: readonly ShortlistItem[];
   adding?: string | null;
   addError?: { key: string; message: string } | null;
   onAdd: (card: FactoryCard, searchId: string) => void;
@@ -316,7 +324,7 @@ export function FactoryResults({
     card,
     canEdit,
     searchId: shortlistAvailable ? searchId : null,
-    shortlisted: card.key ? shortlisted.get(card.key) ?? null : null,
+    shortlisted: shortlistMatch(card, shortlisted),
     adding: adding !== null && adding === card.key,
     addError: addError && addError.key === card.key ? addError.message : null,
     onAdd,
@@ -581,8 +589,11 @@ export function FactoryCardView({ card, canEdit, searchId, shortlisted, adding, 
           </button>
         )}
         {shortlisted && (
-          <a href={`#cn-factory-${shortlisted.id}`} className="inline-flex h-11 items-center justify-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-sm text-emerald-900 hover:bg-emerald-100">
-            В шорт-листе{shortlisted.displayName !== card.displayName ? ` как «${shortlisted.displayName}»` : ""} · {shortlisted.statusLabel}
+          <a
+            href={`#cn-factory-${shortlisted.id}`}
+            className={`inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-3 py-1 text-sm ${shortlisted.status === "rejected" ? "border-red-200 bg-red-50 text-red-900 hover:bg-red-100" : "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"}`}
+          >
+            {shortlistedLabel(shortlisted, card.displayName)}
           </a>
         )}
       </div>
@@ -619,12 +630,13 @@ export function CompanyCheck({ name, factoryId, onSaved, again = false }: { name
       setState({ kind: "error", message: "Нет связи с сервером" });
     }
   };
-  const risk = async (resp: CompanySearchResponse, candidate: CompanyCandidate) => {
+  const risk = async (resp: CompanySearchResponse, candidate: CheckedCandidate) => {
     setState({ kind: "risking", resp });
     try {
       const res = await postJson("check-company", {
         direction: "bags", step: "risk", creditCode: candidate.creditCode, factoryId,
-        candidate: { status: candidate.status, establishedOn: candidate.establishedOn, entType: candidate.entType, regCapText: candidate.regCapText, area: candidate.area },
+        // Факты кандидата — как их дал сервер, с его подписью (token): без неё сервер шаг «риски» не выполнит.
+        candidate: { status: candidate.status, establishedOn: candidate.establishedOn, entType: candidate.entType, regCapText: candidate.regCapText, area: candidate.area, token: candidate.token },
       });
       if (typeof res.body.refused === "undefined") return setState({ kind: "error", message: errorText(res.body, `Проверка не удалась (${res.status})`) });
       const out = res.body as unknown as CompanyRiskResponse;
@@ -654,7 +666,7 @@ export function CompanyCheck({ name, factoryId, onSaved, again = false }: { name
 }
 
 /** Кандидаты из реестра: у юрлиц — название и код, у ИП — только регион и статус (название и код не храним, риски не проверяем). */
-export function CompanyCandidates({ resp, busy = false, onPick }: { resp: CompanySearchResponse; busy?: boolean; onPick: (candidate: CompanyCandidate) => void }) {
+export function CompanyCandidates({ resp, busy = false, onPick }: { resp: CompanySearchResponse; busy?: boolean; onPick: (candidate: CheckedCandidate) => void }) {
   if (resp.refused || !resp.ok) return <p role="status" className="text-sm text-amber-900">{cap(resp.reason ?? "проверка не состоялась")}</p>;
   if (!resp.candidates.length) return <p role="status" className="text-sm text-slate-700">{cap(resp.reason ?? "88查 не нашёл компанию с таким названием")}</p>;
   return (

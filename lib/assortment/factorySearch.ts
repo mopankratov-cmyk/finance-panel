@@ -1,7 +1,7 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { moscowToday } from "@/lib/sync/moscowDay";
-import { CHINA_STOP_WORDS, chinaKeyConfigured } from "./china1688";
+import { CHINA_STOP_WORDS, chinaKeyConfigured, chinaKeyRaw, parseAk } from "./china1688";
 import { chinaTranslatorFromEnv, isTranslateStop, translateBatchMaxUsd, type TranslateSetup } from "./chinaSync";
 import { ENGINE_KIND, engineBudgetConfig, engineRefusal } from "./engineBudget";
 import { addEngineUsage, loadEngineWeekForSpend } from "./engineBudgetStore";
@@ -12,7 +12,7 @@ import {
 } from "./factories1688";
 import { buildFactoryResult, normalizeCompanyName, registryFacts, type FactoryCard, type RegistryFacts } from "./factoryCards";
 import { clusterByKey, entityFromName, type FactoryClusterKey } from "./factoryGuide";
-import { FACTORY_MIGRATION, FACTORY_SEARCH_TABLE, saveRegistryCheck } from "./factoryShortlist";
+import { FACTORY_MIGRATION, FACTORY_SEARCH_TABLE, purgeExpiredSearches, saveRegistryCheck } from "./factoryShortlist";
 
 export { FACTORY_MIGRATION, FACTORY_SEARCH_TABLE };
 
@@ -22,9 +22,10 @@ export { FACTORY_MIGRATION, FACTORY_SEARCH_TABLE };
  * Поиск: запрос по-русски → перевод на китайский дешёвым ИИ (тот же перевод Polza, что у трендов: статья cn_translate, общий потолок
  * движка; без Polza человек пишет по-китайски сам) → китайский текст виден и правится → чип кластера дописывается к запросу → два запроса
  * к 1688 разом: поиск поставщиков (source_suppliers) и поиск товаров (find.product, по продажам, 40). Повтор того же запроса за 7 дней —
- * из кэша, без запросов к 1688. Запросы к 1688 стоят 0 $, но считаются (assortment_ai_usage, статья cn_1688_factory): на поиск — не больше
- * двух, на проверку компании — двух (поиск по названию и риски по коду, каждый по своей кнопке), в сутки — FACTORY_DAILY_CALLS; потолок
- * проверяется до запроса. Без ключа 1688 — ни одного запроса (и вкладки нет); без миграции — поиск без кэша.
+ * из кэша, без запросов к 1688 (кэшируется только полная выдача: оба источника ответили). Запросы к 1688 стоят 0 $, но считаются
+ * (assortment_ai_usage, статья cn_1688_factory): на поиск — не больше двух, на проверку компании — двух (поиск по названию и риски по коду,
+ * каждый по своей кнопке), в сутки — FACTORY_DAILY_CALLS; запросы бронируются в учёте ДО обращения к 1688 (сравнение-и-замена), поэтому
+ * параллельные поиски потолок не перешагнут. Без ключа 1688 — ни одного запроса (и вкладки нет); без миграции — поиск без кэша.
  */
 
 export const FACTORY_USAGE_KIND = ENGINE_KIND.cn1688Factory;
@@ -44,7 +45,7 @@ export const FACTORY_UNVERIFIED_NOTE = "поиск поставщиков и 88�
 
 export const FACTORY_QUERY_PROMPT = [
   "Ты переводишь поисковый запрос байера женских сумок с русского на китайский для поиска фабрик и товаров на оптовом сайте 1688.",
-  "Переводи коротко, словами китайских продавцов: вид сумки, материал, заметная деталь.",
+  "Переводи коротко, словами китайских продавцов: вид сумки, материал, заметная деталь; перевод — не длиннее 60 знаков.",
   "Ничего не добавляй от себя: ни брендов, ни регионов, ни слов «工厂» или «源头».",
   "Ответ — только JSON-массив строк той же длины и в том же порядке, без пояснений.",
 ].join(" ");
@@ -59,6 +60,31 @@ function missing(error: { code?: string | null; message?: string | null } | null
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+// ---------------------------------------------------------------------------
+// Секрет сервера: псевдонимы продавцов и подпись кандидатов 88查
+
+/**
+ * Ключ HMAC для своей задачи (purpose): из ASSORTMENT_FACTORY_SALT, если задан, иначе — из секрета ключа 1688 (он есть всегда, когда
+ * вкладка работает). В ответы и в базу не уходит. Смена ключа 1688 без ASSORTMENT_FACTORY_SALT меняет псевдонимы ИП — тогда «уже в
+ * шорт-листе» узнаётся по общей карточке 1688 (addToShortlist). null — секрета нет.
+ */
+export function factorySecret(env: Record<string, string | undefined>, purpose: string): Buffer | null {
+  const base = env.ASSORTMENT_FACTORY_SALT?.trim() || parseAk(chinaKeyRaw(env))?.secret || "";
+  if (!base) return null;
+  return createHash("sha256").update(`assortment-cn-factory:${purpose}\u0000${base}`, "utf8").digest();
+}
+
+/**
+ * Псевдоним продавца для ключа шорт-листа: «ps:» + HMAC-SHA256 нормализованного названия. Название не хранится, а тот же продавец в
+ * другом поиске получает тот же ключ (и ту же запись шорт-листа). По 152-ФЗ это псевдоним, а не обезличивание — решение владельца 07.10:
+ * у ИП храним псевдоним и ссылку. null — секрета нет (тогда у ИП ключа нет и «В шорт-лист» не показывается).
+ */
+export function factorySellerKey(env: Record<string, string | undefined> = process.env): ((normalizedName: string) => string | null) | null {
+  const secret = factorySecret(env, "seller-pseudonym");
+  if (!secret) return null;
+  return (norm) => (norm ? `ps:${createHmac("sha256", secret).update(norm, "utf8").digest("hex")}` : null);
+}
 
 // ---------------------------------------------------------------------------
 // Запрос
@@ -91,6 +117,8 @@ export function factoryTranslatorFromEnv(env: Record<string, string | undefined>
 
 export interface TranslateQueryResult {
   queryZh: string | null;
+  /** Перевод есть, но длиннее FACTORY_QUERY_MAX — отдаётся для правки (оплачен — не выбрасываем), искать по нему нельзя, пока не сократят. */
+  draftZh: string | null;
   /** Почему перевода нет — одной строкой (человек пишет по-китайски сам). */
   reason: string | null;
   costUsd: number;
@@ -108,29 +136,36 @@ export async function translateFactoryQuery(
   const env = deps.env ?? process.env;
   const clock = deps.clock ?? Date.now;
   const text = queryRu.replace(/\s+/g, " ").trim();
-  if (!text || text.length > FACTORY_QUERY_RU_MAX) return { queryZh: null, reason: `запрос по-русски — от 1 до ${FACTORY_QUERY_RU_MAX} знаков`, costUsd: 0 };
+  const none = (reason: string): TranslateQueryResult => ({ queryZh: null, draftZh: null, reason, costUsd: 0 });
+  if (!text || text.length > FACTORY_QUERY_RU_MAX) return none(`запрос по-русски — от 1 до ${FACTORY_QUERY_RU_MAX} знаков`);
   const setup = deps.translator ?? factoryTranslatorFromEnv(env);
-  if (!setup.translate || !setup.price) return { queryZh: null, reason: `${setup.reason ?? "перевод не подключён"} — ${WRITE_ZH}`, costUsd: 0 };
+  if (!setup.translate || !setup.price) return none(`${setup.reason ?? "перевод не подключён"} — ${WRITE_ZH}`);
   let week;
   try {
     week = await loadEngineWeekForSpend(db, clock(), { attempts: 2, delayMs: 300 });
   } catch {
-    return { queryZh: null, reason: `учёт расхода не прочитался — перевод отложен, ${WRITE_ZH}`, costUsd: 0 };
+    return none(`учёт расхода не прочитался — перевод отложен, ${WRITE_ZH}`);
   }
-  if (!week) return { queryZh: null, reason: `нет учёта расхода движка — перевод не запускается, ${WRITE_ZH}`, costUsd: 0 };
+  if (!week) return none(`нет учёта расхода движка — перевод не запускается, ${WRITE_ZH}`);
   const refusal = engineRefusal(week, FACTORY_TRANSLATE_KIND, translateBatchMaxUsd([text], setup.price, FACTORY_QUERY_PROMPT), engineBudgetConfig(env));
-  if (refusal) return { queryZh: null, reason: `${refusal} — ${WRITE_ZH}`, costUsd: 0 };
+  if (refusal) return none(`${refusal} — ${WRITE_ZH}`);
   let result;
   try {
     result = await setup.translate([text]);
   } catch (error) {
     await addEngineUsage(db, clock(), FACTORY_TRANSLATE_KIND, { calls: 0, failed: 1, costUsd: 0 });
     const why = isTranslateStop(error) ? error.message : "перевод не удался";
-    return { queryZh: null, reason: `${why} — ${WRITE_ZH}`, costUsd: 0 };
+    return none(`${why} — ${WRITE_ZH}`);
   }
   await addEngineUsage(db, clock(), FACTORY_TRANSLATE_KIND, { calls: 1, inputTokens: result.inputTokens, outputTokens: result.outputTokens, costUsd: result.costUsd });
   const queryZh = normalizeQueryZh(result.texts[0]);
-  return { queryZh, reason: queryZh ? null : `перевод не получился — ${WRITE_ZH}`, costUsd: result.costUsd };
+  if (queryZh) return { queryZh, draftZh: null, reason: null, costUsd: result.costUsd };
+  // Перевод с иероглифами, но длиннее 60 знаков — оплачен: отдаём для правки, а не выбрасываем.
+  const draft = typeof result.texts[0] === "string" ? result.texts[0].normalize("NFKC").replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim().slice(0, FACTORY_QUERY_RU_MAX) : "";
+  if (draft && HAN_RE.test(draft)) {
+    return { queryZh: null, draftZh: draft, reason: `перевод длиннее ${FACTORY_QUERY_MAX} знаков (${draft.length}) — сократите его в поле по-китайски`, costUsd: result.costUsd };
+  }
+  return { queryZh: null, draftZh: null, reason: `перевод не получился — ${WRITE_ZH}`, costUsd: result.costUsd };
 }
 
 // ---------------------------------------------------------------------------
@@ -155,9 +190,51 @@ export function factoryCapRefusal(callsToday: number | null, need: number, cap =
   return null;
 }
 
-async function countCall(db: SupabaseClient, nowMs: number, ok: boolean, notes: string[]): Promise<void> {
+export type CallReservation = { ok: true; callsToday: number } | { ok: false; callsToday: number | null; reason: string };
+
+/**
+ * Забронировать `need` запросов к 1688 в учёте ДО обращения: прочитать дневную строку, проверить потолок и прибавить сравнением-и-заменой
+ * (по calls и updated_at). Параллельный поиск, успевший между чтением и записью, сбивает замену — бронь перечитывается и проверяется
+ * заново, так что два поиска при 58 из 60 не сделают четыре запроса. Бронь не возвращается: неудачный запрос — тоже запрос. Нет таблицы
+ * учёта — отказ (лимит нечем считать).
+ */
+export async function reserveFactoryCalls(db: SupabaseClient, nowMs: number, need: number, cap = FACTORY_DAILY_CALLS): Promise<CallReservation> {
+  const day = moscowToday(nowMs);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const { data, error } = await db.from(USAGE).select("calls,updated_at").eq("day", day).eq("kind", FACTORY_USAGE_KIND).maybeSingle();
+    if (error) {
+      if (missing(error)) return { ok: false, callsToday: null, reason: NO_USAGE_WORDS };
+      throw new Error(error.message);
+    }
+    const row = data as { calls?: number | string | null; updated_at?: string | null } | null;
+    const prev = Number(row?.calls ?? 0) || 0;
+    const refusal = factoryCapRefusal(prev, need, cap);
+    if (refusal) return { ok: false, callsToday: prev, reason: refusal };
+    // Новое время — строго позже прежнего: иначе писатель с той же миллисекундой (addEngineUsage) не заметил бы брони.
+    const prevMs = Date.parse(String(row?.updated_at ?? ""));
+    const stamp = new Date(Math.max(Date.now(), Number.isFinite(prevMs) ? prevMs + 1 : 0)).toISOString();
+    if (!row) {
+      const { error: insertError } = await db.from(USAGE).insert({
+        day, kind: FACTORY_USAGE_KIND, calls: need, failed_calls: 0, input_tokens: 0, output_tokens: 0, cost_usd: 0, updated_at: stamp,
+      });
+      if (!insertError) return { ok: true, callsToday: need };
+      if (missing(insertError)) return { ok: false, callsToday: null, reason: NO_USAGE_WORDS };
+      if ((insertError as { code?: string }).code !== "23505") throw new Error(insertError.message);
+      continue; // строку успел создать другой поиск — перечитаем
+    }
+    const { data: updated, error: updateError } = await db.from(USAGE).update({ calls: prev + need, updated_at: stamp })
+      .eq("day", day).eq("kind", FACTORY_USAGE_KIND).eq("calls", row.calls).eq("updated_at", row.updated_at).select("day");
+    if (updateError) throw new Error(updateError.message);
+    if (updated && (updated as unknown[]).length > 0) return { ok: true, callsToday: prev + need };
+  }
+  throw new Error("учёт запросов 1688 не записался: строку постоянно обновляет другой поиск — повторите");
+}
+
+/** Неудачные запросы (уже забронированные) — в failed_calls той же строки; сбой учёта — заметкой, а не отказом. */
+async function countFailed(db: SupabaseClient, nowMs: number, failed: number, notes: string[]): Promise<void> {
+  if (failed <= 0) return;
   try {
-    await addEngineUsage(db, nowMs, FACTORY_USAGE_KIND, ok ? { calls: 1, costUsd: 0 } : { calls: 1, failed: 1, costUsd: 0 });
+    await addEngineUsage(db, nowMs, FACTORY_USAGE_KIND, { calls: 0, failed, costUsd: 0 });
   } catch {
     if (!notes.includes("учёт запроса 1688 не записался")) notes.push("учёт запроса 1688 не записался");
   }
@@ -242,9 +319,13 @@ async function readCache(db: SupabaseClient, key: string, nowIso: string): Promi
   return { available: true, row: row && payloadOf(row.result) ? row : null };
 }
 
-/** Кэшировать можно, если ни один источник не упёрся в лимит или временный сбой («навык недоступен» — ответ, его можно помнить). */
+/**
+ * Кэшировать (под ключом запроса, на 7 дней) можно только полную выдачу: оба источника ответили. «Навык недоступен» (в том числе 401 —
+ * подпись не принята) — не ответ: владелец выдаст право — и повтор должен сразу спросить 1688, а не неделю отвечать «недоступен» из кэша;
+ * лимит и сбой — тем более.
+ */
 export function cacheable(sources: FactorySearchPayload["sources"]): boolean {
-  return [sources.suppliers, sources.products].every((s) => s.status === "ok" || s.status === "unavailable");
+  return [sources.suppliers, sources.products].every((s) => s.status === "ok");
 }
 
 /**
@@ -273,6 +354,8 @@ export async function runFactorySearch(
   const nowIso = new Date(nowMs).toISOString();
   const key = factoryQueryKey(queryZh);
 
+  // Сырые выдачи старше 7 дней стираются в начале каждого поиска — и при попадании в кэш, и при отказе, а не только после новой записи.
+  await purgeExpiredSearches(db, nowMs);
   const cache = await readCache(db, key, nowIso);
   out.cacheAvailable = cache.available;
   if (!cache.available) out.notes.push(`кэш поиска не создан — нужна миграция ${FACTORY_MIGRATION}; шорт-листа тоже нет`);
@@ -284,17 +367,14 @@ export async function runFactorySearch(
     };
   }
 
-  const callsToday = await factoryCallsToday(db, nowMs);
-  out.callsToday = callsToday;
-  const refusal = factoryCapRefusal(callsToday, FACTORY_CALLS_PER_SEARCH, dailyCap);
-  if (refusal || callsToday == null) return { ...out, refused: callsToday == null ? "no_usage" : "daily_cap", reason: refusal ?? NO_USAGE_WORDS };
+  const booked = await reserveFactoryCalls(db, nowMs, FACTORY_CALLS_PER_SEARCH, dailyCap);
+  out.callsToday = booked.callsToday;
+  if (!booked.ok) return { ...out, refused: booked.callsToday == null ? "no_usage" : "daily_cap", reason: booked.reason };
 
   const callers = deps.callers ?? makeFactoryCallers({ env });
   const [suppliersRes, productsRes] = await Promise.allSettled([callers.suppliers(queryZh), callers.products(queryZh)]);
   out.calls = FACTORY_CALLS_PER_SEARCH;
-  await countCall(db, clock(), suppliersRes.status === "fulfilled", out.notes);
-  await countCall(db, clock(), productsRes.status === "fulfilled", out.notes);
-  out.callsToday = callsToday + FACTORY_CALLS_PER_SEARCH;
+  await countFailed(db, clock(), [suppliersRes, productsRes].filter((r) => r.status === "rejected").length, out.notes);
 
   let suppliers: SupplierFactory[] = [];
   let offers: FactoryOffer[] = [];
@@ -313,7 +393,7 @@ export async function runFactorySearch(
     return { ...out, refused: "failed", reason: a === b ? a : `поиск поставщиков: ${a}; поиск товаров: ${b}` };
   }
 
-  const built = buildFactoryResult(suppliers, offers);
+  const built = buildFactoryResult(suppliers, offers, { sellerKey: factorySellerKey(env) });
   out.factories = built.factories;
   out.sellers = built.sellers;
   out.ok = true;
@@ -323,8 +403,8 @@ export async function runFactorySearch(
     const payload: FactorySearchPayload = { queryZh, queryRu, cluster, sources: out.sources, factories: out.factories, sellers: out.sellers };
     const id = randomUUID();
     const expiresAt = new Date(nowMs + FACTORY_CACHE_DAYS * DAY_MS).toISOString();
-    // Неполная выдача (источник упёрся в лимит или сбой) пишется под ключом, который поиск не найдёт: «В шорт-лист» по ней работает,
-    // а повтор запроса снова спросит 1688, а не отдаст неделю неполную выдачу.
+    // Неполная выдача (источник недоступен ключу, упёрся в лимит или сбой) пишется под ключом, который поиск не найдёт: «В шорт-лист» по ней
+    // работает, а повтор запроса снова спросит 1688, а не отдаст неделю неполную выдачу.
     const complete = cacheable(out.sources);
     if (!complete) out.notes.push("выдача неполная — в кэш повторов не кладём: повтор запроса снова спросит 1688");
     const { error } = await db.from(FACTORY_SEARCH_TABLE).insert({
@@ -336,8 +416,6 @@ export async function runFactorySearch(
       out.searchId = id;
       out.createdAt = nowIso;
       out.expiresAt = expiresAt;
-      // Старше 7 дней — стираются (сырые выдачи дольше не храним).
-      await db.from(FACTORY_SEARCH_TABLE).delete().lt("expires_at", nowIso).then(() => undefined, () => undefined);
     }
   }
   return out;
@@ -351,14 +429,21 @@ function stateOf(error: unknown): [FactorySourceStatus, string] {
 // ---------------------------------------------------------------------------
 // Проверка компании (88查): поиск по названию → риски по коду (каждый шаг — своей кнопкой, по запросу на шаг)
 
-export type CheckRefusal = "no_key" | "bad_input" | "not_company" | "no_usage" | "daily_cap" | "failed";
+export type CheckRefusal = "no_key" | "bad_input" | "not_company" | "unverified" | "no_usage" | "daily_cap" | "failed";
+
+/**
+ * Кандидат 88查 с подписью сервера: token = «время выдачи.HMAC» по коду и фактам реестра (статус, дата, тип, капитал, район). На шаге
+ * «риски» сервер принимает факты только с действующей подписью — «Р — реестр КНР» не пишется со слов клиента, а код привязан к
+ * кандидату, которого 88查 показал. У ИП и кандидатов без кода подписи нет (риски по ним не проверяем).
+ */
+export type CheckedCandidate = CompanyCandidate & { token: string | null };
 
 export interface CompanySearchResponse {
   ok: boolean;
   refused: CheckRefusal | null;
   reason: string | null;
   /** Кандидаты: у юрлиц — название и код; у ИП — только регион, статус и тип (тёзок сверяет человек). */
-  candidates: CompanyCandidate[];
+  candidates: CheckedCandidate[];
   total: number | null;
   /** Кандидат, чьё название совпало с запросом целиком (после нормализации); null — точного совпадения нет. */
   exactIndex: number | null;
@@ -391,6 +476,40 @@ export function companyNameInput(value: unknown): { name: string | null; reason:
 
 export const CREDIT_CODE_RE = /^[0-9A-Z]{18}$/;
 
+/** Сколько живёт выбор кандидата: дольше — «нажмите «Проверить компанию» ещё раз» (старая вкладка не пишет устаревший статус). */
+export const CANDIDATE_TOKEN_TTL_MS = 60 * 60 * 1000;
+
+/** Подписываемые факты кандидата — строки как их отдал разбор (или null), в постоянном порядке. */
+const SIGNED_FIELDS = ["status", "establishedOn", "entType", "regCapText", "area"] as const;
+
+function candidateMac(secret: Buffer, code: string, fields: Record<string, unknown>, issuedAt: number): string {
+  const payload = JSON.stringify([code, issuedAt, ...SIGNED_FIELDS.map((f) => (typeof fields[f] === "string" ? fields[f] : null))]);
+  return createHmac("sha256", secret).update(payload, "utf8").digest("base64url");
+}
+
+/** Подпись кандидата юрлица с кодом; у ИП и без кода — null. */
+export function signCandidate(candidate: CompanyCandidate, env: Record<string, string | undefined>, nowMs: number): string | null {
+  if (candidate.entity !== "company" || !candidate.creditCode) return null;
+  const secret = factorySecret(env, "cha88-candidate");
+  if (!secret) return null;
+  const issuedAt = Math.floor(nowMs);
+  return `${issuedAt}.${candidateMac(secret, candidate.creditCode, candidate as unknown as Record<string, unknown>, issuedAt)}`;
+}
+
+/** Подпись кандидата верна, относится к этому коду и не старше CANDIDATE_TOKEN_TTL_MS. */
+export function verifyCandidate(value: unknown, code: string, env: Record<string, string | undefined>, nowMs: number): boolean {
+  if (!isRecord(value) || typeof value.token !== "string") return false;
+  const m = /^(\d{10,16})\.([A-Za-z0-9_-]{20,100})$/.exec(value.token);
+  if (!m) return false;
+  const issuedAt = Number(m[1]);
+  if (!(issuedAt <= nowMs + 60_000 && nowMs - issuedAt <= CANDIDATE_TOKEN_TTL_MS)) return false;
+  const secret = factorySecret(env, "cha88-candidate");
+  if (!secret) return false;
+  const expected = Buffer.from(candidateMac(secret, code, value, issuedAt), "utf8");
+  const got = Buffer.from(m[2], "utf8");
+  return expected.length === got.length && timingSafeEqual(expected, got);
+}
+
 export async function runCompanySearch(db: SupabaseClient, input: { name: unknown; who: string }, deps: FactoryDeps = {}): Promise<CompanySearchResponse> {
   const env = deps.env ?? process.env;
   const clock = deps.clock ?? Date.now;
@@ -400,25 +519,24 @@ export async function runCompanySearch(db: SupabaseClient, input: { name: unknow
   const { name, reason, notCompany } = companyNameInput(input.name);
   if (!name) return { ...out, refused: notCompany ? "not_company" : "bad_input", reason };
   const nowMs = clock();
-  const callsToday = await factoryCallsToday(db, nowMs);
-  out.callsToday = callsToday;
-  const refusal = factoryCapRefusal(callsToday, 1, dailyCap);
-  if (refusal) return { ...out, refused: callsToday == null ? "no_usage" : "daily_cap", reason: refusal };
+  const booked = await reserveFactoryCalls(db, nowMs, 1, dailyCap);
+  out.callsToday = booked.callsToday;
+  if (!booked.ok) return { ...out, refused: booked.callsToday == null ? "no_usage" : "daily_cap", reason: booked.reason };
   const callers = deps.callers ?? makeFactoryCallers({ env });
   const notes: string[] = [];
   let data: Record<string, unknown>;
   try {
     data = await callers.companySearch(name);
   } catch (error) {
-    await countCall(db, clock(), false, notes);
-    return { ...out, calls: 1, callsToday: (callsToday ?? 0) + 1, refused: "failed", reason: factoryErrorState(error).reason };
+    await countFailed(db, clock(), 1, notes);
+    return { ...out, calls: 1, refused: "failed", reason: factoryErrorState(error).reason };
   }
-  await countCall(db, clock(), true, notes);
   const parsed = parseCompanySearch(data);
   const target = normalizeCompanyName(name);
   const exact = parsed.candidates.findIndex((c) => c.name != null && normalizeCompanyName(c.name) === target);
+  const candidates: CheckedCandidate[] = parsed.candidates.map((c) => ({ ...c, token: signCandidate(c, env, nowMs) }));
   return {
-    ...out, ok: true, calls: 1, callsToday: (callsToday ?? 0) + 1, candidates: parsed.candidates, total: parsed.total, exactIndex: exact >= 0 ? exact : null,
+    ...out, ok: true, calls: 1, candidates, total: parsed.total, exactIndex: exact >= 0 ? exact : null,
     reason: parsed.candidates.length ? null : "88查 не нашёл компанию с таким названием",
   };
 }
@@ -426,8 +544,9 @@ export async function runCompanySearch(db: SupabaseClient, input: { name: unknow
 const cleanRelay = (value: unknown, max: number) => (typeof value === "string" ? value.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim().slice(0, max) || null : null);
 
 /**
- * Кандидат из первого шага, которого человек выбрал (передаёт экран): статус, дата регистрации, тип, капитал, район. Проверяется по форме;
- * вид лица и «действует» пересчитываются здесь, а не берутся с экрана. Имён тут нет и не принимается.
+ * Кандидат из первого шага, которого человек выбрал (передаёт экран): статус, дата регистрации, тип, капитал, район — это факты, которые
+ * сервер сам получил от 88查 и подписал (verifyCandidate проверяет подпись до этого разбора). Проверяется по форме; вид лица и «действует»
+ * пересчитываются здесь, а не берутся с экрана. Имён тут нет и не принимается.
  */
 export function candidateRelay(value: unknown): Partial<CompanyCandidate> | null {
   if (!isRecord(value)) return null;
@@ -436,9 +555,11 @@ export function candidateRelay(value: unknown): Partial<CompanyCandidate> | null
   const established = typeof value.establishedOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.establishedOn) ? value.establishedOn : null;
   return {
     status, active: statusActive(status), establishedOn: established, entType, entity: entityFromType(entType),
-    regCapText: cleanRelay(value.regCapText, 40), area: cleanRelay(value.area, 40),
+    regCapText: cleanRelay(value.regCapText, 60), area: cleanRelay(value.area, 60),
   };
 }
+
+export const UNVERIFIED_CANDIDATE_WORDS = "выбор компании не подтверждён 88查 или устарел (дольше часа) — нажмите «Проверить компанию» ещё раз";
 
 export async function runCompanyRisk(
   db: SupabaseClient,
@@ -453,28 +574,28 @@ export async function runCompanyRisk(
   if (!chinaKeyConfigured(env)) return { ...out, refused: "no_key", reason: CHINA_STOP_WORDS.no_key };
   const code = typeof input.creditCode === "string" ? input.creditCode.trim().toUpperCase() : "";
   if (!CREDIT_CODE_RE.test(code)) return { ...out, refused: "bad_input", reason: "единый кредитный код — 18 знаков (цифры и латиница)" };
+  const nowMs = clock();
   const candidate = candidateRelay(input.candidate);
   if (candidate?.entity === "individual") return { ...out, refused: "not_company", reason: "это ИП (个体工商户): по решению владельца код и название ИП не храним — проверка вручную" };
-  const nowMs = clock();
-  const callsToday = await factoryCallsToday(db, nowMs);
-  out.callsToday = callsToday;
-  const refusal = factoryCapRefusal(callsToday, 1, dailyCap);
-  if (refusal) return { ...out, refused: callsToday == null ? "no_usage" : "daily_cap", reason: refusal };
+  // Факты с меткой «Р» — только те, что сервер сам получил от 88查 на первом шаге и подписал; код — того же кандидата.
+  if (!verifyCandidate(input.candidate, code, env, nowMs)) return { ...out, refused: "unverified", reason: UNVERIFIED_CANDIDATE_WORDS };
+  const booked = await reserveFactoryCalls(db, nowMs, 1, dailyCap);
+  out.callsToday = booked.callsToday;
+  if (!booked.ok) return { ...out, refused: booked.callsToday == null ? "no_usage" : "daily_cap", reason: booked.reason };
   const callers = deps.callers ?? makeFactoryCallers({ env });
   let data: Record<string, unknown>;
   try {
     data = await callers.companyRisk(code);
   } catch (error) {
-    await countCall(db, clock(), false, notes);
-    return { ...out, calls: 1, callsToday: (callsToday ?? 0) + 1, refused: "failed", reason: factoryErrorState(error).reason };
+    await countFailed(db, clock(), 1, notes);
+    return { ...out, calls: 1, refused: "failed", reason: factoryErrorState(error).reason };
   }
-  await countCall(db, clock(), true, notes);
   const facts = registryFacts(candidate, parseCompanyRisk(data), moscowToday(nowMs));
   let savedTo: string | null = null;
   if (input.factoryId) {
-    const saved = await saveRegistryCheck(db, { id: input.factoryId, facts, creditCode: code, who: input.who, nowMs: clock() });
+    const saved = await saveRegistryCheck(db, { id: input.factoryId, facts, creditCode: code, who: input.who, nowMs: clock(), sellerKey: factorySellerKey(env) });
     if (saved.saved) savedTo = input.factoryId;
     else if (saved.reason) notes.push(saved.reason);
   }
-  return { ...out, ok: true, calls: 1, callsToday: (callsToday ?? 0) + 1, facts, savedTo };
+  return { ...out, ok: true, calls: 1, facts, savedTo };
 }

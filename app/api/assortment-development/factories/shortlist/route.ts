@@ -6,7 +6,7 @@ import { audit } from "@/lib/audit/log";
 import { ASSORTMENT_ROLES, parseDirection } from "@/lib/assortment/constants";
 import {
   addToShortlist, canEditFactories, factoriesTab, FACTORY_ONLY_BAGS_WORDS, FactoryConflictError, FactoryInputError, FactoryNotFoundError, FactoryTableMissingError,
-  loadShortlist, patchShortlist, type ShortlistView,
+  loadShortlist, patchShortlist, purgeExpiredSearches, type ShortlistView,
 } from "@/lib/assortment/factoryShortlist";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -26,7 +26,8 @@ function errorResponse(error: unknown, fallback: string) {
 /**
  * Шорт-лист фабрик сумок. GET ?direction=bags — { tab, shortlist, canEdit, items }: смотрят все роли модуля; вкладки нет без ключа 1688
  * и вне «Сумок», шорт-листа нет без миграции (причина одной строкой). ?count=1 — только «есть ли вкладка» ({ tab, canEdit }) без базы:
- * его спрашивает раздел «Сумки» при каждом открытии. Только чтение.
+ * его спрашивает раздел «Сумки» при каждом открытии. Шорт-лист не меняется; заодно стираются выдачи поиска старше 7 дней (кэш — не
+ * дольше недели, даже если никто не ищет).
  */
 export async function GET(request: NextRequest) {
   const gate = await requireApiSession(ASSORTMENT_ROLES);
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(view, { headers: NO_STORE });
   }
   try {
+    await purgeExpiredSearches(db, Date.now());
     const list = await loadShortlist(db);
     const view: ShortlistView = { tab, shortlist: { available: list.available, reason: list.reason }, canEdit, items: list.items };
     return NextResponse.json(view, { headers: NO_STORE });
